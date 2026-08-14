@@ -1,0 +1,407 @@
+#view-shot-designer {
+    /* display: flex; REMOVED to respect .view-section toggle */
+    flex-direction: column;
+    padding: 10px;
+    background: var(--bg-dark);
+    gap: 10px;
+}
+
+/* TOP BAR: PREVIEW */
+.sd-preview-bar {
+    background: #151515;
+    border: 1px solid #333;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    color: var(--accent);
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+/* TOP BAR: SELECTOR */
+.sd-selector-bar {
+    display: flex;
+    gap: 10px;
+    padding: 5px;
+    background: #202020;
+    border-radius: 4px;
+    align-items: center;
+}
+
+.sd-asset-select {
+    flex: 1;
+    background: #111;
+    color: white;
+    border: 1px solid #333;
+    padding: 5px;
+    border-radius: 4px;
+}
+
+/* MAIN GRID */
+.sd-workspace {
+    display: flex;
+    flex: 1;
+    gap: 10px;
+    overflow: hidden;
+}
+
+/* CANVAS AREA */
+.sd-canvas {
+    flex: 1;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+    position: relative;
+    overflow: auto;
+    background-image: radial-gradient(#222 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* SIDEBAR START */
+.sd-sidebar {
+    width: 450px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* NODES */
+.sd-node {
+    position: absolute;
+    width: 150px;
+    background: #252525;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 0;
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.5);
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+.sd-node.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
+    z-index: 20;
+}
+
+.sd-node.zone-proyecto {
+    border-left: 4px solid #2196F3;
+}
+
+.sd-node.zone-media {
+    border-left: 4px solid #4CAF50;
+}
+
+.sd-node-header {
+    padding: 5px 10px;
+    background: #333;
+    border-bottom: 1px solid #444;
+    border-radius: 5px 5px 0 0;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #ccc;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+
+.sd-node-content {
+    padding: 10px;
+    font-size: 0.85rem;
+    color: white;
+    text-align: center;
+    word-break: break-all;
+    min-height: 20px;
+}
+
+.sd-node-input {
+    width: 90%;
+    background: #111;
+    color: white;
+    border: 1px solid var(--accent);
+    padding: 2px 5px;
+    font-size: 0.85rem;
+    text-align: center;
+    outline: none;
+    border-radius: 3px;
+    margin: 5px auto;
+}
+
+.sd-node.folder .sd-node-header {
+    color: #FFB74D;
+}
+
+.sd-node.file .sd-node-header {
+    color: #4FC3F7;
+}
+
+/* DOTS */
+.sd-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #555;
+    border: 1px solid #777;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: crosshair;
+    z-index: 30;
+    /* High enough to be over badges */
+    transition: background 0.2s, transform 0.2s;
+    box-sizing: border-box;
+}
+
+/* Larger hit area for dots */
+.sd-dot::after {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+}
+
+.sd-dot:hover {
+    background: var(--accent);
+    transform: translateY(-50%) scale(1.2);
+}
+
+.sd-dot-in {
+    left: -6px;
+    background: #444;
+}
+
+.sd-dot-out {
+    right: -6px;
+    background: #666;
+}
+
+/* CONNECTOR LINES (SVG Overlay) */
+#sd-connections-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+path.connector {
+    fill: none;
+    stroke: #555;
+    stroke-width: 2px;
+}
+
+
+path.connector.draft {
+    stroke: var(--accent);
+    stroke-dasharray: 4;
+}
+
+.sd-dot-in.active {
+    background: var(--accent) !important;
+    transform: translateY(-50%) scale(1.5);
+    box-shadow: 0 0 10px var(--accent);
+}
+
+/* SYNC POINT DOTS */
+.sd-dot-in-online {
+    left: -6px;
+    top: 25%;
+    background: #4CAF50;
+    /* Green for Online */
+    border-color: #388E3C;
+}
+
+.sd-dot-in-local {
+    left: -6px;
+    top: 75%;
+    background: #2196F3;
+    /* Blue for Local */
+    border-color: #1976D2;
+}
+
+/* MIRROR DOTS */
+.sd-dot-mirror {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #E040FB;
+    /* Purple */
+    border-color: #7B1FA2;
+}
+
+.sd-dot-mirror.top {
+    top: -6px;
+}
+
+.sd-dot-mirror.bottom {
+    bottom: -6px;
+    top: auto;
+}
+
+.sd-dot-mirror:hover {
+    background: #FF4081;
+    transform: translateX(-50%) scale(1.2);
+}
+
+/* RENDER DOTS */
+.sd-dot-in-render {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #FFD600;
+    /* Yellow */
+    border-color: #F57F17;
+}
+
+.sd-dot-in-render.top {
+    top: -6px;
+}
+
+.sd-dot-in-render.bottom {
+    bottom: -6px;
+    top: auto;
+}
+
+.sd-dot-out-render {
+    right: -6px;
+    top: 25%;
+    background: #FFD600;
+    border-color: #F57F17;
+}
+
+.out-render-badge {
+    background: #FFD600;
+    color: #000;
+}
+
+.sd-dot-in-render:hover {
+    background: #FFEA00 !important;
+    transform: translateX(-50%) scale(1.4) !important;
+}
+
+.sd-dot-out-render:hover {
+    background: #FFEA00 !important;
+    transform: translateY(-50%) scale(1.4) !important;
+}
+
+/* BADGES */
+.sd-badges {
+    position: absolute;
+    top: -14px;
+    /* Higher to avoid dots */
+    right: -5px;
+    display: flex;
+    gap: 3px;
+    z-index: 20;
+}
+
+.sd-badge {
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: white;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.sd-badge-category {
+    background: #9C27B0;
+    /* Purple */
+}
+
+.sd-badge-variable {
+    background: #FF5722;
+    /* Orange */
+}
+
+.sd-node.is-category {
+    border: 1px dashed #9C27B0;
+}
+
+.sd-node.is-variable {
+    border: 1px dashed #FF5722;
+}
+
+/* EXTENDED BADGES */
+.sd-badge-item {
+    background: #00E676;
+    /* Chroma Green */
+    color: #000;
+}
+
+.sd-badge-process {
+    background: #03A9F4;
+    color: #fff;
+}
+
+/* Light Blue */
+
+/* PINK DOT FOR MULTI-PARENT */
+.sd-dot.multi-parent {
+    background: #FF4081 !important;
+    /* Pink */
+    box-shadow: 0 0 5px #FF4081;
+}
+
+/* CHROMA GREEN DOT FOR PROCESS PARENT ITEM */
+.sd-dot.multi-process {
+    background: #00E676 !important;
+    /* Chroma Green */
+    box-shadow: 0 0 5px #00E676;
+}
+
+/* NAME CONSTRUCTOR TAG BUTTONS */
+.nc-tag-btn {
+    background: #444;
+    border: 1px solid #555;
+    color: #eee;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.75em;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-right: 2px;
+}
+
+.nc-tag-btn:hover {
+    background: #555;
+    border-color: #666;
+}
+
+.nc-tag-btn.var {
+    background: #FF9800;
+    color: #000;
+    border-color: #F57C00;
+}
+
+/* Orange */
+.nc-tag-btn.item {
+    background: #00E676;
+    color: #000;
+    border-color: #00C853;
+}
+
+/* Green */
+.nc-tag-btn.proc {
+    background: #03A9F4;
+    color: #fff;
+    border-color: #0288D1;
+}
+
+/* Light Blue */
+.nc-tag-btn.sys {
+    background: #9E9E9E;
+    color: #000;
+    border-color: #757575;
+}
+
+/* Grey */

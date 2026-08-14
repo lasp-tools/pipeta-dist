@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeta - Pipeline Manager v0.9.01</title>
+    <!-- MODULAR CSS -->
+    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/browser.css">
+    <link rel="stylesheet" href="css/asset-designer.css">
+    <link rel="stylesheet" href="css/shot-designer.css">
+    <link rel="stylesheet" href="css/sync-analyzer.css">
+    <link rel="stylesheet" href="css/console.css">
+</head>
+
+<body>
+
+    <!-- Header Superior -->
+    <!-- Header Superior (Redesigned) -->
+    <header class="header-bar">
+
+        <!-- ZONE 1: BRAND -->
+        <div class="header-zone-brand">
+            <img src="logo.png" alt="Pipeta" class="logo">
+            <div class="app-info">
+                <h1 class="app-title">PIPETA</h1>
+                <span class="app-version" id="appVersion">v0.9.01</span>
+            </div>
+        </div>
+
+        <div class="zone-divider"></div>
+
+        <!-- ZONE 2: CONFIG -->
+        <div class="header-zone-config">
+            <div class="project-selector">
+                <select id="headerProjectSelect" style="background:transparent; border:none; color:inherit; font-weight:bold; cursor:pointer;" onchange="settings.selectHeaderProject(this.value)">
+                    <option>Cargando Proyectos...</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="zone-divider"></div>
+
+        <!-- ZONE 3: GLOBAL INFO (Disks) -->
+        <div class="header-zone-global">
+            <!-- Disk Usage Bars -->
+            <div class="disk-monitor" id="disk-monitor">
+                <div class="disk-bars-inner">
+                    <div class="disk-bar-wrap" title="Disco Local (Z:)">
+                        <span class="disk-label">Z:</span>
+                        <div class="disk-bar-track">
+                            <div class="disk-bar-fill" id="disk-bar-z" style="width:0%"></div>
+                            <span class="disk-bar-text" id="disk-pct-z">—</span>
+                        </div>
+                    </div>
+                    <div class="disk-bar-wrap" title="Disco Online (M:)">
+                        <span class="disk-label">M:</span>
+                        <div class="disk-bar-track">
+                            <div class="disk-bar-fill" id="disk-bar-m" style="width:0%"></div>
+                            <span class="disk-bar-text" id="disk-pct-m">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="zone-divider"></div>
+
+        <!-- ZONE 4: CONTEXT TOOLS -->
+        <div class="header-zone-tools" id="headerContextTools">
+            <!-- Dynamic Content by JS -->
+        </div>
+
+        <div class="zone-divider"></div>
+
+        <!-- ZONE 5: APP CONTROLS -->
+        <div class="header-zone-controls">
+            <button class="control-btn" title="Recargar Sistema (Reinicia Servidor + Sync)" onclick="reloadApp()">
+                <img src="icons/reload.svg" class="btn-icon-svg">
+            </button>
+            <button class="control-btn danger" title="Cerrar Aplicación (Apagar Servidor)" onclick="closeApp()">
+                <img src="icons/close.svg" class="btn-icon-svg">
+            </button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="mode-sidebar">
+            <div class="sidebar-top">
+                <div class="mode-btn" title="Inicio">
+                    <img src="icons/home.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn active" title="Explorer">
+                    <img src="icons/view_classic.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" title="Asset Designer">
+                    <img src="icons/design_shots.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" title="Shot Designer">
+                    <img src="icons/video_camera_back.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" title="IA Ingest">
+                    <span style="font-size:1.2rem;">🤖</span>
+                </div>
+                <div class="mode-btn" title="Check In/Out">
+                    <img src="icons/check.svg" class="btn-icon-svg">
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <button class="mode-btn" title="Configuración Global" onclick="settings.open()"
+                    style="background:transparent; border:none; padding:0;">
+                    <img src="icons/settings.svg" class="btn-icon-svg">
+                </button>
+                <button class="mode-btn" id="btn-console-toggle" title="Consola de Actividad" onclick="toggleConsole()"
+                    style="background:transparent; border:none; padding:0;">
+                    <img src="icons/console.svg" class="btn-icon-svg btn-icon-white">
+                </button>
+            </div>
+        </aside>
+
+        <!-- Contenido -->
+        <div class="content-area">
+
+            <!-- VISTA HOME -->
+            <div id="view-home" class="view-section" style="color:#444; flex-direction:column;">
+                <!-- Rendered by Tutorials.js -->
+            </div>
+
+            <!-- WRAPPER FOR BOTH BROWSER VIEWS -->
+            <div id="view-browser" class="view-section" style="display:flex; flex-direction:column;">
+
+                <!-- 1. STANDARD SPLIT VIEW -->
+                <div id="browser-mode-split" style="display:flex; flex:1; height:100%;">
+                    <div class="browser-column">
+                        <!-- Top: Project -->
+                        <div class="split-pane" id="split-pane-project"
+                            style="flex:1; border-bottom:none; display:flex; flex-direction:column; overflow:hidden;">
+                            <div class="browser-header">
+                                <span style="color:var(--accent);">PROYECTO</span>
+                                <span id="project-size-label"
+                                    style="font-family:monospace; color:#999; font-size:0.75rem;">(…)</span>
+                                <span id="label-work-path"
+                                    style="font-family:monospace; color:#555; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:50%;">Cargando...</span>
+                            </div>
+                            <div class="tree-content" id="tree-work" style="flex:1; overflow-y:auto;">
+                                <div style="padding:10px; color:#666;">Cargando...</div>
+                            </div>
+                        </div>
+                        <!-- Draggable Divider -->
+                        <div class="split-divider" id="split-divider" title="Arrastrar para redimensionar">
+                            <div class="split-divider-line"></div>
+                        </div>
+                        <!-- Bottom: Media -->
+                        <div class="split-pane" id="split-pane-media"
+                            style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+                            <div class="browser-header">
+                                <span style="color:#4caf50;">MEDIA</span>
+                                <span id="media-size-label"
+                                    style="font-family:monospace; color:#999; font-size:0.75rem;">(…)</span>
+                                <span id="label-media-path"
+                                    style="font-family:monospace; color:#555; font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:50%;">Cargando...</span>
+                            </div>
+                            <div class="tree-content" id="tree-media" style="flex:1; overflow-y:auto;">
+                                <div style="padding:10px; color:#666;">Cargando...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Detalles Contextuales (Only for Split View) -->
+                    <div class="tools-panel" id="toolsPanel-Browser">
+                        <div class="panel-heading">Propiedades</div>
+                        <div class="prop-row">
+                            <span class="prop-label">Selección:</span>
+                            <h3 id="selectionName" style="margin:0;">-</h3>
+                        </div>
+                        <div class="prop-row">
+                            <span class="prop-label">Ruta Completa:</span>
+                            <div id="selectionPath"
+                                style="font-family:monospace; font-size:0.75rem; color:#888; word-break:break-all;">-
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. PIPETA (MILLER COLUMNS) VIEW - SPLIT -->
+                <div id="browser-mode-pipeta"
+                    style="display:none; flex:1; height:100%; flex-direction:column; background:#111;">
+
+                    <div class="pipeta-pane">
+                        <div class="browser-header" style="background:#1a1a1a; border-bottom:1px solid #333;">
+                            <span style="color:var(--accent);">PROYECTO (Pipeta)</span>
+                            <span id="label-work-path-pipeta"
+                                style="font-family:monospace; color:#555; font-size:0.8rem;">Cargando...</span>
+                        </div>
+                        <div id="pipeta-project-breadcrumbs" class="pipeta-breadcrumbs"></div>
+                        <div id="pipeta-project-container" class="pipeta-scroll-area"></div>
+                    </div>
+
+                    <!-- BOTTOM: MEDIA PIPETA -->
+                    <div class="pipeta-pane">
+                        <div class="browser-header" style="background:#1a1a1a; border-bottom:1px solid #333;">
+                            <span style="color:#4caf50;">MEDIA (Pipeta)</span>
+                            <span id="label-media-path-pipeta"
+                                style="font-family:monospace; color:#555; font-size:0.8rem;">Cargando...</span>
+                        </div>
+                        <div id="pipeta-media-breadcrumbs" class="pipeta-breadcrumbs"></div>
+                        <div id="pipeta-media-container" class="pipeta-scroll-area"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- VISTA ASSET DESIGNER (NEW) -->
+            <div id="view-asset-designer" class="view-section">
+                <!-- Top Review Bar -->
+                <div class="ad-preview-bar" id="ad-preview-text">
+                    Seleccione un nodo para ver su ruta...
+                </div>
+
+                <!-- Asset Selector Bar -->
+                <div class="ad-selector-bar">
+                    <select class="ad-asset-select" id="ad-asset-selector">
+                        <option>Cargando Assets...</option>
+                    </select>
+                    <button class="tool-btn" title="Nuevo Asset"
+                        onclick="AssetDesigner.newAsset(prompt('Nombre del Asset:'))">New</button>
+                    <button class="tool-btn" title="Guardar" onclick="AssetDesigner.saveAsset()">Save</button>
+                    <button class="tool-btn" title="Renombrar Asset" onclick="AssetDesigner.renameAsset()">Ren</button>
+                    <button class="tool-btn" title="Duplicar" onclick="AssetDesigner.duplicateAsset()">Dupl</button>
+                    <button class="tool-btn danger" title="Eliminar Asset"
+                        onclick="AssetDesigner.deleteAsset()">Delete</button>
+                </div>
+
+                <!-- Main Grid -->
+                <div class="ad-workspace">
+                    <!-- Canvas Area -->
+                    <div id="ad-canvas-area" class="ad-canvas">
+                        <!-- SVG Layer for connections -->
+                        <svg id="ad-connections-layer"></svg>
+                        <!-- HTML Layer for nodes -->
+                        <div id="ad-nodes-layer"></div>
+                    </div>
+
+                    <!-- Config Sidebar -->
+                    <div class="ad-sidebar">
+                        <div class="panel-heading" id="ad-sidebar-title">Configuraciones extras</div>
+                        <div class="panel-content" id="ad-sidebar-content">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA SHOT DESIGNER (NEW) -->
+            <div id="view-shot-designer" class="view-section" style="display:none;">
+                <!-- Top Review Bar -->
+                <div class="sd-preview-bar" id="sd-preview-text"
+                    style="padding:10px; background:#222; border-bottom:1px solid #333; font-family:monospace; color:#aaa; min-height:40px;">
+                    Seleccione un nodo para ver su ruta...
+                </div>
+
+                <!-- Asset Selector Bar -->
+                <div class="sd-selector-bar"
+                    style="padding:10px; background:#1a1a1a; display:flex; gap:10px; align-items:center; border-bottom:1px solid #333;">
+                    <select class="sd-asset-select" id="sd-asset-selector"
+                        style="padding:5px; background:#333; color:white; border:none; border-radius:4px; min-width:200px;">
+                        <option>Cargando Shots...</option>
+                    </select>
+                    <button class="tool-btn" title="Nuevo Shot/Sequence"
+                        onclick="ShotDesigner.newAsset(prompt('Nombre del Preset:'))"
+                        style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">New</button>
+                    <button class="tool-btn" title="Guardar" onclick="ShotDesigner.saveAsset()"
+                        style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">Save</button>
+                    <button class="tool-btn" title="Renombrar" onclick="ShotDesigner.renameAsset()"
+                        style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">Ren</button>
+                    <button class="tool-btn" title="Duplicar" onclick="ShotDesigner.duplicateAsset()"
+                        style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">Dupl</button>
+                    <button class="tool-btn danger" title="Eliminar" onclick="ShotDesigner.deleteAsset()"
+                        style="padding:5px 10px; background:#922; color:white; border:none; border-radius:4px; cursor:pointer;">Delete</button>
+                </div>
+
+                <!-- Main Grid -->
+                <div class="sd-workspace" style="display:flex; flex:1; height:100%; overflow:hidden;">
+                    <!-- Canvas Area -->
+                    <div id="sd-canvas-area" class="sd-canvas"
+                        style="flex:1; background:#111; position:relative; overflow:hidden;">
+                        <!-- SVG Layer for connections -->
+                        <svg id="sd-connections-layer"
+                            style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></svg>
+                        <!-- HTML Layer for nodes -->
+                        <div id="sd-nodes-layer" style="position:absolute; top:0; left:0; width:100%; height:100%;">
+                        </div>
+                    </div>
+
+                    <!-- Config Sidebar -->
+                    <div class="sd-sidebar"
+                        style="width:450px; background:#1a1a1a; border-left:1px solid #333; display:flex; flex-direction:column;">
+                        <div class="panel-heading" id="sd-sidebar-title"
+                            style="padding:10px; background:#222; font-weight:bold; border-bottom:1px solid #333;">
+                            Configuraciones extras</div>
+                        <div class="panel-content" id="sd-sidebar-content"
+                            style="padding:10px; flex:1; overflow-y:auto;">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA IA INGEST -->
+            <div id="view-ia-ingest" class="view-section" style="padding:20px; flex-direction:column; overflow-y:auto;">
+                <div style="background:#1a1a1a; padding:15px; border:1px solid #333; margin-bottom:15px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h2 style="margin:0; color:var(--accent); font-size:1.2rem;">🤖 IA Ingest & Nomenclatura Canónica</h2>
+                        <div style="color:#888; font-size:0.8rem; margin-top:4px;">Pipeline de Generación IA (Conforme a workflow_ia_pipeline.md)</div>
+                    </div>
+                    <div style="background:#252525; padding:5px 12px; border-radius:4px; border:1px solid #444; font-size:0.85rem; color:#4caf50;">
+                        ● Servidor Pipeta v0.9.02 Activo (Puerto 3002)
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:20px; margin-bottom:20px;">
+                    <!-- Panel Izquierdo: Contexto & Captura de Archivos -->
+                    <div style="width:320px; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">1. CONTEXTO DE SHOT</div>
+                        
+                        <div>
+                            <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:4px;">Shot ID (Format: PROJ_EP_SEQ_SHOT):</label>
+                            <input id="iaShotIdInput" class="prop-input" value="SURF_B03_066_1200" placeholder="SURF_B03_066_1200" style="font-weight:bold; letter-spacing:1px; color:var(--accent);" oninput="updateIaResolution()">
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:4px;">Ruta Resuelta en Z:\ (MEDIA)</label>
+                            <div id="iaResolvedPath" style="font-family:monospace; font-size:0.75rem; background:#111; padding:8px; border:1px solid #333; border-radius:4px; color:#4caf50; word-break:break-all;">
+                                Cargando ruta...
+                            </div>
+                        </div>
+
+                        <hr style="border:none; border-top:1px solid #333; margin:2px 0;">
+
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">2. CARGAR ARCHIVOS (INDIVIDUAL / LOTE)</div>
+                        <div id="iaDropZone" style="border:2px dashed #444; border-radius:6px; padding:15px; text-align:center; background:#111; cursor:pointer;" onclick="document.getElementById('iaFileInput').click()">
+                            <div style="font-size:1.5rem;">📥</div>
+                            <div style="font-size:0.85rem; color:#ccc; margin-top:5px;" id="iaFileNameDisplay">Arrastra uno o varios archivos aquí</div>
+                            <div style="font-size:0.75rem; color:#777; margin-top:3px;" id="iaFileMetaDisplay">Formatos: .png, .jpg, .mp4, .webp, .mov</div>
+                            <input type="file" id="iaFileInput" multiple style="display:none;" onchange="handleIaFileSelect(this)">
+                        </div>
+
+                        <!-- Watcher de Descargas de Chrome (Captura Automática a la Cola) -->
+                        <div style="background:#222; border:1px solid #333; border-radius:6px; padding:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-size:0.75rem; color:var(--accent); font-weight:bold;">👁️ CAPTURA AUTOMÁTICA DE DESCARGAS</span>
+                                <input type="checkbox" id="iaWatcherToggle" onchange="toggleDownloadWatcher(this.checked)">
+                            </div>
+                            <div style="font-size:0.72rem; color:#4caf50; font-family:monospace; margin-bottom:8px;" id="iaWatcherDetectedFolder">
+                                📁 Ruta monitoreada automáticamente
+                            </div>
+                            
+                            <button class="tool-btn" style="width:100%; padding:6px; font-size:0.75rem; background:#333; border-color:#555; text-align:center; color:#ffb74d; margin-bottom:4px;" onclick="openChromeSettingsDownloads()" title="Abre los ajustes de descargas de Chrome y copia la dirección al portapapeles">
+                                ⚙️ Abrir Ajustes Descargas Chrome
+                            </button>
+                            <div style="font-size:0.68rem; color:#888; line-height:1.2;">
+                                💡 <i>En la pestaña de Chrome desactiva <b>"Preguntar dónde se guardará cada archivo"</b> para descarga directa sin ventana.</i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel Derecho: Builder Modular de Tokens (Soporta Personalización Manual) -->
+                    <div style="flex:1; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. BUILDER MODULAR (OPCIONES + ENTRADAS MANUALES)</div>
+                            <div style="font-size:0.75rem; color:#888;" id="iaMultiSelectNotice">Selecciona ítems abajo para editar en lote</div>
+                        </div>
+
+                        <!-- Chips Switches con Custom Inputs -->
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:10px;">
+                            
+                            <!-- Token Shot ID -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">SHOT ID</span>
+                                    <input type="checkbox" id="tokShotIdToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <div id="tokShotIdVal" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">SURF_B03_066_1200</div>
+                            </div>
+
+                            <!-- Token Motor -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">MOTOR</span>
+                                    <input type="checkbox" id="tokMotorToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                    <option value="SD2">SD2 (Seedance v2.0)</option>
+                                    <option value="SD25">SD25 (Seedance v2.5)</option>
+                                    <option value="VEO3">VEO3 (Google Veo v3.0)</option>
+                                    <option value="VO31">VO31 (Google Veo v3.1)</option>
+                                    <option value="GOMN">GOMN (Gemini / Veo Omni)</option>
+                                    <option value="NBN2">NBN2 (Nano Banana 2)</option>
+                                    <option value="NB2P">NB2P (Nano Banana 2 Pro)</option>
+                                    <option value="custom">✍️ Manual / Otro...</option>
+                                </select>
+                                <input id="tokMotorCustom" class="prop-input" placeholder="Manual (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                            </div>
+
+                            <!-- Token Res -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">RESOLUCIÓN</span>
+                                    <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <select id="tokResSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                    <option value="FHD">FHD (1920x1080)</option>
+                                    <option value="UHD">UHD (3840x2160)</option>
+                                    <option value="HD">HD (1280x720)</option>
+                                    <option value="SQ1K">SQ1K (1024x1024)</option>
+                                    <option value="UW2K">UW2K (2560x1080)</option>
+                                    <option value="1344x768">1344x768</option>
+                                    <option value="1536x864">1536x864</option>
+                                    <option value="2206x946">2206x946</option>
+                                    <option value="custom">✍️ Manual / Otro...</option>
+                                </select>
+                                <input id="tokResCustom" class="prop-input" placeholder="Manual (ej: 1920x1200)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                            </div>
+
+                            <!-- Token Framing -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">FRAMING</span>
+                                    <input type="checkbox" id="tokFramingToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <select id="tokFramingSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                    <option value="FLL">FLL (Full / Canvas)</option>
+                                    <option value="CRP">CRP (Crop / Parche)</option>
+                                    <option value="custom">✍️ Manual / Otro...</option>
+                                </select>
+                                <input id="tokFramingCustom" class="prop-input" placeholder="Manual (ej: PAN)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                            </div>
+
+                            <!-- Token Tag / Role -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px; grid-column: span 2;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">TAG / ROLE (Niveles A-B-C)</span>
+                                    <input type="checkbox" id="tokTagToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <div style="display:flex; gap:4px; margin-bottom:4px;">
+                                    <select id="tokTagALevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                        <option value="">- Nivel A (Ref) -</option>
+                                        <option value="start1001">start1001</option>
+                                        <option value="end1100">end1100</option>
+                                        <option value="f1001">f1001</option>
+                                        <option value="ref">ref</option>
+                                        <option value="custom">✍️ Manual</option>
+                                    </select>
+                                    <select id="tokTagBLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                        <option value="">- Nivel B (Compo) -</option>
+                                        <option value="inp">inp (Inpaint)</option>
+                                        <option value="ups">ups (Upscale)</option>
+                                        <option value="mask">mask (Máscara)</option>
+                                        <option value="clean">clean (Cleanplate)</option>
+                                        <option value="elem">elem (Elemento)</option>
+                                        <option value="custom">✍️ Manual</option>
+                                    </select>
+                                    <select id="tokTagCLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                        <option value="">- Nivel C (Proceso) -</option>
+                                        <option value="i2v" selected>i2v</option>
+                                        <option value="t2i">t2i</option>
+                                        <option value="i2i">i2i</option>
+                                        <option value="t2v">t2v</option>
+                                        <option value="v2v">v2v</option>
+                                        <option value="m2v">m2v</option>
+                                        <option value="custom">✍️ Manual</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex; gap:4px;">
+                                    <input id="tokTagACustom" class="prop-input" placeholder="Manual A" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
+                                    <input id="tokTagBCustom" class="prop-input" placeholder="Manual B" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
+                                    <input id="tokTagCCustom" class="prop-input" placeholder="Manual C" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
+                                </div>
+                            </div>
+
+                            <!-- Token Version -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">VERSIÓN</span>
+                                    <input type="checkbox" id="tokVerToggle" checked onchange="updateIaPreview()">
+                                </div>
+                                <input id="tokVerInput" class="prop-input" value="v001" style="padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50;" oninput="updateIaPreview()">
+                            </div>
+
+                            <!-- Subcarpeta Destino en /IA/ (Independiente por archivo) -->
+                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">SUBCARPETA /IA/</span>
+                                </div>
+                                <select id="iaSubfolderSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                    <option value="root">/IA/ (Raíz WIP)</option>
+                                    <option value="ref">/IA/ref/ (Referencias)</option>
+                                    <option value="export">/IA/export/ (Aprobados)</option>
+                                </select>
+                                <label style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:#aaa; cursor:pointer;" title="Al ingestar a /IA/ref/ o /IA/export/, deja automáticamente una copia en la raíz /IA/">
+                                    <input type="checkbox" id="iaCopyRootCheck" checked> Copiar en raíz /IA/ también
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <!-- Box Live Output Preview & Acciones Rápidas -->
+                        <div style="background:#111; border:1px solid #444; border-radius:8px; padding:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:1px;">PREVIEW SALIDA CANÓNICA</span>
+                                <span style="font-size:0.75rem; color:#aaa;" id="iaSelectedCountDisplay">1 archivo seleccionado</span>
+                            </div>
+                            <div id="iaCanonicalOutputDisplay" style="font-family:monospace; font-size:1.05rem; color:var(--accent); font-weight:bold; word-break:break-all;">
+                                SURF_B03_066_1200_SD2_FHD_FLL_start1001-i2v_v001.mp4
+                            </div>
+                            <div id="iaCanonicalPathDisplay" style="font-family:monospace; font-size:0.75rem; color:#888; margin-top:4px; word-break:break-all;">
+                                Ruta: -
+                            </div>
+                        </div>
+
+                        <!-- Acciones Principales y Persistencia Custom -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="copyCanonicalName()" title="Copiar nombre de archivo">
+                                    📋 Copiar Nombre
+                                </button>
+                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="copyCanonicalPath()" title="Copiar ruta completa de destino">
+                                    📁 Copiar Ruta
+                                </button>
+                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="openTargetFolder()" title="Abrir carpeta de destino en Windows Explorer">
+                                    📂 Abrir Carpeta
+                                </button>
+                            </div>
+                            
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--accent); cursor:pointer;" title="Guarda de forma permanente cualquier token personalizado manual en presets/ia_custom_tokens.json al ingestar">
+                                    <input type="checkbox" id="iaSaveCustomCheck" checked> 💾 Save after queue
+                                </label>
+                                <button class="tool-btn" style="width:auto; padding:0 22px; height:38px; background:var(--accent); border-color:var(--accent); color:black; font-weight:bold; font-size:0.9rem;" onclick="executeIaIngestBatch()">
+                                    🚀 Ingestar Lista Seleccionada
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="iaStatusAlert" style="display:none; padding:8px 12px; border-radius:4px; font-size:0.85rem;"></div>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN: TABLA DE COLA DE ARCHIVOS (BATCH INGEST QUEUE) -->
+                <div style="background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span style="font-weight:bold; color:var(--accent); font-size:0.95rem;">📋 COLA DE INGESTA POR LOTE (BATCH QUEUE)</span>
+                            <span style="font-size:0.8rem; color:#aaa;" id="iaQueueTotalInfo">(0 archivos en lista)</span>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(true)">✔ Marcar Todos</button>
+                            <button class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(false)">✖ Desmarcar Todos</button>
+                            <button class="tool-btn danger" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaClearCompletedBatch()">🧹 Limpiar Completados</button>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de Archivos Batch -->
+                    <div style="max-height:280px; overflow-y:auto; border:1px solid #333; border-radius:6px; background:#111;">
+                        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.8rem;">
+                            <thead>
+                                <tr style="background:#222; border-bottom:1px solid #333; color:#aaa; font-weight:bold;">
+                                    <th style="padding:8px; width:30px; text-align:center;">
+                                        <input type="checkbox" id="iaBatchSelectAll" checked onclick="iaToggleSelectAllBatch(this.checked)">
+                                    </th>
+                                    <th style="padding:8px; width:35px;">#</th>
+                                    <th style="padding:8px;">Nombre Original</th>
+                                    <th style="padding:8px;">Ruta Origen</th>
+                                    <th style="padding:8px; color:var(--accent);">Nuevo nombre</th>
+                                    <th style="padding:8px;">Ruta Destino (Z:\)</th>
+                                    <th style="padding:8px; width:110px;">Estado</th>
+                                    <th style="padding:8px; width:50px; text-align:center;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="iaBatchTableBody">
+                                <tr>
+                                    <td colspan="8" style="padding:20px; text-align:center; color:#666;">
+                                        No hay archivos en la cola. Arrastra archivos arriba para comenzar.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="view-check" class="view-section" style="padding:20px; color:#666;">
+                <h2>Check In / Out (Prototipo)</h2>
+                <p>Funcionalidad pendiente de conexión con M:</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- APP OVERLAY -->
+    <div id="app-overlay" class="app-overlay">
+        <div class="spinner-large"></div>
+        <h2 id="app-overlay-msg">Procesando...</h2>
+        <p id="app-overlay-sub" style="font-size:0.9rem; color:#aaa; margin-top:10px;"></p>
+    </div>
+
+    <!-- WINDOWS & MODALS -->
+    <div id="settings-window" class="settings-window" style="display:none;"></div>
+    <div id="asset-creator-window" class="validator-window"
+        style="display:none; top: 10vh; left: 15vw; width: 800px; height: 650px;"></div>
+    <div id="shot-creator-window" class="validator-window"
+        style="display:none; top: 10vh; left: 15vw; width: 920px; height: 750px;"></div>
+
+    <!-- SCRIPT MODULES -->
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/console.js"></script>
+    <script src="js/selection.js"></script>
+    <script src="js/inspector.js"></script>
+    <script src="js/validator.js"></script>
+    <script src="js/context-menu.js"></script>
+    <script src="js/settings.js"></script>
+    <!-- Views -->
+    <script src="js/pipeta-view.js"></script>
+    <script src="js/mirror.js"></script>
+    <script src="js/split-view.js"></script>
+    <script src="js/asset-designer.js"></script>
+    <script src="js/shot-designer.js"></script>
+    <script src="js/asset-creator.js"></script>
+    <script src="js/shot-creator.js"></script>
+    <script src="js/tutorials.js"></script>
+    <script src="js/sync-analyzer.js"></script>
+    <script src="js/ia-ingest.js"></script>
+    <!-- Main Entry -->
+    <script src="js/main.js"></script>
+
+</body>
+
+</html>

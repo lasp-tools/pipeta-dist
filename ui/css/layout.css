@@ -1,0 +1,466 @@
+/* --- LAYOUT STRUCTURE --- */
+
+/* MAIN WRAPPERS */
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    height: calc(100vh - 60px);
+    /* Adjusted for taller header */
+}
+
+.workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.content-area,
+#main-content {
+    flex: 1;
+    background: var(--bg-dark);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* HEADER REDESIGN */
+.header-bar {
+    height: 60px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    gap: 15px;
+    /* Gap between major zones */
+}
+
+/* ZONE: BRAND */
+.header-zone-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 140px;
+}
+
+.logo {
+    height: 40px;
+}
+
+/* Larger Logo */
+
+.app-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    line-height: 1;
+}
+
+.app-title {
+    font-size: 18px;
+    /* Larger Title */
+    font-weight: 800;
+    /* Bolder */
+    letter-spacing: 1px;
+    margin: 0;
+    color: #fff;
+    text-transform: uppercase;
+}
+
+.app-version {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    font-weight: 500;
+}
+
+.rclone-badge {
+    font-size: 16px;
+    margin-left: 2px;
+    cursor: default;
+    filter: drop-shadow(0 0 5px rgba(255, 200, 0, 0.8));
+    animation: pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 3px rgba(255, 200, 0, 0.5));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 8px rgba(255, 200, 0, 0.9));
+    }
+}
+
+/* ZONE: CONFIG (Project + Settings) */
+.header-zone-config {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid #333;
+}
+
+/* ZONE: GLOBAL (Settings, Console, Disk Monitor) */
+.header-zone-global {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+}
+
+/* Disk Monitor */
+.disk-monitor {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: 6px;
+}
+
+.disk-bars-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.disk-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: default;
+}
+
+.disk-label {
+    font-size: 0.6rem;
+    font-family: monospace;
+    color: #aaa;
+    width: 16px;
+    text-align: right;
+    font-weight: bold;
+}
+
+.disk-bar-track {
+    width: 160px;
+    height: 14px;
+    background: #1a1a1a;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid #333;
+    position: relative;
+}
+
+.disk-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease, background 0.3s ease;
+    background: #2e7d32;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.disk-bar-fill.warn {
+    background: #FF9800;
+}
+
+.disk-bar-fill.critical {
+    background: #f44336;
+}
+
+.disk-bar-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    font-family: monospace;
+    color: #ccc;
+    z-index: 1;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+}
+
+/* ZONE: TOOLS (Contextual) */
+.header-zone-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    /* Pushes Controls to right */
+    justify-content: center;
+    /* Optional: Center tools? Or left align? Keeping center for balance */
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.02);
+    height: 40px;
+    border-radius: 4px;
+    border: 1px solid #2a2a2a;
+}
+
+/* ZONE: CONTROLS (App Lifecycle) */
+.header-zone-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.control-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: #252525;
+    border: 1px solid #333;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.control-btn:hover {
+    background: #333;
+    color: white;
+}
+
+.control-btn.danger:hover {
+    background: #f44336;
+    border-color: #f44336;
+    color: white;
+}
+
+/* DIVIDERS */
+.zone-divider {
+    width: 1px;
+    height: 30px;
+    background: #333;
+}
+
+/* TABS */
+.main-tabs {
+    display: flex;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+}
+
+/* SIDEBAR LEFT & RIGHT (Unchanged) */
+.mode-sidebar {
+    width: 50px;
+    background: #252525;
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.sidebar-top,
+.sidebar-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.mode-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    color: #888;
+    font-size: 1.2rem;
+}
+
+.mode-btn:hover {
+    background: #333;
+    color: white;
+}
+
+.mode-btn.active {
+    background: #444;
+    color: var(--accent);
+}
+
+.sidebar-right,
+.tools-panel {
+    width: 300px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.panel-header,
+.panel-heading {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #222;
+    margin: 0;
+}
+
+.panel-content {
+    padding: 15px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.view-section {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* --- DYNAMIC HEADER TOOLS --- */
+#headerContextTools {
+    justify-content: flex-start;
+    padding-left: 10px;
+    overflow-x: auto;
+}
+
+.tool-separator {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 8px;
+}
+
+.tool-btn {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    transition: all 0.1s;
+}
+
+.tool-btn:hover {
+    background: #333;
+    color: white;
+}
+
+.tool-btn:active {
+    background: #222;
+    transform: translateY(1px);
+}
+
+.tool-btn.active {
+    background: var(--highlight-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 8px var(--highlight-bg);
+}
+
+.tool-btn.danger:hover {
+    color: #f44336;
+    background: rgba(244, 67, 54, 0.1);
+}
+
+.tool-icon-large {
+    font-size: 1.2rem;
+}
+
+/* Local SVG Icons Styling */
+.btn-icon-svg {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+    /* Let clicks pass to button */
+}
+
+.btn-icon-orange {
+    filter: invert(48%) sepia(70%) saturate(2476%) hue-rotate(10deg) brightness(101%) contrast(105%);
+}
+
+.btn-icon-white {
+    filter: brightness(0) invert(1);
+}
+
+/* Ensure buttons adjust to SVG content */
+.tool-btn,
+.icon-btn,
+.control-btn,
+.mode-btn {
+    gap: 0;
+}
+
+.mode-btn .btn-icon-svg {
+    width: 22px;
+    height: 22px;
+}
+
+/* Tool Spacers */
+.tool-space-small {
+    width: 15px;
+}
+
+.tool-space-large {
+    width: 30px;
+}
+
+.tool-space-flex {
+    flex: 1;
+}
+
+/* Tool Reference Icon */
+.tool-ref-icon {
+    filter: grayscale(100%);
+    opacity: 0.3;
+    cursor: default !important;
+    pointer-events: none;
+}
+
+.tool-ref-icon:hover {
+    background: transparent !important;
+    color: inherit !important;
+}

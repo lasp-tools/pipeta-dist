@@ -1,0 +1,15 @@
+{
+    "name": "pipeta-core",
+    "version": "0.9.02",
+    "description": "Core logic server for Pipeta",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.6",
+        "express": "^4.22.2",
+        "fs-extra": "^11.4.0",
+        "open": "^8.4.2"
+    }
+}

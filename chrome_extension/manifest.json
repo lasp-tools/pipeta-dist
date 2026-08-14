@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Pipeta - IA Ingest Catch",
+  "version": "1.0.0",
+  "description": "Captura automática de descargas de plataformas de IA para ingesta canónica en Pipeta Pipeline",
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:3002/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Pipeta IA Catch"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
