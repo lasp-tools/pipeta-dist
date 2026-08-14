@@ -31,6 +31,11 @@
 - **Explorer Headers**: Eliminado "(Árbol)" de PROYECTO y MEDIA. Ahora muestran el tamaño entre paréntesis: `PROYECTO (12.45 GB)`. Tipografía más clara y grande.
 
 ## [v0.8.05] - 2026-02-14
+# Changelog
+
+## [v0.9.02] - 2026-08-14
+- Módulo IA Ingest Batch & Builder completado.
+- Monitoreo automático de descargas y captura instantánea.
 ### Added
 - **Tamaño de Carpeta**: Los headers de PROYECTO y MEDIA en el Explorer ahora muestran el peso total de cada carpeta raíz (ej: `12.45 GB`).
 ### Modified
