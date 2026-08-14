@@ -4,6 +4,53 @@ let iaSelectedIds = new Set();
 let iaBaseVersionNum = 1;
 let iaCurrentResolvedIaPath = '';
 
+function initIaResizer() {
+    const splitter = document.getElementById('iaVerticalSplitter');
+    const previewBox = document.getElementById('iaMediaPreviewBox');
+    if (!splitter || !previewBox) return;
+
+    const savedHeight = localStorage.getItem('iaPreviewBoxHeight');
+    if (savedHeight) {
+        previewBox.style.height = savedHeight + 'px';
+    } else {
+        previewBox.style.height = '490px';
+    }
+
+    let isDragging = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    splitter.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startY = e.clientY;
+        startHeight = previewBox.offsetHeight;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+        splitter.style.background = 'var(--accent)';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaY = e.clientY - startY;
+        const newHeight = Math.max(220, Math.min(850, startHeight + deltaY));
+        previewBox.style.height = newHeight + 'px';
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            splitter.style.background = '#1e1e1e';
+            localStorage.setItem('iaPreviewBoxHeight', previewBox.offsetHeight);
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(initIaResizer, 300);
+});
+
 // --- 1. RESOLVER SHOT ID & RUTA DE MEDIA ---
 async function updateIaResolution() {
     const shotIdInput = document.getElementById('iaShotIdInput');
@@ -185,6 +232,8 @@ function updateIaPreview() {
     if (activeItem) {
         if (canonicalDisplay) canonicalDisplay.innerText = activeItem.canonicalName;
         if (pathDisplay) pathDisplay.innerText = `Ruta: ${activeItem.targetPath}`;
+        // Autodetectar resolución por metadata si la casilla está encendida
+        autoDetectResolutionForActiveItem(activeItem);
     } else {
         const singleTokens = getIaTokenValues(0);
         const defaultFolder = getTargetFolderForItem(selectedSubfolder);
@@ -204,6 +253,102 @@ function updateIaPreview() {
             const checkedCount = iaBatchQueue.filter(i => i.checked).length;
             countDisplay.innerText = `${checkedCount} de ${iaBatchQueue.length} listados para ingestar`;
         }
+    }
+}
+
+// --- AUTODETECCIÓN DE METADATA DE RESOLUCIÓN ---
+function detectMediaDimensions(item) {
+    return new Promise((resolve) => {
+        if (!item) return resolve(null);
+        let src = '';
+        if (item.file) {
+            src = URL.createObjectURL(item.file);
+        } else if (item.originalPath && !item.originalPath.startsWith('[')) {
+            src = `/api/ia/file-preview?path=${encodeURIComponent(item.originalPath)}`;
+        }
+        if (!src) return resolve(null);
+
+        const ext = (item.ext || '').toLowerCase();
+        const isVideo = ['.mp4', '.mov', '.webm', '.mkv'].includes(ext);
+        const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+
+        if (isImage) {
+            const img = new Image();
+            img.onload = () => {
+                resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            };
+            img.onerror = () => resolve(null);
+            img.src = src;
+        } else if (isVideo) {
+            const vid = document.createElement('video');
+            vid.onloadedmetadata = () => {
+                resolve({ width: vid.videoWidth, height: vid.videoHeight });
+            };
+            vid.onerror = () => resolve(null);
+            vid.src = src;
+        } else {
+            resolve(null);
+        }
+    });
+}
+
+async function autoDetectResolutionForActiveItem(item, force = false) {
+    if (!item) return;
+    const autoCheck = document.getElementById('iaAutoDetectResCheck');
+    if (!autoCheck || !autoCheck.checked) return;
+
+    if (item.autoResDetected && !force) return;
+
+    try {
+        const dims = await detectMediaDimensions(item);
+        if (!dims || !dims.width || !dims.height) return;
+
+        const resSelect = document.getElementById('tokResSelect');
+        const resCustomInput = document.getElementById('tokResCustom');
+        if (!resSelect) return;
+
+        const w = dims.width;
+        const h = dims.height;
+        const dimStr = `${w}x${h}`;
+
+        let matchedVal = '';
+        if (w === 1920 && h === 1080) matchedVal = 'FHD';
+        else if (w === 3840 && h === 2160) matchedVal = 'UHD';
+        else if (w === 1280 && h === 720) matchedVal = 'HD';
+        else if (w === 1024 && h === 1024) matchedVal = 'SQ1K';
+        else if (w === 2560 && h === 1080) matchedVal = 'UW2K';
+        else {
+            for (let opt of resSelect.options) {
+                if (opt.value === dimStr || opt.text.includes(dimStr)) {
+                    matchedVal = opt.value;
+                    break;
+                }
+            }
+        }
+
+        if (matchedVal) {
+            resSelect.value = matchedVal;
+            if (resCustomInput) resCustomInput.style.display = 'none';
+        } else {
+            resSelect.value = 'custom';
+            if (resCustomInput) {
+                resCustomInput.style.display = 'block';
+                resCustomInput.value = dimStr;
+            }
+        }
+
+        item.autoResDetected = dimStr;
+        updateIaPreview();
+        showIaAlert(`📐 Metadata de resolución autodetectada: ${dimStr} (${matchedVal || 'Custom'})`, "#4caf50");
+    } catch(e) {
+        console.error("Auto detect resolution error:", e);
+    }
+}
+
+function triggerResolutionAutoDetect() {
+    const activeItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id)) || iaBatchQueue[0];
+    if (activeItem) {
+        autoDetectResolutionForActiveItem(activeItem, true);
     }
 }
 

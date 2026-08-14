@@ -153,6 +153,19 @@ const headerToolsTemplates = {
     'view-check': () => `
         <button class="tool-btn" title="Sync">🔄 Sync</button>
     `,
+    'view-ia-ingest': () => `
+        <div style="display:flex; align-items:center; gap:8px;">
+            <button class="tool-btn" onclick="copyCanonicalName()" title="Copiar Nombre de archivo canónico">
+                📋 Copiar Nombre
+            </button>
+            <button class="tool-btn" onclick="copyCanonicalPath()" title="Copiar Ruta de destino Z:\">
+                📁 Copiar Ruta
+            </button>
+            <button class="tool-btn" onclick="openTargetFolder()" title="Abrir carpeta de destino en Windows Explorer">
+                📂 Abrir Carpeta
+            </button>
+        </div>
+    `,
     'default': () => `<span style="color:#444;">...</span>`
 };
 

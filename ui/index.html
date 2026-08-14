@@ -311,18 +311,8 @@
             </div>
 
             <!-- VISTA IA INGEST -->
-            <div id="view-ia-ingest" class="view-section" style="padding:20px; flex-direction:column; overflow-y:auto;">
-                <div style="background:#1a1a1a; padding:15px; border:1px solid #333; margin-bottom:15px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <h2 style="margin:0; color:var(--accent); font-size:1.2rem;">🤖 IA Ingest & Nomenclatura Canónica</h2>
-                        <div style="color:#888; font-size:0.8rem; margin-top:4px;">Pipeline de Generación IA (Conforme a workflow_ia_pipeline.md)</div>
-                    </div>
-                    <div style="background:#252525; padding:5px 12px; border-radius:4px; border:1px solid #444; font-size:0.85rem; color:#4caf50;">
-                        ● Servidor Pipeta v0.9.02 Activo (Puerto 3002)
-                    </div>
-                </div>
-
-                <div style="display:flex; gap:20px; margin-bottom:20px;">
+            <div id="view-ia-ingest" class="view-section" style="padding:15px; flex-direction:column; overflow-y:auto;">
+                <div style="display:flex; gap:20px; margin-bottom:15px;">
                     <!-- Panel Izquierdo: Contexto & Captura de Archivos -->
                     <div style="width:320px; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
                         <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">1. CONTEXTO DE SHOT</div>
@@ -410,7 +400,12 @@
                             <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                     <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">RESOLUCIÓN</span>
-                                    <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <label style="font-size:0.68rem; color:#4caf50; cursor:pointer;" title="Lee automáticamente el ancho x alto en píxeles de la metadata de la imagen o video">
+                                            <input type="checkbox" id="iaAutoDetectResCheck" checked onchange="triggerResolutionAutoDetect()"> 📐 Auto
+                                        </label>
+                                        <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
+                                    </div>
                                 </div>
                                 <select id="tokResSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
                                     <option value="FHD">FHD (1920x1080)</option>
@@ -508,16 +503,16 @@
 
                         </div>
 
-                        <!-- Box Live Output Preview & Visualizador Multimedia -->
+                        <!-- Box Live Output Preview & Visualizador Multimedia Grande -->
                         <div style="background:#111; border:1px solid #444; border-radius:8px; padding:12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                                 <span style="font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:1px;">VISTA PREVIA DE SALIDA Y MULTIMEDIA</span>
                                 <span style="font-size:0.75rem; color:#aaa;" id="iaSelectedCountDisplay">1 archivo seleccionado</span>
                             </div>
 
-                            <!-- Visualizador Multimedia (Imagen / Video MP4 + Play) -->
-                            <div id="iaMediaPreviewBox" style="background:#080808; border:1px solid #282828; border-radius:6px; height:180px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:10px; position:relative;">
-                                <div id="iaMediaPlaceholder" style="color:#555; font-size:0.8rem; text-align:center; padding:10px;">
+                            <!-- Visualizador Multimedia de Gran Tamaño (Imagen / Video MP4 + Play) -->
+                            <div id="iaMediaPreviewBox" style="background:#050505; border:1px solid #282828; border-radius:6px; height:490px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:10px; position:relative;">
+                                <div id="iaMediaPlaceholder" style="color:#666; font-size:0.85rem; text-align:center; padding:15px;">
                                     📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)
                                 </div>
                                 <img id="iaImagePreview" style="max-height:100%; max-width:100%; object-fit:contain; display:none;" />
@@ -532,32 +527,23 @@
                             </div>
                         </div>
 
-                        <!-- Acciones Principales y Persistencia Custom -->
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                            <div style="display:flex; gap:8px; align-items:center;">
-                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="copyCanonicalName()" title="Copiar nombre de archivo">
-                                    📋 Copiar Nombre
-                                </button>
-                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="copyCanonicalPath()" title="Copiar ruta completa de destino">
-                                    📁 Copiar Ruta
-                                </button>
-                                <button class="tool-btn" style="width:auto; padding:0 12px; height:36px; background:#2a2a2a; border-color:#444; font-size:0.8rem;" onclick="openTargetFolder()" title="Abrir carpeta de destino en Windows Explorer">
-                                    📂 Abrir Carpeta
-                                </button>
-                            </div>
-                            
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--accent); cursor:pointer;" title="Guarda de forma permanente cualquier token personalizado manual en presets/ia_custom_tokens.json al ingestar">
-                                    <input type="checkbox" id="iaSaveCustomCheck" checked> 💾 Save after queue
-                                </label>
-                                <button class="tool-btn" style="width:auto; padding:0 22px; height:38px; background:var(--accent); border-color:var(--accent); color:black; font-weight:bold; font-size:0.9rem;" onclick="executeIaIngestBatch()">
-                                    🚀 Ingestar Lista Seleccionada
-                                </button>
-                            </div>
+                        <!-- Acciones Principales e Ingesta -->
+                        <div style="display:flex; justify-content:flex-end; align-items:center; gap:15px; margin-top:5px;">
+                            <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--accent); cursor:pointer;" title="Guarda de forma permanente cualquier token personalizado manual en presets/ia_custom_tokens.json al ingestar">
+                                <input type="checkbox" id="iaSaveCustomCheck" checked> 💾 Save after queue
+                            </label>
+                            <button class="tool-btn" style="width:auto; padding:0 24px; height:40px; background:var(--accent); border-color:var(--accent); color:black; font-weight:bold; font-size:0.92rem;" onclick="executeIaIngestBatch()">
+                                🚀 Ingestar Lista Seleccionada
+                            </button>
                         </div>
 
                         <div id="iaStatusAlert" style="display:none; padding:8px 12px; border-radius:4px; font-size:0.85rem;"></div>
                     </div>
+                </div>
+
+                <!-- DIVISOR HORIZONTAL REDIMENSIONABLE (DRAGGABLE RESIZER) -->
+                <div id="iaVerticalSplitter" style="height:12px; cursor:row-resize; background:#1e1e1e; border:1px solid #333; margin:4px 0 10px 0; display:flex; align-items:center; justify-content:center; border-radius:4px; transition:background 0.2s;" title="Haz clic y arrastra hacia arriba o abajo para redimensionar el visualizador y la Queue">
+                    <div style="width:48px; height:3px; background:#666; border-radius:2px;"></div>
                 </div>
 
                 <!-- SECCIÓN: QUEUE DE INGESTA -->
