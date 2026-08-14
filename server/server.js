@@ -709,6 +709,14 @@ app.get('/api/ia/open-chrome-settings', (req, res) => {
     }
 });
 
+app.get('/api/ia/file-preview', (req, res) => {
+    const filePath = (req.query.path || '').trim();
+    if (!filePath || !fs.existsSync(filePath)) {
+        return res.status(404).send('File not found');
+    }
+    res.sendFile(path.resolve(filePath));
+});
+
 // Fallback logic
 app.get('*', (req, res) => {
     res.sendFile(path.join(uiPath, 'index.html'));

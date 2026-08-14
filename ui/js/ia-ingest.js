@@ -193,6 +193,9 @@ function updateIaPreview() {
         if (pathDisplay) pathDisplay.innerText = `Ruta: ${(defaultFolder + '/' + defaultName).replace(/\\/g, '/')}`;
     }
 
+    // Actualizar el visualizador multimedia (Imagen / Video MP4)
+    updateIaMediaPreview(activeItem);
+
     const countDisplay = document.getElementById('iaSelectedCountDisplay');
     if (countDisplay) {
         if (iaSelectedIds.size > 0) {
@@ -201,6 +204,54 @@ function updateIaPreview() {
             const checkedCount = iaBatchQueue.filter(i => i.checked).length;
             countDisplay.innerText = `${checkedCount} de ${iaBatchQueue.length} listados para ingestar`;
         }
+    }
+}
+
+function updateIaMediaPreview(activeItem) {
+    const placeholder = document.getElementById('iaMediaPlaceholder');
+    const imgEl = document.getElementById('iaImagePreview');
+    const videoEl = document.getElementById('iaVideoPreview');
+
+    if (!placeholder || !imgEl || !videoEl) return;
+
+    if (!activeItem) {
+        placeholder.style.display = 'block';
+        placeholder.innerText = '📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)';
+        imgEl.style.display = 'none';
+        videoEl.style.display = 'none';
+        videoEl.pause();
+        return;
+    }
+
+    let previewUrl = '';
+    if (activeItem.file) {
+        previewUrl = URL.createObjectURL(activeItem.file);
+    } else if (activeItem.originalPath && !activeItem.originalPath.startsWith('[')) {
+        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
+    }
+
+    const ext = (activeItem.ext || '').toLowerCase();
+    const isVideo = ['.mp4', '.mov', '.webm', '.mkv'].includes(ext);
+    const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+
+    if (previewUrl && isVideo) {
+        placeholder.style.display = 'none';
+        imgEl.style.display = 'none';
+        videoEl.style.display = 'block';
+        videoEl.src = previewUrl;
+        videoEl.play().catch(e => {});
+    } else if (previewUrl && isImage) {
+        placeholder.style.display = 'none';
+        videoEl.style.display = 'none';
+        videoEl.pause();
+        imgEl.style.display = 'block';
+        imgEl.src = previewUrl;
+    } else {
+        placeholder.style.display = 'block';
+        placeholder.innerText = `📄 ${activeItem.originalName} (${ext.toUpperCase() || 'Archivo'})`;
+        imgEl.style.display = 'none';
+        videoEl.style.display = 'none';
+        videoEl.pause();
     }
 }
 
@@ -238,6 +289,19 @@ function handleIaFileSelect(input) {
 
 let iaLastSelectedIdx = -1;
 
+function getOriginFolderOnly(item) {
+    if (!item || !item.originalPath) return '-';
+    let full = item.originalPath.replace(/\\/g, '/');
+    if (full.startsWith('[') || !full.includes('/')) {
+        return '[Carpeta Local]';
+    }
+    const lastSlash = full.lastIndexOf('/');
+    if (lastSlash !== -1) {
+        return full.substring(0, lastSlash);
+    }
+    return full;
+}
+
 // --- 5. RENDERIZADO DE TABLA BATCH ---
 function renderIaBatchTable() {
     const tbody = document.getElementById('iaBatchTableBody');
@@ -264,6 +328,8 @@ function renderIaBatchTable() {
         else if (item.status === '✓ Ingestado') statusBadge = '<span style="color:#4caf50; font-weight:bold;">✓ Ingestado</span>';
         else if (item.status.startsWith('❌')) statusBadge = `<span style="color:#f44336;" title="${item.status}">${item.status}</span>`;
 
+        const originFolder = getOriginFolderOnly(item);
+
         return `
             <tr style="border-bottom:1px solid #222; background:${isSelected ? 'rgba(76,175,80,0.15)' : 'transparent'}; cursor:pointer; user-select:none;" onclick="iaSelectRowItem('${item.id}', ${idx}, event)">
                 <td style="padding:8px; text-align:center;" onclick="event.stopPropagation();">
@@ -271,7 +337,7 @@ function renderIaBatchTable() {
                 </td>
                 <td style="padding:8px; color:#888;">${idx + 1}</td>
                 <td style="padding:8px; font-weight:bold; color:#eee;">${escapeHtml(item.originalName)}</td>
-                <td style="padding:8px; font-family:monospace; color:#aaa;" title="${escapeHtml(item.originalPath)}">${truncatePath(item.originalPath, 30)}</td>
+                <td style="padding:8px; font-family:monospace; color:#aaa;" title="${escapeHtml(originFolder)}">${escapeHtml(truncatePath(originFolder, 30))}</td>
                 <td style="padding:8px; font-family:monospace; color:var(--accent); font-weight:bold;">${escapeHtml(item.canonicalName)}</td>
                 <td style="padding:8px; font-family:monospace; color:#4caf50;" title="${escapeHtml(item.targetFolder)}">${truncatePath(item.targetFolder, 35)}</td>
                 <td style="padding:8px;">${statusBadge}</td>
