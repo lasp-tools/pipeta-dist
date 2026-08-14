@@ -356,21 +356,40 @@ async function checkRcloneStatus() {
 // --- DISK USAGE MONITOR ---
 async function updateDiskMonitor() {
     try {
-        const res = await fetch('/api/system/diskUsage?drives=Z,M');
+        let onlineDrive = 'G';
+        if (typeof settings !== 'undefined' && settings.currentProject) {
+            const cp = settings.currentProject;
+            const onlinePath = cp.onlineMedia || cp.onlineWork || (cp.roots && (cp.roots.media || cp.roots.online)) || '';
+            if (onlinePath && onlinePath.includes(':')) {
+                onlineDrive = onlinePath.split(':')[0].toUpperCase();
+            }
+        }
+        
+        // Evitar comparar Z con Z (el disco local es Z, el disco online debe ser G u otra unidad online)
+        if (onlineDrive === 'Z') {
+            onlineDrive = 'G';
+        }
+        
+        const res = await fetch(`/api/system/diskUsage?drives=Z,${onlineDrive}`);
         const data = await res.json();
 
-        _updateDiskBar('z', data['Z']);
-        _updateDiskBar('m', data['M']);
+        _updateDiskBar('z', data['Z'], 'Z');
+        _updateDiskBar('m', data[onlineDrive], onlineDrive);
     } catch (e) {
         // Silently fail — could be offline
     }
 }
 
-function _updateDiskBar(id, info) {
+function _updateDiskBar(id, info, driveLetter) {
     const bar = document.getElementById(`disk-bar-${id}`);
     const textEl = document.getElementById(`disk-pct-${id}`);
     const wrap = bar?.closest('.disk-bar-wrap');
     if (!bar || !textEl || !info) return;
+
+    if (driveLetter) {
+        const labelEl = wrap?.querySelector('.disk-label');
+        if (labelEl) labelEl.innerText = `${driveLetter}:`;
+    }
 
     const percent = info.percent || 0;
     bar.style.width = percent + '%';
@@ -387,8 +406,9 @@ function _updateDiskBar(id, info) {
     // Tooltip con detalles
     const totalText = _formatDiskSize(info.total);
     const usedText = _formatDiskSize(info.used);
+    const displayLetter = driveLetter || id.toUpperCase();
     if (wrap) {
-        wrap.title = `${id.toUpperCase()}: — ${usedText} usados de ${totalText} (${freeText} libres)`;
+        wrap.title = `Disco (${displayLetter}:) — ${usedText} usados de ${totalText} (${freeText} libres)`;
     }
 }
 

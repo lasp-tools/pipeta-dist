@@ -88,49 +88,48 @@ app.get('/api/fs/list', (req, res) => {
     let requestedPath = req.query.path;
 
     try {
-        let configPath = null;
-        let config = null;
-
-        try {
-            configPath = path.join(__dirname, '../pipeline_config.json');
-            if (fs.existsSync(configPath)) {
-                config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            }
-        } catch (e) { console.error("Config read error", e); }
-
-        // Smart Path Resolution
-        const candidates = [];
-        if (requestedPath) candidates.push(requestedPath);
-        if (config?.paths?.root_work) candidates.push(config.paths.root_work);
-
-        // Hardcoded Fallbacks
-        candidates.push("r:/Z/mango/ick");
-        candidates.push("R:/Z/mango/ick");
-        candidates.push("Z:/mango/ick");
-        candidates.push("C:/TOOLS/APPS/Pipeta");
-        candidates.push("C:/");
-
         let targetPath = null;
-        for (let p of candidates) {
-            if (!p) continue;
-            let safeP = decodeURIComponent(p);
+
+        if (requestedPath) {
+            let safeP = decodeURIComponent(requestedPath);
+            if (!fs.existsSync(safeP)) {
+                try { fs.mkdirSync(safeP, { recursive: true }); } catch(e){}
+            }
             if (fs.existsSync(safeP)) {
                 targetPath = safeP;
-                break;
             }
         }
 
         if (!targetPath) {
-            return res.status(404).json({ error: "No valid path found", candidates });
+            let configPath = path.join(__dirname, '../pipeline_config.json');
+            let config = null;
+            if (fs.existsSync(configPath)) {
+                try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch(e){}
+            }
+
+            const candidates = [];
+            if (config?.paths?.root_work) candidates.push(config.paths.root_work);
+            candidates.push("Z:/");
+
+            for (let p of candidates) {
+                if (!p) continue;
+                let safeP = decodeURIComponent(p);
+                if (fs.existsSync(safeP)) {
+                    targetPath = safeP;
+                    break;
+                }
+            }
         }
 
-        console.log(`[FS] Listing: ${targetPath}`);
+        if (!targetPath) {
+            return res.json({ path: requestedPath || 'Z:/', items: [] });
+        }
 
         const items = fs.readdirSync(targetPath, { withFileTypes: true });
         const result = items.map(item => ({
             name: item.name,
             isDirectory: item.isDirectory(),
-            path: path.join(targetPath, item.name)
+            path: path.join(targetPath, item.name).replace(/\\/g, '/')
         }));
 
         result.sort((a, b) => {
@@ -249,7 +248,7 @@ app.get('/api/system/diskUsage', async (req, res) => {
         for (const letter of drives) {
             try {
                 const cmd = `powershell -NoProfile -Command "(Get-PSDrive -Name '${letter}' -PSProvider FileSystem | Select-Object Used,Free | ConvertTo-Json)"`;
-                const raw = execSync(cmd, { timeout: 5000 }).toString().trim();
+                const raw = execSync(cmd, { timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
                 const info = JSON.parse(raw);
                 const used = info.Used || 0;
                 const free = info.Free || 0;
@@ -387,8 +386,15 @@ app.post('/api/app/restart', (req, res) => {
 
     res.json({ status: 'restarting' });
 
-    const batPath = "R:\\Z\\INTERNO\\TOOLS\\AntiGravity\\Scripts\\Pipeta\\Launch_Pipeta.bat";
-    const subprocess = spawn('cmd.exe', ['/c', `"${batPath}"`], {
+    let batPath = path.join(__dirname, '../Launch_Pipeta.bat');
+    if (!fs.existsSync(batPath)) {
+        batPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\Launch_Pipeta.bat';
+    }
+    if (!fs.existsSync(batPath)) {
+        batPath = 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat';
+    }
+
+    const subprocess = spawn('cmd.exe', ['/c', 'start', '""', `"${batPath}"`], {
         detached: true,
         stdio: 'ignore',
         windowsHide: false,
