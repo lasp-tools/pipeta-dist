@@ -232,6 +232,21 @@ const AssetCreator = {
         }
     },
 
+    selectProject: async (projId) => {
+        if (typeof settings !== 'undefined' && settings.projects) {
+            const proj = settings.projects.find(p => p.id === projId);
+            if (proj) {
+                settings.currentProject = proj;
+                localStorage.setItem('pipeta_active_project_id', proj.id);
+                AssetCreator.resolveContext(proj.roots?.work || "");
+                if (AssetCreator.mode === 'batch') {
+                    await AssetCreator.loadAssetsForCategory();
+                }
+                AssetCreator.render();
+            }
+        }
+    },
+
     selectPreset: (index) => {
         if (index === "" || index === null) {
             AssetCreator.selectedPreset = null;
@@ -412,6 +427,17 @@ const AssetCreator = {
                 if (catMatch) AssetCreator.currentContext.category = catMatch;
             }
         }
+
+        // --- STRATEGY 4: ACTIVE PROJECT FALLBACK ---
+        if (!AssetCreator.currentContext.valid && typeof settings !== 'undefined' && settings.currentProject) {
+            const proj = settings.currentProject;
+            AssetCreator.currentContext.valid = true;
+            AssetCreator.currentContext.projectObj = proj;
+            AssetCreator.currentContext.client = proj.client || "cliente";
+            AssetCreator.currentContext.project = proj.projectCode || proj.name;
+            AssetCreator.currentContext.workRoot = (proj.roots?.work || "").replace(/\\/g, '/');
+            AssetCreator.currentContext.mediaRoot = (proj.roots?.media || "").replace(/\\/g, '/');
+        }
     },
 
     handleCategoryChange: (catId) => {
@@ -425,6 +451,11 @@ const AssetCreator = {
 
     render: () => {
         if (!AssetCreator.container) return;
+
+        const currentProjId = (AssetCreator.currentContext?.projectObj?.id) || (typeof settings !== 'undefined' && settings.currentProject ? settings.currentProject.id : '');
+        const projectOptions = (typeof settings !== 'undefined' && settings.projects ? settings.projects : []).map(p =>
+            `<option value="${p.id}" ${p.id === currentProjId ? 'selected' : ''}>${p.name}</option>`
+        ).join('');
 
         const presetOptions = AssetCreator.presets.map((p, index) =>
             `<option value="${index}" ${AssetCreator.selectedPreset && AssetCreator.selectedPreset.id === p.id ? 'selected' : ''}>${p.name || 'Sin Nombre'}</option>`
@@ -584,12 +615,20 @@ const AssetCreator = {
             
             <div class="validator-body" style="padding: 20px; display:flex; flex-direction: column; background:#111; position:relative;">
                 ${overlayHTML}
-                <div class="form-group" style="margin-top:0; margin-bottom:15px;">
-                    <label style="color:#888;">Preset Seleccionado</label>
-                    <select onchange="AssetCreator.selectPreset(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px; font-size:0.95rem;">
-                        <option value="">-- Seleccionar --</option>
-                        ${presetOptions}
-                    </select>
+                <div style="display:flex; gap:15px; margin-top:0; margin-bottom:15px;">
+                    <div class="form-group" style="flex:1; margin:0;">
+                        <label style="color:#888; font-size:0.8rem;">Proyecto</label>
+                        <select onchange="AssetCreator.selectProject(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px; font-size:0.95rem;">
+                            ${projectOptions}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1; margin:0;">
+                        <label style="color:#888; font-size:0.8rem;">Preset Seleccionado</label>
+                        <select onchange="AssetCreator.selectPreset(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px; font-size:0.95rem;">
+                            <option value="">-- Seleccionar --</option>
+                            ${presetOptions}
+                        </select>
+                    </div>
                 </div>
                 ${contentHTML}
             </div>

@@ -180,7 +180,7 @@ async function updateDetailsPanel(item) {
                     // --- INTEGRITY CHECK (WITH METADATA) ---
                     let integrityHTML = '';
                     if (meta.preset_id && window.Inspector) {
-                        const report = await window.Inspector.validate(item.path, meta.preset_id);
+                        const report = await window.Inspector.validate(item.path, meta.preset_id, meta);
 
                         // Build findings HTML
                         const findingsLines = report.findings.map(f => {
@@ -198,9 +198,9 @@ async function updateDetailsPanel(item) {
                                             <span style="font-size:0.8rem; color:#4CAF50;">vfx_control.json presente</span>
                                         </div>`;
 
-                        // Repair button if missing folders at item level
+                        // Repair button if missing folders
                         let repairBtn = '';
-                        if (report.level === 'item' && report.missing.length > 0) {
+                        if (report.missing && report.missing.length > 0) {
                             window._inspectorCtx.missing = report.missing;
                             repairBtn = `<button style="width:100%; border:none; background:#d32f2f; color:white; padding:5px; border-radius:3px; cursor:pointer; margin-top:5px;"
                                                  onclick="Inspector.fixMissing(window._inspectorCtx.path, window._inspectorCtx.missing).then(c => { alert('Reparado: ' + c + ' carpetas.'); updateDetailsPanel({path:window._inspectorCtx.path, name:window._inspectorCtx.name, isDirectory:true}); })">

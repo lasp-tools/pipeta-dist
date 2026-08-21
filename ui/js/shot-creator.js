@@ -446,6 +446,19 @@ const ShotCreator = {
         }
     },
 
+    selectProject: async (projId) => {
+        if (typeof settings !== 'undefined' && settings.projects) {
+            const proj = settings.projects.find(p => p.id === projId);
+            if (proj) {
+                settings.currentProject = proj;
+                localStorage.setItem('pipeta_active_project_id', proj.id);
+                ShotCreator.resolveContext(proj.roots?.work || "");
+                await ShotCreator.autoDetectHierarchyFromContext();
+                ShotCreator.render();
+            }
+        }
+    },
+
     selectPreset: (index) => {
         if (index === "" || index === null) {
             ShotCreator.selectedPreset = null;
@@ -780,20 +793,16 @@ const ShotCreator = {
             }
         }
 
-        // 2. Fallback to settings.currentProject or first real project
+        // 2. Fallback to settings.currentProject or first project
         if (!matchedProj && typeof settings !== 'undefined') {
-            if (settings.currentProject && settings.currentProject.client && settings.currentProject.client !== 'cliente') {
-                matchedProj = settings.currentProject;
-            } else if (settings.projects && settings.projects.length > 0) {
-                const realProj = settings.projects.find(p => p.client && p.client !== 'cliente');
-                matchedProj = realProj || settings.currentProject || settings.projects[0];
-            }
+            matchedProj = settings.currentProject || (settings.projects && settings.projects[0]) || null;
         }
 
         if (matchedProj) {
             ShotCreator.currentContext.valid = true;
-            ShotCreator.currentContext.client = matchedProj.client || "atresmedia";
-            ShotCreator.currentContext.project = matchedProj.projectCode || matchedProj.name || "surf_love";
+            ShotCreator.currentContext.projectObj = matchedProj;
+            ShotCreator.currentContext.client = matchedProj.client || "cliente";
+            ShotCreator.currentContext.project = matchedProj.projectCode || matchedProj.name;
             ShotCreator.currentContext.workRoot = (matchedProj.roots?.work || "").replace(/\\/g, '/');
             ShotCreator.currentContext.mediaRoot = (matchedProj.roots?.media || "").replace(/\\/g, '/');
             ShotCreator.currentContext.projectRoot = ShotCreator.currentContext.workRoot;
@@ -802,6 +811,11 @@ const ShotCreator = {
 
     render: () => {
         if (!ShotCreator.container) return;
+
+        const currentProjId = (ShotCreator.currentContext?.projectObj?.id) || (typeof settings !== 'undefined' && settings.currentProject ? settings.currentProject.id : '');
+        const projectOptions = (typeof settings !== 'undefined' && settings.projects ? settings.projects : []).map(p =>
+            `<option value="${p.id}" ${p.id === currentProjId ? 'selected' : ''}>${p.name}</option>`
+        ).join('');
 
         const presetOptions = ShotCreator.presets.map((p, index) =>
             `<option value="${index}" ${ShotCreator.selectedPreset && ShotCreator.selectedPreset.id === p.id ? 'selected' : ''}>${p.name}</option>`
@@ -1038,12 +1052,20 @@ const ShotCreator = {
             </div>
             <div class="validator-body" style="padding: 20px; display:flex; flex-direction: column; background:#111; position:relative;">
                 ${overlayHTML}
-                <div class="form-group" style="margin-top:0; margin-bottom:15px;">
-                    <label style="color:#888;">Preset Seleccionado</label>
-                     <select onchange="ShotCreator.selectPreset(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px;">
-                        <option value="">-- Seleccionar --</option>
-                        ${presetOptions}
-                    </select>
+                <div style="display:flex; gap:15px; margin-top:0; margin-bottom:15px;">
+                    <div class="form-group" style="flex:1; margin:0;">
+                        <label style="color:#888; font-size:0.8rem;">Proyecto</label>
+                        <select onchange="ShotCreator.selectProject(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px;">
+                            ${projectOptions}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1; margin:0;">
+                        <label style="color:#888; font-size:0.8rem;">Preset Seleccionado</label>
+                        <select onchange="ShotCreator.selectPreset(this.value)" style="width:100%; padding:8px; background:#222; color:white; border:1px solid #444; border-radius:4px;">
+                            <option value="">-- Seleccionar --</option>
+                            ${presetOptions}
+                        </select>
+                    </div>
                 </div>
                 ${contentHTML}
             </div>

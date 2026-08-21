@@ -95,9 +95,9 @@ const Inspector = {
     },
 
     // ==========================================
-    // MAIN VALIDATION (Context-Aware)
+    // MAIN VALIDATION (Context & Node-Aware)
     // ==========================================
-    validate: async (folderPath, presetId) => {
+    validate: async (folderPath, presetId, meta = null) => {
         if (!presetId) return { level: 'unknown', findings: [{ type: 'error', msg: 'No hay Preset configurado.' }], presetName: '?', missing: [] };
 
         const preset = await Inspector.getPreset(presetId);
@@ -112,87 +112,78 @@ const Inspector = {
             expectedProcesses: []
         };
 
-        // --- NODE-BASED PRESET ---
-        const analysis = Inspector._analyzePreset(preset);
-        if (analysis) {
-            result.expectedCategories = analysis.categories;
-            result.expectedProcesses = analysis.expectedFolders;
+        if (preset.nodes && Array.isArray(preset.nodes)) {
+            let matchedNode = null;
 
-            // Determine DEPTH relative to top-level marker
-            const normalized = folderPath.replace(/\\/g, '/').toLowerCase();
-            const folderName = folderPath.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+            // Strategy A: If meta has node_id, use it directly
+            if (meta && meta.node_id) {
+                matchedNode = preset.nodes.find(n => n.id === meta.node_id);
+            }
 
-            const topMarkers = ['/assets/', '/shots/', '/secuencias/', '/episodes/', '/episodios/'];
-            let afterMarker = '';
-            let markerFound = false;
+            // Strategy B: Match by path structure upwards against the preset tree
+            if (!matchedNode) {
+                const normPath = folderPath.replace(/\\/g, '/');
+                const pathSegments = normPath.split('/').filter(Boolean);
+                const folderName = pathSegments[pathSegments.length - 1] || '';
+                const parentFolderName = pathSegments[pathSegments.length - 2] || '';
 
-            for (const m of topMarkers) {
-                const idx = normalized.indexOf(m);
-                if (idx >= 0) {
-                    afterMarker = normalized.substring(idx + m.length);
-                    markerFound = true;
-                    break;
+                if (parentFolderName.toLowerCase() === 'episodios' || parentFolderName.toLowerCase() === 'episodes') {
+                    matchedNode = preset.nodes.find(n => n.isEpisode);
+                } else if (parentFolderName.toLowerCase() === 'secuencias' || parentFolderName.toLowerCase() === 'sequences') {
+                    matchedNode = preset.nodes.find(n => n.isScene);
+                } else if (parentFolderName.toLowerCase() === 'shots') {
+                    matchedNode = preset.nodes.find(n => n.isShot || n.isAssetFocus);
+                } else {
+                    matchedNode = preset.nodes.find(n => n.name.toLowerCase() === folderName.toLowerCase() || (n.variableName && n.variableName.toLowerCase() === folderName.toLowerCase()));
+                    if (!matchedNode) {
+                        matchedNode = preset.nodes.find(n => n.isProcess && n.name.toLowerCase() === folderName.toLowerCase());
+                    }
                 }
             }
 
-            if (!markerFound) {
-                result.findings.push({ type: 'error', msg: 'Ruta fuera de contenedor conocido (assets/shots/episodios).' });
-                return result;
-            }
+            if (matchedNode) {
+                result.node = matchedNode;
+                result.level = matchedNode.isEpisode ? 'episode' : matchedNode.isScene ? 'scene' : (matchedNode.isShot || matchedNode.isAssetFocus) ? 'shot' : matchedNode.isProcess ? 'process' : matchedNode.isCategory ? 'category' : 'folder';
 
-            const parts = afterMarker.split('/').filter(Boolean);
-            const depth = parts.length;
+                // Find expected direct children for THIS matchedNode
+                const expectedChildNodes = preset.nodes.filter(n => n.parent === matchedNode.id);
+                const expectedFolderNodes = expectedChildNodes.filter(n => n.type === 'folder');
+                const expectedFixedFolderNames = expectedFolderNodes.filter(n => !n.isVariable && !n.isEpisode && !n.isScene && !n.isShot && !n.isItem).map(n => n.name);
 
-            // --- DEPTH 0: Container itself ---
-            if (depth === 0) {
-                result.level = 'container';
-                result.findings.push({ type: 'ok', msg: `Contenedor raíz del preset <b>${preset.name}</b>.` });
-                return result;
-            }
+                result.expectedProcesses = expectedFolderNodes.map(n => n.name);
 
-            // ==========================================
-            // PRESET WITH CATEGORIES (e.g. Asset preset)
-            // depth 1 = category, depth 2 = item, depth 3+ = process
-            // ==========================================
-            if (analysis.hasCategories) {
-
-                if (depth === 1) {
-                    // CATEGORY level
-                    result.level = 'category';
-                    const isValid = analysis.categories.some(c => c.toLowerCase() === folderName.toLowerCase());
-                    if (isValid) {
-                        result.findings.push({ type: 'ok', msg: `Categoría válida según <b>${preset.name}</b>.` });
-                    } else {
-                        result.findings.push({ type: 'error', msg: `"<b>${folderName}</b>" no es una categoría válida.` });
-                        result.findings.push({ type: 'info', msg: `Esperadas: ${analysis.categories.join(', ')}` });
-                    }
+                // Fetch actual contents of the folder
+                const dirData = await API.fetchDir(folderPath);
+                if (dirData.error) {
+                    result.findings.push({ type: 'error', msg: 'No se puede leer la carpeta en disco.' });
                     return result;
                 }
 
-                if (depth === 2) {
-                    // ITEM level (e.g. assets/personajes/Bichito)
-                    result.level = 'item';
-                    return await Inspector._validateItemStructure(folderPath, analysis, result);
+                const existingItems = dirData.items || [];
+                const existingNames = new Set(existingItems.map(i => i.name.toLowerCase()));
+                const existingDirs = existingItems.filter(i => i.isDirectory);
+
+                // Check required fixed subfolders
+                for (const name of expectedFixedFolderNames) {
+                    if (!existingNames.has(name.toLowerCase())) {
+                        result.missing.push(name);
+                    }
                 }
 
-                // depth 3+ = PROCESS
-                result.level = 'process';
-                return Inspector._validateProcessName(folderName, analysis, result, preset);
-            }
+                const hasDynamicChild = expectedFolderNodes.some(n => n.isVariable || n.isEpisode || n.isScene || n.isShot || n.isItem);
 
-            // ==========================================
-            // PRESET WITHOUT CATEGORIES (e.g. Shot preset)
-            // depth 1 = item (episode), depth 2+ = internal structure
-            // ==========================================
-            if (depth === 1) {
-                // ITEM level directly (e.g. episodios/CAP01S1)
-                result.level = 'item';
-                return await Inspector._validateItemStructure(folderPath, analysis, result);
-            }
+                if (result.missing.length > 0) {
+                    result.findings.push({ type: 'warn', msg: `Faltan carpetas: <b>${result.missing.join(', ')}</b>` });
+                } else if (expectedFixedFolderNames.length > 0) {
+                    result.findings.push({ type: 'ok', msg: `Estructura de <b>${matchedNode.name || result.level}</b> (${result.presetName}) correcta.` });
+                } else if (hasDynamicChild) {
+                    result.findings.push({ type: 'ok', msg: `Contenedor <b>${matchedNode.name}</b> (${existingDirs.length} elementos creados).` });
+                } else {
+                    result.findings.push({ type: 'ok', msg: `Carpeta válida según <b>${result.presetName}</b>.` });
+                }
 
-            // depth 2+ = inside the item (process/subfolders)
-            result.level = 'process';
-            return Inspector._validateProcessName(folderName, analysis, result, preset);
+                return result;
+            }
         }
 
         // --- LEGACY STRUCTURE-BASED PRESET ---
@@ -220,51 +211,7 @@ const Inspector = {
             return result;
         }
 
-        result.findings.push({ type: 'error', msg: 'Formato de preset desconocido.' });
-        return result;
-    },
-
-    // Helper: Validate Item internal structure
-    _validateItemStructure: async (folderPath, analysis, result) => {
-        if (!analysis.mainNode) {
-            result.findings.push({ type: 'error', msg: 'No se encontró nodo principal en el preset.' });
-            return result;
-        }
-
-        const dirData = await API.fetchDir(folderPath);
-        if (dirData.error) {
-            result.findings.push({ type: 'error', msg: 'No se puede leer la carpeta.' });
-            return result;
-        }
-
-        const existingNames = new Set(dirData.items.map(i => i.name.toLowerCase()));
-
-        for (const name of analysis.expectedFolders) {
-            if (!existingNames.has(name.toLowerCase())) {
-                result.missing.push(name);
-            }
-        }
-
-        if (result.missing.length > 0) {
-            result.findings.push({ type: 'warn', msg: `Faltan carpetas: ${result.missing.join(', ')}` });
-        } else {
-            result.findings.push({ type: 'ok', msg: `Estructura de <b>${result.presetName}</b> correcta.` });
-        }
-
-        return result;
-    },
-
-    // Helper: Validate Process folder name
-    _validateProcessName: (folderName, analysis, result, preset) => {
-        const isValid = analysis.expectedFolders.some(p => p.toLowerCase() === folderName.toLowerCase());
-        if (isValid) {
-            result.findings.push({ type: 'ok', msg: `Carpeta de proceso válida según <b>${preset.name}</b>.` });
-        } else {
-            result.findings.push({ type: 'warn', msg: `"<b>${folderName}</b>" no coincide con un proceso esperado.` });
-            if (analysis.expectedFolders.length > 0) {
-                result.findings.push({ type: 'info', msg: `Esperados: ${analysis.expectedFolders.join(', ')}` });
-            }
-        }
+        result.findings.push({ type: 'ok', msg: `Carpeta en contexto (${result.presetName}).` });
         return result;
     },
 

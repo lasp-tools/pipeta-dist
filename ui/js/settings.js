@@ -286,6 +286,19 @@ const settings = {
             settings.updateHeaderProjectSelector();
             if (typeof initBrowser !== 'undefined') initBrowser();
             if (typeof updateIaResolution === 'function') updateIaResolution();
+
+            if (window.ShotCreator && ShotCreator.isVisible) {
+                ShotCreator.resolveContext(proj.roots?.work || "");
+                if (typeof ShotCreator.autoDetectHierarchyFromContext === 'function') {
+                    ShotCreator.autoDetectHierarchyFromContext().then(() => ShotCreator.render());
+                } else {
+                    ShotCreator.render();
+                }
+            }
+            if (window.AssetCreator && AssetCreator.isVisible) {
+                AssetCreator.resolveContext(proj.roots?.work || "");
+                AssetCreator.render();
+            }
         }
     },
 
