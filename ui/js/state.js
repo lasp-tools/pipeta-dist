@@ -18,6 +18,11 @@ function updateDesignContext() {
     if (typeof ShotCreator !== 'undefined' && ShotCreator.isVisible && typeof ShotCreator.handleSelectionChange === 'function') {
         ShotCreator.handleSelectionChange(selectedContextPath);
     }
+
+    // Notify IA Ingest
+    if (typeof handleIaSelectionChange === 'function') {
+        handleIaSelectionChange(selectedContextPath);
+    }
 }
 
 function selectBlock(el, name) {

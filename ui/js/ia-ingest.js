@@ -49,9 +49,230 @@ function initIaResizer() {
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(initIaResizer, 300);
+    setTimeout(() => {
+        if (typeof refreshIaHierarchy === 'function') refreshIaHierarchy();
+    }, 500);
 });
 
-// --- 1. RESOLVER SHOT ID & RUTA DE MEDIA ---
+// --- 1. GESTIÓN DE CONTEXTO DE SHOT (EXPLORADOR GUIADO / MANUAL) ---
+let iaContextMode = 'guided'; // 'guided' | 'manual'
+let iaHierarchy = {
+    episodes: [],
+    scenes: [],
+    shots: []
+};
+let iaSelectedEp = '';
+let iaSelectedSeq = '';
+let iaSelectedShot = '';
+
+function setIaContextMode(mode) {
+    iaContextMode = mode;
+    const guidedBox = document.getElementById('iaGuidedContextBox');
+    const manualBox = document.getElementById('iaManualContextBox');
+    const guidedBtn = document.getElementById('iaModeGuidedBtn');
+    const manualBtn = document.getElementById('iaModeManualBtn');
+
+    if (mode === 'guided') {
+        if (guidedBox) guidedBox.style.display = 'flex';
+        if (manualBox) manualBox.style.display = 'none';
+        if (guidedBtn) { guidedBtn.style.background = 'var(--accent)'; guidedBtn.style.color = 'black'; }
+        if (manualBtn) { manualBtn.style.background = '#333'; manualBtn.style.color = '#aaa'; }
+        if (!iaHierarchy.episodes || iaHierarchy.episodes.length === 0) {
+            refreshIaHierarchy();
+        }
+    } else {
+        if (guidedBox) guidedBox.style.display = 'none';
+        if (manualBox) manualBox.style.display = 'block';
+        if (guidedBtn) { guidedBtn.style.background = '#333'; guidedBtn.style.color = '#aaa'; }
+        if (manualBtn) { manualBtn.style.background = 'var(--accent)'; manualBtn.style.color = 'black'; }
+    }
+}
+
+function getIaProjectRoots() {
+    const proj = (typeof settings !== 'undefined' && settings.currentProject) ? settings.currentProject : null;
+    const workRoot = proj?.roots?.work ? proj.roots.work.replace(/\\/g, '/') : "Z:/atresmedia/surf_love";
+    const mediaRoot = proj?.roots?.media ? proj.roots.media.replace(/\\/g, '/') : "Z:/INTERNO/MEDIA/atresmedia/surf_love";
+    return { workRoot, mediaRoot };
+}
+
+async function refreshIaHierarchy() {
+    const { workRoot } = getIaProjectRoots();
+    const epSelect = document.getElementById('iaEpSelect');
+    const seqSelect = document.getElementById('iaSeqSelect');
+    const shotSelect = document.getElementById('iaShotSelect');
+
+    if (!epSelect) return;
+
+    epSelect.innerHTML = '<option value="">Cargando episodios...</option>';
+    if (seqSelect) { seqSelect.innerHTML = '<option value="">-- Escena --</option>'; seqSelect.disabled = true; }
+    if (shotSelect) { shotSelect.innerHTML = '<option value="">-- Shot --</option>'; shotSelect.disabled = true; }
+
+    try {
+        let epDir = workRoot + '/episodios';
+        let dirData = await API.fetchDir(epDir);
+        if (dirData.error || !dirData.items || dirData.items.length === 0) {
+            epDir = workRoot + '/episodes';
+            dirData = await API.fetchDir(epDir);
+        }
+        if (dirData.error || !dirData.items || dirData.items.length === 0) {
+            epDir = workRoot;
+            dirData = await API.fetchDir(epDir);
+        }
+
+        if (dirData && dirData.items) {
+            iaHierarchy.episodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+        } else {
+            iaHierarchy.episodes = [];
+        }
+
+        if (iaHierarchy.episodes.length > 0) {
+            epSelect.innerHTML = '<option value="">-- Seleccionar Episodio --</option>' +
+                iaHierarchy.episodes.map(e => `<option value="${e}" ${e === iaSelectedEp ? 'selected' : ''}>${e}</option>`).join('');
+            
+            if (iaSelectedEp && iaHierarchy.episodes.includes(iaSelectedEp)) {
+                await handleIaEpChange(iaSelectedEp);
+            }
+        } else {
+            epSelect.innerHTML = '<option value="">(No se encontraron episodios)</option>';
+        }
+    } catch(e) {
+        console.error("Error refreshing IA hierarchy:", e);
+        epSelect.innerHTML = '<option value="">(Error al leer episodios)</option>';
+    }
+}
+
+async function handleIaEpChange(ep) {
+    iaSelectedEp = ep;
+    const { workRoot } = getIaProjectRoots();
+    const seqSelect = document.getElementById('iaSeqSelect');
+    const shotSelect = document.getElementById('iaShotSelect');
+
+    if (!seqSelect) return;
+    seqSelect.innerHTML = '<option value="">Cargando escenas...</option>';
+    seqSelect.disabled = true;
+    if (shotSelect) { shotSelect.innerHTML = '<option value="">-- Shot --</option>'; shotSelect.disabled = true; }
+
+    if (!ep) {
+        seqSelect.innerHTML = '<option value="">-- Escena --</option>';
+        return;
+    }
+
+    try {
+        let seqDir = `${workRoot}/episodios/${ep}/secuencias`;
+        let dirData = await API.fetchDir(seqDir);
+        if (dirData.error || !dirData.items || dirData.items.length === 0) {
+            seqDir = `${workRoot}/episodios/${ep}/sequences`;
+            dirData = await API.fetchDir(seqDir);
+        }
+        if (dirData.error || !dirData.items || dirData.items.length === 0) {
+            seqDir = `${workRoot}/episodios/${ep}`;
+            dirData = await API.fetchDir(seqDir);
+        }
+
+        if (dirData && dirData.items) {
+            iaHierarchy.scenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+        } else {
+            iaHierarchy.scenes = [];
+        }
+
+        if (iaHierarchy.scenes.length > 0) {
+            seqSelect.innerHTML = '<option value="">-- Seleccionar Escena --</option>' +
+                iaHierarchy.scenes.map(s => `<option value="${s}" ${s === iaSelectedSeq ? 'selected' : ''}>${s}</option>`).join('');
+            seqSelect.disabled = false;
+
+            if (iaSelectedSeq && iaHierarchy.scenes.includes(iaSelectedSeq)) {
+                await handleIaSeqChange(iaSelectedSeq);
+            }
+        } else {
+            seqSelect.innerHTML = '<option value="">(Sin escenas)</option>';
+        }
+    } catch(e) {
+        console.error("Error loading scenes for IA:", e);
+        seqSelect.innerHTML = '<option value="">(Error al leer escenas)</option>';
+    }
+}
+
+async function handleIaSeqChange(seq) {
+    iaSelectedSeq = seq;
+    const { workRoot } = getIaProjectRoots();
+    const shotSelect = document.getElementById('iaShotSelect');
+
+    if (!shotSelect) return;
+    shotSelect.innerHTML = '<option value="">Cargando shots...</option>';
+    shotSelect.disabled = true;
+
+    if (!seq || !iaSelectedEp) {
+        shotSelect.innerHTML = '<option value="">-- Shot --</option>';
+        return;
+    }
+
+    try {
+        let shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}/shots`;
+        let dirData = await API.fetchDir(shotDir);
+        if (dirData.error || !dirData.items || dirData.items.length === 0) {
+            shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}`;
+            dirData = await API.fetchDir(shotDir);
+        }
+
+        if (dirData && dirData.items) {
+            iaHierarchy.shots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+        } else {
+            iaHierarchy.shots = [];
+        }
+
+        if (iaHierarchy.shots.length > 0) {
+            shotSelect.innerHTML = '<option value="">-- Seleccionar Shot --</option>' +
+                iaHierarchy.shots.map(sh => `<option value="${sh}" ${sh === iaSelectedShot ? 'selected' : ''}>${sh}</option>`).join('');
+            shotSelect.disabled = false;
+
+            if (iaSelectedShot && iaHierarchy.shots.includes(iaSelectedShot)) {
+                handleIaShotChange(iaSelectedShot);
+            }
+        } else {
+            shotSelect.innerHTML = '<option value="">(Sin shots)</option>';
+        }
+    } catch(e) {
+        console.error("Error loading shots for IA:", e);
+        shotSelect.innerHTML = '<option value="">(Error al leer shots)</option>';
+    }
+}
+
+function handleIaShotChange(shotName) {
+    iaSelectedShot = shotName;
+    const shotIdInput = document.getElementById('iaShotIdInput');
+    if (shotIdInput && shotName) {
+        shotIdInput.value = shotName;
+        updateIaResolution();
+    }
+}
+
+async function handleIaSelectionChange(selectedPath) {
+    if (!selectedPath) return;
+    const norm = selectedPath.replace(/\\/g, '/');
+    const parts = norm.split('/').filter(Boolean);
+
+    const epIdx = parts.findIndex(p => p.toLowerCase() === 'episodios' || p.toLowerCase() === 'episodes');
+    if (epIdx !== -1 && parts.length > epIdx + 1) {
+        const ep = parts[epIdx + 1];
+        iaSelectedEp = ep;
+
+        const seqIdx = parts.findIndex(p => p.toLowerCase() === 'secuencias' || p.toLowerCase() === 'sequences');
+        if (seqIdx !== -1 && parts.length > seqIdx + 1) {
+            const seq = parts[seqIdx + 1];
+            iaSelectedSeq = seq;
+
+            const shotIdx = parts.findIndex(p => p.toLowerCase() === 'shots');
+            if (shotIdx !== -1 && parts.length > shotIdx + 1) {
+                const shot = parts[shotIdx + 1];
+                iaSelectedShot = shot;
+            }
+        }
+
+        await refreshIaHierarchy();
+    }
+}
+
+// --- 2. RESOLVER SHOT ID & RUTA DE MEDIA ---
 async function updateIaResolution() {
     const shotIdInput = document.getElementById('iaShotIdInput');
     const shotId = (shotIdInput ? shotIdInput.value : '').trim();

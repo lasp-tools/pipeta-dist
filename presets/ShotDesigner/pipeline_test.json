@@ -1,0 +1,374 @@
+{
+  "id": "asset_surf_love_canon_v1",
+  "name": "Pipeline_Test",
+  "nodes": [
+    {
+      "id": "node_work_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 6.654761904761854,
+      "y": -1055.8809523809518,
+      "parent": null,
+      "isMirrorOn": true,
+      "isSyncPoint": false
+    },
+    {
+      "id": "node_work_client",
+      "type": "folder",
+      "name": "cliente",
+      "x": 751.1666666666665,
+      "y": -1075.3333333333326,
+      "parent": "node_work_unit",
+      "isClientNode": true,
+      "isMirrorOn": true,
+      "isSyncPoint": true,
+      "parentOnline": "n_1787257335300",
+      "isVariable": true,
+      "variableName": "cliente",
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "node_work_project",
+      "type": "folder",
+      "name": "Proyecto",
+      "x": 1004.9999999999999,
+      "y": -1073.3333333333328,
+      "parent": "node_work_client",
+      "isProjectNode": true,
+      "isMirrorOn": true,
+      "isSyncPoint": false,
+      "isVariable": true,
+      "variableName": "proyecto",
+      "exampleValue": "surf_love",
+      "hasNickVar": true,
+      "nickExample": "SURF"
+    },
+    {
+      "id": "node_work_episodios",
+      "type": "folder",
+      "name": "episodios",
+      "x": 1236.6666666666667,
+      "y": -1071.666666666666,
+      "parent": "node_work_project",
+      "isMirrorOn": false
+    },
+    {
+      "id": "node_work_ep",
+      "type": "folder",
+      "name": "n. de episodio",
+      "x": 1447.6190476190475,
+      "y": -1073.3333333333326,
+      "parent": "node_work_episodios",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_work_secuencias",
+      "type": "folder",
+      "name": "secuencias",
+      "x": 1671.6666666666667,
+      "y": -1071.666666666666,
+      "parent": "node_work_ep"
+    },
+    {
+      "id": "node_work_seq",
+      "type": "folder",
+      "name": "n. de secuencia",
+      "x": 1903.3333333333333,
+      "y": -1075.9999999999995,
+      "parent": "node_work_secuencias",
+      "isVariable": true,
+      "variableName": "ESC",
+      "isScene": true,
+      "exampleValue": "066",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_work_shots",
+      "type": "folder",
+      "name": "shots",
+      "x": 2114.9999999999995,
+      "y": -1079.9999999999993,
+      "parent": "node_work_seq"
+    },
+    {
+      "id": "node_work_shot_id",
+      "type": "folder",
+      "name": "nombre del shot",
+      "x": 2356.6666666666674,
+      "y": -1079.9999999999995,
+      "parent": "node_work_shots",
+      "isVariable": true,
+      "variableName": "SHOTNAME",
+      "isShot": true,
+      "exampleValue": "",
+      "isMirrorOn": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[NICK]_[EP]_[ESC]_[SHOT]",
+        "versionPadding": 3
+      },
+      "itemConfig": {
+        "cosmeticName": "1130"
+      },
+      "isAssetFocus": false
+    },
+    {
+      "id": "node_work_comp",
+      "type": "folder",
+      "name": "compo",
+      "x": 2715.999999999999,
+      "y": -1079.583333333333,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "node_work_nuke_nk",
+      "type": "file",
+      "name": "nuke_File.nk",
+      "x": 3118.0833333333326,
+      "y": -1085.833333333333,
+      "parent": "node_work_comp",
+      "isScene": true,
+      "isVariable": true,
+      "variableName": "ESC",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SHOTNAME]_[PROCESO]_[version][ext]",
+        "versionPadding": 3
+      }
+    },
+    {
+      "id": "node_media_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 51.666666666666664,
+      "y": 420,
+      "parent": null,
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_media_interno",
+      "type": "folder",
+      "name": "INTERNO",
+      "x": 280,
+      "y": 420,
+      "parent": "node_media_unit"
+    },
+    {
+      "id": "node_media_media",
+      "type": "folder",
+      "name": "MEDIA",
+      "x": 510,
+      "y": 420,
+      "parent": "node_media_interno"
+    },
+    {
+      "id": "node_media_client",
+      "type": "folder",
+      "name": "cliente",
+      "x": 740,
+      "y": 420,
+      "parent": "node_media_media",
+      "isClientNode": true,
+      "isMirrorOn": true,
+      "isVariable": true,
+      "variableName": "cliente",
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "node_media_project",
+      "type": "folder",
+      "name": "Proyecto",
+      "x": 970,
+      "y": 420,
+      "parent": "node_media_client",
+      "isProjectNode": true,
+      "isMirrorOn": true,
+      "isVariable": true,
+      "variableName": "proyecto",
+      "exampleValue": "surf_love",
+      "hasNickVar": true,
+      "nickExample": "SURF"
+    },
+    {
+      "id": "node_media_ep",
+      "type": "folder",
+      "name": "n. de episodio",
+      "x": 1430,
+      "y": 420,
+      "parent": "node_media_project",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_media_seq",
+      "type": "folder",
+      "name": "n. de secuencia",
+      "x": 1890,
+      "y": 418.3333333333333,
+      "parent": "node_media_ep",
+      "isVariable": true,
+      "variableName": "ESC",
+      "isScene": true,
+      "exampleValue": "066",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_media_shot_id",
+      "type": "folder",
+      "name": "nombre del shot",
+      "x": 2350,
+      "y": 420,
+      "parent": "node_media_seq",
+      "isVariable": true,
+      "variableName": "SHOTNAME",
+      "isShot": true,
+      "exampleValue": "",
+      "isMirrorOn": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[NICK]_[EP]_[ESC]_[SHOT]",
+        "versionPadding": 3
+      }
+    },
+    {
+      "id": "node_media_in",
+      "type": "folder",
+      "name": "in",
+      "x": 2652.111111111114,
+      "y": 221.5555555555556,
+      "parent": "node_media_shot_id",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_nuke",
+      "type": "folder",
+      "name": "nuke",
+      "x": 2663.333333333335,
+      "y": 415.2222222222225,
+      "parent": "node_media_shot_id"
+    },
+    {
+      "id": "node_media_fullres",
+      "type": "folder",
+      "name": "fullres",
+      "x": 2963.3333333333326,
+      "y": 352.77777777777766,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_prerender",
+      "type": "folder",
+      "name": "prerender",
+      "x": 2966.984126984128,
+      "y": 477.69841269841265,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_exportia",
+      "type": "folder",
+      "name": "exportIA",
+      "x": 2959.444444444446,
+      "y": 588.4920634920643,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787257335300",
+      "type": "unit",
+      "name": "G",
+      "x": -96.25,
+      "y": -1223.75,
+      "parent": null,
+      "isVariable": false
+    },
+    {
+      "id": "n_1787260641960",
+      "type": "folder",
+      "name": "IA",
+      "x": 2661.944444444449,
+      "y": 880.5555555555553,
+      "parent": "node_media_shot_id",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260687088",
+      "type": "folder",
+      "name": "export",
+      "x": 2958.194444444449,
+      "y": 785.5555555555553,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260705337",
+      "type": "folder",
+      "name": "ref",
+      "x": 2963.194444444449,
+      "y": 874.3055555555553,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260709228",
+      "type": "folder",
+      "name": "enc",
+      "x": 2963.194444444449,
+      "y": 960.5555555555553,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    }
+  ],
+  "connections": [
+    {
+      "from": "node_work_unit",
+      "to": "node_media_unit",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_client",
+      "to": "node_media_client",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_project",
+      "to": "node_media_project",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_ep",
+      "to": "node_media_ep",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_seq",
+      "to": "node_media_seq",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_shot_id",
+      "to": "node_media_shot_id",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    }
+  ],
+  "_fileName": "pipeline_test.json"
+}

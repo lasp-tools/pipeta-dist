@@ -1,0 +1,12 @@
+{
+  "id": "proj_1786716841209",
+  "name": "test1",
+  "client": "cliente",
+  "projectCode": "proy",
+  "roots": {
+    "work": "Z:/",
+    "media": "Z:/",
+    "onlineWork": "M:/",
+    "onlineMedia": "M:/"
+  }
+}

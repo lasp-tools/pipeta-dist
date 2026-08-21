@@ -524,6 +524,30 @@ const settings = {
                                     </div>
                                 </div>
 
+                                <div style="margin-bottom:15px; border-top: 1px dashed #444; padding-top:15px;">
+                                    <h4 style="margin: 0 0 10px 0; color:#ff9800; font-size:0.9rem; text-transform:uppercase;">Presets por Defecto del Proyecto</h4>
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                        <div class="config-group">
+                                            <label class="config-label">Preset Shot por Defecto</label>
+                                            <select class="config-input" onchange="settings.updateProjectProp('defaultShotPresetId', this.value)">
+                                                <option value="">-- Ninguno (Manual) --</option>
+                                                ${settings.presetsList.filter(p => p.type === 'shot').map(p => `
+                                                    <option value="${p.id}" ${cp.defaultShotPresetId === p.id ? 'selected' : ''}>${p.name}</option>
+                                                `).join('')}
+                                            </select>
+                                        </div>
+                                        <div class="config-group">
+                                            <label class="config-label">Preset Asset por Defecto</label>
+                                            <select class="config-input" onchange="settings.updateProjectProp('defaultAssetPresetId', this.value)">
+                                                <option value="">-- Ninguno (Manual) --</option>
+                                                ${settings.presetsList.filter(p => p.type === 'asset').map(p => `
+                                                    <option value="${p.id}" ${cp.defaultAssetPresetId === p.id ? 'selected' : ''}>${p.name}</option>
+                                                `).join('')}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div style="display:flex; gap:10px; margin-top:30px; padding-bottom:20px;">
                                     <button class="btn" onclick="settings.duplicateProject()" style="flex:1;">Duplicar</button>
                                     <button class="btn" style="flex:1; border-color: #f44336; color:#f44336;" onclick="settings.deleteProject()">Eliminar</button>
