@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v0.9.02";
+const VERSION = "v0.9.50";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -335,55 +335,94 @@ app.get('/api/rclone/status', (req, res) => {
     });
 });
 
+async function replicateEmptyDirectories(srcDir, destDir) {
+    await fs.ensureDir(destDir);
+    try {
+        const entries = await fs.readdir(srcDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isDirectory()) {
+                const srcSub = path.join(srcDir, entry.name);
+                const destSub = path.join(destDir, entry.name);
+                await replicateEmptyDirectories(srcSub, destSub);
+            }
+        }
+    } catch (e) {
+        console.warn(`[MKDIR_ONLY] Error en ${srcDir}:`, e.message);
+    }
+}
+
 // Batch sync via rclone (or fallback to native)
 app.post('/api/rclone/syncBatch', async (req, res) => {
-    const { items, engine = 'auto' } = req.body; // [{src, dest, isDirectory}], engine: 'auto' | 'native' | 'rclone'
+    const { items, engine = 'auto', onlyFolders = false } = req.body; // [{src, dest, isDirectory, onlyFolders}], engine: 'auto' | 'native' | 'rclone'
     if (!items || !Array.isArray(items)) return res.status(400).json({ error: 'Missing items array' });
 
     const results = [];
     // Determine which engine to use based on settings and availability
     const useRclone = (engine === 'rclone' && rcloneAvailable) || (engine === 'auto' && rcloneAvailable);
-    const usedEngine = useRclone ? 'rclone' : 'native';
+    const usedEngine = onlyFolders ? 'mkdir_only' : (useRclone ? 'rclone' : 'native');
 
     // If forced rclone but not available
-    if (engine === 'rclone' && !rcloneAvailable) {
+    if (!onlyFolders && engine === 'rclone' && !rcloneAvailable) {
         return res.status(503).json({ error: 'Rclone forced but not available', engine: 'none' });
     }
 
     for (const item of items) {
         try {
+            if (onlyFolders || item.onlyFolders) {
+                // Replicar la estructura de carpetas completa sin copiar archivos
+                if (item.isDirectory) {
+                    await replicateEmptyDirectories(item.src, item.dest);
+                } else {
+                    await fs.ensureDir(path.dirname(item.dest));
+                }
+                results.push({ src: item.src, dest: item.dest, success: true, engine: 'mkdir_only' });
+                continue;
+            }
+
             if (useRclone) {
-                // Use rclone
-                await new Promise((resolve, reject) => {
-                    let args;
-                    if (item.isDirectory) {
-                        // rclone copy src/ dest/ for directories
-                        args = ['copy', item.src, item.dest, '--create-empty-src-dirs'];
-                    } else {
-                        // For single files: rclone copyto src dest
-                        args = ['copyto', item.src, item.dest];
-                    }
+                // Use rclone with cloud virtual drive compatibility flags
+                try {
+                    await new Promise((resolve, reject) => {
+                        let args;
+                        if (item.isDirectory) {
+                            // rclone copy src/ dest/ for directories
+                            args = ['copy', item.src, item.dest, '--create-empty-src-dirs', '--ignore-size', '--inplace', '--no-check-dest'];
+                        } else {
+                            // For single files: rclone copyto src dest
+                            args = ['copyto', item.src, item.dest, '--ignore-size', '--inplace', '--no-check-dest'];
+                        }
 
-                    console.log(`[RCLONE] ${args.join(' ')}`);
-                    const proc = spawn(RCLONE_PATH, args, { windowsHide: true });
+                        console.log(`[RCLONE] ${args.join(' ')}`);
+                        const proc = spawn(RCLONE_PATH, args, { windowsHide: true });
 
-                    let stderr = '';
-                    proc.stderr.on('data', d => stderr += d.toString());
-                    proc.on('close', code => {
-                        if (code === 0) resolve();
-                        else reject(new Error(`rclone exit ${code}: ${stderr}`));
+                        let stderr = '';
+                        proc.stderr.on('data', d => stderr += d.toString());
+                        proc.on('close', code => {
+                            if (code === 0) resolve();
+                            else reject(new Error(`rclone exit ${code}: ${stderr}`));
+                        });
+                        proc.on('error', reject);
                     });
-                    proc.on('error', reject);
-                });
-                results.push({ src: item.src, dest: item.dest, success: true, engine: 'rclone' });
+                    results.push({ src: item.src, dest: item.dest, success: true, engine: 'rclone' });
+                } catch (rErr) {
+                    console.warn(`[RCLONE] Fallback nativo activado tras aviso: ${rErr.message}`);
+                    if (item.isDirectory) {
+                        await fs.ensureDir(item.dest);
+                        await fs.copy(item.src, item.dest, { overwrite: true });
+                    } else {
+                        await fs.ensureDir(path.dirname(item.dest));
+                        await fs.copy(item.src, item.dest, { overwrite: true });
+                    }
+                    results.push({ src: item.src, dest: item.dest, success: true, engine: 'native_fallback' });
+                }
             } else {
                 // Use native fs.copy
                 if (item.isDirectory) {
                     await fs.ensureDir(item.dest);
-                    await fs.copy(item.src, item.dest);
+                    await fs.copy(item.src, item.dest, { overwrite: true });
                 } else {
                     await fs.ensureDir(path.dirname(item.dest));
-                    await fs.copy(item.src, item.dest);
+                    await fs.copy(item.src, item.dest, { overwrite: true });
                 }
                 results.push({ src: item.src, dest: item.dest, success: true, engine: 'native' });
             }

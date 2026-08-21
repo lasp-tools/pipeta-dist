@@ -56,7 +56,7 @@ const headerToolsTemplates = {
                     onclick="switchViewLocation('local')" title="Rutas Locales (Z:)">LOCAL</button>
             <button class="tool-btn ${window.viewLocationMode === 'online' ? 'active' : ''}" 
                     style="padding: 2px 8px; font-size: 0.75rem; height: auto;"
-                    onclick="switchViewLocation('online')" title="Rutas Online (M:)">ONLINE</button>
+                    onclick="switchViewLocation('online')" title="Rutas Online (G:)">ONLINE</button>
         </div>
 
         <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpeta">

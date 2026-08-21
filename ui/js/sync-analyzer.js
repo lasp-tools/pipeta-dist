@@ -9,9 +9,16 @@ class SyncAnalyzer {
         this.differences = [];
         this.isScanning = false;
         this.scanPath = null;
+        const savedOmit = localStorage.getItem('pipeta_sync_omit_control');
+        this.omitControlFiles = savedOmit !== null ? savedOmit === 'true' : true;
 
         window.syncAnalyzer = this;
         this.renderUI();
+    }
+
+    toggleOmitControl(checked) {
+        this.omitControlFiles = checked;
+        localStorage.setItem('pipeta_sync_omit_control', checked ? 'true' : 'false');
     }
 
     renderUI() {
@@ -38,14 +45,11 @@ class SyncAnalyzer {
         if (engine === 'native') engineIcon = '📁';
 
         this.container.innerHTML = `
-            <div class="validator-header" onmousedown="window.syncAnalyzer.startDrag(event)">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:1.2rem;">🔄</span>
-                    <span style="font-weight:bold;">Sync Analyzer</span>
-                    <span class="engine-badge" title="Motor de Copia: ${engine.toUpperCase()}" 
-                          style="font-size:0.75rem; background:#333; padding:2px 6px; border-radius:4px; cursor:help;">
-                          ${engineIcon} ${engine.toUpperCase()}
-                    </span>
+            <div class="validator-header" id="sync-analyzer-header" onmousedown="window.syncAnalyzer.startDrag(event)">
+                <div class="validator-title" style="display:flex; align-items:center; gap:10px;">
+                    <span class="validator-icon" style="font-size:1.2rem;">🔄</span>
+                    <b style="font-weight:bold;">Sync Analyzer</b>
+                    <span id="sync-engine-badge" style="font-size:0.7rem; background:#333; padding:2px 6px; border-radius:4px; margin-left:6px; color:#aaa;" title="Motor de copia activo">${engineIcon} ${engine.toUpperCase()}</span>
                 </div>
                 <div class="validator-controls">
                     <button class="icon-btn-mini" onclick="window.syncAnalyzer.minimize(this)">-</button>
@@ -56,12 +60,17 @@ class SyncAnalyzer {
                 <!-- INFO -->
                 <div style="padding:8px; background:#1a1a1a; border-bottom:1px solid #333; flex-shrink:0;">
                     <div style="font-size:0.75rem; color:#888; margin-bottom:6px;">
-                        Compara la estructura entre <b style="color:#4fc3f7;">Local (Z:)</b> y <b style="color:#81c784;">Online (M:/Z/)</b>
+                        Compara la estructura entre <b style="color:#4fc3f7;">Local (Z:)</b> y <b style="color:#81c784;">Online (G:)</b>
                     </div>
-                    <div style="display:flex; gap:5px;">
-                        <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan(true)">🌎 Scan Completo</button>
-                        <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan(false)">📂 Scan Selección</button>
+                    <div style="display:flex; gap:5px; margin-bottom:6px;">
+                        <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('work')">📁 Proyecto</button>
+                        <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('media')">🎬 Media</button>
+                        <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('selection')">📂 Selección</button>
                     </div>
+                    <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">
+                        <input type="checkbox" id="sync-omit-control" ${this.omitControlFiles ? 'checked' : ''} onchange="syncAnalyzer.toggleOmitControl(this.checked)">
+                        <span>Omitir archivos de control (<code>vfx_control.json</code>)</span>
+                    </label>
                 </div>
 
                 <!-- PATHS DISPLAY -->
@@ -101,14 +110,22 @@ class SyncAnalyzer {
                 </div>
 
                 <!-- FOOTER -->
-                <div style="padding:8px; display:flex; gap:8px; flex-shrink:0; border-top:1px solid #333;">
-                    <button id="sync-btn-push" class="action-btn-primary" disabled style="flex:1; background:#444;" onclick="syncAnalyzer.syncSelected('push')">
-                        ⬆️ Subir a Online
-                    </button>
-                    <button id="sync-btn-pull" class="action-btn-primary" disabled style="flex:1; background:#444;" onclick="syncAnalyzer.syncSelected('pull')">
-                        ⬇️ Bajar a Local
-                    </button>
-                    <div style="color:#666; font-size:0.7rem; align-self:center; min-width:60px; text-align:right;" id="sync-count-label">0 diffs</div>
+                <div style="padding:8px; display:flex; flex-direction:column; gap:8px; flex-shrink:0; border-top:1px solid #333; background:#161616;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">
+                            <input type="checkbox" id="sync-folders-only" onchange="syncAnalyzer.onlyFolders = this.checked">
+                            <span>📁 <b>Solo carpetas</b> (crear estructura vacía, sin transferir archivos)</span>
+                        </label>
+                        <div style="color:#888; font-size:0.75rem;" id="sync-count-label">0 diffs</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button id="sync-btn-push" class="action-btn-primary" disabled style="flex:1; background:#444;" onclick="syncAnalyzer.syncSelected('push')">
+                            ⬆️ Upload
+                        </button>
+                        <button id="sync-btn-pull" class="action-btn-primary" disabled style="flex:1; background:#444;" onclick="syncAnalyzer.syncSelected('pull')">
+                            ⬇️ Download
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -152,89 +169,105 @@ class SyncAnalyzer {
     }
 
     // --- PATH MAPPING ---
-    _getLocalRoot() {
+    _getAllRoots() {
         const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
-        if (proj && proj.roots) return proj.roots.work;
-        return (typeof ROOTS !== 'undefined') ? ROOTS.work : null;
-    }
-
-    _getOnlineRoot() {
-        const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
-        if (proj && proj.roots) return proj.roots.onlineWork || proj.roots.work;
-        return (typeof ROOTS !== 'undefined') ? ROOTS.work : null;
+        return {
+            localWork: (proj && proj.roots?.work) || (typeof ROOTS !== 'undefined' ? ROOTS.work : ''),
+            localMedia: (proj && proj.roots?.media) || (typeof ROOTS !== 'undefined' ? ROOTS.media : ''),
+            onlineWork: (proj && proj.roots?.onlineWork) || (proj && proj.roots?.work) || '',
+            onlineMedia: (proj && proj.roots?.onlineMedia) || (proj && proj.roots?.media) || ''
+        };
     }
 
     _localToOnline(localPath) {
-        const localRoot = this._getLocalRoot();
-        const onlineRoot = this._getOnlineRoot();
-        if (!localRoot || !onlineRoot) return null;
-
-        const normLocal = localRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+        const r = this._getAllRoots();
         const normPath = localPath.replace(/\\/g, '/');
 
-        if (normPath.toLowerCase().startsWith(normLocal.toLowerCase())) {
-            const relative = normPath.substring(normLocal.length);
-            return onlineRoot.replace(/\/+$/, '') + relative;
+        // 1. Comprobar Media primero (para evitar colisión de prefijos)
+        const normLocalMedia = (r.localMedia || '').replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+        if (normLocalMedia.length > 1 && (normPath + '/').toLowerCase().startsWith(normLocalMedia.toLowerCase())) {
+            const rel = normPath.substring(normLocalMedia.length - 1);
+            return (r.onlineMedia || '').replace(/\/+$/, '') + (rel.startsWith('/') ? rel : '/' + rel);
+        }
+
+        // 2. Comprobar Work / Proyecto
+        const normLocalWork = (r.localWork || '').replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+        if (normLocalWork.length > 1 && (normPath + '/').toLowerCase().startsWith(normLocalWork.toLowerCase())) {
+            const rel = normPath.substring(normLocalWork.length - 1);
+            return (r.onlineWork || '').replace(/\/+$/, '') + (rel.startsWith('/') ? rel : '/' + rel);
         }
         return null;
     }
 
     _onlineToLocal(onlinePath) {
-        const localRoot = this._getLocalRoot();
-        const onlineRoot = this._getOnlineRoot();
-        if (!localRoot || !onlineRoot) return null;
-
-        const normOnline = onlineRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+        const r = this._getAllRoots();
         const normPath = onlinePath.replace(/\\/g, '/');
 
-        if (normPath.toLowerCase().startsWith(normOnline.toLowerCase())) {
-            const relative = normPath.substring(normOnline.length);
-            return localRoot.replace(/\/+$/, '') + relative;
+        // 1. Comprobar Online Media primero (¡crucial antes de onlineWork para no confundir surf_love_media con surf_love!)
+        const normOnlineMedia = (r.onlineMedia || '').replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+        if (normOnlineMedia.length > 1 && (normPath + '/').toLowerCase().startsWith(normOnlineMedia.toLowerCase())) {
+            const rel = normPath.substring(normOnlineMedia.length - 1);
+            return (r.localMedia || '').replace(/\/+$/, '') + (rel.startsWith('/') ? rel : '/' + rel);
+        }
+
+        // 2. Comprobar Online Work / Proyecto
+        const normOnlineWork = (r.onlineWork || '').replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+        if (normOnlineWork.length > 1 && (normPath + '/').toLowerCase().startsWith(normOnlineWork.toLowerCase())) {
+            const rel = normPath.substring(normOnlineWork.length - 1);
+            return (r.localWork || '').replace(/\/+$/, '') + (rel.startsWith('/') ? rel : '/' + rel);
         }
         return null;
     }
 
     // --- SCANNING ---
-    async runScan(isGlobal) {
+    async runScan(targetScope = 'selection') {
         if (this.isScanning) return;
+        const r = this._getAllRoots();
 
-        const localRoot = this._getLocalRoot();
-        const onlineRoot = this._getOnlineRoot();
+        let scanPairs = [];
 
-        if (!localRoot || !onlineRoot) {
-            this._setStatus('❌ No se pudieron determinar las raíces Local/Online.', '#f44336');
+        if (targetScope === 'work') {
+            if (!r.localWork || !r.onlineWork) {
+                this._setStatus('❌ Raíces de Proyecto no configuradas.', '#f44336');
+                return;
+            }
+            scanPairs.push({ local: r.localWork, online: r.onlineWork, label: 'Proyecto' });
+        } else if (targetScope === 'media') {
+            if (!r.localMedia || !r.onlineMedia) {
+                this._setStatus('❌ Raíces de Media no configuradas.', '#f44336');
+                return;
+            }
+            scanPairs.push({ local: r.localMedia, online: r.onlineMedia, label: 'Media' });
+        } else if (targetScope === 'all' || targetScope === true) {
+            if (r.localWork && r.onlineWork) scanPairs.push({ local: r.localWork, online: r.onlineWork, label: 'Proyecto' });
+            if (r.localMedia && r.onlineMedia) scanPairs.push({ local: r.localMedia, online: r.onlineMedia, label: 'Media' });
+        } else {
+            // Modo Selección
+            if (!selectedContextPath) {
+                this._setStatus('⚠️ No hay carpeta seleccionada en el explorador.', '#FF9800');
+                return;
+            }
+            const mappedOnline = this._localToOnline(selectedContextPath);
+            const mappedLocal = this._onlineToLocal(selectedContextPath);
+
+            if (mappedOnline) {
+                scanPairs.push({ local: selectedContextPath, online: mappedOnline, label: 'Selección Local' });
+            } else if (mappedLocal) {
+                scanPairs.push({ local: mappedLocal, online: selectedContextPath, label: 'Selección Online' });
+            } else {
+                this._setStatus('⚠️ La selección no pertenece al proyecto actual.', '#FF9800');
+                return;
+            }
+        }
+
+        if (scanPairs.length === 0) {
+            this._setStatus('❌ No se encontraron rutas válidas para escanear.', '#f44336');
             return;
         }
 
-        let scanLocalPath = localRoot;
-        let scanOnlinePath = onlineRoot;
-
-        if (!isGlobal) {
-            // Use selected path
-            if (!selectedContextPath) {
-                this._setStatus('⚠️ No hay carpeta seleccionada. Usa el explorador.', '#FF9800');
-                return;
-            }
-
-            const normSel = selectedContextPath.replace(/\\/g, '/');
-            const normLocalRoot = localRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-            const normOnlineRoot = onlineRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
-            if (normSel.toLowerCase().startsWith(normLocalRoot)) {
-                scanLocalPath = selectedContextPath;
-                scanOnlinePath = this._localToOnline(selectedContextPath);
-            } else if (normSel.toLowerCase().startsWith(normOnlineRoot)) {
-                scanOnlinePath = selectedContextPath;
-                scanLocalPath = this._onlineToLocal(selectedContextPath);
-            } else {
-                this._setStatus('⚠️ La selección no pertenece al proyecto configurado.', '#FF9800');
-                return;
-            }
-        }
-
-        // Update UI
-        document.getElementById('sync-path-local').innerText = scanLocalPath;
-        document.getElementById('sync-path-online').innerText = scanOnlinePath;
+        // Mostrar rutas en UI
+        document.getElementById('sync-path-local').innerText = scanPairs.map(p => p.local).join(' | ');
+        document.getElementById('sync-path-online').innerText = scanPairs.map(p => p.online).join(' | ');
 
         this.isScanning = true;
         this.differences = [];
@@ -242,7 +275,9 @@ class SyncAnalyzer {
         document.getElementById('sync-results-list').innerHTML = '<div style="padding:20px; text-align:center; color:#666;"><div class="spinner-small"></div> Analizando estructuras...</div>';
 
         try {
-            await this._compareDirs(scanLocalPath, scanOnlinePath, '');
+            for (const pair of scanPairs) {
+                await this._compareDirs(pair.local, pair.online, '');
+            }
             this.isScanning = false;
             this._setStatus(`✅ Escaneo completo: ${this.differences.length} diferencias encontradas.`, this.differences.length > 0 ? '#FF9800' : '#4CAF50');
             this.renderResults();
@@ -274,6 +309,11 @@ class SyncAnalyzer {
         const allNames = new Set([...localMap.keys(), ...onlineMap.keys()]);
 
         for (const name of allNames) {
+            // Omit control files if option is active
+            if (this.omitControlFiles && (name.toLowerCase() === 'vfx_control.json' || name.toLowerCase().endsWith('_control.json'))) {
+                continue;
+            }
+
             const inLocal = localMap.has(name);
             const inOnline = onlineMap.has(name);
             const localItem = localMap.get(name);
@@ -404,12 +444,12 @@ class SyncAnalyzer {
         pushBtn.disabled = selectedLocal.length === 0;
         pushBtn.style.background = selectedLocal.length > 0 ? '#4fc3f7' : '#444';
         pushBtn.style.color = selectedLocal.length > 0 ? '#000' : '#888';
-        pushBtn.innerText = `⬆️ Subir a Online (${selectedLocal.length})`;
+        pushBtn.innerText = `⬆️ Upload (${selectedLocal.length})`;
 
         pullBtn.disabled = selectedOnline.length === 0;
         pullBtn.style.background = selectedOnline.length > 0 ? '#81c784' : '#444';
         pullBtn.style.color = selectedOnline.length > 0 ? '#000' : '#888';
-        pullBtn.innerText = `⬇️ Bajar a Local (${selectedOnline.length})`;
+        pullBtn.innerText = `⬇️ Download (${selectedOnline.length})`;
     }
 
     // --- SYNC ACTIONS ---
@@ -418,6 +458,7 @@ class SyncAnalyzer {
         if (items.length === 0) return;
 
         const dirLabel = direction === 'push' ? 'Online' : 'Local';
+        const actionVerb = this.onlyFolders ? 'Crear carpetas vacías en' : 'Transferir a';
         const relevant = direction === 'push'
             ? items.filter(d => d.type === 'local-only')
             : items.filter(d => d.type === 'online-only');
@@ -427,24 +468,23 @@ class SyncAnalyzer {
             return;
         }
 
-        if (!confirm(`¿Crear ${relevant.length} elemento(s) en ${dirLabel}?`)) return;
+        if (!confirm(`¿${actionVerb} ${dirLabel} (${relevant.length} elemento(s))?`)) return;
 
         this._setStatus(`⏳ Sincronizando ${relevant.length} elemento(s)...`, '#4fc3f7');
 
         // Separate: empty dirs to create vs files/dirs to copy
-        const dirsToCreate = [];
         const itemsToCopy = [];
 
         for (const diff of relevant) {
             const src = direction === 'push' ? diff.localPath : diff.onlinePath;
             const dest = direction === 'push' ? diff.onlinePath : diff.localPath;
 
-            if (diff.isDirectory) {
-                // Check if it's an empty dir or has content
-                itemsToCopy.push({ src, dest, isDirectory: true });
-            } else {
-                itemsToCopy.push({ src, dest, isDirectory: false });
-            }
+            itemsToCopy.push({ 
+                src, 
+                dest, 
+                isDirectory: diff.isDirectory,
+                onlyFolders: !!this.onlyFolders
+            });
         }
 
         try {
@@ -455,13 +495,18 @@ class SyncAnalyzer {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     items: itemsToCopy,
-                    engine: enginePref
+                    engine: enginePref,
+                    onlyFolders: !!this.onlyFolders
                 })
             });
             const data = await res.json();
 
-            const engineLabel = data.engine === 'rclone' ? '🚀 Rclone' : '📁 Nativo';
-            const msg = `${engineLabel}: ✅ ${data.succeeded} ok` + (data.failed > 0 ? `, ❌ ${data.failed} error(es)` : '');
+            const engineLabel = data.engine === 'mkdir_only' 
+                ? '📁 Solo Carpetas' 
+                : (data.engine === 'rclone' ? '🚀 Rclone' : (data.engine === 'native_fallback' ? '⚡ Rclone (Fallback Nativo)' : '📁 Nativo'));
+            const msg = data.failed === 0 
+                ? `${engineLabel}: ✅ ${data.succeeded} elemento(s) sincronizados con éxito.`
+                : `${engineLabel}: ✅ ${data.succeeded} ok, ❌ ${data.failed} error(es).`;
             this._setStatus(msg, data.failed > 0 ? '#FF9800' : '#4CAF50');
             alert(msg);
         } catch (e) {

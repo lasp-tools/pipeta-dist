@@ -1,6 +1,6 @@
 @echo off
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v0.9.02"
+set "APP_VERSION=v0.9.50"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
 

@@ -1,5 +1,5 @@
 // --- COMMON UI STATE ---
-window.pipetaUseFilter = true;
+window.pipetaUseFilter = false;
 window.pipetaFilterList = ['Episodios', 'assets', 'Assets', 'guiones', 'Guiones'];
 window.viewLocationMode = 'local'; // 'local' or 'online'
 

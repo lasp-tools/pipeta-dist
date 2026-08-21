@@ -169,8 +169,8 @@ const settings = {
                 roots: {
                     work: "Z:/mango/ick",
                     media: "Z:/INTERNO/MEDIA/mango/ick",
-                    onlineWork: "M:/Mi unidad/Z/mango/ick",
-                    onlineMedia: "M:/Mi unidad/Z/INTERNO/MEDIA/mango/ick"
+                    onlineWork: "G:/Unidades compartidas/surf_love",
+                    onlineMedia: "G:/Unidades compartidas/surf_love_media"
                 }
             });
             settings.currentProject = settings.projects[0];
@@ -211,8 +211,8 @@ const settings = {
             roots: {
                 work: "Z:/",
                 media: "Z:/",
-                onlineWork: "M:/",
-                onlineMedia: "M:/"
+                onlineWork: "G:/Unidades compartidas/",
+                onlineMedia: "G:/Unidades compartidas/"
             }
         };
         settings.projects.push(newProj);
@@ -392,7 +392,7 @@ const settings = {
                         ${window.rcloneStatus?.available ? `<span style="background:#333; padding:2px 6px; border-radius:4px; color:#4fc3f7;">v${window.rcloneStatus.version}</span>` : ''}
                     </div>
                     <p style="color:#888; margin-bottom:20px; font-size:0.9rem;">
-                        Configura cómo Pipeta gestiona las copias de archivos entre Local (Z:) y Online (M:).
+                        Configura cómo Pipeta gestiona las copias de archivos entre Local (Z:) y Online (G:).
                     </p>
 
                     <div style="display:flex; flex-direction:column; gap:15px; background:rgba(255,255,255,0.03); padding:20px; border-radius:8px; border:1px solid #333;">
@@ -578,7 +578,7 @@ const settings = {
                                 <input type="radio" name="defaultViewMode" value="online" 
                                     ${(settings.defaultViewMode === 'online') ? 'checked' : ''}
                                     onchange="settings.defaultViewMode = 'online';">
-                                <span style="margin-left:8px;">Online (M:)</span>
+                                <span style="margin-left:8px;">Online (G:)</span>
                             </label>
                         </div>
                     </div>

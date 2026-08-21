@@ -61,7 +61,8 @@ async function triggerMirrorSelection(sourceContainerId) {
         }
 
         // Start navigation with Root Path
-        const startPath = isProjectSource ? ROOTS.media : ROOTS.work;
+        const roots = (typeof getCurrentRoots === 'function') ? getCurrentRoots() : { work: ROOTS.work, media: ROOTS.media };
+        const startPath = isProjectSource ? roots.media : roots.work;
         await navigateToPathPipeta(targetContainer, targetSteps, 0, startPath);
 
     } catch (err) {
@@ -110,5 +111,121 @@ async function navigateToPathPipeta(container, pathArray, colIndex, currentBaseP
         }
     } else {
         console.warn("Mirror: Could not find path segment:", targetName);
+    }
+}
+
+// --- TREE (SPLIT VIEW) MIRROR LOGIC ---
+async function triggerTreeMirror(clickedPath) {
+    if (!isMirrorMode || isMirroringInProgress || !clickedPath) return;
+    isMirroringInProgress = true;
+    try {
+        const roots = (typeof getCurrentRoots === 'function') ? getCurrentRoots() : { work: ROOTS.work, media: ROOTS.media };
+        const normClicked = clickedPath.replace(/\\/g, '/');
+        const normWork = (roots.work || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const normMedia = (roots.media || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+        let isWorkSource = false;
+        let relPath = '';
+
+        if (normWork && normClicked.toLowerCase().startsWith(normWork.toLowerCase())) {
+            isWorkSource = true;
+            relPath = normClicked.substring(normWork.length).replace(/^\/+/, '');
+        } else if (normMedia && normClicked.toLowerCase().startsWith(normMedia.toLowerCase())) {
+            isWorkSource = false;
+            relPath = normClicked.substring(normMedia.length).replace(/^\/+/, '');
+        } else {
+            return;
+        }
+
+        const sourceSteps = relPath.split('/').filter(Boolean);
+        if (sourceSteps.length === 0) return;
+
+        let targetSteps = [];
+        let targetContainerId = isWorkSource ? 'tree-media' : 'tree-work';
+        let targetRoot = isWorkSource ? roots.media : roots.work;
+
+        if (isWorkSource) {
+            // PROY -> MEDIA
+            targetSteps = sourceSteps.filter(step => {
+                const s = step.toLowerCase();
+                return s !== 'episodios' && s !== 'assets' && s !== 'guiones' && s !== 'secuencias' && s !== 'shots';
+            });
+        } else {
+            // MEDIA -> PROY
+            targetSteps = ['episodios'];
+            if (sourceSteps.length >= 1) targetSteps.push(sourceSteps[0]);
+            if (sourceSteps.length >= 2) {
+                targetSteps.push('secuencias');
+                targetSteps.push(sourceSteps[1]);
+            }
+            if (sourceSteps.length >= 3) {
+                targetSteps.push('shots');
+                targetSteps.push(sourceSteps[2]);
+            }
+            if (sourceSteps.length >= 4) {
+                for (let k = 3; k < sourceSteps.length; k++) {
+                    targetSteps.push(sourceSteps[k]);
+                }
+            }
+        }
+
+        await navigateTreeMirror(targetContainerId, targetSteps, targetRoot);
+    } catch (err) {
+        console.error("Tree mirror failed", err);
+    } finally {
+        isMirroringInProgress = false;
+    }
+}
+
+async function navigateTreeMirror(containerId, targetSteps, targetRoot) {
+    const container = document.getElementById(containerId);
+    if (!container || !targetSteps || targetSteps.length === 0) return;
+
+    let currentParentEl = container;
+    let currentAccPath = targetRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    for (let i = 0; i < targetSteps.length; i++) {
+        const stepName = targetSteps[i].toLowerCase();
+
+        let wrappers = Array.from(currentParentEl.children).filter(c => c._item || c.classList.contains('node-wrapper'));
+        let matchWrapper = wrappers.find(w => {
+            if (w._item && w._item.name && w._item.name.toLowerCase() === stepName) return true;
+            const p = w._row?.getAttribute('data-path') || w.querySelector('.tree-node')?.getAttribute('data-path') || '';
+            const leafName = p.split(/[\/\\]/).pop();
+            return leafName && leafName.toLowerCase() === stepName;
+        });
+
+        if (!matchWrapper) {
+            break;
+        }
+
+        const row = matchWrapper._row || matchWrapper.querySelector('.tree-node');
+        const item = matchWrapper._item || {
+            name: targetSteps[i],
+            path: row.getAttribute('data-path'),
+            isDirectory: row.getAttribute('data-isdir') === 'true'
+        };
+
+        if (i < targetSteps.length - 1) {
+            if (matchWrapper._childrenContainer && (matchWrapper._childrenContainer.style.display === 'none' || !matchWrapper._loaded)) {
+                if (typeof toggleNode === 'function') {
+                    await toggleNode(matchWrapper, item, i, row);
+                }
+            }
+            currentParentEl = matchWrapper._childrenContainer || matchWrapper;
+        } else {
+            if (item.isDirectory && matchWrapper._childrenContainer && (matchWrapper._childrenContainer.style.display === 'none' || !matchWrapper._loaded)) {
+                if (typeof toggleNode === 'function') {
+                    await toggleNode(matchWrapper, item, i, row);
+                }
+            }
+
+            const targetContainer = document.getElementById(containerId);
+            targetContainer.querySelectorAll('.tree-node.selected').forEach(n => n.classList.remove('selected'));
+            if (row) {
+                row.classList.add('selected');
+                row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
     }
 }

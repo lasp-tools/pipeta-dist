@@ -56,11 +56,15 @@ async function loadRootTree(rootPath, containerId) {
 
 function createTreeNode(item, level) {
     const wrapper = document.createElement('div');
+    wrapper.className = 'node-wrapper';
+    wrapper._item = item;
+
     const row = document.createElement('div');
     row.className = 'tree-node';
     row.setAttribute('data-path', item.path);
     row.setAttribute('data-isdir', item.isDirectory);
     row.style.paddingLeft = `${level * 20 + 10}px`;
+    wrapper._row = row;
 
     // Persistence: Selection State
     if (window.selectedPaths.has(item.path)) {
@@ -85,6 +89,10 @@ function createTreeNode(item, level) {
 
         updateDetailsPanel(item);
         if (item.isDirectory && !e.shiftKey) toggleNode(wrapper, item, level, row);
+
+        if (typeof triggerTreeMirror === 'function') {
+            triggerTreeMirror(item.path);
+        }
     };
     wrapper.appendChild(row);
 
