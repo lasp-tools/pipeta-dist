@@ -1,0 +1,359 @@
+{
+  "id": "asset_surf_love_canon_v1",
+  "name": "Surf Love (Pipeline Canon VFX & IA)",
+  "nodes": [
+    {
+      "id": "node_work_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 50,
+      "y": -350,
+      "parent": null
+    },
+    {
+      "id": "node_work_client",
+      "type": "folder",
+      "name": "atresmedia",
+      "x": 280,
+      "y": -350,
+      "parent": "node_work_unit",
+      "isClientNode": true
+    },
+    {
+      "id": "node_work_project",
+      "type": "folder",
+      "name": "surf_love",
+      "x": 510,
+      "y": -350,
+      "parent": "node_work_client",
+      "isProjectNode": true
+    },
+    {
+      "id": "node_work_episodios",
+      "type": "folder",
+      "name": "episodios",
+      "x": 740,
+      "y": -350,
+      "parent": "node_work_project"
+    },
+    {
+      "id": "node_work_ep",
+      "type": "folder",
+      "name": "B03",
+      "x": 970,
+      "y": -350,
+      "parent": "node_work_episodios",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03"
+    },
+    {
+      "id": "node_work_secuencias",
+      "type": "folder",
+      "name": "secuencias",
+      "x": 1200,
+      "y": -350,
+      "parent": "node_work_ep"
+    },
+    {
+      "id": "node_work_seq",
+      "type": "folder",
+      "name": "066",
+      "x": 1430,
+      "y": -350,
+      "parent": "node_work_secuencias",
+      "isVariable": true,
+      "variableName": "SEQ",
+      "isScene": true,
+      "exampleValue": "066"
+    },
+    {
+      "id": "node_work_shots",
+      "type": "folder",
+      "name": "shots",
+      "x": 1660,
+      "y": -350,
+      "parent": "node_work_seq"
+    },
+    {
+      "id": "node_work_shot_id",
+      "type": "folder",
+      "name": "SURF_B03_066_1200",
+      "x": 1890,
+      "y": -350,
+      "parent": "node_work_shots",
+      "isVariable": true,
+      "variableName": "SHOT",
+      "isShot": true,
+      "exampleValue": "SURF_B03_066_1200"
+    },
+    {
+      "id": "node_work_2d",
+      "type": "folder",
+      "name": "2d",
+      "x": 2140,
+      "y": -520,
+      "parent": "node_work_shot_id"
+    },
+    {
+      "id": "node_work_comp",
+      "type": "folder",
+      "name": "comp",
+      "x": 2380,
+      "y": -580,
+      "parent": "node_work_2d"
+    },
+    {
+      "id": "node_work_nuke_nk",
+      "type": "file",
+      "name": "SURF_B03_066_1200_Compo_v001.nk",
+      "x": 2620,
+      "y": -580,
+      "parent": "node_work_comp",
+      "isScene": true
+    },
+    {
+      "id": "node_work_ae",
+      "type": "folder",
+      "name": "ae",
+      "x": 2380,
+      "y": -490,
+      "parent": "node_work_2d"
+    },
+    {
+      "id": "node_work_render_layers",
+      "type": "folder",
+      "name": "render_layers",
+      "x": 2380,
+      "y": -400,
+      "parent": "node_work_2d"
+    },
+    {
+      "id": "node_work_3d",
+      "type": "folder",
+      "name": "3d",
+      "x": 2140,
+      "y": -280,
+      "parent": "node_work_shot_id"
+    },
+    {
+      "id": "node_work_anim",
+      "type": "folder",
+      "name": "anim",
+      "x": 2380,
+      "y": -310,
+      "parent": "node_work_3d"
+    },
+    {
+      "id": "node_work_layout",
+      "type": "folder",
+      "name": "layout",
+      "x": 2380,
+      "y": -220,
+      "parent": "node_work_3d"
+    },
+    {
+      "id": "node_work_lighting",
+      "type": "folder",
+      "name": "lighting",
+      "x": 2380,
+      "y": -130,
+      "parent": "node_work_3d"
+    },
+    {
+      "id": "node_work_ia",
+      "type": "folder",
+      "name": "IA",
+      "x": 2140,
+      "y": -10,
+      "parent": "node_work_shot_id"
+    },
+    {
+      "id": "node_work_ia_ref",
+      "type": "folder",
+      "name": "ref",
+      "x": 2380,
+      "y": -40,
+      "parent": "node_work_ia"
+    },
+    {
+      "id": "node_work_ia_export",
+      "type": "folder",
+      "name": "export",
+      "x": 2380,
+      "y": 50,
+      "parent": "node_work_ia"
+    },
+    {
+      "id": "node_work_ia_enc",
+      "type": "folder",
+      "name": "enc",
+      "x": 2380,
+      "y": 140,
+      "parent": "node_work_ia"
+    },
+    {
+      "id": "node_work_out",
+      "type": "folder",
+      "name": "_out",
+      "x": 2140,
+      "y": 230,
+      "parent": "node_work_shot_id"
+    },
+    {
+      "id": "node_work_dailies",
+      "type": "folder",
+      "name": "dailies",
+      "x": 2380,
+      "y": 230,
+      "parent": "node_work_out"
+    },
+    {
+      "id": "node_media_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 50,
+      "y": 420,
+      "parent": null
+    },
+    {
+      "id": "node_media_interno",
+      "type": "folder",
+      "name": "INTERNO",
+      "x": 280,
+      "y": 420,
+      "parent": "node_media_unit"
+    },
+    {
+      "id": "node_media_media",
+      "type": "folder",
+      "name": "MEDIA",
+      "x": 510,
+      "y": 420,
+      "parent": "node_media_interno"
+    },
+    {
+      "id": "node_media_client",
+      "type": "folder",
+      "name": "atresmedia",
+      "x": 740,
+      "y": 420,
+      "parent": "node_media_media",
+      "isClientNode": true
+    },
+    {
+      "id": "node_media_project",
+      "type": "folder",
+      "name": "surf_love",
+      "x": 970,
+      "y": 420,
+      "parent": "node_media_client",
+      "isProjectNode": true
+    },
+    {
+      "id": "node_media_episodios",
+      "type": "folder",
+      "name": "episodios",
+      "x": 1200,
+      "y": 420,
+      "parent": "node_media_project"
+    },
+    {
+      "id": "node_media_ep",
+      "type": "folder",
+      "name": "B03",
+      "x": 1430,
+      "y": 420,
+      "parent": "node_media_episodios",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03"
+    },
+    {
+      "id": "node_media_secuencias",
+      "type": "folder",
+      "name": "secuencias",
+      "x": 1660,
+      "y": 420,
+      "parent": "node_media_ep"
+    },
+    {
+      "id": "node_media_seq",
+      "type": "folder",
+      "name": "066",
+      "x": 1890,
+      "y": 420,
+      "parent": "node_media_secuencias",
+      "isVariable": true,
+      "variableName": "SEQ",
+      "isScene": true,
+      "exampleValue": "066"
+    },
+    {
+      "id": "node_media_shots",
+      "type": "folder",
+      "name": "shots",
+      "x": 2120,
+      "y": 420,
+      "parent": "node_media_seq"
+    },
+    {
+      "id": "node_media_shot_id",
+      "type": "folder",
+      "name": "SURF_B03_066_1200",
+      "x": 2350,
+      "y": 420,
+      "parent": "node_media_shots",
+      "isVariable": true,
+      "variableName": "SHOT",
+      "isShot": true,
+      "exampleValue": "SURF_B03_066_1200"
+    },
+    {
+      "id": "node_media_in",
+      "type": "folder",
+      "name": "in",
+      "x": 2600,
+      "y": 340,
+      "parent": "node_media_shot_id"
+    },
+    {
+      "id": "node_media_nuke",
+      "type": "folder",
+      "name": "nuke",
+      "x": 2600,
+      "y": 480,
+      "parent": "node_media_shot_id"
+    },
+    {
+      "id": "node_media_fullres",
+      "type": "folder",
+      "name": "fullres",
+      "x": 2840,
+      "y": 420,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_prerender",
+      "type": "folder",
+      "name": "prerender",
+      "x": 2840,
+      "y": 500,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_exportia",
+      "type": "folder",
+      "name": "exportIA",
+      "x": 2840,
+      "y": 580,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    }
+  ],
+  "connections": []
+}

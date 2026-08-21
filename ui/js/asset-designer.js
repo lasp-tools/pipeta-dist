@@ -130,6 +130,7 @@ const AssetDesigner = {
                             const asset = JSON.parse(content);
                             // IMPORTANTE: Asegurar ID único
                             if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
+                            asset._fileName = f;
                             AssetDesigner.assets.push(asset);
                         } catch (parseErr) {
                             console.error("Error parsing " + f, parseErr);
@@ -152,7 +153,8 @@ const AssetDesigner = {
 
     saveAsset: async () => {
         if (!AssetDesigner.currentAsset) return;
-        const fileName = AssetDesigner.currentAsset.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const fileName = AssetDesigner.currentAsset._fileName || (AssetDesigner.currentAsset.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
+        AssetDesigner.currentAsset._fileName = fileName;
         const filePath = AssetDesigner.presetsPath + "\\" + fileName;
         const content = JSON.stringify(AssetDesigner.currentAsset, null, 2);
 
@@ -168,9 +170,11 @@ const AssetDesigner = {
     },
 
     newAsset: (name) => {
+        const assetName = name || "New Asset";
         const newAsset = {
             id: 'asset_' + Date.now(),
-            name: name || "New Asset",
+            name: assetName,
+            _fileName: assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json",
             nodes: [
                 { id: "root", type: "folder", name: "ROOT", x: 50, y: 50, parent: null }
             ]
@@ -188,7 +192,7 @@ const AssetDesigner = {
 
         if (!confirm("¿Borrar asset " + assetName + "?")) return;
 
-        const fileName = assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const fileName = AssetDesigner.currentAsset._fileName || (assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const filePath = AssetDesigner.presetsPath + "\\" + fileName;
 
         console.log("[Delete] Deleting:", filePath);
@@ -240,7 +244,7 @@ const AssetDesigner = {
 
         if (!newName || newName === oldName) return;
 
-        const oldFileName = oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const oldFileName = AssetDesigner.currentAsset._fileName || (oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const newFileName = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
 
         const oldPath = AssetDesigner.presetsPath + "\\" + oldFileName;
@@ -249,21 +253,26 @@ const AssetDesigner = {
         console.log(`[Rename] ${oldFileName} -> ${newFileName}`);
 
         try {
-            // Direct call to API, trusting it exists globally like in context-menu.js
-            const result = await API.fs.rename(oldPath, newPath);
-
-            if (result && result.success) {
-                AssetDesigner.currentAsset.name = newName;
-                await AssetDesigner.saveAsset();
-
-                AssetDesigner.renderUI();
-                AssetDesigner.renderCanvas();
-                AssetDesigner.updateSidebar();
-                console.log("[Rename] OK");
-            } else {
-                console.error("[Rename] Failed:", result);
-                alert("Error al renombrar: " + (result?.error || "Desconocido"));
+            let renamed = false;
+            try {
+                const result = await API.fs.rename(oldPath, newPath);
+                if (result && result.success) renamed = true;
+            } catch (rErr) {
+                console.warn("[Rename] Native rename note:", rErr);
             }
+
+            AssetDesigner.currentAsset.name = newName;
+            AssetDesigner.currentAsset._fileName = newFileName;
+            await AssetDesigner.saveAsset();
+
+            if (!renamed && oldPath !== newPath) {
+                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
+            }
+
+            AssetDesigner.renderUI();
+            AssetDesigner.renderCanvas();
+            AssetDesigner.updateSidebar();
+            console.log("[Rename] OK");
         } catch (e) {
             console.error("[Rename] Exception:", e);
             alert("Error: " + e.message);
@@ -275,6 +284,7 @@ const AssetDesigner = {
         const copy = JSON.parse(JSON.stringify(AssetDesigner.currentAsset));
         copy.id = 'asset_' + Date.now();
         copy.name = copy.name + " (Copy)";
+        copy._fileName = copy.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
         AssetDesigner.assets.push(copy);
         AssetDesigner.currentAsset = copy;
         AssetDesigner.renderUI();

@@ -13,6 +13,11 @@ function updateDesignContext() {
     if (typeof AssetCreator !== 'undefined' && AssetCreator.isVisible && typeof AssetCreator.handleSelectionChange === 'function') {
         AssetCreator.handleSelectionChange(selectedContextPath);
     }
+
+    // Notify Shot Creator if it's open
+    if (typeof ShotCreator !== 'undefined' && ShotCreator.isVisible && typeof ShotCreator.handleSelectionChange === 'function') {
+        ShotCreator.handleSelectionChange(selectedContextPath);
+    }
 }
 
 function selectBlock(el, name) {

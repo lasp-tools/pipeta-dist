@@ -153,6 +153,7 @@ const ShotDesigner = {
                             if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
                             // Ensure connections array exists
                             if (!asset.connections) asset.connections = [];
+                            asset._fileName = f;
                             ShotDesigner.assets.push(asset);
                         } catch (parseErr) {
                             console.error("Error parsing " + f, parseErr);
@@ -175,7 +176,8 @@ const ShotDesigner = {
 
     saveAsset: async () => {
         if (!ShotDesigner.currentAsset) return;
-        const fileName = ShotDesigner.currentAsset.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const fileName = ShotDesigner.currentAsset._fileName || (ShotDesigner.currentAsset.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
+        ShotDesigner.currentAsset._fileName = fileName;
         const filePath = ShotDesigner.presetsPath + "\\" + fileName;
         const content = JSON.stringify(ShotDesigner.currentAsset, null, 2);
 
@@ -191,9 +193,11 @@ const ShotDesigner = {
     },
 
     newAsset: (name) => {
+        const assetName = name || "New Asset";
         const newAsset = {
             id: 'asset_' + Date.now(),
-            name: name || "New Asset",
+            name: assetName,
+            _fileName: assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json",
             nodes: [
                 { id: "root", type: "folder", name: "ROOT", x: 50, y: 50, parent: null }
             ],
@@ -212,7 +216,7 @@ const ShotDesigner = {
 
         if (!confirm("¿Borrar asset " + assetName + "?")) return;
 
-        const fileName = assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const fileName = ShotDesigner.currentAsset._fileName || (assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const filePath = ShotDesigner.presetsPath + "\\" + fileName;
 
         console.log("[Delete] Deleting:", filePath);
@@ -264,7 +268,7 @@ const ShotDesigner = {
 
         if (!newName || newName === oldName) return;
 
-        const oldFileName = oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const oldFileName = ShotDesigner.currentAsset._fileName || (oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const newFileName = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
 
         const oldPath = ShotDesigner.presetsPath + "\\" + oldFileName;
@@ -273,21 +277,26 @@ const ShotDesigner = {
         console.log(`[Rename] ${oldFileName} -> ${newFileName}`);
 
         try {
-            // Direct call to API, trusting it exists globally like in context-menu.js
-            const result = await API.fs.rename(oldPath, newPath);
-
-            if (result && result.success) {
-                ShotDesigner.currentAsset.name = newName;
-                await ShotDesigner.saveAsset();
-
-                ShotDesigner.renderUI();
-                ShotDesigner.renderCanvas();
-                ShotDesigner.updateSidebar();
-                console.log("[Rename] OK");
-            } else {
-                console.error("[Rename] Failed:", result);
-                alert("Error al renombrar: " + (result?.error || "Desconocido"));
+            let renamed = false;
+            try {
+                const result = await API.fs.rename(oldPath, newPath);
+                if (result && result.success) renamed = true;
+            } catch (rErr) {
+                console.warn("[Rename] Native rename note:", rErr);
             }
+
+            ShotDesigner.currentAsset.name = newName;
+            ShotDesigner.currentAsset._fileName = newFileName;
+            await ShotDesigner.saveAsset();
+
+            if (!renamed && oldPath !== newPath) {
+                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
+            }
+
+            ShotDesigner.renderUI();
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+            console.log("[Rename] OK");
         } catch (e) {
             console.error("[Rename] Exception:", e);
             alert("Error: " + e.message);
@@ -299,6 +308,7 @@ const ShotDesigner = {
         const copy = JSON.parse(JSON.stringify(ShotDesigner.currentAsset));
         copy.id = 'asset_' + Date.now();
         copy.name = copy.name + " (Copy)";
+        copy._fileName = copy.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
         ShotDesigner.assets.push(copy);
         ShotDesigner.currentAsset = copy;
         ShotDesigner.renderUI();
@@ -610,8 +620,82 @@ const ShotDesigner = {
             path.style.stroke = strokeColor;
         }
 
-        path.setAttribute("stroke-width", 2 / ShotDesigner.zoomLevel);
+        path.setAttribute("stroke-width", 2.5 / ShotDesigner.zoomLevel);
+        path.style.cursor = 'pointer';
+        path.setAttribute("title", "Clic derecho o doble clic en el cable para desconectar");
+
+        path.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ShotDesigner.removeSpecificConnection(from.id, to.id, fromPort, toPort);
+        });
+        path.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ShotDesigner.removeSpecificConnection(from.id, to.id, fromPort, toPort);
+        });
+
         svgGroup.appendChild(path);
+    },
+
+    disconnectPort: (nodeId, portType) => {
+        const node = ShotDesigner.currentAsset.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        if (portType === 'in' || portType === 'in-local') {
+            node.parent = null;
+        } else if (portType === 'in-online') {
+            node.parentOnline = null;
+        } else if (portType === 'in-multi-item') {
+            if (node.itemConfig) node.itemConfig.additionalParents = [];
+            node.parent = null;
+        } else if (portType === 'in-multi-process') {
+            if (node.processConfig) node.processConfig.additionalParents = [];
+            node.parent = null;
+        } else if (portType === 'out') {
+            ShotDesigner.currentAsset.nodes.forEach(child => {
+                if (child.parent === nodeId) child.parent = null;
+                if (child.parentOnline === nodeId) child.parentOnline = null;
+                if (child.itemConfig?.additionalParents) {
+                    child.itemConfig.additionalParents = child.itemConfig.additionalParents.filter(p => p !== nodeId);
+                }
+                if (child.processConfig?.additionalParents) {
+                    child.processConfig.additionalParents = child.processConfig.additionalParents.filter(p => p !== nodeId);
+                }
+            });
+        } else if (portType === 'mirror' || portType === 'in-render' || portType === 'out-render') {
+            if (ShotDesigner.currentAsset.connections) {
+                ShotDesigner.currentAsset.connections = ShotDesigner.currentAsset.connections.filter(c =>
+                    !(c.from === nodeId || c.to === nodeId)
+                );
+            }
+        }
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+    },
+
+    removeSpecificConnection: (fromId, toId, fromPort, toPort) => {
+        const toNode = ShotDesigner.currentAsset.nodes.find(n => n.id === toId);
+        if (toNode) {
+            if (toNode.parent === fromId) toNode.parent = null;
+            if (toNode.parentOnline === fromId) toNode.parentOnline = null;
+            if (toNode.itemConfig?.additionalParents) {
+                toNode.itemConfig.additionalParents = toNode.itemConfig.additionalParents.filter(id => id !== fromId);
+            }
+            if (toNode.processConfig?.additionalParents) {
+                toNode.processConfig.additionalParents = toNode.processConfig.additionalParents.filter(id => id !== fromId);
+            }
+        }
+        if (ShotDesigner.currentAsset.connections) {
+            ShotDesigner.currentAsset.connections = ShotDesigner.currentAsset.connections.filter(c =>
+                !(c.from === fromId && c.to === toId)
+            );
+        }
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
     },
 
     drawDraftConnection: (parent, endPos, svgGroup, fromPort) => {
@@ -701,12 +785,20 @@ const ShotDesigner = {
             ShotDesigner.panStart = { x: e.clientX, y: e.clientY };
             document.body.style.cursor = 'grabbing';
         } else if (e.target.classList.contains('sd-dot')) {
-            // ... dot connection logic ... (kept safe)
             const dot = e.target;
             const nodeId = dot.getAttribute('data-node-id');
             const dotType = dot.getAttribute('data-type');
             const node = ShotDesigner.currentAsset.nodes.find(n => n.id === nodeId);
             if (!node) return;
+
+            // Clic derecho sobre el dot = Desconectar
+            if (e.button === 2) {
+                ShotDesigner.disconnectPort(nodeId, dotType);
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
             ShotDesigner.isConnecting = true;
             ShotDesigner.connectionStartNode = node;
             ShotDesigner.connectionStartPoint = dotType;
@@ -1207,9 +1299,37 @@ const ShotDesigner = {
                             </div>
                             <div style="display:flex; align-items:center;" title="Define este nodo como el nivel Proyecto">
                                 <label class="prop-label" style="margin-right:5px; color:#2196F3; font-size:0.85em;">Es Proyecto</label>
-                                <input type="checkbox" ${node.isProjectNode ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isProjectNode', this.checked)">
+                                <input type="checkbox" ${node.isProjectNode ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isProjectNode', this.checked); ShotDesigner.updateSidebar();">
                             </div>
                         </div>
+
+                        ${node.isProjectNode ? `
+                        <div style="margin-top:4px; background:#241d08; border:1px solid #ff9800; padding:6px; border-radius:4px; display:flex; flex-direction:column; gap:4px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label class="prop-label" style="font-size:0.65em; font-weight:bold; color:#FFB74D; text-transform:uppercase; margin-bottom:0;">NICK VAR (Código Corto Proyecto)</label>
+                                <div style="display:flex; align-items:center; gap:4px;">
+                                    <label class="prop-label" style="font-size:0.7em; color:#bbb; margin-bottom:0;">Activar</label>
+                                    <input type="checkbox" ${node.hasNickVar ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'hasNickVar', this.checked); ShotDesigner.updateSidebar();">
+                                </div>
+                            </div>
+                            ${node.hasNickVar ? `
+                            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                                <div style="flex:1;">
+                                    <label class="prop-label" style="font-size:0.6em; color:#aaa;">VAR NAME</label>
+                                    <input class="prop-input" style="width:100%; font-size:0.8em; background:#111; color:#FFD54F;" 
+                                           placeholder="NICK" value="${node.nickVarName || 'NICK'}" 
+                                           onchange="ShotDesigner.updateNodeProp('${node.id}', 'nickVarName', this.value); ShotDesigner.updateSidebar();">
+                                </div>
+                                <div style="flex:1;">
+                                    <label class="prop-label" style="font-size:0.6em; color:#aaa;">EXAMPLE</label>
+                                    <input class="prop-input" style="width:100%; font-size:0.8em; background:#111; color:#fff;" 
+                                           placeholder="SURF" value="${node.nickExample || ''}" 
+                                           onchange="ShotDesigner.updateNodeProp('${node.id}', 'nickExample', this.value); ShotDesigner.updateSidebar();">
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
 
                         <!-- SEMANTIC ROLES -->
                         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:nowrap; gap:5px; margin-top:2px;">
@@ -1230,6 +1350,28 @@ const ShotDesigner = {
                                 <input type="checkbox" ${node.isProcess ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isProcess', this.checked); ShotDesigner.updateSidebar();">
                             </div>
                         </div>
+
+                        ${node.isShot ? `
+                        <div style="margin-top:4px; background:#0a2233; border:1px solid #00b0ff; padding:6px; border-radius:4px; display:flex; flex-direction:column; gap:4px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label class="prop-label" style="font-size:0.65em; font-weight:bold; color:#40C4FF; text-transform:uppercase; margin-bottom:0;">SHOT INPUT VAR (Variable del Número)</label>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                                <div style="flex:1;">
+                                    <label class="prop-label" style="font-size:0.6em; color:#aaa;">VAR ENTRADA</label>
+                                    <input class="prop-input" style="width:100%; font-size:0.8em; background:#111; color:#40C4FF;" 
+                                           placeholder="SHOT" value="${node.shotInputVar || 'SHOT'}" 
+                                           onchange="ShotDesigner.updateNodeProp('${node.id}', 'shotInputVar', this.value); ShotDesigner.updateSidebar();">
+                                </div>
+                                <div style="flex:1;">
+                                    <label class="prop-label" style="font-size:0.6em; color:#aaa;">EXAMPLE NUM</label>
+                                    <input class="prop-input" style="width:100%; font-size:0.8em; background:#111; color:#fff;" 
+                                           placeholder="1130" value="${node.exampleValue || '1130'}" 
+                                           onchange="ShotDesigner.updateNodeProp('${node.id}', 'exampleValue', this.value); ShotDesigner.updateSidebar();">
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
 
                     <hr style="border: 0; border-top: 2px solid #333; margin: 5px 0; width:100%;">
@@ -1336,14 +1478,28 @@ const ShotDesigner = {
                         const vars = new Set();
                         const btns = [];
                         ShotDesigner.currentAsset.nodes.forEach(n => {
-                            if (n.isVariable) {
-                                const vName = n.variableName || 'VAR';
+                            if (n.isVariable || n.isEpisode || n.isScene || n.isShot || n.isProjectNode || n.isClientNode) {
+                                const vName = ShotDesigner.getEffectiveVarName(n);
                                 if (vName === 'ASSET') return;
                                 if (!vars.has(vName)) {
                                     vars.add(vName);
                                     const isItem = n.isItem;
                                     const colorClass = isItem ? 'item' : 'var';
                                     btns.push(`<button class="nc-tag-btn ${colorClass}" onclick="ShotDesigner.appendNameTag('${node.id}', '[${vName}]')">[${vName}]</button>`);
+                                }
+                            }
+                            if (n.isShot) {
+                                const inVar = n.shotInputVar || 'SHOT';
+                                if (!vars.has(inVar)) {
+                                    vars.add(inVar);
+                                    btns.push(`<button class="nc-tag-btn" style="background:#0288D1; color:white;" onclick="ShotDesigner.appendNameTag('${node.id}', '[${inVar}]')">[${inVar}]</button>`);
+                                }
+                            }
+                            if (n.hasNickVar) {
+                                const nickName = n.nickVarName || 'NICK';
+                                if (!vars.has(nickName)) {
+                                    vars.add(nickName);
+                                    btns.push(`<button class="nc-tag-btn" style="background:#FF6D00; color:white;" onclick="ShotDesigner.appendNameTag('${node.id}', '[${nickName}]')">[${nickName}]</button>`);
                                 }
                             }
                         });
@@ -1407,6 +1563,19 @@ const ShotDesigner = {
         }
     },
 
+    getEffectiveVarName: (node) => {
+        if (!node) return 'VAR';
+        if (node.variableName && node.variableName.trim() !== '' && node.variableName !== 'VAR') {
+            return node.variableName.trim();
+        }
+        if (node.isEpisode) return 'EP';
+        if (node.isScene) return 'ESC';
+        if (node.isShot) return 'SHOTNAME';
+        if (node.isProjectNode) return 'PROYECTO';
+        if (node.isClientNode) return 'CLIENTE';
+        return node.variableName || 'VAR';
+    },
+
     updateNodeProp: (id, prop, value) => {
         const node = ShotDesigner.currentAsset.nodes.find(n => n.id === id);
         if (!node) return;
@@ -1439,6 +1608,34 @@ const ShotDesigner = {
 
         } else {
             node[prop] = value;
+
+            // Auto-fill semantic variable defaults if empty or generic VAR
+            if (value === true) {
+                if (prop === 'isEpisode') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'EP';
+                } else if (prop === 'isScene') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'ESC';
+                } else if (prop === 'isShot') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR' || node.variableName === 'SHOT') node.variableName = 'SHOTNAME';
+                    if (!node.shotInputVar) node.shotInputVar = 'SHOT';
+                    if (!node.exampleValue) node.exampleValue = '1130';
+                } else if (prop === 'isProjectNode') {
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'PROYECTO';
+                } else if (prop === 'isClientNode') {
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'CLIENTE';
+                } else if (prop === 'isVariable') {
+                    if (!node.variableName || node.variableName === 'VAR') {
+                        if (node.isEpisode) node.variableName = 'EP';
+                        else if (node.isScene) node.variableName = 'ESC';
+                        else if (node.isShot) node.variableName = 'SHOTNAME';
+                        else if (node.isProjectNode) node.variableName = 'PROYECTO';
+                        else if (node.isClientNode) node.variableName = 'CLIENTE';
+                    }
+                }
+            }
 
             // SPECIAL LOGIC: Items default to Variable
             if (prop === 'isItem' && value === true) {
@@ -1587,15 +1784,41 @@ const ShotDesigner = {
                             let tempCurr = n;
                             let safetyCheck = 0;
 
-                            // Check self first, then parents
-                            while (tempCurr && safetyCheck < 100) {
-                                if (tempCurr.isVariable && (tempCurr.variableName === varName)) {
-                                    foundValue = resolveName(tempCurr, nextVisited, options);
-                                    break;
+                            // Check for input variable of a shot node (e.g. [SHOT] or custom shotInputVar)
+                            const shotNode = ShotDesigner.currentAsset.nodes.find(sn => sn.isShot);
+                            const isShotInput = shotNode && ((shotNode.shotInputVar || 'SHOT').toLowerCase() === varName.toLowerCase());
+
+                            if (isShotInput) {
+                                foundValue = shotNode.exampleValue || '1130';
+                            } else {
+                                // Check self first, then parents
+                                while (tempCurr && safetyCheck < 100) {
+                                    const effVar = ShotDesigner.getEffectiveVarName(tempCurr);
+                                    const isMatch = (tempCurr.isVariable && (
+                                        effVar.toLowerCase() === varName.toLowerCase() ||
+                                        (tempCurr.isScene && (varName.toLowerCase() === 'esc' || varName.toLowerCase() === 'seq' || varName.toLowerCase() === 'escena' || varName.toLowerCase() === 'secuencia')) ||
+                                        (tempCurr.isEpisode && (varName.toLowerCase() === 'ep' || varName.toLowerCase() === 'episodio')) ||
+                                        (tempCurr.isShot && (varName.toLowerCase() === 'shotname' || varName.toLowerCase() === 'shot_name' || varName.toLowerCase() === effVar.toLowerCase())) ||
+                                        (tempCurr.isProjectNode && (varName.toLowerCase() === 'proyecto' || varName.toLowerCase() === 'project')) ||
+                                        (tempCurr.isClientNode && (varName.toLowerCase() === 'cliente' || varName.toLowerCase() === 'client'))
+                                    ));
+
+                                    if (isMatch) {
+                                        if (tempCurr.id === n.id) {
+                                            foundValue = tempCurr.exampleValue || '1130';
+                                        } else {
+                                            foundValue = resolveName(tempCurr, nextVisited, options);
+                                        }
+                                        break;
+                                    }
+                                    if (tempCurr.hasNickVar && ((tempCurr.nickVarName || 'NICK').toLowerCase() === varName.toLowerCase())) {
+                                        foundValue = tempCurr.nickExample || tempCurr.nickVarName || 'NICK';
+                                        break;
+                                    }
+                                    // Move up
+                                    tempCurr = ShotDesigner.currentAsset.nodes.find(node => node.id === tempCurr.parent);
+                                    safetyCheck++;
                                 }
-                                // Move up
-                                tempCurr = ShotDesigner.currentAsset.nodes.find(node => node.id === tempCurr.parent);
-                                safetyCheck++;
                             }
 
                             // If found, replace

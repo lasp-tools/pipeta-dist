@@ -131,48 +131,72 @@ const ShotCreator = {
 
         if (!targetNode) return null;
 
-        // 2. If Mirror, we might need a different starting node
+        // 2. If Mirror, find the mirror node
         if (isMirror) {
-            const mirrorConn = ShotCreator.selectedPreset.connections.find(c => c.from === targetNode.id && (c.fromPort === 'mirror' || c.toPort === 'mirror'));
+            const mirrorConn = ShotCreator.selectedPreset.connections?.find(c =>
+                (c.from === targetNode.id || c.to === targetNode.id) && (c.fromPort === 'mirror' || c.toPort === 'mirror')
+            );
             if (!mirrorConn) return null;
             const mirrorNodeId = (mirrorConn.from === targetNode.id) ? mirrorConn.to : mirrorConn.from;
             targetNode = ShotCreator.selectedPreset.nodes.find(n => n.id === mirrorNodeId);
             if (!targetNode) return null;
         }
 
-        // 3. Traverse UP to build the path
+        // 3. Traverse UP all the way to root / unit to build exact path
         let pathParts = [];
         let currentNode = targetNode;
+        let hasUnitRoot = false;
+
+        const projNode = ShotCreator.selectedPreset.nodes.find(n => n.isProjectNode);
+        const projNick = projNode?.nickExample || projNode?.nickVarName || "SURF";
+        const epVal = (level === 'episode') ? itemName : (ShotCreator.selectedParentEpisode || "EPISODIO");
+        const scnVal = (level === 'scene') ? itemName : (ShotCreator.selectedParentScene || "ESCENA");
+        const shotVal = itemName;
+
+        const pathCtx = {
+            project: ShotCreator.currentContext.project || projNode?.name || "PROYECTO",
+            client: ShotCreator.currentContext.client || "CLIENTE",
+            episode: epVal,
+            scene: scnVal,
+            shot: shotVal,
+            nick: projNick,
+            vars: {
+                'NICK': projNick,
+                'EP': epVal,
+                'ESC': scnVal,
+                'SEQ': scnVal,
+                'SHOT': shotVal
+            }
+        };
 
         while (currentNode) {
-            // Stop at root/unit nodes (context projectRoot covers up to Project/Client)
             if (currentNode.type === 'unit' || currentNode.id === 'root') {
-                if (isMirror) pathParts.unshift(currentNode.name); // Keep Drive letter for mirror
-                break;
-            }
-
-            // If it's a Project/Client node and NOT a variable we should resolve here, stop
-            // because projectRoot already includes them in Project mode.
-            if ((currentNode.isProjectNode || currentNode.isClientNode) && !isMirror) {
+                let unitName = currentNode.name.replace(/[:/\\]/g, '');
+                pathParts.unshift(unitName + ':');
+                hasUnitRoot = true;
                 break;
             }
 
             let name = currentNode.name;
 
-            // Resolve Variables
-            if (currentNode.isVariable || currentNode.variableName) {
-                const vn = currentNode.variableName;
-                if (currentNode.isClientNode || vn === 'Cliente') {
-                    name = ShotCreator.currentContext.client || "CLIENTE";
-                } else if (currentNode.isProjectNode || vn === 'proyecto') {
-                    name = ShotCreator.currentContext.project || "PROYECTO";
-                } else if (currentNode.isEpisode || vn === 'Episodio') {
-                    name = (level === 'episode') ? itemName : (ShotCreator.selectedParentEpisode || "EPISODIO");
-                } else if (currentNode.isScene || vn === 'Escena') {
-                    name = (level === 'scene') ? itemName : (ShotCreator.selectedParentScene || "ESCENA");
-                } else if (currentNode.isShot || vn === 'Shot') {
-                    name = itemName;
-                }
+            const nodeNameLower = (currentNode.name || '').toLowerCase();
+            const nodeVarLower = (currentNode.variableName || '').toLowerCase();
+            const isClientNode = currentNode.isClientNode || nodeNameLower === 'cliente' || ['cliente', 'client'].includes(nodeVarLower);
+            const isProjectNode = currentNode.isProjectNode || ['proyecto', 'proy', 'project'].includes(nodeNameLower) || ['proyecto', 'project', 'proy'].includes(nodeVarLower);
+
+            // If node has Name Constructor active, resolve its full pattern
+            if (currentNode.nameConfig && currentNode.nameConfig.enabled && currentNode.nameConfig.pattern) {
+                name = ShotCreator.resolveNodePattern(currentNode.nameConfig.pattern, pathCtx, currentNode);
+            } else if (isClientNode) {
+                name = ShotCreator.currentContext.client || "atresmedia";
+            } else if (isProjectNode) {
+                name = ShotCreator.currentContext.project || projNode?.name || "surf_love";
+            } else if (currentNode.isEpisode || ['ep', 'episodio'].includes(nodeVarLower)) {
+                name = epVal;
+            } else if (currentNode.isScene || ['esc', 'seq', 'escena', 'secuencia'].includes(nodeVarLower)) {
+                name = scnVal;
+            } else if (currentNode.isShot || ['shot', 'shotname'].includes(nodeVarLower)) {
+                name = shotVal;
             }
 
             pathParts.unshift(name);
@@ -188,15 +212,13 @@ const ShotCreator = {
             }
         }
 
-        // 4. Attach project root (unless mirror which is absolute)
-        if (isMirror) {
-            if (pathParts.length > 0 && pathParts[0].length === 1) {
-                pathParts[0] = pathParts[0] + ":";
-            }
+        if (hasUnitRoot) {
             return pathParts.join('/');
         } else {
-            const root = ShotCreator.currentContext.projectRoot || "";
-            return (root ? root + "/" : "") + pathParts.join('/');
+            const fallbackRoot = isMirror
+                ? (ShotCreator.currentContext.mediaRoot || (typeof settings !== 'undefined' && settings.currentProject?.roots?.media?.replace(/\\/g, '/')) || "")
+                : (ShotCreator.currentContext.workRoot || (typeof settings !== 'undefined' && settings.currentProject?.roots?.work?.replace(/\\/g, '/')) || "");
+            return (fallbackRoot ? fallbackRoot + "/" : "") + pathParts.join('/');
         }
     },
 
@@ -205,21 +227,13 @@ const ShotCreator = {
     },
 
     getSequencesRoot: () => {
-        // 1. Determine Base Context (Project Root)
-        // If we identified a projectRoot in resolveContext, use THAT as the fixed anchor.
-        let anchorPath = ShotCreator.currentContext.projectRoot || (ShotCreator.currentContext.resolvedPath || "");
-
-        // 2. Get Expected Relative Path from Preset (e.g. "episodios" or "sequences")
-        const relativeContainer = ShotCreator.getRelativeContainerPath('episode') || "sequences";
-
-        if (!anchorPath) return null;
-
-        // 3. Construct the ABSOLUTE target root by joining Project Root + Relative Container
-        let sequencesRoot = anchorPath;
-        if (!sequencesRoot.endsWith('/')) sequencesRoot += '/';
-        sequencesRoot += relativeContainer;
-
-        return sequencesRoot;
+        // Try resolving dummy episode path to find its parent directory
+        const dummyEpPath = ShotCreator.getFullResolvedPath('episode', 'DUMMY');
+        if (dummyEpPath) {
+            return dummyEpPath.substring(0, dummyEpPath.lastIndexOf('/'));
+        }
+        const workRoot = ShotCreator.currentContext.workRoot || (typeof settings !== 'undefined' && settings.currentProject?.roots?.work?.replace(/\\/g, '/')) || "";
+        return workRoot ? (workRoot + "/episodios") : null;
     },
 
     handleSelectionChange: (path) => {
@@ -737,84 +751,52 @@ const ShotCreator = {
     },
 
     resolveContext: (specificPath) => {
-        ShotCreator.currentContext = { client: null, project: null, category: null, valid: false, resolvedPath: null, isRoot: false, projectRoot: null };
+        ShotCreator.currentContext = { client: null, project: null, category: null, valid: false, resolvedPath: null, isRoot: false, projectRoot: null, workRoot: null, mediaRoot: null };
 
-        // Use passed path, or global context path, or fallback to current root
         let path = specificPath || (typeof selectedContextPath !== 'undefined' && selectedContextPath) || null;
-
         if (path) {
             path = path.replace(/\\/g, '/');
-        } else {
-            // Fallback: Use current project root from settings
-            if (typeof settings !== 'undefined' && settings.currentProject) {
-                const roots = getCurrentRoots();
-                path = roots.work ? roots.work.replace(/\\/g, '/') : null;
-                if (path) {
-                    ShotCreator.currentContext.client = settings.currentProject.client;
-                    ShotCreator.currentContext.project = settings.currentProject.projectCode || settings.currentProject.name;
-                    ShotCreator.currentContext.valid = true;
-                    ShotCreator.currentContext.isRoot = true;
-                    ShotCreator.currentContext.resolvedPath = path;
-                    ShotCreator.currentContext.projectRoot = path;
-                    return;
-                }
-            }
-            return;
+            ShotCreator.currentContext.resolvedPath = path;
         }
 
-        ShotCreator.currentContext.resolvedPath = path;
-        const pLower = path.toLowerCase();
+        let matchedProj = null;
 
-        // Robust Match against all projects
-        if (typeof settings !== 'undefined' && settings.projects) {
+        // 1. Try matching path against configured projects in settings.projects
+        if (path && typeof settings !== 'undefined' && settings.projects && settings.projects.length > 0) {
+            const pLower = path.toLowerCase();
             for (const proj of settings.projects) {
-                const localRoot = proj.roots.work ? proj.roots.work.replace(/\\/g, '/') : "";
-                const onlineRoot = proj.roots.onlineWork ? proj.roots.onlineWork.replace(/\\/g, '/') : "";
-                const mediaRoot = proj.roots.media ? proj.roots.media.replace(/\\/g, '/') : "";
-                const onlineMediaRoot = proj.roots.onlineMedia ? proj.roots.onlineMedia.replace(/\\/g, '/') : "";
+                const workR = (proj.roots?.work || "").replace(/\\/g, '/').toLowerCase();
+                const mediaR = (proj.roots?.media || "").replace(/\\/g, '/').toLowerCase();
+                const onlWorkR = (proj.roots?.onlineWork || "").replace(/\\/g, '/').toLowerCase();
+                const onlMediaR = (proj.roots?.onlineMedia || "").replace(/\\/g, '/').toLowerCase();
 
-                // Check all 4 potential roots for the project
-                const rootsToCheck = [localRoot, onlineRoot, mediaRoot, onlineMediaRoot].filter(r => r);
-
-                for (const root of rootsToCheck) {
-                    if (pLower.startsWith(root.toLowerCase())) {
-                        ShotCreator.currentContext.valid = true;
-                        ShotCreator.currentContext.client = proj.client;
-                        ShotCreator.currentContext.project = proj.projectCode || proj.name;
-                        ShotCreator.currentContext.projectRoot = root;
-
-                        // Check if it's exactly the root
-                        ShotCreator.currentContext.isRoot = (pLower === root.toLowerCase() || pLower === root.toLowerCase() + '/');
-                        return;
-                    }
+                if ((workR && workR.length > 3 && pLower.startsWith(workR)) ||
+                    (mediaR && mediaR.length > 3 && pLower.startsWith(mediaR)) ||
+                    (onlWorkR && onlWorkR.length > 3 && pLower.startsWith(onlWorkR)) ||
+                    (onlMediaR && onlMediaR.length > 3 && pLower.startsWith(onlMediaR))) {
+                    matchedProj = proj;
+                    break;
                 }
             }
         }
 
-        // Final Fallback: if we are in Pipeta, we MUST be in a project. 
-        // If we still don't have a valid context, use the current active project.
-        if (typeof settings !== 'undefined' && settings.currentProject) {
-            ShotCreator.currentContext.valid = true; // Force valid if we have a current project
-            ShotCreator.currentContext.client = settings.currentProject.client;
-            ShotCreator.currentContext.project = settings.currentProject.projectCode || settings.currentProject.name;
-
-            // For projectRoot, use the most appropriate root based on the path drive
-            const cp = settings.currentProject;
-            if (path && path.toUpperCase().startsWith('M:')) {
-                ShotCreator.currentContext.projectRoot = cp.roots.onlineWork ? cp.roots.onlineWork.replace(/\\/g, '/') : "";
-            } else {
-                ShotCreator.currentContext.projectRoot = cp.roots.work ? cp.roots.work.replace(/\\/g, '/') : "";
+        // 2. Fallback to settings.currentProject or first real project
+        if (!matchedProj && typeof settings !== 'undefined') {
+            if (settings.currentProject && settings.currentProject.client && settings.currentProject.client !== 'cliente') {
+                matchedProj = settings.currentProject;
+            } else if (settings.projects && settings.projects.length > 0) {
+                const realProj = settings.projects.find(p => p.client && p.client !== 'cliente');
+                matchedProj = realProj || settings.currentProject || settings.projects[0];
             }
         }
 
-        // --- CRITICAL FIX: Ensure we have a Project Root ---
-        if (!ShotCreator.currentContext.projectRoot && typeof settings !== 'undefined' && settings.currentProject) {
-            console.warn("ShotCreator: Context resolution failed, forcing Current Project.");
-            const cp = settings.currentProject;
+        if (matchedProj) {
             ShotCreator.currentContext.valid = true;
-            ShotCreator.currentContext.client = cp.client;
-            ShotCreator.currentContext.project = cp.projectCode || cp.name;
-            ShotCreator.currentContext.projectRoot = cp.roots.work ? cp.roots.work.replace(/\\/g, '/') : "";
+            ShotCreator.currentContext.client = matchedProj.client || "atresmedia";
+            ShotCreator.currentContext.project = matchedProj.projectCode || matchedProj.name || "surf_love";
+            ShotCreator.currentContext.workRoot = (matchedProj.roots?.work || "").replace(/\\/g, '/');
+            ShotCreator.currentContext.mediaRoot = (matchedProj.roots?.media || "").replace(/\\/g, '/');
+            ShotCreator.currentContext.projectRoot = ShotCreator.currentContext.workRoot;
         }
     },
 
@@ -1295,7 +1277,6 @@ const ShotCreator = {
             return;
         }
 
-        ShotCreator.hideOverlay();
         // Clear input on success
         if (mode === 'create') {
             const nameInput = document.getElementById('sc-item-name');
@@ -1303,6 +1284,16 @@ const ShotCreator = {
         }
         if (typeof loadShotList === 'function') loadShotList();
         if (typeof refreshCurrentView === 'function') refreshCurrentView();
+
+        ShotCreator.showOverlay(`
+            <div style="font-size:2.5rem; margin-bottom:10px;">✅</div>
+            <div style="font-size:1.2rem; color:#8f8; font-weight:bold; margin-bottom:10px;">¡Estructura Creada Exitosamente!</div>
+            <div style="font-size:0.85rem; color:#ccc; max-width:550px; text-align:left; background:#222; padding:10px; border-radius:4px; margin-bottom:15px;">
+                ${destProject ? `<div style="margin-bottom:6px; word-break:break-all;"><b style="color:var(--accent);">Proyecto:</b> ${fullTargetPath || categoryPath}</div>` : ''}
+                ${destMedia && mirrorTargetPath ? `<div style="word-break:break-all;"><b style="color:#ff9800;">Media:</b> ${mirrorTargetPath}</div>` : ''}
+            </div>
+            <button onclick="ShotCreator.hideOverlay(); ShotCreator.render();" style="padding:8px 25px; background:var(--accent); color:black; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">LISTO</button>
+        `);
     },
 
     // Helper to resolve all possible tags in a name/pattern
@@ -1314,15 +1305,24 @@ const ShotCreator = {
         const globals = {
             'proyecto': ctx.project || "PROYECTO",
             'Project': ctx.project || "PROYECTO",
+            'PROYECTO': ctx.project || "PROYECTO",
             'Cliente': ctx.client || "CLIENTE",
             'Client': ctx.client || "CLIENTE",
+            'CLIENTE': ctx.client || "CLIENTE",
             'Episodio': ctx.episode || "EPISODIO",
             'Episode': ctx.episode || "EPISODIO",
+            'EP': ctx.episode || "EPISODIO",
             'Escena': ctx.scene || "ESCENA",
             'Scene': ctx.scene || "ESCENA",
+            'ESC': ctx.scene || "ESCENA",
+            'SEQ': ctx.scene || "ESCENA",
             'SceneName': ctx.scene || "ESCENA",
             'Shot': ctx.shot || "SHOT",
+            'SHOT': ctx.shot || "SHOT",
             'ASSET': ctx.shot || "SHOT",
+            'SHOTNAME': ctx.shotNameResolved || ctx.vars?.['SHOTNAME'] || ctx.shot || "SHOT",
+            'SHOT_NAME': ctx.shotNameResolved || ctx.vars?.['SHOT_NAME'] || ctx.shot || "SHOT",
+            'NICK': ctx.nick || ctx.vars?.['NICK'] || "NICK",
             'PROC': ctx.proceso || "PROCESO",
             'PROCESO': ctx.proceso || "PROCESO"
         };
@@ -1394,6 +1394,28 @@ const ShotCreator = {
         const levelWeight = { 'episode': 1, 'scene': 2, 'shot': 3 };
         const currentWeight = levelWeight[ShotCreator.creationLevel] || 99;
 
+        const projNode = ShotCreator.selectedPreset?.nodes?.find(n => n.isProjectNode);
+        const projNick = projNode?.nickExample || projNode?.nickVarName || "SURF";
+
+        // Calculate resolved shot folder name if in shot level
+        let shotResolvedName = shotName;
+        const shotNode = allNodes.find(n => n.isShot || n.isAssetFocus);
+        if (shotNode && shotNode.nameConfig && shotNode.nameConfig.enabled && shotNode.nameConfig.pattern) {
+            const baseCtx = {
+                project: ShotCreator.currentContext.project,
+                client: ShotCreator.currentContext.client,
+                episode: ShotCreator.selectedParentEpisode,
+                scene: ShotCreator.selectedParentScene,
+                shot: shotName,
+                nick: projNick,
+                vars: { 'NICK': projNick, 'EP': ShotCreator.selectedParentEpisode, 'ESC': ShotCreator.selectedParentScene, 'SEQ': ShotCreator.selectedParentScene, 'SHOT': shotName }
+            };
+            shotResolvedName = ShotCreator.resolveNodePattern(shotNode.nameConfig.pattern, baseCtx, shotNode);
+        }
+
+        const shotInputKey = shotNode?.shotInputVar || 'SHOT';
+        const shotOutputKey = shotNode?.variableName || 'SHOTNAME';
+
         const children = allNodes.filter(n => n.parent === parentId);
         for (const child of children) {
             // --- Depth Safeguard ---
@@ -1419,8 +1441,21 @@ const ShotCreator = {
                 episode: ShotCreator.selectedParentEpisode,
                 scene: ShotCreator.selectedParentScene,
                 shot: shotName,
+                nick: projNick,
+                shotNameResolved: shotResolvedName,
                 proceso: inheritedVars['PROCESO'] || inheritedVars['PROC'] || "PROCESO",
-                vars: { ...inheritedVars }
+                vars: {
+                    'NICK': projNick,
+                    'EP': ShotCreator.selectedParentEpisode,
+                    'ESC': ShotCreator.selectedParentScene,
+                    'SEQ': ShotCreator.selectedParentScene,
+                    'SHOT': shotName,
+                    [shotInputKey]: shotName,
+                    'SHOTNAME': shotResolvedName,
+                    'SHOT_NAME': shotResolvedName,
+                    [shotOutputKey]: shotResolvedName,
+                    ...inheritedVars
+                }
             };
 
             // --- CONNECTION LOOKUP LOGIC ---
