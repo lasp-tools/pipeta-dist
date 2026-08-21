@@ -6,7 +6,7 @@
       "id": "node_work_unit",
       "type": "unit",
       "name": "Z",
-      "x": 6.654761904761854,
+      "x": 8.32142857142852,
       "y": -1055.8809523809518,
       "parent": null,
       "isMirrorOn": true,
@@ -21,8 +21,8 @@
       "parent": "node_work_unit",
       "isClientNode": true,
       "isMirrorOn": true,
-      "isSyncPoint": true,
-      "parentOnline": "n_1787257335300",
+      "isSyncPoint": false,
+      "parentOnline": "n_1787324375195",
       "isVariable": true,
       "variableName": "cliente",
       "exampleValue": "atresmedia"
@@ -36,12 +36,13 @@
       "parent": "node_work_client",
       "isProjectNode": true,
       "isMirrorOn": true,
-      "isSyncPoint": false,
+      "isSyncPoint": true,
       "isVariable": true,
       "variableName": "proyecto",
       "exampleValue": "surf_love",
       "hasNickVar": true,
-      "nickExample": "SURF"
+      "nickExample": "SURF",
+      "parentOnline": "n_1787324375195"
     },
     {
       "id": "node_work_episodios",
@@ -50,7 +51,9 @@
       "x": 1236.6666666666667,
       "y": -1071.666666666666,
       "parent": "node_work_project",
-      "isMirrorOn": false
+      "isMirrorOn": false,
+      "isSyncPoint": false,
+      "parentOnline": "n_1787324375195"
     },
     {
       "id": "node_work_ep",
@@ -133,17 +136,18 @@
       "id": "node_work_nuke_nk",
       "type": "file",
       "name": "nuke_File.nk",
-      "x": 3118.0833333333326,
-      "y": -1085.833333333333,
+      "x": 3105.797619047617,
+      "y": -1077.0476190476181,
       "parent": "node_work_comp",
       "isScene": true,
       "isVariable": true,
-      "variableName": "ESC",
+      "variableName": "NukeFile",
       "nameConfig": {
         "enabled": true,
         "pattern": "[SHOTNAME]_[PROCESO]_[version][ext]",
         "versionPadding": 3
-      }
+      },
+      "isRenderFile": false
     },
     {
       "id": "node_media_unit",
@@ -209,7 +213,9 @@
       "variableName": "EP",
       "isEpisode": true,
       "exampleValue": "B03",
-      "isMirrorOn": true
+      "isMirrorOn": true,
+      "isSyncPoint": true,
+      "parentOnline": "n_1787324582116"
     },
     {
       "id": "node_media_seq",
@@ -263,35 +269,35 @@
       "id": "node_media_fullres",
       "type": "folder",
       "name": "fullres",
-      "x": 2963.3333333333326,
-      "y": 352.77777777777766,
+      "x": 2996.6666666666656,
+      "y": 269.44444444444423,
       "parent": "node_media_nuke",
-      "isRenderFolder": true
+      "isRenderFolder": false
     },
     {
       "id": "node_media_prerender",
       "type": "folder",
       "name": "prerender",
-      "x": 2966.984126984128,
-      "y": 477.69841269841265,
+      "x": 2980.3174603174607,
+      "y": 737.6984126984129,
       "parent": "node_media_nuke",
-      "isRenderFolder": true
+      "isRenderFolder": false
     },
     {
       "id": "node_media_exportia",
       "type": "folder",
       "name": "exportIA",
-      "x": 2959.444444444446,
-      "y": 588.4920634920643,
+      "x": 2986.111111111112,
+      "y": 883.4920634920643,
       "parent": "node_media_nuke",
-      "isRenderFolder": true
+      "isRenderFolder": false
     },
     {
       "id": "n_1787257335300",
       "type": "unit",
       "name": "G",
-      "x": -96.25,
-      "y": -1223.75,
+      "x": -7.583333333333364,
+      "y": -1291.3333333333333,
       "parent": null,
       "isVariable": false
     },
@@ -299,8 +305,8 @@
       "id": "n_1787260641960",
       "type": "folder",
       "name": "IA",
-      "x": 2661.944444444449,
-      "y": 880.5555555555553,
+      "x": 2688.611111111115,
+      "y": 1175.5555555555554,
       "parent": "node_media_shot_id",
       "isRenderFolder": true
     },
@@ -308,8 +314,8 @@
       "id": "n_1787260687088",
       "type": "folder",
       "name": "export",
-      "x": 2958.194444444449,
-      "y": 785.5555555555553,
+      "x": 2984.861111111115,
+      "y": 1080.5555555555554,
       "parent": "n_1787260641960",
       "isRenderFolder": true
     },
@@ -317,8 +323,8 @@
       "id": "n_1787260705337",
       "type": "folder",
       "name": "ref",
-      "x": 2963.194444444449,
-      "y": 874.3055555555553,
+      "x": 2989.861111111115,
+      "y": 1169.3055555555554,
       "parent": "n_1787260641960",
       "isRenderFolder": true
     },
@@ -326,10 +332,91 @@
       "id": "n_1787260709228",
       "type": "folder",
       "name": "enc",
-      "x": 2963.194444444449,
-      "y": 960.5555555555553,
+      "x": 2989.861111111115,
+      "y": 1255.5555555555554,
       "parent": "n_1787260641960",
       "isRenderFolder": true
+    },
+    {
+      "id": "n_1787324375195",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 755.8333333333329,
+      "y": -1296.6666666666667,
+      "parent": "n_1787257335300"
+    },
+    {
+      "id": "n_1787324439017",
+      "type": "unit",
+      "name": "G",
+      "x": 72.75000000000006,
+      "y": 602.3333333333329,
+      "parent": null,
+      "isVariable": false
+    },
+    {
+      "id": "n_1787324442620",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 683.3095238095236,
+      "y": 606.5238095238095,
+      "parent": "n_1787324439017"
+    },
+    {
+      "id": "n_1787324582116",
+      "type": "folder",
+      "name": "media online",
+      "x": 971.8809523809524,
+      "y": 625.095238095238,
+      "parent": "n_1787324442620",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[proyecto]_media",
+        "versionPadding": 3
+      },
+      "isVariable": true,
+      "variableName": "",
+      "isProjectNode": true,
+      "exampleValue": "surf_love"
+    },
+    {
+      "id": "n_1787338396108",
+      "type": "folder",
+      "name": "Render version",
+      "x": 3214.6666666666647,
+      "y": 261.68253968253964,
+      "parent": "node_media_fullres",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]",
+        "versionPadding": 3
+      },
+      "isRenderFolder": true,
+      "isVariable": true
+    },
+    {
+      "id": "n_1787338520954",
+      "type": "folder",
+      "name": "mov",
+      "x": 2975.000000000004,
+      "y": 576.8888888888893,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787340276003",
+      "type": "file",
+      "name": "Full ress de nuke",
+      "x": 3413.238095238093,
+      "y": 263.1111111111111,
+      "parent": "n_1787338396108",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]_[RenderCounter####][ext]",
+        "versionPadding": 4
+      }
     }
   ],
   "connections": [
@@ -368,6 +455,12 @@
       "to": "node_media_shot_id",
       "fromPort": "mirror",
       "toPort": "mirror"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787338396108",
+      "fromPort": "out-render",
+      "toPort": "in-render"
     }
   ],
   "_fileName": "pipeline_test.json"

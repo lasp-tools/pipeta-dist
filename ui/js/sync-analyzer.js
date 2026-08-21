@@ -513,9 +513,6 @@ class SyncAnalyzer {
             this._setStatus(`❌ Error de conexión: ${e.message}`, '#f44336');
             alert(`Error: ${e.message}`);
         }
-
-        // Re-scan to refresh
-        this.runScan(this.scanPath === null);
     }
 
     // --- HELPERS ---

@@ -443,6 +443,77 @@ app.post('/api/rclone/syncBatch', async (req, res) => {
     });
 });
 
+// --- MIRROR REPAIR BATCH ---
+app.post('/api/mirror/repairBatch', async (req, res) => {
+    const { items, mode = 'both', mediaSubfolders, workSubfolders, omitControl = true } = req.body;
+    if (!items || !Array.isArray(items)) return res.status(400).json({ error: 'Missing items array' });
+
+    let repairedCount = 0;
+    const targetMediaSubfolders = (Array.isArray(mediaSubfolders) && mediaSubfolders.length > 0)
+        ? mediaSubfolders
+        : ['IA/enc', 'IA/export', 'IA/ref', 'nuke/exportIA', 'nuke/fullres', 'nuke/prerender', 'in'];
+
+    const targetWorkSubfolders = (Array.isArray(workSubfolders) && workSubfolders.length > 0)
+        ? workSubfolders
+        : ['compo'];
+
+    try {
+        for (const item of items) {
+            const shouldFixMedia = (mode === 'media' || mode === 'both') && (item.status === 'missing-media' || (item.missingMediaFolders && item.missingMediaFolders.length > 0));
+            const shouldFixWork = (mode === 'work' || mode === 'both') && (item.status === 'missing-work' || (item.missingWorkFolders && item.missingWorkFolders.length > 0));
+
+            if (shouldFixMedia && item.mediaPath) {
+                // Ensure media shot base dir
+                await fs.ensureDir(item.mediaPath);
+                // Create missing standard subfolders
+                for (const sub of targetMediaSubfolders) {
+                    await fs.ensureDir(path.join(item.mediaPath, sub));
+                }
+                if (!omitControl) {
+                    const ctrlFile = path.join(item.mediaPath, 'vfx_control.json');
+                    if (!await fs.pathExists(ctrlFile)) {
+                        await fs.writeJson(ctrlFile, {
+                            node_id: item.shot,
+                            type: 'shot',
+                            preset_id: 'pipeline_test',
+                            created_by: 'MirrorAuditor',
+                            created_at: new Date().toISOString()
+                        }, { spaces: 2 });
+                    }
+                }
+                repairedCount++;
+            }
+
+            if (shouldFixWork && item.workPath) {
+                // Ensure work shot base dir
+                await fs.ensureDir(item.workPath);
+                // Create missing standard subfolders
+                for (const sub of targetWorkSubfolders) {
+                    await fs.ensureDir(path.join(item.workPath, sub));
+                }
+                if (!omitControl) {
+                    const ctrlFile = path.join(item.workPath, 'vfx_control.json');
+                    if (!await fs.pathExists(ctrlFile)) {
+                        await fs.writeJson(ctrlFile, {
+                            node_id: item.shot,
+                            type: 'shot',
+                            preset_id: 'pipeline_test',
+                            created_by: 'MirrorAuditor',
+                            created_at: new Date().toISOString()
+                        }, { spaces: 2 });
+                    }
+                }
+                repairedCount++;
+            }
+        }
+
+        res.json({ success: true, repairedCount });
+    } catch (err) {
+        console.error("[MIRROR] Repair error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // --- APP CONTROL ---
 
 app.post('/api/app/close', (req, res) => {

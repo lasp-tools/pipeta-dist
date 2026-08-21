@@ -1448,6 +1448,9 @@ const ShotCreator = {
 
             if (nodeWeight > currentWeight) continue;
 
+            // Skip externally generated nodes (TCL/Nuke generated on render)
+            if (child.isExternalTcl) continue;
+
             // Process/Folder Filter Logic
             const isFilterableNode = (ShotCreator.processNodes || []).concat(ShotCreator.episodeFolderNodes || []).concat(ShotCreator.mediaFolderNodes || []).find(p => p.id === child.id);
             if (isFilterableNode) {

@@ -520,6 +520,7 @@ const ShotDesigner = {
             if (node.isShot) badgesHtml += `<span class="sd-badge sd-badge-item">SHOT</span>`;
             if (node.isRenderFile) badgesHtml += `<span class="sd-badge out-render-badge">RND</span>`;
             if (node.isRenderFolder) badgesHtml += `<span class="sd-badge out-render-badge">R-FOL</span>`;
+            if (node.isExternalTcl) badgesHtml += `<span class="sd-badge" style="background:#00BCD4; color:#000;">TCL</span>`;
 
             if (node.isVariable)
                 badgesHtml += `<span class="sd-badge sd-badge-variable">${node.variableName || 'VAR'}</span>`;
@@ -558,7 +559,7 @@ const ShotDesigner = {
             }
 
             // Render Input Dot (Top/Bottom)
-            if (node.type === 'folder' && node.isRenderFolder) {
+            if ((node.type === 'folder' && node.isRenderFolder) || (node.type === 'file' && node.isRenderFile)) {
                 const renderDot = document.createElement('div');
                 const isMedia = node.y >= 0;
                 renderDot.className = `sd-dot sd-dot-in-render ${isMedia ? 'top' : 'bottom'}`;
@@ -1397,6 +1398,10 @@ const ShotDesigner = {
                                     <input type="checkbox" ${node.isRenderFolder ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isRenderFolder', this.checked); ShotDesigner.renderCanvas();">
                                 </div>
                             ` : ''}
+                            <div style="display:flex; align-items:center;" title="Generación externa por TCL/Nuke. Pipeta documenta su ubicación pero NO crea carpetas vacías en disco.">
+                                <label class="prop-label" style="margin-right:5px; color:#00BCD4; font-size:0.85em;">TCL Ext</label>
+                                <input type="checkbox" ${node.isExternalTcl ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isExternalTcl', this.checked); ShotDesigner.renderCanvas();">
+                            </div>
                         </div>
                     </div>
                     ` : ''}
@@ -1821,6 +1826,46 @@ const ShotDesigner = {
                                 }
                             }
 
+                            // If not found in ancestors, check connected Scene node via in-render connection
+                            if (foundValue === null && ShotDesigner.currentAsset && ShotDesigner.currentAsset.connections) {
+                                let checkRenderNode = n;
+                                let rCheck = 0;
+                                while (checkRenderNode && rCheck < 10) {
+                                    const rConn = ShotDesigner.currentAsset.connections.find(c => c.to === checkRenderNode.id && c.toPort === 'in-render');
+                                    if (rConn) {
+                                        const srcNode = ShotDesigner.currentAsset.nodes.find(sn => sn.id === rConn.from);
+                                        if (srcNode) {
+                                            const srcEffVar = ShotDesigner.getEffectiveVarName(srcNode);
+                                            if (srcNode.isVariable && (srcEffVar.toLowerCase() === varName.toLowerCase() || (srcNode.variableName && srcNode.variableName.toLowerCase() === varName.toLowerCase()))) {
+                                                foundValue = resolveName(srcNode, nextVisited, options);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    checkRenderNode = ShotDesigner.currentAsset.nodes.find(node => node.id === checkRenderNode.parent);
+                                    rCheck++;
+                                }
+                            }
+
+                            // If still not found, search globally across all nodes in the preset for a matching variable (cross-branch / sibling variables)
+                            if (foundValue === null && ShotDesigner.currentAsset && ShotDesigner.currentAsset.nodes) {
+                                const targetNode = ShotDesigner.currentAsset.nodes.find(sn => {
+                                    if (!sn || sn.id === n.id) return false;
+                                    const snEff = ShotDesigner.getEffectiveVarName(sn);
+                                    return sn.isVariable && (
+                                        (sn.variableName && sn.variableName.toLowerCase() === varName.toLowerCase()) ||
+                                        (snEff && snEff.toLowerCase() === varName.toLowerCase())
+                                    );
+                                });
+                                if (targetNode) {
+                                    if (!visited.has(targetNode.id)) {
+                                        foundValue = resolveName(targetNode, nextVisited, options);
+                                    } else {
+                                        foundValue = targetNode.exampleValue || targetNode.name;
+                                    }
+                                }
+                            }
+
                             // If found, replace
                             if (foundValue !== null) {
                                 const paramRegex = new RegExp(`\\[${varName}\\]`, 'gi');
@@ -1864,39 +1909,44 @@ const ShotDesigner = {
                         }
                     }
 
-                    // SceneVersion [SceneVersion]
-                    if (finalName.match(/\[SceneVersion\]/i)) {
-                        let sceVer = "v001"; // Fallback
-                        // Find this node in connections as a target (RenderFolder)
-                        if (ShotDesigner.currentAsset.connections) {
-                            const conn = ShotDesigner.currentAsset.connections.find(c => c.to === n.id && c.toPort === 'in-render');
+                    // Helper to find connected scene node (either directly or via parent/ancestor)
+                    const findConnectedSceneNode = (node) => {
+                        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.connections) return null;
+                        let curr = node;
+                        let sCheck = 0;
+                        while (curr && sCheck < 10) {
+                            const conn = ShotDesigner.currentAsset.connections.find(c => c.to === curr.id && c.toPort === 'in-render');
                             if (conn) {
                                 const sceneNode = ShotDesigner.currentAsset.nodes.find(sn => sn.id === conn.from);
-                                if (sceneNode) {
-                                    // Use local resolution logic for the scene node's version
-                                    const padding = sceneNode.nameConfig?.versionPadding || 3;
-                                    const prefix = (sceneNode.nameConfig?.versionPrefix !== false) ? 'v' : '';
-                                    sceVer = prefix + '1'.padStart(padding, '0');
-                                }
+                                if (sceneNode) return sceneNode;
                             }
+                            curr = ShotDesigner.currentAsset.nodes.find(sn => sn.id === curr.parent);
+                            sCheck++;
                         }
-                        finalName = finalName.replace(/\[SceneVersion\]/gi, sceVer);
+                        return null;
+                    };
+
+                    // SceneVersion [SceneVersion] / [SCE-VER]
+                    if (finalName.match(/\[SceneVersion\]|\[SCE-VER\]/i)) {
+                        let sceVer = "v001"; // Fallback
+                        const sceneNode = findConnectedSceneNode(n);
+                        if (sceneNode) {
+                            const padding = sceneNode.nameConfig?.versionPadding || 3;
+                            const prefix = (sceneNode.nameConfig?.versionPrefix !== false) ? 'v' : '';
+                            sceVer = prefix + '1'.padStart(padding, '0');
+                        }
+                        finalName = finalName.replace(/\[SceneVersion\]|\[SCE-VER\]/gi, sceVer);
                     }
 
-                    // SceneName [SceneName]
-                    if (finalName.match(/\[SceneName\]/i)) {
+                    // SceneName [SceneName] / [SCE-NAM]
+                    if (finalName.match(/\[SceneName\]|\[SCE-NAM\]/i)) {
                         let sceNam = "Scene"; // Fallback
-                        if (ShotDesigner.currentAsset.connections) {
-                            const conn = ShotDesigner.currentAsset.connections.find(c => c.to === n.id && c.toPort === 'in-render');
-                            if (conn) {
-                                const sceneNode = ShotDesigner.currentAsset.nodes.find(sn => sn.id === conn.from);
-                                if (sceneNode) {
-                                    // Use resolved name but skip version and extension for SCE-NAM
-                                    sceNam = resolveName(sceneNode, nextVisited, { skipVersion: true, skipExt: true });
-                                }
-                            }
+                        const sceneNode = findConnectedSceneNode(n);
+                        if (sceneNode) {
+                            // Use resolved name but skip version and extension for SCE-NAM
+                            sceNam = resolveName(sceneNode, nextVisited, { skipVersion: true, skipExt: true });
                         }
-                        finalName = finalName.replace(/\[SceneName\]/gi, sceNam);
+                        finalName = finalName.replace(/\[SceneName\]|\[SCE-NAM\]/gi, sceNam);
                     }
 
                     // Ext [ext]
