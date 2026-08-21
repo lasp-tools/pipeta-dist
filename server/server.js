@@ -239,6 +239,35 @@ app.post('/api/fs/writeFile', async (req, res) => {
     }
 });
 
+// --- FOLDER BROWSER DIALOG ---
+app.post('/api/system/pickFolder', async (req, res) => {
+    const initialPath = req.body?.initialPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets';
+    const { execFile } = require('child_process');
+    
+    const psScript = 'Add-Type -AssemblyName System.Windows.Forms\n' +
+        '$f = New-Object System.Windows.Forms.FolderBrowserDialog\n' +
+        '$f.Description = "Seleccionar carpeta de exportacion de Presets"\n' +
+        '$f.SelectedPath = "' + initialPath.replace(/\\/g, '\\\\').replace(/"/g, '`"') + '"\n' +
+        '$f.ShowNewFolderButton = $true\n' +
+        '$form = New-Object System.Windows.Forms.Form\n' +
+        '$form.TopMost = $true\n' +
+        'if ($f.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {\n' +
+        '    Write-Output $f.SelectedPath\n' +
+        '}\n';
+
+    const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
+    execFile('powershell.exe', ['-NoProfile', '-STA', '-EncodedCommand', b64], { timeout: 120000 }, (err, stdout) => {
+        if (err && err.killed) {
+            return res.json({ canceled: true });
+        }
+        const selected = stdout ? stdout.trim() : '';
+        if (selected) {
+            return res.json({ success: true, path: selected });
+        }
+        res.json({ canceled: true });
+    });
+});
+
 // --- DISK USAGE ---
 app.get('/api/system/diskUsage', async (req, res) => {
     const drives = (req.query.drives || 'C').split(',').map(d => d.trim().toUpperCase().replace(':', ''));

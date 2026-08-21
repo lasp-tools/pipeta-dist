@@ -685,12 +685,18 @@ const settings = {
                     <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
                         <div style="font-weight:bold; color:var(--accent); margin-bottom:8px; font-size:0.9rem;">2. Ruta de Destino de la Exportación</div>
                         <p style="color:#888; font-size:0.8rem; margin-top:0; margin-bottom:8px;">
-                            Por defecto apunta a la carpeta principal de Pipeta en la unidad de red <code>Z:</code> para publicar rápidamente:
+                            Selecciona o examina la carpeta de destino (por defecto en la unidad de red <code>Z:</code> para publicar rápidamente):
                         </p>
-                        <input type="text" id="expTargetPath" class="config-input" 
-                            value="${settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets'}" 
-                            oninput="settings.exportPresetsPath = this.value"
-                            style="width:100%; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="expTargetPath" class="config-input" 
+                                value="${settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets'}" 
+                                oninput="settings.exportPresetsPath = this.value"
+                                style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
+                            <button id="expBrowseBtn" class="btn" onclick="settings.browseExportPath()" 
+                                style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:8px 14px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                <span>📁 Examinar...</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -703,6 +709,29 @@ const settings = {
                 `;
             default:
                 return `<h3>Seleccione una categoría</h3>`;
+        }
+    },
+
+    browseExportPath: async () => {
+        const input = document.getElementById('expTargetPath');
+        const current = (input ? input.value : settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets').trim();
+        const btn = document.getElementById('expBrowseBtn');
+        if (btn) btn.innerHTML = '<span>⏳ Abriendo...</span>';
+        try {
+            const res = await fetch('/api/system/pickFolder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initialPath: current })
+            });
+            const data = await res.json();
+            if (data && data.success && data.path) {
+                if (input) input.value = data.path;
+                settings.exportPresetsPath = data.path;
+            }
+        } catch(e) {
+            console.error("Browse error:", e);
+        } finally {
+            if (btn) btn.innerHTML = '<span>📁 Examinar...</span>';
         }
     },
 
