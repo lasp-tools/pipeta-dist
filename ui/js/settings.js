@@ -20,6 +20,7 @@ const settings = {
 
     // Copy Engine (auto | native)
     copyEngine: 'auto',
+    exportPresetsPath: "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets",
 
     // --- PRESETS LOADING ---
     presetsList: [],
@@ -348,7 +349,8 @@ const settings = {
             { id: 'proyecto', label: '📁 Proyectos' },
             { id: 'interfaz', label: '🎨 Interfaz' },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
-            { id: 'avanzado', label: '⚙️ Avanzado' }
+            { id: 'avanzado', label: '⚙️ Avanzado' },
+            { id: 'exportar', label: '📦 Exportar Presets' }
         ];
 
         return items.map(i => `
@@ -647,8 +649,140 @@ const settings = {
                         </div>
                     </div>
                 `;
+            case 'exportar':
+                return `
+                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">📦 Exportar & Publicar Presets (Dev)</h3>
+                    <p style="color:#aaa; font-size:0.85rem; line-height:1.6;">
+                        Esta herramienta permite respaldar y publicar selectivamente las configuraciones, proyectos y presets de diseño (Shots y Assets) desde tu disco local <code>C:\\</code> hacia la unidad de red <code>Z:\\</code> o cualquier otra carpeta de destino, manteniendo intacto el carpetaje original.
+                    </p>
+
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:12px; font-size:0.9rem;">1. Elementos a Exportar</div>
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptShotDesigner" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>🎬 <b>Presets de Shot Designer</b> (<code>presets/ShotDesigner/*.json</code>)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptAssetDesigner" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>🎨 <b>Presets de Asset Designer</b> (<code>presets/AssetDesigner/*.json</code>)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptProjects" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>📁 <b>Proyectos Configurados</b> (<code>presets/Projects/*.json</code>)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptIaTokens" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>🤖 <b>Tokens Personalizados de IA</b> (<code>presets/ia_custom_tokens.json</code>)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptConfig" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>⚙️ <b>Configuración General</b> (<code>presets/config.json</code>)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px; font-size:0.9rem;">2. Ruta de Destino de la Exportación</div>
+                        <p style="color:#888; font-size:0.8rem; margin-top:0; margin-bottom:8px;">
+                            Por defecto apunta a la carpeta principal de Pipeta en la unidad de red <code>Z:</code> para publicar rápidamente:
+                        </p>
+                        <input type="text" id="expTargetPath" class="config-input" 
+                            value="${settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets'}" 
+                            oninput="settings.exportPresetsPath = this.value"
+                            style="width:100%; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div id="expStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
+                        <button class="btn" onclick="settings.executeExportPresets()" 
+                            style="background:var(--accent); color:black; font-weight:bold; padding:10px 20px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px;">
+                            <span>🚀 EXPORTAR / PUBLICAR PRESETS</span>
+                        </button>
+                    </div>
+                `;
             default:
                 return `<h3>Seleccione una categoría</h3>`;
+        }
+    },
+
+    executeExportPresets: async () => {
+        const targetInput = document.getElementById('expTargetPath');
+        let targetRoot = (targetInput ? targetInput.value : '').trim();
+        if (!targetRoot) {
+            alert("Por favor especifica una ruta de destino válida.");
+            return;
+        }
+        targetRoot = targetRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+
+        const doShot = document.getElementById('expOptShotDesigner')?.checked;
+        const doAsset = document.getElementById('expOptAssetDesigner')?.checked;
+        const doProj = document.getElementById('expOptProjects')?.checked;
+        const doIa = document.getElementById('expOptIaTokens')?.checked;
+        const doConfig = document.getElementById('expOptConfig')?.checked;
+
+        const statusMsg = document.getElementById('expStatusMsg');
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Exportando presets a ' + targetRoot + '...</span>';
+        }
+
+        const localPresetsRoot = "C:/TOOLS/APPS/Pipeta/presets";
+        let exportedCount = 0;
+        let errors = [];
+
+        async function copyDirectory(subfolder) {
+            const srcDir = `${localPresetsRoot}/${subfolder}`;
+            const files = await API.fs.getFiles(srcDir);
+            for (const f of files) {
+                if (f.endsWith('.json')) {
+                    const content = await API.fs.readFile(`${srcDir}/${f}`);
+                    if (content !== null) {
+                        const dstPath = `${targetRoot}/${subfolder}/${f}`;
+                        const res = await API.fs.writeFile(dstPath, content);
+                        if (res && res.success) {
+                            exportedCount++;
+                        } else {
+                            errors.push(`Error al escribir ${dstPath}: ${res?.error || 'Desconocido'}`);
+                        }
+                    }
+                }
+            }
+        }
+
+        async function copySingleFile(fileName) {
+            const srcPath = `${localPresetsRoot}/${fileName}`;
+            const content = await API.fs.readFile(srcPath);
+            if (content !== null) {
+                const dstPath = `${targetRoot}/${fileName}`;
+                const res = await API.fs.writeFile(dstPath, content);
+                if (res && res.success) {
+                    exportedCount++;
+                } else {
+                    errors.push(`Error al escribir ${dstPath}: ${res?.error || 'Desconocido'}`);
+                }
+            }
+        }
+
+        try {
+            if (doShot) await copyDirectory('ShotDesigner');
+            if (doAsset) await copyDirectory('AssetDesigner');
+            if (doProj) await copyDirectory('Projects');
+            if (doIa) await copySingleFile('ia_custom_tokens.json');
+            if (doConfig) await copySingleFile('config.json');
+
+            if (errors.length > 0) {
+                if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">⚠️ ${exportedCount} archivos exportados con ${errors.length} errores.</span>`;
+                alert(`Exportación parcial:\n${exportedCount} archivos exportados.\nErrores:\n${errors.join('\n')}`);
+            } else if (exportedCount === 0) {
+                if (statusMsg) statusMsg.innerHTML = `<span style="color:#ffb74d;">ℹ️ No se encontraron archivos para exportar en las opciones seleccionadas.</span>`;
+            } else {
+                if (statusMsg) statusMsg.innerHTML = `<span style="color:#4caf50;">✅ ¡${exportedCount} archivos exportados con éxito a ${targetRoot}!</span>`;
+                alert(`¡Exportación Exitosa!\nSe copiaron ${exportedCount} archivos y configuraciones a:\n${targetRoot}`);
+            }
+        } catch(e) {
+            console.error("Export error:", e);
+            if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error en la exportación: ${e.message}</span>`;
+            alert("Error al exportar: " + e.message);
         }
     },
 
