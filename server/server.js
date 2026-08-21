@@ -241,22 +241,32 @@ app.post('/api/fs/writeFile', async (req, res) => {
 
 // --- FOLDER BROWSER DIALOG ---
 app.post('/api/system/pickFolder', async (req, res) => {
-    const initialPath = req.body?.initialPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets';
+    let initialPath = req.body?.initialPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets';
+    initialPath = initialPath.replace(/\//g, '\\');
     const { execFile } = require('child_process');
     
     const psScript = 'Add-Type -AssemblyName System.Windows.Forms\n' +
         '$f = New-Object System.Windows.Forms.FolderBrowserDialog\n' +
         '$f.Description = "Seleccionar carpeta de exportacion de Presets"\n' +
-        '$f.SelectedPath = "' + initialPath.replace(/\\/g, '\\\\').replace(/"/g, '`"') + '"\n' +
+        'if (Test-Path "' + initialPath.replace(/"/g, '`"') + '") {\n' +
+        '    $f.SelectedPath = "' + initialPath.replace(/"/g, '`"') + '"\n' +
+        '}\n' +
         '$f.ShowNewFolderButton = $true\n' +
         '$form = New-Object System.Windows.Forms.Form\n' +
         '$form.TopMost = $true\n' +
-        'if ($f.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {\n' +
+        '$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen\n' +
+        '$form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized\n' +
+        '$form.Show()\n' +
+        '$form.BringToFront()\n' +
+        '$res = $f.ShowDialog($form)\n' +
+        '$form.Dispose()\n' +
+        'if ($res -eq [System.Windows.Forms.DialogResult]::OK) {\n' +
+        '    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n' +
         '    Write-Output $f.SelectedPath\n' +
         '}\n';
 
     const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
-    execFile('powershell.exe', ['-NoProfile', '-STA', '-EncodedCommand', b64], { timeout: 120000 }, (err, stdout) => {
+    execFile('powershell.exe', ['-NoProfile', '-STA', '-EncodedCommand', b64], { timeout: 60000 }, (err, stdout) => {
         if (err && err.killed) {
             return res.json({ canceled: true });
         }

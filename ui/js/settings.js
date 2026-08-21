@@ -696,6 +696,10 @@ const settings = {
                                 style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:8px 14px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
                                 <span>📁 Examinar...</span>
                             </button>
+                            <button class="btn" onclick="settings.setDefaultExportPath()" title="Restablecer a la ruta de red por defecto en Z:"
+                                style="background:#222; color:#aaa; border:1px solid #444; border-radius:4px; padding:8px 12px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                <span>↺ Default (Z:)</span>
+                            </button>
                         </div>
                     </div>
 
@@ -710,6 +714,15 @@ const settings = {
             default:
                 return `<h3>Seleccione una categoría</h3>`;
         }
+    },
+
+    setDefaultExportPath: () => {
+        const defaultPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets';
+        const input = document.getElementById('expTargetPath');
+        if (input) input.value = defaultPath;
+        settings.exportPresetsPath = defaultPath;
+        const msg = document.getElementById('expStatusMsg');
+        if (msg) msg.innerHTML = '<span style="color:#aaa;">Ruta restablecida a la ubicación por defecto de Z:</span>';
     },
 
     browseExportPath: async () => {
