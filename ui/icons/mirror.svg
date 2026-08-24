@@ -1,26 +1,62 @@
-<?xml version="1.0" encoding="iso-8859-1"?>
-<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
-<svg height="800px" width="800px" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
-	 viewBox="0 0 512 512" xml:space="preserve">
-<path style="fill:#AFAFAF;" d="M256,17.064v477.872h-4.266c-7.081,0-12.798-5.716-12.798-12.798V29.862
-	c0-7.081,5.716-12.798,12.798-12.798H256z"/>
-<path d="M260.266,0h-8.532c-16.467,0-29.862,13.395-29.862,29.862v452.277c0,16.467,13.395,29.862,29.862,29.862h8.532
-	c16.467,0,29.862-13.395,29.862-29.862V29.862C290.128,13.395,276.733,0,260.266,0z M273.064,482.138
-	c0,7.081-5.716,12.798-12.798,12.798h-8.532c-7.081,0-12.798-5.716-12.798-12.798V29.862c0-7.081,5.716-12.798,12.798-12.798h8.532
-	c7.081,0,12.798,5.716,12.798,12.798V482.138z"/>
-<path style="fill:#7E939E;" d="M273.064,29.862v452.277c0,7.081-5.716,12.798-12.798,12.798H256V17.064h4.266
-	C267.347,17.064,273.064,22.78,273.064,29.862z"/>
-<path d="M198.154,68.426c-3.925-0.853-7.935,1.109-9.641,4.778l-26.364,56.908L40.569,392.468l-14.163,30.544
-	c-1.194,2.645-1.024,5.716,0.597,8.191c1.536,2.474,4.266,3.925,7.167,3.925h162.106c4.693,0,8.532-3.839,8.532-8.532V76.787
-	C204.809,72.777,201.993,69.279,198.154,68.426z M187.745,418.064H47.565l11.859-25.596l102.724-221.744l25.596-55.201V418.064z"/>
-<polygon style="fill:#9B0045;" points="187.745,115.522 187.745,418.064 47.565,418.064 59.425,392.468 162.149,392.468 
-	162.149,170.724 "/>
-<polygon style="fill:#CC004E;" points="162.149,170.724 162.149,392.468 59.425,392.468 "/>
-<path d="M485.594,423.012l-14.163-30.544l-121.58-262.356l-26.364-56.908c-1.706-3.669-5.631-5.546-9.641-4.778
-	c-3.839,0.853-6.655,4.351-6.655,8.361v349.808c0,4.693,3.839,8.532,8.532,8.532H477.83c2.901,0,5.631-1.45,7.167-3.925
-	C486.618,428.729,486.788,425.657,485.594,423.012z M324.255,418.064V115.522l25.596,55.201l102.724,221.744l11.859,25.596H324.255z
-	"/>
-<polygon style="fill:#24067F;" points="464.435,418.064 324.255,418.064 324.255,392.468 418.106,392.468 324.255,184.631 
-	324.255,115.522 349.851,170.724 452.575,392.468 "/>
-<polygon style="fill:#4B1DA1;" points="418.106,392.468 324.255,392.468 324.255,184.631 "/>
+<?xml version="1.0" encoding="utf-8"?><!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg width="800px" height="800px" viewBox="0 0 16 16" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://www.w3.org/2000/svg" version="1.1" id="svg2">
+
+<metadata id="metadata7">
+
+<rdf:RDF>
+
+<cc:Work>
+
+<dc:format>image/svg+xml</dc:format>
+
+<dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+
+<dc:title/>
+
+<dc:date>2015</dc:date>
+
+<dc:creator>
+
+<cc:Agent>
+
+<dc:title>Timothée Giet</dc:title>
+
+</cc:Agent>
+
+</dc:creator>
+
+<cc:license rdf:resource="http://creativecommons.org/licenses/by-sa/4.0/"/>
+
+</cc:Work>
+
+<cc:License rdf:about="http://creativecommons.org/licenses/by-sa/4.0/">
+
+<cc:permits rdf:resource="http://creativecommons.org/ns#Reproduction"/>
+
+<cc:permits rdf:resource="http://creativecommons.org/ns#Distribution"/>
+
+<cc:requires rdf:resource="http://creativecommons.org/ns#Notice"/>
+
+<cc:requires rdf:resource="http://creativecommons.org/ns#Attribution"/>
+
+<cc:permits rdf:resource="http://creativecommons.org/ns#DerivativeWorks"/>
+
+<cc:requires rdf:resource="http://creativecommons.org/ns#ShareAlike"/>
+
+</cc:License>
+
+</rdf:RDF>
+
+</metadata>
+
+<g transform="translate(0 -1036.362)" id="layer1">
+
+<rect y="1036.3622" x="7" height="16.000017" width="2" id="rect830" style="color:#000000;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#e0e0e0;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:.88888973;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;marker:none;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"/>
+
+<path id="path832" d="M6 1038.362v3H2v8h4v1H1v-12z" style="fill:#e0e0e0;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:.88888973px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+
+<path id="path832-3" d="M10 1038.362v3h4v8h-4v1h5v-12z" style="fill:#e0e0e0;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:.88888973px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+
+</g>
+
 </svg>

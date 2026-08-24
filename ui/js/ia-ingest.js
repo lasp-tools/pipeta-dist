@@ -48,10 +48,12 @@ function initIaResizer() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initIaResizer, 300);
+    initIaResizer();
+    initIaDropZone();
+    loadCustomTokens();
     setTimeout(() => {
-        if (typeof refreshIaHierarchy === 'function') refreshIaHierarchy();
-    }, 500);
+        refreshIaHierarchy();
+    }, 200);
 });
 
 // --- 1. GESTIÓN DE CONTEXTO DE SHOT (EXPLORADOR GUIADO / MANUAL) ---
@@ -79,24 +81,203 @@ function setIaContextMode(mode) {
         if (manualBtn) { manualBtn.style.background = '#333'; manualBtn.style.color = '#aaa'; }
         if (!iaHierarchy.episodes || iaHierarchy.episodes.length === 0) {
             refreshIaHierarchy();
+        } else {
+            const shotSelect = document.getElementById('iaShotSelect');
+            if (shotSelect && shotSelect.value) {
+                handleIaShotChange(shotSelect.value);
+            }
         }
     } else {
         if (guidedBox) guidedBox.style.display = 'none';
         if (manualBox) manualBox.style.display = 'block';
         if (guidedBtn) { guidedBtn.style.background = '#333'; guidedBtn.style.color = '#aaa'; }
         if (manualBtn) { manualBtn.style.background = 'var(--accent)'; manualBtn.style.color = 'black'; }
+        updateIaResolution();
     }
 }
 
 function getIaProjectRoots() {
-    const proj = (typeof settings !== 'undefined' && settings.currentProject) ? settings.currentProject : null;
+    let proj = (typeof settings !== 'undefined' && settings.currentProject) ? settings.currentProject : null;
+    if (!proj && typeof settings !== 'undefined' && settings.projects && settings.projects.length > 0) {
+        const activeId = localStorage.getItem('pipeta_active_project_id');
+        proj = settings.projects.find(p => p.id === activeId) || settings.projects[0];
+        if (proj && typeof settings !== 'undefined') settings.currentProject = proj;
+    }
     const workRoot = proj?.roots?.work ? proj.roots.work.replace(/\\/g, '/') : "Z:/atresmedia/surf_love";
     const mediaRoot = proj?.roots?.media ? proj.roots.media.replace(/\\/g, '/') : "Z:/INTERNO/MEDIA/atresmedia/surf_love";
-    return { workRoot, mediaRoot };
+    return { workRoot, mediaRoot, project: proj };
+}
+
+function getEffectiveIaPresets() {
+    let proj = (typeof settings !== 'undefined' && settings.currentProject) ? settings.currentProject : null;
+    let baseProj = (typeof settings !== 'undefined' && typeof settings.getBaseProject === 'function') 
+        ? settings.getBaseProject() 
+        : null;
+
+    const canonFallback = {
+        defaultImageEngine: "NB2P",
+        defaultVideoEngine: "SD2",
+        defaultFraming: "FLL",
+        defaultTagRoleA: "start1001",
+        defaultTagRoleB: "inp",
+        defaultTagRoleC: "i2v",
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
+        motorsImage: ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        framings: ["FLL", "CRP"],
+        tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
+        tagsB: ["inp", "ups", "mask", "clean", "elem"],
+        tagsC: ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"],
+        resolutionTranslations: [
+            { detected: "1920x1080", tag: "FHD" },
+            { detected: "3840x2160", tag: "UHD" },
+            { detected: "1080x1920", tag: "916" },
+            { detected: "1080x1080", tag: "SQ1K" },
+            { detected: "2560x1080", tag: "UW2K" },
+            { detected: "1280x720", tag: "HD" }
+        ]
+    };
+
+    const baseIa = baseProj?.iaPresets || canonFallback;
+    const isBase = proj?.id === 'proj_base' || proj?.isBase;
+    const hasOverride = isBase || proj?.overrideBasePresets === true;
+    
+    if (hasOverride && proj?.iaPresets) {
+        return {
+            defaultImageEngine: proj.iaPresets.defaultImageEngine || baseIa.defaultImageEngine || "NB2P",
+            defaultVideoEngine: proj.iaPresets.defaultVideoEngine || baseIa.defaultVideoEngine || "SD2",
+            defaultFraming: proj.iaPresets.defaultFraming || baseIa.defaultFraming || "FLL",
+            defaultTagRoleA: typeof proj.iaPresets.defaultTagRoleA !== 'undefined' ? proj.iaPresets.defaultTagRoleA : baseIa.defaultTagRoleA,
+            defaultTagRoleB: typeof proj.iaPresets.defaultTagRoleB !== 'undefined' ? proj.iaPresets.defaultTagRoleB : baseIa.defaultTagRoleB,
+            defaultTagRoleC: typeof proj.iaPresets.defaultTagRoleC !== 'undefined' ? proj.iaPresets.defaultTagRoleC : baseIa.defaultTagRoleC,
+            motorsVideo: Array.isArray(proj.iaPresets.motorsVideo) && proj.iaPresets.motorsVideo.length > 0 ? proj.iaPresets.motorsVideo : (baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"]),
+            motorsImage: Array.isArray(proj.iaPresets.motorsImage) && proj.iaPresets.motorsImage.length > 0 ? proj.iaPresets.motorsImage : (baseIa.motorsImage || ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"]),
+            framings: Array.isArray(proj.iaPresets.framings) && proj.iaPresets.framings.length > 0 ? proj.iaPresets.framings : baseIa.framings,
+            tagsA: Array.isArray(proj.iaPresets.tagsA) && proj.iaPresets.tagsA.length > 0 ? proj.iaPresets.tagsA : baseIa.tagsA,
+            tagsB: Array.isArray(proj.iaPresets.tagsB) && proj.iaPresets.tagsB.length > 0 ? proj.iaPresets.tagsB : baseIa.tagsB,
+            tagsC: Array.isArray(proj.iaPresets.tagsC) && proj.iaPresets.tagsC.length > 0 ? proj.iaPresets.tagsC : baseIa.tagsC,
+            resolutionTranslations: Array.isArray(proj.iaPresets.resolutionTranslations) && proj.iaPresets.resolutionTranslations.length > 0 ? proj.iaPresets.resolutionTranslations : baseIa.resolutionTranslations
+        };
+    }
+
+    return {
+        defaultImageEngine: baseIa.defaultImageEngine || "NB2P",
+        defaultVideoEngine: baseIa.defaultVideoEngine || "SD2",
+        defaultFraming: baseIa.defaultFraming || "FLL",
+        defaultTagRoleA: typeof baseIa.defaultTagRoleA !== 'undefined' ? baseIa.defaultTagRoleA : "start1001",
+        defaultTagRoleB: typeof baseIa.defaultTagRoleB !== 'undefined' ? baseIa.defaultTagRoleB : "inp",
+        defaultTagRoleC: typeof baseIa.defaultTagRoleC !== 'undefined' ? baseIa.defaultTagRoleC : "i2v",
+        motorsVideo: baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
+        motorsImage: baseIa.motorsImage || ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        framings: baseIa.framings || ["FLL", "CRP"],
+        tagsA: baseIa.tagsA || ["start1001", "end1100", "f1001", "ref", "ref1050"],
+        tagsB: baseIa.tagsB || ["inp", "ups", "mask", "clean", "elem"],
+        tagsC: baseIa.tagsC || ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"],
+        resolutionTranslations: baseIa.resolutionTranslations || canonFallback.resolutionTranslations
+    };
+}
+
+function populateIaTokenSelectsFromProject() {
+    const effective = getEffectiveIaPresets();
+    const isSimple = window.iaWorkMode === 'simple';
+
+    // 1. Motor Select (Agrupado en Video e Imagen)
+    const motorSel = document.getElementById('tokMotorSelect');
+    if (motorSel) {
+        const curVal = motorSel.value;
+        const vList = effective.motorsVideo || [];
+        const iList = effective.motorsImage || [];
+
+        let html = '';
+        if (vList.length > 0) {
+            html += `<optgroup label="🎬 Motores de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+        }
+        if (iList.length > 0) {
+            html += `<optgroup label="🖼️ Motores de Imagen">` + iList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+        }
+        if (!isSimple) {
+            html += `<option value="custom">✍️ Manual / Otro...</option>`;
+        }
+        motorSel.innerHTML = html;
+
+        const allMotors = [...vList, ...iList];
+        if (curVal && (allMotors.includes(curVal) || curVal === 'custom')) {
+            motorSel.value = curVal;
+        } else if (vList.includes(effective.defaultVideoEngine)) {
+            motorSel.value = effective.defaultVideoEngine;
+        } else if (allMotors.length > 0) {
+            motorSel.value = allMotors[0];
+        }
+    }
+
+    // 2. Framing Select
+    const framingSel = document.getElementById('tokFramingSelect');
+    if (framingSel) {
+        const curVal = framingSel.value;
+        const list = effective.framings || ["FLL", "CRP"];
+        framingSel.innerHTML = list.map(f => `<option value="${f}">${f}</option>`).join('') +
+            (!isSimple ? `<option value="custom">✍️ Manual / Otro...</option>` : '');
+        if (curVal && (list.includes(curVal) || curVal === 'custom')) {
+            framingSel.value = curVal;
+        } else if (list.includes(effective.defaultFraming)) {
+            framingSel.value = effective.defaultFraming;
+        }
+    }
+
+    // 3. Tag Level A
+    const tagASel = document.getElementById('tokTagALevel');
+    if (tagASel) {
+        const curVal = tagASel.value;
+        const list = effective.tagsA || ["start1001", "end1100", "f1001", "ref", "ref1050"];
+        tagASel.innerHTML = `<option value="">- Nivel A (Ninguno) -</option>` +
+            list.map(t => `<option value="${t}">${t}</option>`).join('') +
+            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+            tagASel.value = curVal;
+        } else if (effective.defaultTagRoleA && list.includes(effective.defaultTagRoleA)) {
+            tagASel.value = effective.defaultTagRoleA;
+        } else {
+            tagASel.value = '';
+        }
+    }
+
+    // 4. Tag Level B
+    const tagBSel = document.getElementById('tokTagBLevel');
+    if (tagBSel) {
+        const curVal = tagBSel.value;
+        const list = effective.tagsB || ["inp", "ups", "mask", "clean", "elem"];
+        tagBSel.innerHTML = `<option value="">- Nivel B (Ninguno) -</option>` +
+            list.map(t => `<option value="${t}">${t}</option>`).join('') +
+            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+            tagBSel.value = curVal;
+        } else if (effective.defaultTagRoleB && list.includes(effective.defaultTagRoleB)) {
+            tagBSel.value = effective.defaultTagRoleB;
+        } else {
+            tagBSel.value = '';
+        }
+    }
+
+    // 5. Tag Level C
+    const tagCSel = document.getElementById('tokTagCLevel');
+    if (tagCSel) {
+        const curVal = tagCSel.value;
+        const list = effective.tagsC || ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"];
+        tagCSel.innerHTML = `<option value="">- Nivel C (Ninguno) -</option>` +
+            list.map(t => `<option value="${t}">${t}</option>`).join('') +
+            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+            tagCSel.value = curVal;
+        } else if (effective.defaultTagRoleC && list.includes(effective.defaultTagRoleC)) {
+            tagCSel.value = effective.defaultTagRoleC;
+        } else {
+            tagCSel.value = '';
+        }
+    }
 }
 
 async function refreshIaHierarchy() {
-    const { workRoot } = getIaProjectRoots();
+    populateIaTokenSelectsFromProject();
+    const { workRoot, mediaRoot } = getIaProjectRoots();
     const epSelect = document.getElementById('iaEpSelect');
     const seqSelect = document.getElementById('iaSeqSelect');
     const shotSelect = document.getElementById('iaShotSelect');
@@ -120,16 +301,21 @@ async function refreshIaHierarchy() {
         }
 
         if (dirData && dirData.items) {
-            iaHierarchy.episodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+            iaHierarchy.episodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
         } else {
             iaHierarchy.episodes = [];
         }
 
         if (iaHierarchy.episodes.length > 0) {
+            // Si no hay episodio seleccionado o el previo no existe, tomar el primero
+            if (!iaSelectedEp || !iaHierarchy.episodes.includes(iaSelectedEp)) {
+                iaSelectedEp = iaHierarchy.episodes[0];
+            }
+
             epSelect.innerHTML = '<option value="">-- Seleccionar Episodio --</option>' +
                 iaHierarchy.episodes.map(e => `<option value="${e}" ${e === iaSelectedEp ? 'selected' : ''}>${e}</option>`).join('');
             
-            if (iaSelectedEp && iaHierarchy.episodes.includes(iaSelectedEp)) {
+            if (iaSelectedEp) {
                 await handleIaEpChange(iaSelectedEp);
             }
         } else {
@@ -170,17 +356,21 @@ async function handleIaEpChange(ep) {
         }
 
         if (dirData && dirData.items) {
-            iaHierarchy.scenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+            iaHierarchy.scenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
         } else {
             iaHierarchy.scenes = [];
         }
 
         if (iaHierarchy.scenes.length > 0) {
+            if (!iaSelectedSeq || !iaHierarchy.scenes.includes(iaSelectedSeq)) {
+                iaSelectedSeq = iaHierarchy.scenes[0];
+            }
+
             seqSelect.innerHTML = '<option value="">-- Seleccionar Escena --</option>' +
                 iaHierarchy.scenes.map(s => `<option value="${s}" ${s === iaSelectedSeq ? 'selected' : ''}>${s}</option>`).join('');
             seqSelect.disabled = false;
 
-            if (iaSelectedSeq && iaHierarchy.scenes.includes(iaSelectedSeq)) {
+            if (iaSelectedSeq) {
                 await handleIaSeqChange(iaSelectedSeq);
             }
         } else {
@@ -215,17 +405,21 @@ async function handleIaSeqChange(seq) {
         }
 
         if (dirData && dirData.items) {
-            iaHierarchy.shots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.')).map(i => i.name);
+            iaHierarchy.shots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
         } else {
             iaHierarchy.shots = [];
         }
 
         if (iaHierarchy.shots.length > 0) {
+            if (!iaSelectedShot || !iaHierarchy.shots.includes(iaSelectedShot)) {
+                iaSelectedShot = iaHierarchy.shots[0];
+            }
+
             shotSelect.innerHTML = '<option value="">-- Seleccionar Shot --</option>' +
                 iaHierarchy.shots.map(sh => `<option value="${sh}" ${sh === iaSelectedShot ? 'selected' : ''}>${sh}</option>`).join('');
             shotSelect.disabled = false;
 
-            if (iaSelectedShot && iaHierarchy.shots.includes(iaSelectedShot)) {
+            if (iaSelectedShot) {
                 handleIaShotChange(iaSelectedShot);
             }
         } else {
@@ -282,11 +476,8 @@ async function updateIaResolution() {
     if (!shotId) return;
 
     try {
-        let mediaRoot = '';
-        if (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.roots) {
-            mediaRoot = settings.currentProject.roots.media || settings.currentProject.roots.work;
-        }
-        const res = await fetch(`/api/ia/resolve-shot?shotId=${encodeURIComponent(shotId)}&mediaRoot=${encodeURIComponent(mediaRoot)}`);
+        const { workRoot, mediaRoot } = getIaProjectRoots();
+        const res = await fetch(`/api/ia/resolve-shot?shotId=${encodeURIComponent(shotId)}&mediaRoot=${encodeURIComponent(mediaRoot)}&workRoot=${encodeURIComponent(workRoot)}`);
         const data = await res.json();
         if (data.iaPath) {
             iaCurrentResolvedIaPath = data.iaPath;
@@ -406,20 +597,58 @@ function getIaTokenValues(itemIndexOffset = 0) {
 }
 
 // --- 3. ACTUALIZACIÓN DE PREVIEW Y TABLA ---
+let iaActiveSubfolders = new Set(['wip']);
+
+function iaToggleSubfolder(key) {
+    if (iaActiveSubfolders.has(key)) {
+        if (iaActiveSubfolders.size > 1) {
+            iaActiveSubfolders.delete(key);
+        }
+    } else {
+        iaActiveSubfolders.add(key);
+    }
+    updateIaSubfolderButtonsUI();
+    updateIaPreview();
+}
+
+function updateIaSubfolderButtonsUI() {
+    const btnWip = document.getElementById('iaToggleBtnWip');
+    const btnRef = document.getElementById('iaToggleBtnRef');
+    const btnExport = document.getElementById('iaToggleBtnExport');
+    if (btnWip) btnWip.className = 'ia-subfolder-toggle-btn' + (iaActiveSubfolders.has('wip') ? ' active-wip' : '');
+    if (btnRef) btnRef.className = 'ia-subfolder-toggle-btn' + (iaActiveSubfolders.has('ref') ? ' active-ref' : '');
+    if (btnExport) btnExport.className = 'ia-subfolder-toggle-btn' + (iaActiveSubfolders.has('export') ? ' active-export' : '');
+}
+
 function getTargetFolderForItem(subfolderKey) {
-    const baseIaPath = document.getElementById('iaResolvedPath')?.innerText || iaCurrentResolvedIaPath;
+    let baseIaPath = iaCurrentResolvedIaPath;
+    const pathEl = document.getElementById('iaResolvedPath');
+    if (pathEl && pathEl.innerText && !pathEl.innerText.includes('Cargando') && !pathEl.innerText.includes('Error')) {
+        baseIaPath = pathEl.innerText.trim();
+    }
+    if (!baseIaPath) {
+        const { mediaRoot } = getIaProjectRoots();
+        const shotId = document.getElementById('iaShotIdInput')?.value.trim() || 'SURF_B03_066_1200';
+        const parts = shotId.split('_');
+        const ep = parts[1] || 'B03';
+        const seq = parts[2] || '066';
+        baseIaPath = `${mediaRoot}/episodios/${ep}/secuencias/${seq}/shots/${shotId}/IA`;
+    }
     let targetFolder = baseIaPath;
     if (subfolderKey === 'ref') targetFolder += '/ref';
     else if (subfolderKey === 'export') targetFolder += '/export';
+    else if (subfolderKey === 'enc') targetFolder += '/enc';
     return targetFolder;
 }
 
 function updateIaPreview() {
-    const selectedSubfolder = document.getElementById('iaSubfolderSelect')?.value || 'root';
+    // Determinar la subcarpeta primaria basada en los botones toggle activos
+    let selectedSubfolder = 'root';
+    if (iaActiveSubfolders.has('wip')) selectedSubfolder = 'root';
+    else if (iaActiveSubfolders.has('ref')) selectedSubfolder = 'ref';
+    else if (iaActiveSubfolders.has('export')) selectedSubfolder = 'export';
 
     // Determinar qué ítems se deben modificar con el builder de tokens actual:
-    // Si el usuario tiene filas seleccionadas explícitamente (iaSelectedIds), modifica ÚNICAMENTE esas filas.
-    // De lo contrario, modifica los elementos marcados (checked) en la lista.
     const targetItems = iaSelectedIds.size > 0 
         ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
         : iaBatchQueue.filter(i => i.checked);
@@ -483,7 +712,7 @@ function detectMediaDimensions(item) {
         if (!item) return resolve(null);
         let src = '';
         if (item.file) {
-            src = URL.createObjectURL(item.file);
+            try { src = URL.createObjectURL(item.file); } catch(e) {}
         } else if (item.originalPath && !item.originalPath.startsWith('[')) {
             src = `/api/ia/file-preview?path=${encodeURIComponent(item.originalPath)}`;
         }
@@ -532,8 +761,21 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
         const h = dims.height;
         const dimStr = `${w}x${h}`;
 
+        const effective = getEffectiveIaPresets();
+        const translationRules = effective.resolutionTranslations || [
+            { detected: "1920x1080", tag: "FHD" },
+            { detected: "3840x2160", tag: "UHD" },
+            { detected: "1080x1920", tag: "916" },
+            { detected: "1080x1080", tag: "SQ1K" },
+            { detected: "2560x1080", tag: "UW2K" },
+            { detected: "1280x720", tag: "HD" }
+        ];
+
         let matchedVal = '';
-        if (w === 1920 && h === 1080) matchedVal = 'FHD';
+        const foundRule = translationRules.find(r => r.detected === dimStr || r.detected.toLowerCase() === dimStr.toLowerCase());
+        if (foundRule) {
+            matchedVal = foundRule.tag;
+        } else if (w === 1920 && h === 1080) matchedVal = 'FHD';
         else if (w === 3840 && h === 2160) matchedVal = 'UHD';
         else if (w === 1280 && h === 720) matchedVal = 'HD';
         else if (w === 1024 && h === 1024) matchedVal = 'SQ1K';
@@ -548,19 +790,39 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
         }
 
         if (matchedVal) {
+            let optExists = Array.from(resSelect.options).some(o => o.value === matchedVal);
+            if (!optExists) {
+                const newOpt = document.createElement('option');
+                newOpt.value = matchedVal;
+                newOpt.innerText = `${matchedVal} (${dimStr})`;
+                resSelect.appendChild(newOpt);
+            }
             resSelect.value = matchedVal;
             if (resCustomInput) resCustomInput.style.display = 'none';
         } else {
-            resSelect.value = 'custom';
-            if (resCustomInput) {
-                resCustomInput.style.display = 'block';
-                resCustomInput.value = dimStr;
+            const isSimple = window.iaWorkMode === 'simple';
+            if (isSimple) {
+                let optExists = Array.from(resSelect.options).some(o => o.value === dimStr);
+                if (!optExists) {
+                    const newOpt = document.createElement('option');
+                    newOpt.value = dimStr;
+                    newOpt.innerText = dimStr;
+                    resSelect.appendChild(newOpt);
+                }
+                resSelect.value = dimStr;
+                if (resCustomInput) resCustomInput.style.display = 'none';
+            } else {
+                resSelect.value = 'custom';
+                if (resCustomInput) {
+                    resCustomInput.style.display = 'block';
+                    resCustomInput.value = dimStr;
+                }
             }
         }
 
         item.autoResDetected = dimStr;
         updateIaPreview();
-        showIaAlert(`📐 Metadata de resolución autodetectada: ${dimStr} (${matchedVal || 'Custom'})`, "#4caf50");
+        showIaAlert(`📐 Metadata de resolución autodetectada: ${dimStr} (${matchedVal || dimStr})`, "#4caf50");
     } catch(e) {
         console.error("Auto detect resolution error:", e);
     }
@@ -585,13 +847,13 @@ function updateIaMediaPreview(activeItem) {
         placeholder.innerText = '📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)';
         imgEl.style.display = 'none';
         videoEl.style.display = 'none';
-        videoEl.pause();
+        if (typeof videoEl.pause === 'function') videoEl.pause();
         return;
     }
 
     let previewUrl = '';
     if (activeItem.file) {
-        previewUrl = URL.createObjectURL(activeItem.file);
+        try { previewUrl = URL.createObjectURL(activeItem.file); } catch(e) {}
     } else if (activeItem.originalPath && !activeItem.originalPath.startsWith('[')) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
     }
@@ -609,7 +871,7 @@ function updateIaMediaPreview(activeItem) {
     } else if (previewUrl && isImage) {
         placeholder.style.display = 'none';
         videoEl.style.display = 'none';
-        videoEl.pause();
+        if (typeof videoEl.pause === 'function') videoEl.pause();
         imgEl.style.display = 'block';
         imgEl.src = previewUrl;
     } else {
@@ -617,16 +879,26 @@ function updateIaMediaPreview(activeItem) {
         placeholder.innerText = `📄 ${activeItem.originalName} (${ext.toUpperCase() || 'Archivo'})`;
         imgEl.style.display = 'none';
         videoEl.style.display = 'none';
-        videoEl.pause();
+        if (typeof videoEl.pause === 'function') videoEl.pause();
     }
 }
 
 // --- 4. MANEJO DE SELECCIÓN Y DRAG & DROP MULTI-ARCHIVO ---
 function handleIaFileSelect(input) {
     if (input.files && input.files.length > 0) {
-        iaSelectedIds.clear(); // Limpiar selección previa para enfocar los nuevos archivos
-        const initialSubfolder = document.getElementById('iaSubfolderSelect')?.value || 'root';
-        Array.from(input.files).forEach(file => {
+        iaSelectedIds.clear();
+
+        const effective = getEffectiveIaPresets();
+        const defaultImgMotor = effective.defaultImageEngine || 'MJ';
+        const defaultVidMotor = effective.defaultVideoEngine || 'SD2';
+
+        let initialSubfolder = 'root';
+        if (iaActiveSubfolders.has('wip')) initialSubfolder = 'root';
+        else if (iaActiveSubfolders.has('ref')) initialSubfolder = 'ref';
+        else if (iaActiveSubfolders.has('export')) initialSubfolder = 'export';
+
+        const fileArray = Array.from(input.files);
+        fileArray.forEach((file, idx) => {
             const extIndex = file.name.lastIndexOf('.');
             const ext = extIndex !== -1 ? file.name.substring(extIndex) : '.mp4';
             const originalPath = file.path || file.webkitRelativePath || file.name;
@@ -645,6 +917,23 @@ function handleIaFileSelect(input) {
             };
             iaBatchQueue.push(newItem);
             iaSelectedIds.add(newItem.id);
+
+            // Si es el primer archivo, ajustar motor inteligente por extensión
+            if (idx === 0) {
+                const isImg = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext.toLowerCase());
+                const motorSelect = document.getElementById('tokMotorSelect');
+                if (motorSelect) {
+                    const targetMotor = isImg ? defaultImgMotor : defaultVidMotor;
+                    let hasOpt = Array.from(motorSelect.options).some(o => o.value === targetMotor);
+                    if (!hasOpt) {
+                        const newOpt = document.createElement('option');
+                        newOpt.value = targetMotor;
+                        newOpt.innerText = targetMotor;
+                        motorSelect.appendChild(newOpt);
+                    }
+                    motorSelect.value = targetMotor;
+                }
+            }
         });
 
         document.getElementById('iaFileNameDisplay').innerText = `${iaBatchQueue.length} archivo(s) en lista`;
@@ -869,7 +1158,8 @@ function populateCustomOptions(selectId, customArray = []) {
 
 async function saveCustomTokensIfRequested() {
     const saveChecked = document.getElementById('iaSaveCustomCheck')?.checked;
-    if (!saveChecked) return;
+    const isDev = typeof settings !== 'undefined' && settings.devMode;
+    if (!saveChecked && !isDev) return;
 
     const getValIfCustom = (selectId, customInputId) => {
         const sel = document.getElementById(selectId)?.value;
@@ -898,6 +1188,61 @@ async function saveCustomTokensIfRequested() {
         } catch(e) {
             console.error("Error al guardar tokens personalizados", e);
         }
+
+        // Si Dev Mode está encendido, incorporar automáticamente al Proyecto Base
+        if (isDev) {
+            const baseProj = typeof settings.getBaseProject === 'function' ? settings.getBaseProject() : null;
+            if (baseProj && baseProj.iaPresets) {
+                let modified = false;
+                payload.motors.forEach(m => {
+                    if (!baseProj.iaPresets.motors.includes(m)) {
+                        baseProj.iaPresets.motors.push(m);
+                        modified = true;
+                    }
+                });
+                payload.framings.forEach(f => {
+                    if (!baseProj.iaPresets.framings.includes(f)) {
+                        baseProj.iaPresets.framings.push(f);
+                        modified = true;
+                    }
+                });
+                payload.tagsA.forEach(t => {
+                    if (!baseProj.iaPresets.tagsA.includes(t)) {
+                        baseProj.iaPresets.tagsA.push(t);
+                        modified = true;
+                    }
+                });
+                payload.tagsB.forEach(t => {
+                    if (!baseProj.iaPresets.tagsB.includes(t)) {
+                        baseProj.iaPresets.tagsB.push(t);
+                        modified = true;
+                    }
+                });
+                payload.tagsC.forEach(t => {
+                    if (!baseProj.iaPresets.tagsC.includes(t)) {
+                        baseProj.iaPresets.tagsC.push(t);
+                        modified = true;
+                    }
+                });
+                payload.resolutions.forEach(r => {
+                    const exists = baseProj.iaPresets.resolutionTranslations?.some(x => x.detected === r || x.tag === r);
+                    if (!exists) {
+                        if (!Array.isArray(baseProj.iaPresets.resolutionTranslations)) baseProj.iaPresets.resolutionTranslations = [];
+                        baseProj.iaPresets.resolutionTranslations.push({ detected: r, tag: r });
+                        modified = true;
+                    }
+                });
+
+                if (modified) {
+                    if (window.API && API.fs && API.fs.writeFile) {
+                        const filePath = (settings.projectsPath || "C:\\TOOLS\\APPS\\Pipeta\\presets\\Projects") + "\\base.json";
+                        await API.fs.writeFile(filePath, JSON.stringify(baseProj, null, 2));
+                    }
+                    populateIaTokenSelectsFromProject();
+                    showIaAlert("🛠️ Dev Mode: Tokens manuales incorporados al Proyecto Base local", "#ff9800");
+                }
+            }
+        }
     }
 }
 
@@ -913,6 +1258,12 @@ async function executeIaIngestBatch() {
     const baseIaPath = document.getElementById('iaResolvedPath')?.innerText || iaCurrentResolvedIaPath;
 
     showIaAlert(`⏳ Ingestando ${checkedItems.length} archivo(s)...`, "#ff9800");
+
+    // Recolectar todas las carpetas de destino activas
+    const activeTargets = [];
+    if (iaActiveSubfolders.has('wip') || iaActiveSubfolders.size === 0) activeTargets.push(baseIaPath);
+    if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
+    if (iaActiveSubfolders.has('export')) activeTargets.push(baseIaPath + '/export');
 
     for (let i = 0; i < checkedItems.length; i++) {
         const item = checkedItems[i];
@@ -933,49 +1284,59 @@ async function executeIaIngestBatch() {
                 });
             }
 
-            // Ingestar a destino principal (ej: /IA/ref/ o /IA/export/ o /IA/)
-            const res = await fetch('/api/ia/ingest', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    targetFolder: item.targetFolder,
-                    filename: item.canonicalName,
-                    sourcePath: sourceFilePath,
-                    fileData: fileDataBase64
-                })
-            });
+            // Ingestar a cada una de las carpetas de destino seleccionadas
+            let allSuccess = true;
+            let lastErr = '';
 
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                const data = await res.json();
-                if (data && data.success) {
-                    item.status = '✓ Ingestado';
+            for (const targetDir of activeTargets) {
+                const res = await fetch('/api/ia/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        targetFolder: targetDir,
+                        filename: item.canonicalName,
+                        sourcePath: sourceFilePath,
+                        fileData: fileDataBase64
+                    })
+                });
 
-                    // Si copyRootChecked está encendido y la subcarpeta no es raíz, copiar también en la raíz /IA/
-                    if (copyRootChecked && item.subfolder !== 'root' && baseIaPath) {
-                        try {
-                            await fetch('/api/ia/ingest', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    targetFolder: baseIaPath,
-                                    filename: item.canonicalName,
-                                    sourcePath: sourceFilePath,
-                                    fileData: fileDataBase64
-                                })
-                            });
-                        } catch(eRoot) {
-                            console.error("Error al duplicar en raíz /IA/", eRoot);
-                        }
+                const contentType = res.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await res.json();
+                    if (!data || !data.success) {
+                        allSuccess = false;
+                        lastErr = data ? data.error : 'Error desconocido';
                     }
-
                 } else {
-                    item.status = `❌ ${data ? data.error : 'Error'}`;
+                    allSuccess = false;
+                    lastErr = `Error HTTP ${res.status}`;
+                }
+            }
+
+            if (allSuccess) {
+                item.status = '✓ Ingestado';
+
+                // Si copyRootChecked está encendido y la raíz no estaba entre los targets primarios
+                if (copyRootChecked && !iaActiveSubfolders.has('wip') && baseIaPath) {
+                    try {
+                        await fetch('/api/ia/ingest', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                targetFolder: baseIaPath,
+                                filename: item.canonicalName,
+                                sourcePath: sourceFilePath,
+                                fileData: fileDataBase64
+                            })
+                        });
+                    } catch(eRoot) {
+                        console.error("Error al duplicar en raíz /IA/", eRoot);
+                    }
                 }
             } else {
-                const textErr = await res.text();
-                item.status = `❌ Error ${res.status}`;
+                item.status = `❌ ${lastErr || 'Error'}`;
             }
+
         } catch (e) {
             item.status = `❌ ${e.message}`;
         }
@@ -987,6 +1348,75 @@ async function executeIaIngestBatch() {
 
     showIaAlert(`✓ Procesamiento por lote completado.`, "#4caf50");
     updateIaResolution(); // Recalcular siguiente versión base
+}
+
+// --- 8.5 WORK MODE SWITCHER (ADVANCED / SIMPLE) ---
+window.iaWorkMode = 'advanced';
+
+function switchIaWorkMode(mode) {
+    window.iaWorkMode = mode;
+    if (typeof updateHeaderTools === 'function') {
+        updateHeaderTools('view-ia-ingest');
+    }
+    
+    const isSimple = mode === 'simple';
+    
+    // 1. Target Context: Forzar Explorador y ocultar switcher de manual
+    const modeBtnContainer = document.getElementById('iaModeGuidedBtn')?.parentElement;
+    if (modeBtnContainer) modeBtnContainer.style.display = isSimple ? 'none' : 'flex';
+    if (isSimple) setIaContextMode('guided');
+
+    // 2. Watcher Container: Ocultar en Simple
+    const watcherBox = document.getElementById('iaWatcherAutoBox');
+    if (watcherBox) watcherBox.style.display = isSimple ? 'none' : 'block';
+
+    // 3. Name Builder Fields en Modo Simple
+    const tokShotIdToggle = document.getElementById('tokShotIdToggle');
+    if (tokShotIdToggle) {
+        if (isSimple) {
+            tokShotIdToggle.checked = true;
+            tokShotIdToggle.disabled = true;
+        } else {
+            tokShotIdToggle.disabled = false;
+        }
+    }
+
+    const tokVerToggle = document.getElementById('tokVerToggle');
+    if (tokVerToggle) {
+        if (isSimple) {
+            tokVerToggle.checked = true;
+            tokVerToggle.disabled = true;
+        } else {
+            tokVerToggle.disabled = false;
+        }
+    }
+
+    const motorCustom = document.getElementById('tokMotorCustom');
+    if (motorCustom && isSimple) motorCustom.style.display = 'none';
+
+    const resCustom = document.getElementById('tokResCustom');
+    if (resCustom && isSimple) resCustom.style.display = 'none';
+
+    const framingCustom = document.getElementById('tokFramingCustom');
+    if (framingCustom && isSimple) framingCustom.style.display = 'none';
+
+    ['tokTagACustom', 'tokTagBCustom', 'tokTagCCustom'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && isSimple) el.style.display = 'none';
+    });
+
+    const saveCustomContainer = document.getElementById('iaSaveCustomCheck')?.parentElement;
+    if (saveCustomContainer) saveCustomContainer.style.display = isSimple ? 'none' : 'flex';
+
+    populateIaTokenSelectsFromProject();
+
+    if (isSimple) {
+        showIaAlert("⚡ Modo Simple activo (Flujo directo y simplificado)", "#03A9F4");
+    } else {
+        showIaAlert("🛠️ Modo Avanzado activo (Control total de tokens y lotes)", "#4caf50");
+    }
+
+    updateIaPreview();
 }
 
 // --- 9. CHROME DOWNLOAD WATCHER CLIENT ---
@@ -1001,9 +1431,9 @@ async function toggleDownloadWatcher(active) {
             const res = await fetch('/api/ia/start-download-watcher');
             const data = await res.json();
             if (data && data.success) {
-                if (folderEl) folderEl.innerHTML = `📁 Ruta autodetectada: <b style="color:var(--accent);">${escapeHtml(data.folder)}</b>`;
+                if (folderEl) folderEl.innerHTML = `Ruta autodetectada: <b style="color:var(--accent);">${escapeHtml(data.folder)}</b>`;
                 if (statusEl) statusEl.innerHTML = `<span style="color:#4caf50;">● Monitoreo de descargas ACTIVO</span>`;
-                showIaAlert(`👁️ Captura automática activa en ${data.folder}`, "#4caf50");
+                showIaAlert(`Captura automática activa en ${data.folder}`, "#4caf50");
                 if (!iaWatcherTimer) {
                     iaWatcherTimer = setInterval(pollDownloadWatcher, 1500);
                 }
@@ -1095,65 +1525,90 @@ async function fetchWebOrDataUrlImage(url) {
 }
 
 // --- 9. EVENT LISTENERS DE DRAG & DROP MULTI-ARCHIVO Y PEGAR (CTRL+V) ---
-document.addEventListener('DOMContentLoaded', () => {
-    loadCustomTokens();
-
+function initIaDropZone() {
     const dropZone = document.getElementById('iaDropZone');
-    if (dropZone) {
+    const iaView = document.getElementById('view-ia-ingest');
+    if (!dropZone) return;
+
+    // Prevenir comportamiento por defecto de arrastrar en la vista
+    [dropZone, iaView].forEach(el => {
+        if (!el) return;
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
+            el.addEventListener(eventName, (e) => {
                 e.preventDefault();
                 e.stopPropagation();
             }, false);
         });
+    });
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => {
-                dropZone.style.borderColor = 'var(--accent)';
-                dropZone.style.background = '#252525';
-            }, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => {
-                dropZone.style.borderColor = '#444';
-                dropZone.style.background = '#111';
-            }, false);
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            if (files && files.length > 0) {
-                handleIaFileSelect({ files: files });
-            } else {
-                const url = dt.getData('text/uri-list') || dt.getData('text/plain');
-                if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/'))) {
-                    fetchWebOrDataUrlImage(url);
-                }
-            }
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.borderColor = 'var(--accent)';
+            dropZone.style.background = '#252525';
         }, false);
-    }
+    });
 
-    // Listener global para pegar imágenes directamente del portapapeles (Ctrl + V)
-    window.addEventListener('paste', (e) => {
-        const iaView = document.getElementById('view-ia-ingest');
-        if (!iaView || iaView.style.display === 'none') return;
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.style.borderColor = '#444';
+            dropZone.style.background = '#111';
+        }, false);
+    });
 
-        const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
-        if (!items) return;
-
-        for (const item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const blob = item.getAsFile();
-                if (blob) {
-                    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').substring(0, 14);
-                    const file = new File([blob], `clipboard_image_${timestamp}.png`, { type: blob.type || 'image/png' });
-                    file.path = '[Portapapeles / Ctrl+V]';
-                    handleIaFileSelect({ files: [file] });
-                    showIaAlert("📋 Imagen pegada directamente desde el portapapeles", "#4caf50");
-                }
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.style.borderColor = '#444';
+        dropZone.style.background = '#111';
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+            handleIaFileSelect({ files: dt.files });
+        } else if (dt) {
+            const url = dt.getData('text/uri-list') || dt.getData('text/plain');
+            if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/'))) {
+                fetchWebOrDataUrlImage(url);
             }
         }
-    });
+    };
+}
+
+function initIaIngest() {
+    initIaResizer();
+    initIaDropZone();
+    loadCustomTokens();
+    refreshIaHierarchy();
+    updateIaResolution();
+}
+
+window.initIaIngest = initIaIngest;
+window.initIaDropZone = initIaDropZone;
+window.refreshIaHierarchy = refreshIaHierarchy;
+window.setIaContextMode = setIaContextMode;
+window.handleIaEpChange = handleIaEpChange;
+window.handleIaSeqChange = handleIaSeqChange;
+window.handleIaShotChange = handleIaShotChange;
+window.iaToggleSubfolder = iaToggleSubfolder;
+window.switchIaWorkMode = switchIaWorkMode;
+window.populateIaTokenSelectsFromProject = populateIaTokenSelectsFromProject;
+
+// Listener global para pegar imágenes directamente del portapapeles (Ctrl + V)
+window.addEventListener('paste', (e) => {
+    const iaView = document.getElementById('view-ia-ingest');
+    if (!iaView || iaView.style.display === 'none') return;
+
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+    if (!items) return;
+
+    for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            if (blob) {
+                const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').substring(0, 14);
+                const file = new File([blob], `clipboard_image_${timestamp}.png`, { type: blob.type || 'image/png' });
+                file.path = '[Portapapeles / Ctrl+V]';
+                handleIaFileSelect({ files: [file] });
+                showIaAlert("📋 Imagen pegada directamente desde el portapapeles", "#4caf50");
+            }
+        }
+    }
 });

@@ -1,0 +1,92 @@
+{
+  "id": "proj_base",
+  "name": "Proyecto Base",
+  "client": "[cliente]",
+  "projectCode": "[proyecto]",
+  "isBase": true,
+  "roots": {
+    "work": "Z:/[cliente]/[proyecto]",
+    "media": "Z:/INTERNO/MEDIA/[cliente]/[proyecto]",
+    "onlineWork": "G:/Unidades compartidas/[proyecto]",
+    "onlineMedia": "G:/Unidades compartidas/[proyecto]_media"
+  },
+  "defaultShotPresetId": "asset_surf_love_canon_v1",
+  "defaultAssetPresetId": "",
+  "iaPresets": {
+    "defaultImageEngine": "NB2P",
+    "defaultVideoEngine": "SD2",
+    "defaultFraming": "FLL",
+    "defaultTagRoleA": "start1001",
+    "defaultTagRoleB": "inp",
+    "defaultTagRoleC": "i2v",
+    "motorsVideo": [
+      "SD2",
+      "SD25",
+      "VEO3",
+      "VO31",
+      "GOMN",
+      "NBN2",
+      "NB2P"
+    ],
+    "motorsImage": [
+      "NB2P",
+      "MJ",
+      "FLUX",
+      "SD2",
+      "SD25",
+      "GOMN"
+    ],
+    "framings": [
+      "FLL",
+      "CRP"
+    ],
+    "tagsA": [
+      "start1001",
+      "end1100",
+      "f1001",
+      "ref",
+      "ref1050"
+    ],
+    "tagsB": [
+      "inp",
+      "ups",
+      "mask",
+      "clean",
+      "elem"
+    ],
+    "tagsC": [
+      "i2v",
+      "t2i",
+      "i2i",
+      "t2v",
+      "v2v",
+      "m2v"
+    ],
+    "resolutionTranslations": [
+      {
+        "detected": "1920x1080",
+        "tag": "FHD"
+      },
+      {
+        "detected": "3840x2160",
+        "tag": "UHD"
+      },
+      {
+        "detected": "1080x1920",
+        "tag": "916"
+      },
+      {
+        "detected": "1080x1080",
+        "tag": "SQ1K"
+      },
+      {
+        "detected": "2560x1080",
+        "tag": "UW2K"
+      },
+      {
+        "detected": "1280x720",
+        "tag": "HD"
+      }
+    ]
+  }
+}

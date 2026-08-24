@@ -1004,7 +1004,18 @@ app.get('/api/ia/resolve-shot', (req, res) => {
         } catch(e) {}
     }
 
-    const resolvedIaPath = path.normalize(path.join(rootPath, 'episodios', ep, 'secuencias', seq, 'shots', shotId, 'IA')).replace(/\\/g, '/');
+    let candidate1 = path.normalize(path.join(rootPath, 'episodios', ep, 'secuencias', seq, 'shots', shotId, 'IA')).replace(/\\/g, '/');
+    let candidate2 = path.normalize(path.join(rootPath, ep, seq, shotId, 'IA')).replace(/\\/g, '/');
+    let candidate3 = path.normalize(path.join(rootPath, 'episodios', ep, 'secuencias', seq, 'shots', shotId)).replace(/\\/g, '/');
+    let candidate4 = path.normalize(path.join(rootPath, ep, seq, shotId)).replace(/\\/g, '/');
+
+    let resolvedIaPath = candidate1;
+    if (fs.existsSync(candidate1)) resolvedIaPath = candidate1;
+    else if (fs.existsSync(candidate2)) resolvedIaPath = candidate2;
+    else if (fs.existsSync(candidate3)) resolvedIaPath = candidate1;
+    else if (fs.existsSync(candidate4)) resolvedIaPath = candidate2;
+    else if (fs.existsSync(path.join(rootPath, ep))) resolvedIaPath = candidate2;
+    else resolvedIaPath = candidate1;
 
     let nextVersion = 'v001';
     let maxVer = 0;

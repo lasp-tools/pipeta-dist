@@ -9,5 +9,22 @@
     "onlineWork": "G:\\Unidades compartidas\\surf_love",
     "onlineMedia": "G:\\Unidades compartidas\\surf_love_media"
   },
-  "defaultShotPresetId": "asset_surf_love_canon_v1"
+  "defaultShotPresetId": "asset_surf_love_canon_v1",
+  "defaultAssetPresetId": "",
+  "iaPresets": {
+    "defaultImageEngine": "MJ",
+    "defaultVideoEngine": "SD2",
+    "defaultFraming": "CU",
+    "defaultTagRoleA": "CHAR",
+    "defaultTagRoleB": "HERO",
+    "defaultTagRoleC": "HEAD",
+    "resolutionTranslations": [
+      { "detected": "1920x1080", "tag": "FHD" },
+      { "detected": "3840x2160", "tag": "4K" },
+      { "detected": "1080x1920", "tag": "916" },
+      { "detected": "1080x1080", "tag": "1X1" },
+      { "detected": "2048x1080", "tag": "2K" },
+      { "detected": "1280x720", "tag": "HD" }
+    ]
+  }
 }

@@ -12,161 +12,213 @@ const tabs = {
 const headerToolsTemplates = {
     'view-home': () => `<!-- No tools for home -->`,
     'view-asset-designer': () => `
-        <button class="tool-btn" onclick="AssetDesigner.addNode('unit')" title="Añadir Unidad">
-            <img src="icons/hdd.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="AssetDesigner.addNode('folder')" title="Añadir Carpeta">
-            <img src="icons/new_folder.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="AssetDesigner.addNode('file')" title="Añadir Archivo">
-            <img src="icons/file.svg" class="btn-icon-svg">
-        </button>
-        <div style="width:10px"></div>
-        <button class="tool-btn" onclick="AssetDesigner.duplicateSelected()" title="Duplicar Selección">
-            <img src="icons/duplicate.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn danger" onclick="AssetDesigner.deleteSelected()" title="Borrar Selección">
-            <img src="icons/delete.svg" class="btn-icon-svg">
-        </button>
-    `,
-    'view-browser': () => `
-        <!-- Group 1: Views -->
-        <button class="tool-btn tool-ref-icon" title="Reference Eye">
-             <img src="icons/eye.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn ${currentBrowserMode === 'split' ? 'active' : ''}" onclick="switchBrowserMode('split')" title="Vista Clásica (Árbol)">
-            <img src="icons/view_classic.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="switchBrowserMode('pipeta')" title="Vista Miller (Colummnas)">
-            <img src="icons/view_miller.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
-                onclick="togglePipetaFilter()" 
-                oncontextmenu="handleFilterContextMenu(event)"
-                title="Miller: Filtrado (CLIC: ON/OFF | R-CLIC: Ajustar)">
-            <img src="icons/filter.svg" class="btn-icon-svg" style="${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
-        </button>
-        
-        <div style="width:5px"></div>
-        
-        <!-- Local/Online Switcher -->
-        <div style="display:flex; background:#222; border-radius:4px; padding:2px; margin-right:5px; border:1px solid #444;">
-            <button class="tool-btn ${window.viewLocationMode === 'local' ? 'active' : ''}" 
-                    style="padding: 2px 8px; font-size: 0.75rem; height: auto;"
-                    onclick="switchViewLocation('local')" title="Rutas Locales (Z:)">LOCAL</button>
-            <button class="tool-btn ${window.viewLocationMode === 'online' ? 'active' : ''}" 
-                    style="padding: 2px 8px; font-size: 0.75rem; height: auto;"
-                    onclick="switchViewLocation('online')" title="Rutas Online (G:)">ONLINE</button>
+        <div class="toolbar-section-group" title="Añadir Elementos al Árbol">
+            <span class="toolbar-section-label">Add Nodes</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="AssetDesigner.addNode('unit')" title="Añadir Unidad de Disco">
+                    <img src="icons/hdd.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addNode('folder')" title="Añadir Carpeta">
+                    <img src="icons/new_folder.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addNode('file')" title="Añadir Archivo">
+                    <img src="icons/file.svg" class="btn-icon-svg">
+                </button>
+            </div>
         </div>
 
-        <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpeta">
-            <img src="icons/refresh.svg" class="btn-icon-svg">
-        </button>
-        
         <div class="tool-space-small"></div>
-        <div class="tool-separator"></div>
-        
-        <!-- Group 2: Global Tools -->
-        <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View" id="btnMirrorModeTool">
-            <img src="icons/mirror.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="window.toggleValidator()" title="Naming Validator">
-            <img src="icons/validator.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="toggleSyncAnalyzer()" title="Sync Analyzer (Local ↔ Online)">
-            <img src="icons/sync_analyzer.svg" class="btn-icon-svg btn-icon-white">
-        </button>
-        <button class="tool-btn" onclick="toggleFileAuditor()" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
-            <span style="font-size:1.1rem;">📊</span>
-        </button>
-        <button class="tool-btn" onclick="AssetCreator.open()" title="Asset Creator">
-            <img src="icons/asset_creator.svg" class="btn-icon-svg btn-icon-orange">
-        </button>
-        <button class="tool-btn" onclick="ShotCreator.open()" title="Shot Creator">
-            <img src="icons/asset_creator.svg" class="btn-icon-svg">
-        </button>
-        
-        <div class="tool-space-large"></div>
-        <div class="tool-separator"></div>
-        
-        <!-- Group 3: Context Actions -->
-        <button class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
-            <img src="icons/copy.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="contextMenu.copyToClipboard(true)" title="Cortar">
-            <img src="icons/cut.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
-            <img src="icons/paste.svg" class="btn-icon-svg">
-        </button>
-        
-        <div style="width:5px"></div>
-        
-        <button class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
-            <img src="icons/rename.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
-            <img src="icons/duplicate.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
-            <img src="icons/delete.svg" class="btn-icon-svg">
-        </button>
-        
-        <div style="width:5px"></div>
 
-        <button class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
-            <img src="icons/new_folder.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
-            <img src="icons/copy_path.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="API.fs.open(selectedContextPath)" title="Abrir en Explorer">
-            <img src="icons/open_explorer.svg" class="btn-icon-svg">
-        </button>
+        <div class="toolbar-section-group" title="Acciones de Selección">
+            <span class="toolbar-section-label">Actions</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="AssetDesigner.duplicateSelected()" title="Duplicar Selección">
+                    <img src="icons/duplicate.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn danger" onclick="AssetDesigner.deleteSelected()" title="Borrar Selección">
+                    <img src="icons/delete.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+    `,
+    'view-browser': () => `
+        <!-- Block 1: Vistas y Navegación -->
+        <div class="toolbar-section-group" title="Opciones de Visualización">
+            <span class="toolbar-section-label">View Options</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn ${currentBrowserMode === 'split' ? 'active' : ''}" onclick="switchBrowserMode('split')" title="Vista Clásica (Árbol)">
+                    <img src="icons/view_classic.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="switchBrowserMode('pipeta')" title="Vista Miller (Columnas)">
+                    <img src="icons/view_miller.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
+                        onclick="togglePipetaFilter()" 
+                        oncontextmenu="handleFilterContextMenu(event)"
+                        title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
+                    <img src="icons/filter.svg" class="btn-icon-svg" style="${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
+                </button>
+                <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo)" id="btnMirrorModeTool">
+                    <img src="icons/mirror.svg" class="btn-icon-svg">
+                </button>
+                
+                <div style="width:3px"></div>
+                
+                <!-- Local/Online Switcher -->
+                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
+                    <button class="tool-btn ${window.viewLocationMode === 'local' ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            onclick="switchViewLocation('local')" title="Rutas Locales (Z:)">LOCAL</button>
+                    <button class="tool-btn ${window.viewLocationMode === 'online' ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            onclick="switchViewLocation('online')" title="Rutas Online (G:)">ONLINE</button>
+                </div>
+
+                <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpeta">
+                    <img src="icons/refresh.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <!-- Block 2: Acciones de Archivos y Carpetas (Centro) -->
+        <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
+            <span class="toolbar-section-label">File / Folder Functions</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
+                    <img src="icons/copy.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
+                    <img src="icons/paste.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
+                    <img src="icons/duplicate.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
+                    <img src="icons/rename.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
+                    <img src="icons/new_folder.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
+                    <img src="icons/copy_path.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="API.fs.open(selectedContextPath)" title="Abrir en Explorer">
+                    <img src="icons/open_explorer.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
+                    <img src="icons/delete.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <!-- Block 3: Custom Tools / Pipeline (Derecha) -->
+        <div class="toolbar-section-group" title="Herramientas del Pipeline">
+            <span class="toolbar-section-label">Tools</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="window.toggleValidator()" title="Naming Validator">
+                    <img src="icons/scanning-scan-svgrepo-com.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="toggleSyncAnalyzer()" title="Sync Analyzer (Local ↔ Online)">
+                    <img src="icons/sync-analyzer.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="toggleFileAuditor()" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
+                    <img src="icons/file-auditor.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetCreator.open()" title="Asset Creator">
+                    <img src="icons/asset_creator.svg" class="btn-icon-svg btn-icon-orange">
+                </button>
+                <button class="tool-btn" onclick="ShotCreator.open()" title="Shot Creator">
+                    <img src="icons/asset_creator.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
     `,
     'view-shot-designer': () => `
-        <button class="tool-btn" onclick="ShotDesigner.addNode('unit')" title="Añadir Unit">
-            <img src="icons/hdd.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="ShotDesigner.addNode('folder')" title="Añadir Carpeta">
-            <img src="icons/new_folder.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn" onclick="ShotDesigner.addNode('file')" title="Añadir Archivo">
-            <img src="icons/file.svg" class="btn-icon-svg">
-        </button>
+        <div class="toolbar-section-group" title="Añadir Elementos al Grafo">
+            <span class="toolbar-section-label">Add Nodes</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="ShotDesigner.addNode('unit')" title="Añadir Unidad de Disco">
+                    <img src="icons/hdd.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.addNode('folder')" title="Añadir Carpeta">
+                    <img src="icons/new_folder.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.addNode('file')" title="Añadir Archivo">
+                    <img src="icons/file.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
         
-        <div class="tool-separator"></div>
+        <div class="tool-space-small"></div>
         
-        <button class="tool-btn" onclick="ShotDesigner.alignNodesVertical()" title="Center Line">
-             <span style="font-size:1.1rem; filter: grayscale(100%);">↔️</span>
-        </button>
-        <button class="tool-btn" onclick="ShotDesigner.alignNodesHorizontal()" title="Center Column">
-             <span style="font-size:1.1rem; filter: grayscale(100%);">↕️</span>
-        </button>
+        <div class="toolbar-section-group" title="Alineación en Canvas">
+            <span class="toolbar-section-label">Alignment</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="ShotDesigner.alignNodesVertical()" title="Alinear en Línea Horizontal (Center Line)">
+                     <img src="icons/align_horizontal.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.alignNodesHorizontal()" title="Alinear en Columna Vertical (Center Column)">
+                     <img src="icons/align_vertical.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
         
-        <div class="tool-separator"></div>
+        <div class="tool-space-small"></div>
         
-        <button class="tool-btn" onclick="ShotDesigner.duplicateSelected()" title="Duplicar Selección">
-            <img src="icons/duplicate.svg" class="btn-icon-svg">
-        </button>
-        <button class="tool-btn danger" onclick="ShotDesigner.deleteSelected()" title="Borrar Selección">
-            <img src="icons/delete.svg" class="btn-icon-svg">
-        </button>
+        <div class="toolbar-section-group" title="Acciones de Selección">
+            <span class="toolbar-section-label">Actions</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="ShotDesigner.duplicateSelected()" title="Duplicar Selección">
+                    <img src="icons/duplicate.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn danger" onclick="ShotDesigner.deleteSelected()" title="Borrar Selección">
+                    <img src="icons/delete.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
     `,
     'view-check': () => `
-        <button class="tool-btn" title="Sync">🔄 Sync</button>
+        <div class="toolbar-section-group" title="Control de Versiones">
+            <span class="toolbar-section-label">Version Control</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" title="Sync">🔄 Sync</button>
+            </div>
+        </div>
     `,
     'view-ia-ingest': () => `
-        <div style="display:flex; align-items:center; gap:8px;">
-            <button class="tool-btn" onclick="copyCanonicalName()" title="Copiar Nombre de archivo canónico">
-                📋 Copiar Nombre
-            </button>
-            <button class="tool-btn" onclick="copyCanonicalPath()" title="Copiar Ruta de destino Z:\">
-                📁 Copiar Ruta
-            </button>
-            <button class="tool-btn" onclick="openTargetFolder()" title="Abrir carpeta de destino en Windows Explorer">
-                📂 Abrir Carpeta
-            </button>
+        <div class="toolbar-section-group" title="Modo de Operación IA">
+            <span class="toolbar-section-label">IA Mode</span>
+            <div class="toolbar-section-content">
+                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
+                    <button class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            onclick="switchIaWorkMode('advanced')" title="Modo Avanzado (Builder modular, tokens y cola por lotes)">ADVANCED</button>
+                    <button class="tool-btn ${window.iaWorkMode === 'simple' ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            onclick="switchIaWorkMode('simple')" title="Modo Simple (Flujo rápido simplificado)">SIMPLE</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
+            <span class="toolbar-section-label">File / Folder Functions</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="copyCanonicalName()" title="Copiar Nombre Canónico">
+                    <img src="icons/copy.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="copyCanonicalPath()" title="Copiar Ruta de Destino">
+                    <img src="icons/copy_path.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="openTargetFolder()" title="Abrir Carpeta de Destino en Explorer">
+                    <img src="icons/open_explorer.svg" class="btn-icon-svg">
+                </button>
+            </div>
         </div>
     `,
     'default': () => `<span style="color:#444;">...</span>`
@@ -273,8 +325,9 @@ function switchView(viewId) {
             ShotDesigner.init();
             ShotDesigner.initialized = true;
         }
-        if (viewId === 'view-ia-ingest' && typeof updateIaResolution === 'function') {
-            updateIaResolution();
+        if (viewId === 'view-ia-ingest') {
+            if (typeof initIaIngest === 'function') initIaIngest();
+            else if (typeof updateIaResolution === 'function') updateIaResolution();
         }
     }
 

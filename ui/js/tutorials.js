@@ -194,7 +194,7 @@ const Tutorials = {
         },
         {
             id: 'ia-ingest',
-            icon: 'icons/design_assets.svg',
+            icon: 'icons/chip-ai.svg',
             title: 'IA Ingest & Nomenclatura',
             subtitle: 'Pipeline canónico de ingesta de IA para VFX',
             color: '#4CAF50',
@@ -318,12 +318,12 @@ const Tutorials = {
         },
         {
             id: 'naming-validator',
-            icon: 'icons/validator.svg',
+            icon: 'icons/scanning-scan-svgrepo-com.svg',
             title: 'Naming Validator',
             subtitle: 'Auditoría y chequeo de reglas de pipeline',
             color: '#8BC34A',
             content: `
-                <h2 style="margin-top:0; color:#8BC34A;">✅ Naming Validator & Auditoría</h2>
+                <h2 style="margin-top:0; color:#8BC34A;">🛡️ Naming Validator & Auditoría</h2>
                 <p style="color:#ccc; line-height:1.8;">Verifica que las carpetas y archivos en disco cumplan estrictamente con las convenciones definidas en tu pipeline antes del empaquetado o render final.</p>
 
                 <h3 style="color:#8BC34A; border-bottom:1px solid #333; padding-bottom:5px;">Funcionalidades</h3>
@@ -332,6 +332,46 @@ const Tutorials = {
                     <li style="color:#aaa;">⚠️ <b style="color:#fff;">Detección de Archivos Huérfanos:</b> Identifica archivos o carpetas fuera de canon.</li>
                     <li style="color:#aaa;">🟢 <b style="color:#fff;">Diagnóstico Visual:</b> Resumen en colores (Verde = correcto, Amarillo = advertencia, Rojo = error).</li>
                 </ul>
+            `
+        },
+        {
+            id: 'sync-analyzer',
+            icon: 'icons/sync-analyzer.svg',
+            title: 'Sync Analyzer',
+            subtitle: 'Sincronización Local ↔ Online (Rclone)',
+            color: '#03A9F4',
+            content: `
+                <h2 style="margin-top:0; color:#03A9F4;">☁️ Sync Analyzer (Local ↔ Online)</h2>
+                <p style="color:#ccc; line-height:1.8;">Permite comparar y sincronizar en segundo plano la estructura y archivos entre tu almacenamiento local (Z:) y las unidades en la nube (Google Drive / Cloud G:) mediante el motor <b>Rclone</b> integrado.</p>
+
+                <h3 style="color:#03A9F4; border-bottom:1px solid #333; padding-bottom:5px;">Funciones Principales</h3>
+                <ul style="list-style:none; padding:0; line-height:2;">
+                    <li style="color:#aaa;">🔄 <b style="color:#fff;">Análisis Bidireccional:</b> Detecta archivos nuevos, modificados o faltantes entre local y la nube.</li>
+                    <li style="color:#aaa;">🚀 <b style="color:#fff;">Sincronización en Lote:</b> Ejecuta tareas de subida o bajada controladas sin saturar la red.</li>
+                </ul>
+            `
+        },
+        {
+            id: 'file-auditor',
+            icon: 'icons/file-auditor.svg',
+            title: 'File Auditor',
+            subtitle: 'Integridad de Espejos y Render Status',
+            color: '#AB47BC',
+            content: `
+                <h2 style="margin-top:0; color:#AB47BC;">📊 File Auditor (Integridad & Renders)</h2>
+                <p style="color:#ccc; line-height:1.8;">Auditor integral de alta velocidad con motor de escaneo nativo capaz de inspeccionar cientos de planos en local o en la nube en menos de 1 segundo.</p>
+
+                <h3 style="color:#AB47BC; border-bottom:1px solid #333; padding-bottom:5px;">Modalidades</h3>
+                <div style="display:flex; gap:15px; margin-bottom:20px;">
+                    <div style="flex:1; background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
+                        <h4 style="color:#fff; margin-top:0;">🪞 Mirror Integrity</h4>
+                        <p style="color:#999; font-size:0.9rem;">Compara que cada plano existente en Proyecto (Work) tenga su contraparte correspondiente en Media y repara carpetas faltantes en lote.</p>
+                    </div>
+                    <div style="flex:1; background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
+                        <h4 style="color:#fff; margin-top:0;">🎬 Render & Scene Status</h4>
+                        <p style="color:#999; font-size:0.9rem;">Audita versiones de scripts (.nk) contra renders en Media, detecta desfases de versión y localiza renders huérfanos.</p>
+                    </div>
+                </div>
             `
         }
     ],
@@ -345,7 +385,7 @@ const Tutorials = {
                  style="display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; border-radius:6px; margin-bottom:4px; transition:all 0.2s;
                         background:${Tutorials.selectedId === t.id ? '#222' : 'transparent'};
                         border-left:3px solid ${Tutorials.selectedId === t.id ? t.color : 'transparent'};">
-                <img src="${t.icon}" style="width:18px; height:18px; filter:brightness(0.7);">
+                <img src="${t.icon}" style="width:18px; height:18px; object-fit:contain;">
                 <div>
                     <div style="color:${Tutorials.selectedId === t.id ? '#fff' : '#aaa'}; font-size:0.85rem; font-weight:${Tutorials.selectedId === t.id ? 'bold' : 'normal'};">${t.title}</div>
                     <div style="color:#555; font-size:0.65rem;">${t.subtitle}</div>

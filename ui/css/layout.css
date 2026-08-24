@@ -106,6 +106,23 @@
     border: 1px solid #333;
 }
 
+#headerProjectSelect {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.92rem;
+    outline: none;
+}
+
+#headerProjectSelect option {
+    background-color: #ffffff;
+    color: #111111;
+    font-weight: 600;
+    padding: 6px 10px;
+}
+
 /* ZONE: GLOBAL (Settings, Console, Disk Monitor) */
 .header-zone-global {
     display: flex;
@@ -194,16 +211,13 @@
 .header-zone-tools {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex: 1;
-    /* Pushes Controls to right */
     justify-content: center;
-    /* Optional: Center tools? Or left align? Keeping center for balance */
-    padding: 0 10px;
-    background: rgba(255, 255, 255, 0.02);
-    height: 40px;
-    border-radius: 4px;
-    border: 1px solid #2a2a2a;
+    padding: 0;
+    background: transparent;
+    height: auto;
+    border: none;
 }
 
 /* ZONE: CONTROLS (App Lifecycle) */
@@ -408,14 +422,18 @@
     font-size: 1.2rem;
 }
 
-/* Local SVG Icons Styling */
+/* Local SVG Icons Styling - Native Color Support */
 .btn-icon-svg {
     width: 18px;
     height: 18px;
     object-fit: contain;
     display: block;
     pointer-events: none;
-    /* Let clicks pass to button */
+    transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.tool-btn:hover .btn-icon-svg {
+    transform: scale(1.08);
 }
 
 .btn-icon-orange {
@@ -424,6 +442,45 @@
 
 .btn-icon-white {
     filter: brightness(0) invert(1);
+}
+
+/* Rounded Lighter Slate-Bluish Toolbar Blocks with Mini Section Headers */
+.toolbar-section-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #172233; /* Slightly lighter slate-bluish tone */
+    border: 1px solid #283c5a; /* Distinct clean border */
+    border-radius: 6px;
+    padding: 2px 6px 3px 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar-section-label {
+    font-size: 0.56rem;
+    font-weight: 700;
+    color: #6d8db5;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-bottom: 2px;
+    user-select: none;
+}
+
+.toolbar-section-content {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.toolbar-section-group .tool-btn {
+    padding: 3px 5px;
+    height: 25px;
+    border-radius: 4px;
+}
+
+.toolbar-section-group .tool-btn:hover {
+    background: #22344e;
 }
 
 /* Ensure buttons adjust to SVG content */
@@ -441,26 +498,13 @@
 
 /* Tool Spacers */
 .tool-space-small {
-    width: 15px;
+    width: 8px;
 }
 
 .tool-space-large {
-    width: 30px;
+    width: 16px;
 }
 
 .tool-space-flex {
     flex: 1;
-}
-
-/* Tool Reference Icon */
-.tool-ref-icon {
-    filter: grayscale(100%);
-    opacity: 0.3;
-    cursor: default !important;
-    pointer-events: none;
-}
-
-.tool-ref-icon:hover {
-    background: transparent !important;
-    color: inherit !important;
 }

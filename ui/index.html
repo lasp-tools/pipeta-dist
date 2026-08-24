@@ -36,7 +36,7 @@
         <!-- ZONE 2: CONFIG -->
         <div class="header-zone-config">
             <div class="project-selector">
-                <select id="headerProjectSelect" style="background:transparent; border:none; color:inherit; font-weight:bold; cursor:pointer;" onchange="settings.selectHeaderProject(this.value)">
+                <select id="headerProjectSelect" onchange="settings.selectHeaderProject(this.value)">
                     <option>Cargando Proyectos...</option>
                 </select>
             </div>
@@ -77,7 +77,17 @@
         <div class="zone-divider"></div>
 
         <!-- ZONE 5: APP CONTROLS -->
-        <div class="header-zone-controls">
+        <div class="header-zone-controls" style="display:flex; align-items:center; gap:8px;">
+            <!-- DEV MODE WARNING & PUBLICAR BADGE -->
+            <div id="headerDevModeBanner" style="display:none; align-items:center; gap:8px; background:rgba(255, 152, 0, 0.12); border:1px solid #ff9800; border-radius:4px; padding:3px 10px; margin-right:4px;">
+                <span style="color:#ff9800; font-weight:bold; font-size:0.75rem; display:flex; align-items:center; gap:5px; white-space:nowrap;">
+                    ⚠️ Warning: Dev Mode
+                </span>
+                <button type="button" class="btn" onclick="settings.openExportPresetsTab()" style="background:#ff9800; color:black; font-weight:bold; font-size:0.75rem; padding:2px 8px; border:none; border-radius:3px; cursor:pointer;" title="Abrir Configuraciones en 'Exportar Presets' para publicar a red">
+                    Publicar 📦
+                </button>
+            </div>
+
             <button class="control-btn" title="Recargar Sistema (Reinicia Servidor + Sync)" onclick="reloadApp()">
                 <img src="icons/reload.svg" class="btn-icon-svg">
             </button>
@@ -104,7 +114,7 @@
                     <img src="icons/video_camera_back.svg" class="btn-icon-svg">
                 </div>
                 <div class="mode-btn" title="IA Ingest">
-                    <span style="font-size:1.2rem;">🤖</span>
+                    <img src="icons/chip-ai.svg" class="btn-icon-svg">
                 </div>
                 <div class="mode-btn" title="Check In/Out">
                     <img src="icons/check.svg" class="btn-icon-svg">
@@ -316,7 +326,7 @@
                     <!-- Panel Izquierdo: Contexto & Captura de Archivos -->
                     <div style="width:320px; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
                         <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; display:flex; justify-content:space-between; align-items:center;">
-                            <span>1. CONTEXTO DE SHOT</span>
+                            <span>1. TARGET</span>
                             <div style="display:flex; gap:3px; font-size:0.75rem;">
                                 <button id="iaModeGuidedBtn" onclick="setIaContextMode('guided')" style="padding:2px 7px; border:none; border-radius:3px; background:var(--accent); color:black; font-weight:bold; cursor:pointer;" title="Seleccionar desde estructura de carpetas de Pipeta">Explorador</button>
                                 <button id="iaModeManualBtn" onclick="setIaContextMode('manual')" style="padding:2px 7px; border:none; border-radius:3px; background:#333; color:#aaa; cursor:pointer;" title="Ingresar Shot ID a mano">Manual</button>
@@ -365,7 +375,7 @@
 
                         <hr style="border:none; border-top:1px solid #333; margin:2px 0;">
 
-                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">2. CARGAR ARCHIVOS (INDIVIDUAL / LOTE)</div>
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">2. CARGAR ARCHIVOS</div>
                         <div id="iaDropZone" style="border:2px dashed #444; border-radius:6px; padding:15px; text-align:center; background:#111; cursor:pointer;" onclick="document.getElementById('iaFileInput').click()">
                             <div style="font-size:1.5rem;">📥</div>
                             <div style="font-size:0.85rem; color:#ccc; margin-top:5px;" id="iaFileNameDisplay">Arrastra uno o varios archivos aquí</div>
@@ -376,11 +386,11 @@
                         <!-- Watcher de Descargas de Chrome (Captura Automática a la Cola) -->
                         <div style="background:#222; border:1px solid #333; border-radius:6px; padding:10px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.75rem; color:var(--accent); font-weight:bold;">👁️ CAPTURA AUTOMÁTICA DE DESCARGAS</span>
+                                <span style="font-size:0.75rem; color:var(--accent); font-weight:bold;">CAPTURA AUTOMÁTICA DE DESCARGAS</span>
                                 <input type="checkbox" id="iaWatcherToggle" onchange="toggleDownloadWatcher(this.checked)">
                             </div>
-                            <div style="font-size:0.72rem; color:#4caf50; font-family:monospace; margin-bottom:8px;" id="iaWatcherDetectedFolder">
-                                📁 Ruta monitoreada automáticamente
+                            <div style="font-size:0.72rem; color:#4caf50; font-family:monospace; margin-bottom:8px;" id="iaWatcherDetectedFolder" title="Ruta monitoreada automáticamente">
+                                Ruta monitoreada automáticamente
                             </div>
                             
                             <button class="tool-btn" style="width:100%; padding:6px; font-size:0.75rem; background:#333; border-color:#555; text-align:center; color:#ffb74d; margin-bottom:4px;" onclick="openChromeSettingsDownloads()" title="Abre los ajustes de descargas de Chrome y copia la dirección al portapapeles">
@@ -395,7 +405,7 @@
                     <!-- Panel Derecho: Builder Modular de Tokens (Soporta Personalización Manual) -->
                     <div style="flex:1; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. BUILDER MODULAR (OPCIONES + ENTRADAS MANUALES)</div>
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. NAME BUILDER</div>
                             <div style="font-size:0.75rem; color:#888;" id="iaMultiSelectNotice">Selecciona ítems abajo para editar en lote</div>
                         </div>
 
@@ -520,17 +530,17 @@
                                 <input id="tokVerInput" class="prop-input" value="v001" style="padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50;" oninput="updateIaPreview()">
                             </div>
 
-                            <!-- Subcarpeta Destino en /IA/ (Independiente por archivo) -->
+                            <!-- Carpeta de Salida /IA/ (Botones Turneables WIP / Ref / Export) -->
                             <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">SUBCARPETA /IA/</span>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">CARPETA DE SALIDA</span>
                                 </div>
-                                <select id="iaSubfolderSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
-                                    <option value="root">/IA/ (Raíz WIP)</option>
-                                    <option value="ref">/IA/ref/ (Referencias)</option>
-                                    <option value="export">/IA/export/ (Aprobados)</option>
-                                </select>
-                                <label style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:#aaa; cursor:pointer;" title="Al ingestar a /IA/ref/ o /IA/export/, deja automáticamente una copia en la raíz /IA/">
+                                <div class="ia-subfolder-toggles" style="margin-bottom:6px; width:100%; display:flex; gap:4px;">
+                                    <button type="button" id="iaToggleBtnWip" class="ia-subfolder-toggle-btn active-wip" onclick="iaToggleSubfolder('wip')" style="flex:1;">WIP</button>
+                                    <button type="button" id="iaToggleBtnRef" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('ref')" style="flex:1;">Ref</button>
+                                    <button type="button" id="iaToggleBtnExport" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('export')" style="flex:1;">Export</button>
+                                </div>
+                                <label id="iaCopyRootLabel" style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:#aaa; cursor:pointer;" title="Al ingestar a /IA/ref/ o /IA/export/, deja automáticamente una copia en la raíz /IA/">
                                     <input type="checkbox" id="iaCopyRootCheck" checked> Copiar en raíz /IA/ también
                                 </label>
                             </div>

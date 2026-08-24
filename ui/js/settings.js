@@ -2,10 +2,59 @@
 // --- SETTINGS MODULE (CONFIGURACIONES) ---
 // ------------------------------------------
 
+const CANONICAL_RESOLUTION_RULES = [
+    { detected: "1920x1080", tag: "FHD" },
+    { detected: "3840x2160", tag: "UHD" },
+    { detected: "1080x1920", tag: "916" },
+    { detected: "1080x1080", tag: "SQ1K" },
+    { detected: "2048x1080", tag: "2K" },
+    { detected: "1280x720", tag: "HD" }
+];
+
+const CANONICAL_BASE_PRESETS = {
+    id: "proj_base",
+    name: "Proyecto Base",
+    client: "[cliente]",
+    projectCode: "[proyecto]",
+    isBase: true,
+    roots: {
+        work: "Z:/[cliente]/[proyecto]",
+        media: "Z:/INTERNO/MEDIA/[cliente]/[proyecto]",
+        onlineWork: "G:/Unidades compartidas/[proyecto]",
+        onlineMedia: "G:/Unidades compartidas/[proyecto]_media"
+    },
+    defaultShotPresetId: "asset_surf_love_canon_v1",
+    defaultAssetPresetId: "",
+    iaPresets: {
+        defaultImageEngine: "NB2P",
+        defaultVideoEngine: "SD2",
+        defaultFraming: "FLL",
+        defaultTagRoleA: "start1001",
+        defaultTagRoleB: "inp",
+        defaultTagRoleC: "i2v",
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
+        motorsImage: ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        framings: ["FLL", "CRP"],
+        tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
+        tagsB: ["inp", "ups", "mask", "clean", "elem"],
+        tagsC: ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"],
+        resolutionTranslations: [
+            { detected: "1920x1080", tag: "FHD" },
+            { detected: "3840x2160", tag: "UHD" },
+            { detected: "1080x1920", tag: "916" },
+            { detected: "1080x1080", tag: "SQ1K" },
+            { detected: "2560x1080", tag: "UW2K" },
+            { detected: "1280x720", tag: "HD" }
+        ]
+    }
+};
+
 const settings = {
     isVisible: false,
     currentCategory: 'proyecto',
+    projectSubTab: 'id_nombre',
     container: null,
+    devMode: false,
 
     // Persistence Logic
     projects: [],
@@ -13,7 +62,6 @@ const settings = {
     projectsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\Projects",
     configPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\config.json",
 
-    // Logging
     // Logging
     loggingEnabled: true,
     logsPath: "C:\\TOOLS\\APPS\\Pipeta\\logs",
@@ -25,9 +73,30 @@ const settings = {
     // --- PRESETS LOADING ---
     presetsList: [],
 
+    updateDevModeBanner: () => {
+        const banner = document.getElementById('headerDevModeBanner');
+        if (banner) {
+            banner.style.display = settings.devMode ? 'flex' : 'none';
+        }
+    },
+
+    toggleDevMode: (active) => {
+        settings.devMode = !!active;
+        settings.updateDevModeBanner();
+        settings.render();
+    },
+
+    openExportPresetsTab: () => {
+        settings.open();
+        settings.setCategory('exportar');
+    },
+
+    getBaseProject: () => {
+        return settings.projects.find(p => p.id === 'proj_base' || p.isBase) || CANONICAL_BASE_PRESETS;
+    },
+
     loadPresets: async () => {
         settings.presetsList = [];
-        // Updated Paths based on user feedback
         const presetDirs = [
             "C:\\TOOLS\\APPS\\Pipeta\\presets\\AssetDesigner",
             "C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner"
@@ -105,6 +174,9 @@ const settings = {
 
     init: async () => {
         settings.container = document.getElementById('settings-window');
+        settings.devMode = false;
+        try { localStorage.removeItem('pipeta_dev_mode'); } catch(e){}
+        settings.updateDevModeBanner();
         await settings.loadProjects();
         await settings.loadConfig();
         await settings.loadPresets(); // Pre-load presets for UI
@@ -125,7 +197,6 @@ const settings = {
 
     switchCategory(cat) {
         settings.currentCategory = cat;
-        // Auto-load presets only once when switching to advanced tab if empty
         if (cat === 'avanzado' && settings.presetsList.length === 0) {
             settings.loadPresets().then(() => {
                 if (settings.currentCategory === 'avanzado') settings.render();
@@ -149,6 +220,11 @@ const settings = {
                     if (content) {
                         try {
                             const proj = JSON.parse(content);
+                            if (f === 'base.json' || proj.id === 'proj_base' || proj.isBase) {
+                                proj.isBase = true;
+                                proj.id = 'proj_base';
+                                proj.name = 'Proyecto Base';
+                            }
                             if (!proj.id) proj.id = 'proj_' + Math.random().toString(36).substr(2, 9);
                             settings.projects.push(proj);
                         } catch (e) { console.error("Error parsing proj", f, e); }
@@ -159,32 +235,45 @@ const settings = {
             console.error("loadProjects error:", e);
         }
 
-        if (settings.projects.length === 0) {
-            // Default project if none found
-            settings.projects.push({
-                id: 'mango_ick',
-                name: "Mango (ick)",
-                client: "mango",
-                projectCode: "ick",
+        // Asegurar que el Proyecto Base siempre exista
+        let baseProj = settings.projects.find(p => p.id === 'proj_base' || p.isBase);
+        if (!baseProj) {
+            baseProj = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS));
+            settings.projects.unshift(baseProj);
+        } else {
+            // Reubicar al inicio
+            settings.projects = settings.projects.filter(p => p.id !== 'proj_base' && !p.isBase);
+            settings.projects.unshift(baseProj);
+        }
+
+        if (settings.projects.length === 1) {
+            // Crear surf_love como proyecto por defecto si sólo estaba Base
+            const surfLove = {
+                id: 'proj_surf_love',
+                name: "surf_love",
+                client: "atresmedia",
+                projectCode: "surf_love",
                 roots: {
-                    work: "Z:/mango/ick",
-                    media: "Z:/INTERNO/MEDIA/mango/ick",
+                    work: "Z:/atresmedia/surf_love",
+                    media: "Z:/INTERNO/MEDIA/atresmedia/surf_love",
                     onlineWork: "G:/Unidades compartidas/surf_love",
                     onlineMedia: "G:/Unidades compartidas/surf_love_media"
                 }
-            });
-            settings.currentProject = settings.projects[0];
-        } else {
-            const savedActiveId = localStorage.getItem('pipeta_active_project_id');
-            const found = settings.projects.find(p => p.id === savedActiveId);
-            settings.currentProject = found || settings.projects[0];
+            };
+            settings.projects.push(surfLove);
         }
+
+        const savedActiveId = localStorage.getItem('pipeta_active_project_id');
+        const found = settings.projects.find(p => p.id === savedActiveId && p.id !== 'proj_base');
+        settings.currentProject = found || settings.projects.find(p => !p.isBase) || settings.projects[0];
+        
         settings.updateHeaderProjectSelector();
     },
 
     saveProject: async () => {
         if (!settings.currentProject) return;
-        const fileName = settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+        const isBase = settings.currentProject.id === 'proj_base' || settings.currentProject.isBase;
+        const fileName = isBase ? "base.json" : (settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const filePath = settings.projectsPath + "\\" + fileName;
         const content = JSON.stringify(settings.currentProject, null, 2);
 
@@ -199,6 +288,19 @@ const settings = {
         settings.render();
     },
 
+    restoreBaseProjectCanon: async () => {
+        if (!confirm("¿Restaurar el Proyecto Base a todos los valores canónicos oficiales de pipeline?")) return;
+        const baseProj = settings.projects.find(p => p.id === 'proj_base' || p.isBase);
+        if (baseProj) {
+            const restored = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS));
+            Object.assign(baseProj, restored);
+            settings.currentProject = baseProj;
+            await settings.saveProject();
+            settings.render();
+            alert("✓ Proyecto Base restaurado a los valores canónicos del pipeline.");
+        }
+    },
+
     newProject: () => {
         const name = prompt("Nombre del nuevo proyecto:", "Nuevo Proyecto");
         if (!name) return;
@@ -208,6 +310,7 @@ const settings = {
             name: name,
             client: "cliente",
             projectCode: "proy",
+            overrideBasePresets: false,
             roots: {
                 work: "Z:/",
                 media: "Z:/",
@@ -222,6 +325,10 @@ const settings = {
 
     deleteProject: async () => {
         if (!settings.currentProject) return;
+        if (settings.currentProject.id === 'proj_base' || settings.currentProject.isBase) {
+            alert("⚠️ El Proyecto Base es la plantilla canónica maestra del sistema y no se puede eliminar.");
+            return;
+        }
         if (!confirm(`¿Borrar proyecto "${settings.currentProject.name}"?`)) return;
 
         const fileName = settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
@@ -230,7 +337,7 @@ const settings = {
         try {
             await API.fs.deleteFile(filePath);
             settings.projects = settings.projects.filter(p => p.id !== settings.currentProject.id);
-            settings.currentProject = settings.projects.length > 0 ? settings.projects[0] : null;
+            settings.currentProject = settings.projects.find(p => !p.isBase) || settings.projects[0];
             settings.render();
         } catch (e) { console.error(e); }
     },
@@ -239,6 +346,7 @@ const settings = {
         if (!settings.currentProject) return;
         const copy = JSON.parse(JSON.stringify(settings.currentProject));
         copy.id = 'proj_' + Date.now();
+        copy.isBase = false;
         copy.name += " (Copia)";
         settings.projects.push(copy);
         settings.currentProject = copy;
@@ -286,6 +394,7 @@ const settings = {
             }
             settings.updateHeaderProjectSelector();
             if (typeof initBrowser !== 'undefined') initBrowser();
+            if (typeof refreshIaHierarchy === 'function') refreshIaHierarchy();
             if (typeof updateIaResolution === 'function') updateIaResolution();
 
             if (window.ShotCreator && ShotCreator.isVisible) {
@@ -303,12 +412,134 @@ const settings = {
         }
     },
 
+    selectProjectSubTab: (tabId) => {
+        settings.projectSubTab = tabId;
+        settings.render();
+    },
+
+    addIaTokenChip: (listKey) => {
+        if (!settings.currentProject) return;
+        const labelMap = {
+            motorsVideo: 'Motor de Video (ej: SD2, VEO3, LUMA)',
+            motorsImage: 'Motor de Imagen (ej: NB2P, MJ, FLUX)',
+            framings: 'Framing (ej: FLL, CRP, POV)',
+            tagsA: 'Tag Nivel A (ej: start1001, end1100, ref1050)',
+            tagsB: 'Tag Nivel B (ej: inp, ups, mask, clean, elem)',
+            tagsC: 'Tag Nivel C (ej: i2v, t2i, i2i, t2v, v2v, m2v)'
+        };
+        const val = prompt(`Nuevo token para ${labelMap[listKey] || listKey}:`);
+        if (!val || !val.trim()) return;
+        const cleanVal = val.trim().replace(/\s+/g, '_');
+        
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        if (!Array.isArray(settings.currentProject.iaPresets[listKey])) {
+            const baseObj = settings.getBaseProject();
+            settings.currentProject.iaPresets[listKey] = JSON.parse(JSON.stringify(baseObj.iaPresets?.[listKey] || []));
+        }
+        if (!settings.currentProject.iaPresets[listKey].includes(cleanVal)) {
+            settings.currentProject.iaPresets[listKey].push(cleanVal);
+            settings.render();
+        }
+    },
+
+    removeIaTokenChip: (listKey, tokenVal) => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        if (!Array.isArray(settings.currentProject.iaPresets[listKey])) {
+            const baseObj = settings.getBaseProject();
+            settings.currentProject.iaPresets[listKey] = JSON.parse(JSON.stringify(baseObj.iaPresets?.[listKey] || []));
+        }
+        settings.currentProject.iaPresets[listKey] = settings.currentProject.iaPresets[listKey].filter(t => t !== tokenVal);
+        settings.render();
+    },
+
+    setDefaultIaToken: (defaultPropKey, tokenVal) => {
+        if (!settings.currentProject) return;
+        const isBase = settings.currentProject.id === 'proj_base' || settings.currentProject.isBase;
+        if (isBase && !settings.devMode) return;
+        if (!isBase && !settings.currentProject.overrideBasePresets) return;
+
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        settings.currentProject.iaPresets[defaultPropKey] = tokenVal;
+        settings.render();
+    },
+
+    renderTokenChipList: (title, listKey, tokens, defaultPropKey, currentDefaultVal, isReadOnly = false, allowNone = false) => {
+        const list = Array.isArray(tokens) ? tokens : [];
+        const isNoneDefault = !currentDefaultVal || currentDefaultVal === '' || currentDefaultVal === 'none';
+
+        return `
+            <div class="config-group" style="margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <label class="config-label" style="margin-bottom:0; font-weight:bold; color:#ccc;">
+                        ${title} (${list.length})
+                        ${!isNoneDefault ? `<span style="font-size:0.75rem; color:#ff9800; font-weight:normal; margin-left:6px;">Default: <b>${escapeHtml(currentDefaultVal)}</b></span>` : (allowNone ? `<span style="font-size:0.75rem; color:#888; font-weight:normal; margin-left:6px;">Default: <i>(Ninguno)</i></span>` : '')}
+                    </label>
+                    ${!isReadOnly ? `<button type="button" class="ia-token-chip-add-btn" onclick="settings.addIaTokenChip('${listKey}')">+ Agregar</button>` : ''}
+                </div>
+                <div class="ia-token-chip-container" style="${isReadOnly ? 'opacity:0.8; background:#0d0d0d;' : ''}">
+                    ${allowNone ? `
+                        <span class="ia-token-chip ia-token-chip-none ${isNoneDefault ? 'is-default' : ''} ${!isReadOnly ? 'can-select-default' : ''}"
+                              ${!isReadOnly ? `onclick="settings.setDefaultIaToken('${defaultPropKey}', '')" title="Clic para establecer (Ninguno) por defecto"` : ''}>
+                            <span>🚫 (Ninguno)</span>
+                            ${isNoneDefault ? `<span style="font-size:0.7rem; margin-left:2px; font-weight:bold;">★</span>` : ''}
+                        </span>
+                    ` : ''}
+                    ${list.length === 0 && !allowNone ? `<span style="color:#666; font-size:0.75rem; font-style:italic;">(Lista vacía)</span>` : ''}
+                    ${list.map(t => {
+                        const isDef = currentDefaultVal === t;
+                        return `
+                            <span class="ia-token-chip ${isDef ? 'is-default' : ''} ${!isReadOnly ? 'can-select-default' : ''}"
+                                  ${!isReadOnly ? `onclick="settings.setDefaultIaToken('${defaultPropKey}', '${escapeHtml(t)}')" title="Clic para establecer '${escapeHtml(t)}' como default"` : ''}>
+                                <span>${escapeHtml(t)}</span>
+                                ${isDef ? `<span style="font-size:0.7rem; margin-left:2px; font-weight:bold;">★</span>` : ''}
+                                ${!isReadOnly ? `<span class="ia-chip-del" onclick="event.stopPropagation(); settings.removeIaTokenChip('${listKey}', '${escapeHtml(t)}')" title="Eliminar token">&times;</span>` : ''}
+                            </span>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    addIaResolutionRule: () => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        if (!Array.isArray(settings.currentProject.iaPresets.resolutionTranslations)) {
+            const baseObj = settings.getBaseProject();
+            settings.currentProject.iaPresets.resolutionTranslations = JSON.parse(JSON.stringify(baseObj.iaPresets?.resolutionTranslations || CANONICAL_RESOLUTION_RULES));
+        }
+        settings.currentProject.iaPresets.resolutionTranslations.push({ detected: "1920x1080", tag: "FHD" });
+        settings.render();
+    },
+
+    removeIaResolutionRule: (idx) => {
+        if (!settings.currentProject || !settings.currentProject.iaPresets?.resolutionTranslations) return;
+        settings.currentProject.iaPresets.resolutionTranslations.splice(idx, 1);
+        settings.render();
+    },
+
+    resetIaResolutionRules: () => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        settings.currentProject.iaPresets.resolutionTranslations = JSON.parse(JSON.stringify(CANONICAL_RESOLUTION_RULES));
+        settings.render();
+    },
+
+    updateIaResolutionRule: (idx, field, value) => {
+        if (!settings.currentProject || !settings.currentProject.iaPresets?.resolutionTranslations) return;
+        const rule = settings.currentProject.iaPresets.resolutionTranslations[idx];
+        if (rule) {
+            rule[field] = value.trim();
+        }
+    },
+
     updateProjectProp: (path, value) => {
         if (!settings.currentProject) return;
         const parts = path.split('.');
         let obj = settings.currentProject;
         for (let i = 0; i < parts.length - 1; i++) {
-            if (!obj[parts[i]]) obj[parts[i]] = {}; // Ensure object exists
+            if (!obj[parts[i]]) obj[parts[i]] = {};
             obj = obj[parts[i]];
         }
         obj[parts[parts.length - 1]] = value;
@@ -364,7 +595,6 @@ const settings = {
 
     setCategory(cat) {
         settings.currentCategory = cat;
-        // Auto-load presets only once when switching to advanced tab if empty
         if (cat === 'avanzado' && settings.presetsList.length === 0) {
             settings.loadPresets().then(() => {
                 if (settings.currentCategory === 'avanzado') settings.render();
@@ -443,118 +673,372 @@ const settings = {
                 `;
 
             case 'proyecto':
-                const projectOptions = settings.projects.map(p => `
-                    <div class="settings-nav-item ${settings.currentProject?.id === p.id ? 'active' : ''}" 
-                         style="padding:8px 12px; margin-bottom:5px; border-radius:4px; display:flex; justify-content:space-between;"
-                         onclick="settings.selectProject('${p.id}')">
-                        <span>${p.name}</span>
+                const cp = settings.currentProject;
+                const baseProj = settings.getBaseProject();
+                const isBase = cp?.id === 'proj_base' || cp?.isBase;
+
+                // Asegurar estructura de presets en Base
+                if (isBase && cp) {
+                    if (!cp.iaPresets) cp.iaPresets = {};
+                    if (!cp.iaPresets.motors) cp.iaPresets.motors = CANONICAL_BASE_PRESETS.iaPresets.motors;
+                    if (!cp.iaPresets.framings) cp.iaPresets.framings = CANONICAL_BASE_PRESETS.iaPresets.framings;
+                    if (!cp.iaPresets.tagsA) cp.iaPresets.tagsA = CANONICAL_BASE_PRESETS.iaPresets.tagsA;
+                    if (!cp.iaPresets.tagsB) cp.iaPresets.tagsB = CANONICAL_BASE_PRESETS.iaPresets.tagsB;
+                    if (!cp.iaPresets.tagsC) cp.iaPresets.tagsC = CANONICAL_BASE_PRESETS.iaPresets.tagsC;
+                    if (!cp.iaPresets.resolutionTranslations) cp.iaPresets.resolutionTranslations = CANONICAL_BASE_PRESETS.iaPresets.resolutionTranslations;
+                }
+
+                // Determinar si el proyecto actual sobrescribe o hereda
+                const hasOverride = isBase || cp?.overrideBasePresets === true;
+                const effectiveIaPresets = hasOverride ? (cp?.iaPresets || baseProj.iaPresets) : baseProj.iaPresets;
+                const effectiveShotPreset = hasOverride ? cp?.defaultShotPresetId : baseProj.defaultShotPresetId;
+                const effectiveAssetPreset = hasOverride ? cp?.defaultAssetPresetId : baseProj.defaultAssetPresetId;
+
+                const projectOptions = settings.projects.map(p => {
+                    const pIsBase = p.id === 'proj_base' || p.isBase;
+                    return `
+                        <div class="settings-subnav-item ${settings.currentProject?.id === p.id ? 'active' : ''}" 
+                             onclick="settings.selectProject('${p.id}')" style="${pIsBase ? 'border-left: 3px solid var(--accent);' : ''}">
+                            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                ${pIsBase ? '⭐ <b>Proyecto Base</b>' : `📁 ${escapeHtml(p.name)}`}
+                            </span>
+                        </div>
+                    `;
+                }).join('');
+
+                const activeSubTab = settings.projectSubTab || 'id_nombre';
+                const subTabs = [
+                    { id: 'id_nombre', label: '🏷️ ID / Nombre' },
+                    { id: 'rutas', label: '🗺️ Rutas' },
+                    { id: 'presets_proyecto', label: '🎬 Presets Proyecto' },
+                    { id: 'presets_ia', label: '🤖 Presets IA' }
+                ];
+
+                const subTabsHtml = subTabs.map(t => `
+                    <div class="settings-subnav-item ${activeSubTab === t.id ? 'active' : ''}"
+                         onclick="settings.selectProjectSubTab('${t.id}')">
+                        <span>${t.label}</span>
                     </div>
                 `).join('');
 
-                const cp = settings.currentProject;
+                let detailContentHtml = '';
+                if (!cp) {
+                    detailContentHtml = `<div style="color:#666; padding:40px 20px; text-align:center;">Seleccione un proyecto para ver sus configuraciones</div>`;
+                } else if (activeSubTab === 'id_nombre') {
+                    detailContentHtml = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h4 style="margin:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem;">
+                                ${isBase ? 'Plantilla Base del Sistema' : 'Identificación del Proyecto'}
+                            </h4>
+                            ${isBase ? `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
+                                    <input type="checkbox" ${settings.devMode ? 'checked' : ''} onchange="settings.toggleDevMode(this.checked)">
+                                    <span>🛠️ Dev Mode</span>
+                                </label>
+                            ` : ''}
+                        </div>
+
+                        ${isBase ? (
+                            settings.devMode ? `
+                                <div class="settings-inheritance-banner" style="border-color:#ff9800; background:rgba(255,152,0,0.1); color:#ffb74d;">
+                                    <div>🛠️ <b>Dev Mode ACTIVO:</b> Puedes modificar la definición de la plantilla maestra. Se guardará localmente en C: y podrás publicarlo a red con el botón superior 'Publicar 📦'.</div>
+                                </div>
+                            ` : `
+                                <div class="settings-inheritance-banner">
+                                    <div>🛡️ <b>Plantilla Maestra Protegida:</b> Activa la casilla 'Dev Mode' arriba si deseas modificar los tokens y defaults canónicos del estudio.</div>
+                                </div>
+                            `
+                        ) : ''}
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom:15px;">
+                            <div class="config-group">
+                                <label class="config-label">Nombre del Proyecto</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.name)}" 
+                                       ${isBase ? 'readonly style="opacity:0.8;"' : 'onchange="settings.updateProjectProp(\'name\', this.value)"'}>
+                            </div>
+                            <div class="config-group">
+                                <label class="config-label">ID / Código de Sistema</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.id)}" readonly style="opacity:0.5; cursor:not-allowed;">
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; background: rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333;">
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Cliente</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.client || '')}" 
+                                       placeholder="${isBase ? '[cliente]' : 'atresmedia'}"
+                                       onchange="settings.updateProjectProp('client', this.value)">
+                            </div>
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Proyecto (Tag / Code)</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.projectCode || '')}" 
+                                       placeholder="${isBase ? '[proyecto]' : 'surf_love'}"
+                                       onchange="settings.updateProjectProp('projectCode', this.value)">
+                            </div>
+                        </div>
+                    `;
+                } else if (activeSubTab === 'rutas') {
+                    detailContentHtml = `
+                        <h4 style="margin-top:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem; margin-bottom:15px;">
+                            ${isBase ? 'Rutas de Ejemplo (Visuales en Base)' : 'Rutas Locales (Z:)'}
+                        </h4>
+                        ${isBase ? `
+                            <div class="settings-inheritance-banner">
+                                <div>ℹ️ Las rutas del Proyecto Base son meramente ilustrativas y sirven de referencia de estructura.</div>
+                            </div>
+                        ` : ''}
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom:20px;">
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Work Local (Escenas y Procesos)</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.roots?.work || '')}" 
+                                       onchange="settings.updateProjectProp('roots.work', this.value)">
+                            </div>
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Media Local (Renders y Material)</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.roots?.media || '')}" 
+                                       onchange="settings.updateProjectProp('roots.media', this.value)">
+                            </div>
+                        </div>
+
+                        <h4 style="color:#4CAF50; text-transform:uppercase; font-size:0.9rem; margin-bottom:15px; margin-top:25px; border-top:1px dashed #333; padding-top:15px;">Rutas Online (G: / Cloud)</h4>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Work Online (Cloud Work)</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.roots?.onlineWork || '')}" 
+                                       onchange="settings.updateProjectProp('roots.onlineWork', this.value)">
+                            </div>
+                            <div class="config-group" style="margin-bottom:0;">
+                                <label class="config-label">Media Online (Cloud Media)</label>
+                                <input type="text" class="config-input" value="${escapeHtml(cp.roots?.onlineMedia || '')}" 
+                                       onchange="settings.updateProjectProp('roots.onlineMedia', this.value)">
+                            </div>
+                        </div>
+                    `;
+                } else if (activeSubTab === 'presets_proyecto') {
+                    const isReadOnly = isBase ? !settings.devMode : !cp.overrideBasePresets;
+
+                    detailContentHtml = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                            <h4 style="margin:0; color:#ff9800; text-transform:uppercase; font-size:0.9rem;">Presets Naming & Pipeline</h4>
+                            ${isBase ? `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
+                                    <input type="checkbox" ${settings.devMode ? 'checked' : ''} onchange="settings.toggleDevMode(this.checked)">
+                                    <span>🛠️ Dev Mode</span>
+                                </label>
+                            ` : `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:#eee; cursor:pointer;">
+                                    <input type="checkbox" ${cp.overrideBasePresets ? 'checked' : ''} 
+                                           onchange="settings.updateProjectProp('overrideBasePresets', this.checked); settings.render();">
+                                    <span>Sobrescribir presets (Override Base)</span>
+                                </label>
+                            `}
+                        </div>
+
+                        ${isBase ? (
+                            settings.devMode ? `
+                                <div class="settings-inheritance-banner" style="border-color:#ff9800; background:rgba(255,152,0,0.1); color:#ffb74d;">
+                                    <div>🛠️ <b>Dev Mode ACTIVO:</b> Editando presets Shot y Asset canónicos de la plantilla maestra.</div>
+                                </div>
+                            ` : `
+                                <div class="settings-inheritance-banner">
+                                    <div>🛡️ <b>Plantilla Maestra Protegida:</b> Presets por defecto para nuevos proyectos. Activa 'Dev Mode' para modificarlos.</div>
+                                </div>
+                            `
+                        ) : (!cp.overrideBasePresets ? `
+                            <div class="settings-inheritance-banner">
+                                <div>🔗 <b>Heredando del Proyecto Base:</b> Los presets Shot y Asset se toman automáticamente de la plantilla maestra. Marca la casilla de arriba si deseas personalizar este proyecto.</div>
+                            </div>
+                        ` : '')}
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; ${isReadOnly ? 'opacity:0.6; pointer-events:none;' : ''}">
+                            <div class="config-group">
+                                <label class="config-label">Preset Shot por Defecto</label>
+                                <select class="config-input" onchange="settings.updateProjectProp('defaultShotPresetId', this.value)">
+                                    <option value="">-- Ninguno (Manual) --</option>
+                                    ${settings.presetsList.filter(p => p.type === 'shot').map(p => `
+                                        <option value="${p.id}" ${effectiveShotPreset === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label class="config-label">Preset Asset por Defecto</label>
+                                <select class="config-input" onchange="settings.updateProjectProp('defaultAssetPresetId', this.value)">
+                                    <option value="">-- Ninguno (Manual) --</option>
+                                    ${settings.presetsList.filter(p => p.type === 'asset').map(p => `
+                                        <option value="${p.id}" ${effectiveAssetPreset === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                        </div>
+                    `;
+                } else if (activeSubTab === 'presets_ia') {
+                    const isReadOnly = isBase ? !settings.devMode : !cp.overrideBasePresets;
+                    const motorsVideo = effectiveIaPresets?.motorsVideo || CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
+                    const motorsImage = effectiveIaPresets?.motorsImage || CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
+                    const framings = effectiveIaPresets?.framings || CANONICAL_BASE_PRESETS.iaPresets.framings;
+                    const tagsA = effectiveIaPresets?.tagsA || CANONICAL_BASE_PRESETS.iaPresets.tagsA;
+                    const tagsB = effectiveIaPresets?.tagsB || CANONICAL_BASE_PRESETS.iaPresets.tagsB;
+                    const tagsC = effectiveIaPresets?.tagsC || CANONICAL_BASE_PRESETS.iaPresets.tagsC;
+                    const rules = effectiveIaPresets?.resolutionTranslations || CANONICAL_BASE_PRESETS.iaPresets.resolutionTranslations;
+
+                    const defVideoMotor = effectiveIaPresets?.defaultVideoEngine || 'SD2';
+                    const defImageMotor = effectiveIaPresets?.defaultImageEngine || 'NB2P';
+                    const defFraming = effectiveIaPresets?.defaultFraming || 'FLL';
+                    const defTagA = effectiveIaPresets?.defaultTagRoleA || 'start1001';
+                    const defTagB = effectiveIaPresets?.defaultTagRoleB || 'inp';
+                    const defTagC = effectiveIaPresets?.defaultTagRoleC || 'i2v';
+
+                    detailContentHtml = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                            <div>
+                                <h4 style="margin:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem;">
+                                    ${isBase ? 'Contenedor y Editor Maestro de Presets IA' : 'Presets de IA del Proyecto'}
+                                </h4>
+                                <span style="font-size:0.75rem; color:#888;">Listas de tokens, motores permitidos y reglas de traducción de resoluciones</span>
+                            </div>
+                            ${isBase ? `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
+                                    <input type="checkbox" ${settings.devMode ? 'checked' : ''} onchange="settings.toggleDevMode(this.checked)">
+                                    <span>🛠️ Dev Mode</span>
+                                </label>
+                            ` : `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:#eee; cursor:pointer;">
+                                    <input type="checkbox" ${cp.overrideBasePresets ? 'checked' : ''} 
+                                           onchange="settings.updateProjectProp('overrideBasePresets', this.checked); settings.render();">
+                                    <span>Sobrescribir presets (Override Base)</span>
+                                </label>
+                            `}
+                        </div>
+
+                        ${isBase ? (
+                            settings.devMode ? `
+                                <div class="settings-inheritance-banner" style="border-color:#ff9800; background:rgba(255,152,0,0.1); color:#ffb74d;">
+                                    <div>🛠️ <b>Dev Mode ACTIVO:</b> Puedes agregar, modificar y eliminar tokens de la plantilla maestra. Se guardarán en C: y podrás exportarlos a red mediante el botón superior 'Publicar 📦'.</div>
+                                </div>
+                            ` : `
+                                <div class="settings-inheritance-banner">
+                                    <div>🛡️ <b>Plantilla Maestra Protegida:</b> Los tokens y reglas canónicas están en modo inspección. Activa 'Dev Mode' arriba para modificarlos.</div>
+                                </div>
+                            `
+                        ) : (isReadOnly ? `
+                            <div class="settings-inheritance-banner">
+                                <div>🔗 <b>Heredando del Proyecto Base:</b> Todos los motores, tags y reglas de resolución provienen de la plantilla maestra. Marca la casilla de arriba si deseas personalizar este proyecto.</div>
+                            </div>
+                        ` : '')}
+
+                        <!-- TIP INTERACTIVO DE SELECCIÓN -->
+                        <div style="font-size:0.75rem; color:#ffa726; background:rgba(255,152,0,0.1); border-left:3px solid #ff9800; padding:8px 12px; border-radius:4px; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:1rem;">💡</span>
+                            <div><b>Tip:</b> Haz clic sobre cualquier token para establecerlo como valor por defecto (se destacará en naranja). En Tags puedes elegir <i>🚫 (Ninguno)</i> para omitir ese nivel al ingestar.</div>
+                        </div>
+
+                        <!-- EDITORES DE CHIPS DE TOKENS CON SELECCIÓN DE DEFAULT -->
+                        <div style="background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:15px;">
+                            <div style="font-weight:bold; font-size:0.82rem; color:var(--accent); margin-bottom:10px; text-transform:uppercase;">
+                                📦 Listas de Tokens y Valores Predeterminados
+                            </div>
+                            
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:6px;">
+                                ${settings.renderTokenChipList('🎬 Motores de Video', 'motorsVideo', motorsVideo, 'defaultVideoEngine', defVideoMotor, isReadOnly, false)}
+                                ${settings.renderTokenChipList('🖼️ Motores de Imagen', 'motorsImage', motorsImage, 'defaultImageEngine', defImageMotor, isReadOnly, false)}
+                            </div>
+
+                            ${settings.renderTokenChipList('📐 Framings Disponibles', 'framings', framings, 'defaultFraming', defFraming, isReadOnly, false)}
+                            
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top:5px;">
+                                ${settings.renderTokenChipList('Tags Nivel A (Refs)', 'tagsA', tagsA, 'defaultTagRoleA', defTagA, isReadOnly, true)}
+                                ${settings.renderTokenChipList('Tags Nivel B (Compo)', 'tagsB', tagsB, 'defaultTagRoleB', defTagB, isReadOnly, true)}
+                                ${settings.renderTokenChipList('Tags Nivel C (Proceso)', 'tagsC', tagsC, 'defaultTagRoleC', defTagC, isReadOnly, true)}
+                            </div>
+                        </div>
+
+                        <!-- TABLA DE TRADUCCIÓN DE RESOLUCIONES -->
+                        <div style="margin-top:15px; border-top:1px dashed #333; padding-top:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <div>
+                                    <h4 style="margin:0; color:#4fc3f7; font-size:0.85rem; text-transform:uppercase;">Tabla de Traducción de Resoluciones</h4>
+                                    <span style="font-size:0.75rem; color:#888;">Asigna el token canónico según las dimensiones detectadas en los archivos</span>
+                                </div>
+                                ${!isReadOnly ? `
+                                    <div style="display:flex; gap:6px;">
+                                        <button class="btn" onclick="settings.addIaResolutionRule()" style="font-size:0.75rem; padding:4px 10px; background:var(--accent); color:black; font-weight:bold;">+ Agregar</button>
+                                        <button class="btn" onclick="settings.resetIaResolutionRules()" style="font-size:0.75rem; padding:4px 8px; background:#333; color:#ccc;">↺ Reset Canon</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <div style="max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:6px; background:#141414; ${isReadOnly ? 'opacity:0.75;' : ''}">
+                                <table style="width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left;">
+                                    <thead>
+                                        <tr style="background:#1e1e1e; border-bottom:1px solid #333; color:#aaa;">
+                                            <th style="padding:6px 10px;">Resolución Detectada</th>
+                                            <th style="padding:6px 10px;">Tag Canónico / Traducción</th>
+                                            ${!isReadOnly ? `<th style="padding:6px 10px; width:40px; text-align:center;">Acción</th>` : ''}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${rules.map((rule, idx) => `
+                                            <tr style="border-bottom:1px solid #222;">
+                                                <td style="padding:4px 10px;">
+                                                    <input type="text" class="config-input" style="padding:4px 8px; font-size:0.8rem; font-family:monospace;" 
+                                                           value="${escapeHtml(rule.detected)}" 
+                                                           ${isReadOnly ? 'readonly' : `onchange="settings.updateIaResolutionRule(${idx}, 'detected', this.value)"`}>
+                                                </td>
+                                                <td style="padding:4px 10px;">
+                                                    <input type="text" class="config-input" style="padding:4px 8px; font-size:0.8rem; font-weight:bold; color:var(--accent);" 
+                                                           value="${escapeHtml(rule.tag)}" 
+                                                           ${isReadOnly ? 'readonly' : `onchange="settings.updateIaResolutionRule(${idx}, 'tag', this.value)"`}>
+                                                </td>
+                                                ${!isReadOnly ? `
+                                                    <td style="padding:4px 10px; text-align:center;">
+                                                        <button onclick="settings.removeIaResolutionRule(${idx})" style="background:transparent; border:none; color:#f44336; cursor:pointer; font-size:0.9rem;" title="Eliminar regla">&times;</button>
+                                                    </td>
+                                                ` : ''}
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }
 
                 return `
-                    <div style="display:grid; grid-template-columns: 200px 1fr; gap:20px; height:100%;">
-                        <!-- Left: List -->
-                        <div style="border-right: 1px solid #333; padding-right:15px;">
+                    <div style="display:grid; grid-template-columns: 210px 170px 1fr; gap:15px; height:100%; min-height:480px;">
+                        <!-- Columna 1: Listado de Proyectos -->
+                        <div style="border-right: 1px solid #333; padding-right:12px; display:flex; flex-direction:column;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                                <h4 style="margin:0;">Listado</h4>
-                                <button class="btn" onclick="settings.newProject()" style="padding:2px 8px; font-size:0.8rem;">+</button>
+                                <h4 style="margin:0; font-size:0.85rem; color:#aaa; text-transform:uppercase;">Proyectos (${settings.projects.length})</h4>
+                                <button class="btn" onclick="settings.newProject()" title="Nuevo Proyecto" style="padding:2px 8px; font-size:0.8rem; background:var(--accent); color:black; font-weight:bold;">+</button>
                             </div>
-                            <div style="max-height: 480px; overflow-y:auto;">
+                            <div style="flex:1; overflow-y:auto; padding-right:4px;">
                                 ${projectOptions}
                             </div>
                         </div>
+
+                        <!-- Columna 2: Sub-menú de Secciones (Miller View) -->
+                        <div style="border-right: 1px solid #333; padding-right:12px; display:flex; flex-direction:column;">
+                            <h4 style="margin:0 0 10px 0; font-size:0.85rem; color:#aaa; text-transform:uppercase;">Sección</h4>
+                            <div style="flex:1; overflow-y:auto;">
+                                ${subTabsHtml}
+                            </div>
+                        </div>
                         
-                        <!-- Right: Details -->
-                        <div style="max-height: 480px; overflow-y:auto; padding-right:10px;">
+                        <!-- Columna 3: Panel de Detalle y Acciones -->
+                        <div style="display:flex; flex-direction:column; overflow-y:auto; padding-right:5px;">
+                            <div style="flex:1; overflow-y:auto;">
+                                ${detailContentHtml}
+                            </div>
+
                             ${cp ? `
-                                <h3 style="margin-top:0;">Propiedades: ${cp.name}</h3>
-                                
-                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                    <div class="config-group">
-                                        <label class="config-label">Nombre del Proyecto</label>
-                                        <input type="text" class="config-input" value="${cp.name}" 
-                                               onchange="settings.updateProjectProp('name', this.value)">
-                                    </div>
-                                    <div class="config-group">
-                                        <label class="config-label">ID / Código</label>
-                                        <input type="text" class="config-input" value="${cp.id}" readonly style="opacity:0.5; cursor:not-allowed;">
-                                    </div>
+                                <div style="display:flex; gap:10px; margin-top:20px; border-top:1px solid #333; padding-top:15px;">
+                                    ${isBase ? `
+                                        <button class="btn" onclick="settings.restoreBaseProjectCanon()" style="flex:1; background:#2a2a2a; border:1px solid var(--accent); color:var(--accent); font-weight:bold; padding:8px; border-radius:4px; cursor:pointer;">↺ Restaurar Proyecto Base a Canon Oficial</button>
+                                    ` : `
+                                        <button class="btn" onclick="settings.duplicateProject()" style="flex:1; background:#2a2a2a; color:#eee; border:1px solid #444; padding:8px; border-radius:4px; cursor:pointer;">Duplicar Proyecto</button>
+                                        <button class="btn" style="flex:1; background:rgba(244,67,54,0.1); border:1px solid #f44336; color:#f44336; padding:8px; border-radius:4px; cursor:pointer;" onclick="settings.deleteProject()">Eliminar Proyecto</button>
+                                    `}
                                 </div>
-
-                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom:20px; background: rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333;">
-                                    <div class="config-group" style="margin-bottom:0;">
-                                        <label class="config-label">Cliente</label>
-                                        <input type="text" class="config-input" value="${cp.client || ''}" 
-                                               placeholder="mango"
-                                               onchange="settings.updateProjectProp('client', this.value)">
-                                    </div>
-                                    <div class="config-group" style="margin-bottom:0;">
-                                        <label class="config-label">Proyecto (Tag)</label>
-                                        <input type="text" class="config-input" value="${cp.projectCode || ''}" 
-                                               placeholder="ick"
-                                               onchange="settings.updateProjectProp('projectCode', this.value)">
-                                    </div>
-                                </div>
-
-                                <div style="margin-bottom:15px;">
-                                    <h4 style="margin: 10px 0; color:var(--accent); font-size:0.9rem; text-transform:uppercase;">Rutas Locales (Z:)</h4>
-                                    <div class="config-group">
-                                        <label class="config-label">Proyecto Local (Work)</label>
-                                        <input type="text" class="config-input" value="${cp.roots.work || ''}" 
-                                               onchange="settings.updateProjectProp('roots.work', this.value)">
-                                    </div>
-                                    <div class="config-group">
-                                        <label class="config-label">Media Local (Material)</label>
-                                        <input type="text" class="config-input" value="${cp.roots.media || ''}" 
-                                               onchange="settings.updateProjectProp('roots.media', this.value)">
-                                    </div>
-                                </div>
-
-                                <div style="margin-bottom:15px; border-top: 1px dashed #444; pt:15px;">
-                                    <h4 style="margin: 15px 0 10px 0; color:#4CAF50; font-size:0.9rem; text-transform:uppercase;">Rutas Online (M: / Cloud)</h4>
-                                    <div class="config-group">
-                                        <label class="config-label">Proyecto Online (Work)</label>
-                                        <input type="text" class="config-input" value="${cp.roots.onlineWork || ''}" 
-                                               onchange="settings.updateProjectProp('roots.onlineWork', this.value)">
-                                    </div>
-                                    <div class="config-group">
-                                        <label class="config-label">Media Online (Material)</label>
-                                        <input type="text" class="config-input" value="${cp.roots.onlineMedia || ''}" 
-                                               onchange="settings.updateProjectProp('roots.onlineMedia', this.value)">
-                                    </div>
-                                </div>
-
-                                <div style="margin-bottom:15px; border-top: 1px dashed #444; padding-top:15px;">
-                                    <h4 style="margin: 0 0 10px 0; color:#ff9800; font-size:0.9rem; text-transform:uppercase;">Presets por Defecto del Proyecto</h4>
-                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                        <div class="config-group">
-                                            <label class="config-label">Preset Shot por Defecto</label>
-                                            <select class="config-input" onchange="settings.updateProjectProp('defaultShotPresetId', this.value)">
-                                                <option value="">-- Ninguno (Manual) --</option>
-                                                ${settings.presetsList.filter(p => p.type === 'shot').map(p => `
-                                                    <option value="${p.id}" ${cp.defaultShotPresetId === p.id ? 'selected' : ''}>${p.name}</option>
-                                                `).join('')}
-                                            </select>
-                                        </div>
-                                        <div class="config-group">
-                                            <label class="config-label">Preset Asset por Defecto</label>
-                                            <select class="config-input" onchange="settings.updateProjectProp('defaultAssetPresetId', this.value)">
-                                                <option value="">-- Ninguno (Manual) --</option>
-                                                ${settings.presetsList.filter(p => p.type === 'asset').map(p => `
-                                                    <option value="${p.id}" ${cp.defaultAssetPresetId === p.id ? 'selected' : ''}>${p.name}</option>
-                                                `).join('')}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div style="display:flex; gap:10px; margin-top:30px; padding-bottom:20px;">
-                                    <button class="btn" onclick="settings.duplicateProject()" style="flex:1;">Duplicar</button>
-                                    <button class="btn" style="flex:1; border-color: #f44336; color:#f44336;" onclick="settings.deleteProject()">Eliminar</button>
-                                </div>
-                            ` : `<div style="color:#666; padding:20px; text-align:center;">Seleccione un proyecto para editar</div>`}
+                            ` : ''}
                         </div>
                     </div>
                 `;
