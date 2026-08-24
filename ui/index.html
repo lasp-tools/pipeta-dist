@@ -427,7 +427,7 @@
                                     <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">MOTOR</span>
                                     <input type="checkbox" id="tokMotorToggle" checked onchange="updateIaPreview()">
                                 </div>
-                                <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaMotorChange(this.value)">
                                     <option value="SD2">SD2 (Seedance v2.0)</option>
                                     <option value="SD25">SD25 (Seedance v2.5)</option>
                                     <option value="VEO3">VEO3 (Google Veo v3.0)</option>
@@ -437,7 +437,7 @@
                                     <option value="NB2P">NB2P (Nano Banana 2 Pro)</option>
                                     <option value="custom">✍️ Manual / Otro...</option>
                                 </select>
-                                <input id="tokMotorCustom" class="prop-input" placeholder="Manual (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                                <input id="tokMotorCustom" class="prop-input" placeholder="Manual (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaMotorCustomChange(this.value)">
                             </div>
 
                             <!-- Token Res -->
@@ -535,14 +535,11 @@
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                                     <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">CARPETA DE SALIDA</span>
                                 </div>
-                                <div class="ia-subfolder-toggles" style="margin-bottom:6px; width:100%; display:flex; gap:4px;">
-                                    <button type="button" id="iaToggleBtnWip" class="ia-subfolder-toggle-btn active-wip" onclick="iaToggleSubfolder('wip')" style="flex:1;">WIP</button>
-                                    <button type="button" id="iaToggleBtnRef" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('ref')" style="flex:1;">Ref</button>
-                                    <button type="button" id="iaToggleBtnExport" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('export')" style="flex:1;">Export</button>
+                                <div class="ia-subfolder-toggles" style="width:100%; display:flex; gap:4px;">
+                                    <button type="button" id="iaToggleBtnWip" class="ia-subfolder-toggle-btn active-wip" onclick="iaToggleSubfolder('wip')" style="flex:1;" title="Salida a raíz: /IA/ (Archivos de trabajo y generación directa)">WIP</button>
+                                    <button type="button" id="iaToggleBtnRef" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('ref')" style="flex:1;" title="Salida a subcarpeta: /IA/ref/ (Imágenes y videos de referencia)">Ref</button>
+                                    <button type="button" id="iaToggleBtnExport" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('export')" style="flex:1;" title="Salida a subcarpeta: /IA/export/ (Entregables y exportaciones finales)">Export</button>
                                 </div>
-                                <label id="iaCopyRootLabel" style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:#aaa; cursor:pointer;" title="Al ingestar a /IA/ref/ o /IA/export/, deja automáticamente una copia en la raíz /IA/">
-                                    <input type="checkbox" id="iaCopyRootCheck" checked> Copiar en raíz /IA/ también
-                                </label>
                             </div>
 
                         </div>

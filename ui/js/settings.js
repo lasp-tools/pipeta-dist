@@ -680,7 +680,8 @@ const settings = {
                 // Asegurar estructura de presets en Base
                 if (isBase && cp) {
                     if (!cp.iaPresets) cp.iaPresets = {};
-                    if (!cp.iaPresets.motors) cp.iaPresets.motors = CANONICAL_BASE_PRESETS.iaPresets.motors;
+                    if (!cp.iaPresets.motorsVideo) cp.iaPresets.motorsVideo = CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
+                    if (!cp.iaPresets.motorsImage) cp.iaPresets.motorsImage = CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
                     if (!cp.iaPresets.framings) cp.iaPresets.framings = CANONICAL_BASE_PRESETS.iaPresets.framings;
                     if (!cp.iaPresets.tagsA) cp.iaPresets.tagsA = CANONICAL_BASE_PRESETS.iaPresets.tagsA;
                     if (!cp.iaPresets.tagsB) cp.iaPresets.tagsB = CANONICAL_BASE_PRESETS.iaPresets.tagsB;
@@ -883,9 +884,9 @@ const settings = {
                     const defVideoMotor = effectiveIaPresets?.defaultVideoEngine || 'SD2';
                     const defImageMotor = effectiveIaPresets?.defaultImageEngine || 'NB2P';
                     const defFraming = effectiveIaPresets?.defaultFraming || 'FLL';
-                    const defTagA = effectiveIaPresets?.defaultTagRoleA || 'start1001';
-                    const defTagB = effectiveIaPresets?.defaultTagRoleB || 'inp';
-                    const defTagC = effectiveIaPresets?.defaultTagRoleC || 'i2v';
+                    const defTagA = (typeof effectiveIaPresets?.defaultTagRoleA !== 'undefined') ? effectiveIaPresets.defaultTagRoleA : 'start1001';
+                    const defTagB = (typeof effectiveIaPresets?.defaultTagRoleB !== 'undefined') ? effectiveIaPresets.defaultTagRoleB : 'inp';
+                    const defTagC = (typeof effectiveIaPresets?.defaultTagRoleC !== 'undefined') ? effectiveIaPresets.defaultTagRoleC : 'i2v';
 
                     detailContentHtml = `
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -932,7 +933,7 @@ const settings = {
                         </div>
 
                         <!-- EDITORES DE CHIPS DE TOKENS CON SELECCIÓN DE DEFAULT -->
-                        <div style="background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:15px;">
+                        <div class="${isReadOnly ? 'settings-locked-panel' : ''}" style="background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:15px;">
                             <div style="font-weight:bold; font-size:0.82rem; color:var(--accent); margin-bottom:10px; text-transform:uppercase;">
                                 📦 Listas de Tokens y Valores Predeterminados
                             </div>
@@ -952,7 +953,7 @@ const settings = {
                         </div>
 
                         <!-- TABLA DE TRADUCCIÓN DE RESOLUCIONES -->
-                        <div style="margin-top:15px; border-top:1px dashed #333; padding-top:12px;">
+                        <div class="${isReadOnly ? 'settings-locked-panel' : ''}" style="margin-top:15px; border-top:1px dashed #333; padding-top:12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                 <div>
                                     <h4 style="margin:0; color:#4fc3f7; font-size:0.85rem; text-transform:uppercase;">Tabla de Traducción de Resoluciones</h4>
@@ -966,7 +967,7 @@ const settings = {
                                 ` : ''}
                             </div>
 
-                            <div style="max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:6px; background:#141414; ${isReadOnly ? 'opacity:0.75;' : ''}">
+                            <div style="max-height:180px; overflow-y:auto; border:1px solid #333; border-radius:6px; background:#141414;">
                                 <table style="width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left;">
                                     <thead>
                                         <tr style="background:#1e1e1e; border-bottom:1px solid #333; color:#aaa;">

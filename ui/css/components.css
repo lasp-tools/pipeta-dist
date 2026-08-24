@@ -435,19 +435,22 @@
     color: #bbb;
 }
 
-.ia-subfolder-toggle-btn.active-wip {
-    background: var(--accent);
-    color: #111;
-}
-
-.ia-subfolder-toggle-btn.active-ref {
-    background: #2196f3;
-    color: #fff;
-}
-
+.ia-subfolder-toggle-btn.active-wip,
+.ia-subfolder-toggle-btn.active-ref,
 .ia-subfolder-toggle-btn.active-export {
-    background: #ff9800;
-    color: #111;
+    background: #ff9800 !important;
+    border-color: #ffa726 !important;
+    color: #111 !important;
+    font-weight: bold !important;
+    box-shadow: 0 0 6px rgba(255, 152, 0, 0.35);
+}
+
+.settings-locked-panel {
+    opacity: 0.38 !important;
+    filter: grayscale(0.85) !important;
+    pointer-events: none !important;
+    user-select: none !important;
+    transition: all 0.2s ease;
 }
 
 .settings-footer {

@@ -15,10 +15,10 @@
   "iaPresets": {
     "defaultImageEngine": "NB2P",
     "defaultVideoEngine": "SD2",
-    "defaultFraming": "FLL",
-    "defaultTagRoleA": "start1001",
-    "defaultTagRoleB": "inp",
-    "defaultTagRoleC": "i2v",
+    "defaultFraming": "CRP",
+    "defaultTagRoleA": "ref",
+    "defaultTagRoleB": "",
+    "defaultTagRoleC": "",
     "motorsVideo": [
       "SD2",
       "SD25",

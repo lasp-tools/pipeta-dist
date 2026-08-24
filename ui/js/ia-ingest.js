@@ -176,7 +176,7 @@ function getEffectiveIaPresets() {
     };
 }
 
-function populateIaTokenSelectsFromProject() {
+function populateIaTokenSelectsFromProject(forceDefaults = true) {
     const effective = getEffectiveIaPresets();
     const isSimple = window.iaWorkMode === 'simple';
 
@@ -200,7 +200,7 @@ function populateIaTokenSelectsFromProject() {
         motorSel.innerHTML = html;
 
         const allMotors = [...vList, ...iList];
-        if (curVal && (allMotors.includes(curVal) || curVal === 'custom')) {
+        if (!forceDefaults && curVal && (allMotors.includes(curVal) || curVal === 'custom')) {
             motorSel.value = curVal;
         } else if (vList.includes(effective.defaultVideoEngine)) {
             motorSel.value = effective.defaultVideoEngine;
@@ -216,10 +216,12 @@ function populateIaTokenSelectsFromProject() {
         const list = effective.framings || ["FLL", "CRP"];
         framingSel.innerHTML = list.map(f => `<option value="${f}">${f}</option>`).join('') +
             (!isSimple ? `<option value="custom">✍️ Manual / Otro...</option>` : '');
-        if (curVal && (list.includes(curVal) || curVal === 'custom')) {
+        if (!forceDefaults && curVal && (list.includes(curVal) || curVal === 'custom')) {
             framingSel.value = curVal;
-        } else if (list.includes(effective.defaultFraming)) {
+        } else if (effective.defaultFraming && list.includes(effective.defaultFraming)) {
             framingSel.value = effective.defaultFraming;
+        } else if (list.length > 0) {
+            framingSel.value = list[0];
         }
     }
 
@@ -231,10 +233,12 @@ function populateIaTokenSelectsFromProject() {
         tagASel.innerHTML = `<option value="">- Nivel A (Ninguno) -</option>` +
             list.map(t => `<option value="${t}">${t}</option>`).join('') +
             (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
-        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+        
+        const targetA = (typeof effective.defaultTagRoleA !== 'undefined') ? effective.defaultTagRoleA : 'start1001';
+        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
             tagASel.value = curVal;
-        } else if (effective.defaultTagRoleA && list.includes(effective.defaultTagRoleA)) {
-            tagASel.value = effective.defaultTagRoleA;
+        } else if (targetA && list.includes(targetA)) {
+            tagASel.value = targetA;
         } else {
             tagASel.value = '';
         }
@@ -248,10 +252,12 @@ function populateIaTokenSelectsFromProject() {
         tagBSel.innerHTML = `<option value="">- Nivel B (Ninguno) -</option>` +
             list.map(t => `<option value="${t}">${t}</option>`).join('') +
             (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
-        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+        
+        const targetB = (typeof effective.defaultTagRoleB !== 'undefined') ? effective.defaultTagRoleB : 'inp';
+        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
             tagBSel.value = curVal;
-        } else if (effective.defaultTagRoleB && list.includes(effective.defaultTagRoleB)) {
-            tagBSel.value = effective.defaultTagRoleB;
+        } else if (targetB && list.includes(targetB)) {
+            tagBSel.value = targetB;
         } else {
             tagBSel.value = '';
         }
@@ -265,10 +271,12 @@ function populateIaTokenSelectsFromProject() {
         tagCSel.innerHTML = `<option value="">- Nivel C (Ninguno) -</option>` +
             list.map(t => `<option value="${t}">${t}</option>`).join('') +
             (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
-        if (curVal !== undefined && (curVal === '' || list.includes(curVal) || curVal === 'custom')) {
+        
+        const targetC = (typeof effective.defaultTagRoleC !== 'undefined') ? effective.defaultTagRoleC : 'i2v';
+        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
             tagCSel.value = curVal;
-        } else if (effective.defaultTagRoleC && list.includes(effective.defaultTagRoleC)) {
-            tagCSel.value = effective.defaultTagRoleC;
+        } else if (targetC && list.includes(targetC)) {
+            tagCSel.value = targetC;
         } else {
             tagCSel.value = '';
         }
@@ -499,7 +507,7 @@ async function updateIaResolution() {
 }
 
 // --- 2. GESTIÓN DE CUSTOM INPUTS Y CONSTRUCCIÓN DE TOKENS ---
-function getIaTokenValues(itemIndexOffset = 0) {
+function getIaTokenValues(item = null, versionOverride = null) {
     const shotIdOn = document.getElementById('tokShotIdToggle')?.checked;
     const motorOn = document.getElementById('tokMotorToggle')?.checked;
     const resOn = document.getElementById('tokResToggle')?.checked;
@@ -509,7 +517,11 @@ function getIaTokenValues(itemIndexOffset = 0) {
 
     const shotId = document.getElementById('iaShotIdInput')?.value.trim() || '';
 
-    // Motor (Dropdown + Custom)
+    const effective = getEffectiveIaPresets();
+    const defaultVidMotor = effective.defaultVideoEngine || 'SD2';
+    const defaultImgMotor = effective.defaultImageEngine || 'NB2P';
+
+    // Motor (Dropdown + Custom + Detección inteligente por tipo de archivo)
     const motorSel = document.getElementById('tokMotorSelect');
     const motorCustomEl = document.getElementById('tokMotorCustom');
     let motor = motorSel?.value || '';
@@ -518,9 +530,20 @@ function getIaTokenValues(itemIndexOffset = 0) {
         motor = motorCustomEl?.value.trim() || '';
     } else {
         if (motorCustomEl) motorCustomEl.style.display = 'none';
+        if (item) {
+            if (item.customMotor) {
+                motor = item.customMotor;
+            } else if (item.motor) {
+                motor = item.motor;
+            } else {
+                const ext = (item.ext || '').toLowerCase();
+                const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+                motor = isImg ? defaultImgMotor : defaultVidMotor;
+            }
+        }
     }
 
-    // Res (Dropdown + Custom)
+    // Res (Dropdown + Custom + Autodetección individual por ítem)
     const resSel = document.getElementById('tokResSelect');
     const resCustomEl = document.getElementById('tokResCustom');
     let resolution = resSel?.value || '';
@@ -529,6 +552,9 @@ function getIaTokenValues(itemIndexOffset = 0) {
         resolution = resCustomEl?.value.trim() || '';
     } else {
         if (resCustomEl) resCustomEl.style.display = 'none';
+        if (item && item.autoResTag) {
+            resolution = item.autoResTag;
+        }
     }
 
     // Framing (Dropdown + Custom)
@@ -575,25 +601,27 @@ function getIaTokenValues(itemIndexOffset = 0) {
 
     const tagRole = [tagA, tagB, tagC].filter(Boolean).join('-');
 
-    // Version con incremento secuencial para items múltiples
+    // Version base sin sufijo o forzada externamente
     const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
-    let version = verInputVal;
-    if (itemIndexOffset > 0) {
-        const matchVer = verInputVal.match(/v(\d+)/i);
-        const startNum = matchVer ? parseInt(matchVer[1], 10) : iaBaseVersionNum;
-        const seqNum = startNum + itemIndexOffset;
-        version = 'v' + String(seqNum).padStart(3, '0');
-    }
+    let version = versionOverride || verInputVal;
 
-    const tokens = [];
-    if (shotIdOn && shotId) tokens.push(shotId);
-    if (motorOn && motor) tokens.push(motor);
-    if (resOn && resolution) tokens.push(resolution);
-    if (framingOn && framing) tokens.push(framing);
-    if (tagOn && tagRole) tokens.push(tagRole);
+    const prefixTokens = [];
+    if (shotIdOn && shotId) prefixTokens.push(shotId);
+    if (motorOn && motor) prefixTokens.push(motor);
+    if (resOn && resolution) prefixTokens.push(resolution);
+    if (framingOn && framing) prefixTokens.push(framing);
+    if (tagOn && tagRole) prefixTokens.push(tagRole);
+
+    const tokens = [...prefixTokens];
     if (verOn && version) tokens.push(version);
 
-    return { tokens, canonicalBase: tokens.join('_'), version };
+    return { 
+        tokens, 
+        prefixBase: prefixTokens.join('_'),
+        canonicalBase: tokens.join('_'), 
+        version,
+        ext: item?.ext || ''
+    };
 }
 
 // --- 3. ACTUALIZACIÓN DE PREVIEW Y TABLA ---
@@ -653,14 +681,31 @@ function updateIaPreview() {
         ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
         : iaBatchQueue.filter(i => i.checked);
 
-    let activeSeqIndex = 0;
+    const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
+    const matchVer = verInputVal.match(/v(\d+)/i);
+    const startNum = matchVer ? parseInt(matchVer[1], 10) : iaBaseVersionNum;
+
+    // Agrupador de firmas canónicas: solo incrementa versión si el nombre base + extensión darían un duplicado exacto
+    const signatureCounts = new Map();
+
     targetItems.forEach((item) => {
         item.subfolder = selectedSubfolder;
-        const tokenRes = getIaTokenValues(activeSeqIndex);
+        
+        // Obtener tokens base sin versión
+        const baseRes = getIaTokenValues(item, 'v000');
+        const ext = (item.ext || '').toLowerCase();
+        const signature = `${baseRes.prefixBase}__${ext}`;
+
+        const count = signatureCounts.get(signature) || 0;
+        signatureCounts.set(signature, count + 1);
+
+        const itemVerNum = startNum + count;
+        const itemVerStr = 'v' + String(itemVerNum).padStart(3, '0');
+
+        const tokenRes = getIaTokenValues(item, itemVerStr);
         item.canonicalName = tokenRes.canonicalBase + (item.ext || '.mp4');
         item.targetFolder = getTargetFolderForItem(item.subfolder);
         item.targetPath = (item.targetFolder + '/' + item.canonicalName).replace(/\\/g, '/');
-        activeSeqIndex++;
     });
 
     // Asegurar que la carpeta de destino esté actualizada en todos los ítems según su subcarpeta propia
@@ -682,10 +727,8 @@ function updateIaPreview() {
     if (activeItem) {
         if (canonicalDisplay) canonicalDisplay.innerText = activeItem.canonicalName;
         if (pathDisplay) pathDisplay.innerText = `Ruta: ${activeItem.targetPath}`;
-        // Autodetectar resolución por metadata si la casilla está encendida
-        autoDetectResolutionForActiveItem(activeItem);
     } else {
-        const singleTokens = getIaTokenValues(0);
+        const singleTokens = getIaTokenValues(null, 'v001');
         const defaultFolder = getTargetFolderForItem(selectedSubfolder);
         const defaultName = singleTokens.canonicalBase + '.mp4';
         if (canonicalDisplay) canonicalDisplay.innerText = defaultName;
@@ -747,10 +790,12 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
     const autoCheck = document.getElementById('iaAutoDetectResCheck');
     if (!autoCheck || !autoCheck.checked) return;
 
-    if (item.autoResDetected && !force) return;
+    if ((item.autoResDetected || item.isDetectingRes) && !force) return;
+    item.isDetectingRes = true;
 
     try {
         const dims = await detectMediaDimensions(item);
+        item.isDetectingRes = false;
         if (!dims || !dims.width || !dims.height) return;
 
         const resSelect = document.getElementById('tokResSelect');
@@ -789,6 +834,10 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
             }
         }
 
+        const finalTag = matchedVal || dimStr;
+        item.autoResDetected = dimStr;
+        item.autoResTag = finalTag;
+
         if (matchedVal) {
             let optExists = Array.from(resSelect.options).some(o => o.value === matchedVal);
             if (!optExists) {
@@ -820,10 +869,10 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
             }
         }
 
-        item.autoResDetected = dimStr;
         updateIaPreview();
         showIaAlert(`📐 Metadata de resolución autodetectada: ${dimStr} (${matchedVal || dimStr})`, "#4caf50");
     } catch(e) {
+        item.isDetectingRes = false;
         console.error("Auto detect resolution error:", e);
     }
 }
@@ -840,20 +889,26 @@ function updateIaMediaPreview(activeItem) {
     const imgEl = document.getElementById('iaImagePreview');
     const videoEl = document.getElementById('iaVideoPreview');
 
-    if (!placeholder || !imgEl || !videoEl) return;
-
     if (!activeItem) {
-        placeholder.style.display = 'block';
-        placeholder.innerText = '📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)';
-        imgEl.style.display = 'none';
-        videoEl.style.display = 'none';
-        if (typeof videoEl.pause === 'function') videoEl.pause();
+        if (placeholder) {
+            placeholder.style.display = 'block';
+            placeholder.innerText = '📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)';
+        }
+        if (imgEl) imgEl.style.display = 'none';
+        if (videoEl) {
+            videoEl.style.display = 'none';
+            if (typeof videoEl.pause === 'function') videoEl.pause();
+        }
         return;
     }
 
     let previewUrl = '';
     if (activeItem.file) {
-        try { previewUrl = URL.createObjectURL(activeItem.file); } catch(e) {}
+        try {
+            previewUrl = URL.createObjectURL(activeItem.file);
+        } catch(e) {
+            console.error("Object URL error", e);
+        }
     } else if (activeItem.originalPath && !activeItem.originalPath.startsWith('[')) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
     }
@@ -898,10 +953,13 @@ function handleIaFileSelect(input) {
         else if (iaActiveSubfolders.has('export')) initialSubfolder = 'export';
 
         const fileArray = Array.from(input.files);
-        fileArray.forEach((file, idx) => {
+        fileArray.forEach((file) => {
             const extIndex = file.name.lastIndexOf('.');
             const ext = extIndex !== -1 ? file.name.substring(extIndex) : '.mp4';
             const originalPath = file.path || file.webkitRelativePath || file.name;
+            const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext.toLowerCase());
+            const itemMotor = isImg ? defaultImgMotor : defaultVidMotor;
+
             const newItem = {
                 id: 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
                 file: file,
@@ -909,6 +967,7 @@ function handleIaFileSelect(input) {
                 originalPath: originalPath,
                 ext: ext,
                 subfolder: initialSubfolder,
+                motor: itemMotor,
                 canonicalName: '',
                 targetFolder: '',
                 targetPath: '',
@@ -918,22 +977,8 @@ function handleIaFileSelect(input) {
             iaBatchQueue.push(newItem);
             iaSelectedIds.add(newItem.id);
 
-            // Si es el primer archivo, ajustar motor inteligente por extensión
-            if (idx === 0) {
-                const isImg = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext.toLowerCase());
-                const motorSelect = document.getElementById('tokMotorSelect');
-                if (motorSelect) {
-                    const targetMotor = isImg ? defaultImgMotor : defaultVidMotor;
-                    let hasOpt = Array.from(motorSelect.options).some(o => o.value === targetMotor);
-                    if (!hasOpt) {
-                        const newOpt = document.createElement('option');
-                        newOpt.value = targetMotor;
-                        newOpt.innerText = targetMotor;
-                        motorSelect.appendChild(newOpt);
-                    }
-                    motorSelect.value = targetMotor;
-                }
-            }
+            // Autodetectar dimensiones para cada archivo en segundo plano
+            autoDetectResolutionForActiveItem(newItem);
         });
 
         document.getElementById('iaFileNameDisplay').innerText = `${iaBatchQueue.length} archivo(s) en lista`;
@@ -1040,15 +1085,57 @@ function iaSelectRowItem(id, idx, e) {
         iaLastSelectedIdx = idx;
     }
 
-    // Sincronizar el selector de subcarpeta del builder con el elemento seleccionado
+    // Sincronizar selectores del builder con el elemento seleccionado
     if (iaSelectedIds.size === 1) {
         const singleItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id));
-        const subSelect = document.getElementById('iaSubfolderSelect');
-        if (singleItem && subSelect && singleItem.subfolder) {
-            subSelect.value = singleItem.subfolder;
+        if (singleItem) {
+            const subSelect = document.getElementById('iaSubfolderSelect');
+            if (subSelect && singleItem.subfolder) singleItem.subfolder = singleItem.subfolder;
+
+            const motorSel = document.getElementById('tokMotorSelect');
+            if (motorSel && singleItem.motor && singleItem.motor !== 'custom') {
+                motorSel.value = singleItem.motor;
+            }
+            const resSel = document.getElementById('tokResSelect');
+            if (resSel && singleItem.autoResTag && singleItem.autoResTag !== 'custom') {
+                resSel.value = singleItem.autoResTag;
+            }
         }
     }
 
+    updateIaPreview();
+}
+
+function handleIaMotorChange(val) {
+    const customEl = document.getElementById('tokMotorCustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
+    }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+    
+    if (iaSelectedIds.size > 0) {
+        iaBatchQueue.forEach(item => {
+            if (iaSelectedIds.has(item.id)) {
+                item.customMotor = chosen;
+                item.motor = chosen;
+            }
+        });
+    }
+    updateIaPreview();
+}
+
+function handleIaMotorCustomChange(val) {
+    const chosen = val.trim();
+    if (iaSelectedIds.size > 0) {
+        iaBatchQueue.forEach(item => {
+            if (iaSelectedIds.has(item.id)) {
+                item.customMotor = chosen;
+                item.motor = chosen;
+            }
+        });
+    }
     updateIaPreview();
 }
 
@@ -1315,24 +1402,6 @@ async function executeIaIngestBatch() {
 
             if (allSuccess) {
                 item.status = '✓ Ingestado';
-
-                // Si copyRootChecked está encendido y la raíz no estaba entre los targets primarios
-                if (copyRootChecked && !iaActiveSubfolders.has('wip') && baseIaPath) {
-                    try {
-                        await fetch('/api/ia/ingest', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                targetFolder: baseIaPath,
-                                filename: item.canonicalName,
-                                sourcePath: sourceFilePath,
-                                fileData: fileDataBase64
-                            })
-                        });
-                    } catch(eRoot) {
-                        console.error("Error al duplicar en raíz /IA/", eRoot);
-                    }
-                }
             } else {
                 item.status = `❌ ${lastErr || 'Error'}`;
             }
@@ -1388,6 +1457,18 @@ function switchIaWorkMode(mode) {
             tokVerToggle.disabled = true;
         } else {
             tokVerToggle.disabled = false;
+        }
+    }
+
+    // 4. Resolución Auto: Forzar activa y ocultar check en Simple
+    const resAutoLabel = document.getElementById('iaAutoDetectResCheck')?.parentElement;
+    if (resAutoLabel) {
+        if (isSimple) {
+            const check = document.getElementById('iaAutoDetectResCheck');
+            if (check) check.checked = true;
+            resAutoLabel.style.display = 'none';
+        } else {
+            resAutoLabel.style.display = 'inline-flex';
         }
     }
 
