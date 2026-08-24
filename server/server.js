@@ -1062,16 +1062,21 @@ app.post('/api/ia/ingest', (req, res) => {
             fs.copyFileSync(sourcePath, destFilePath);
         } else if (fileData) {
             const buffer = Buffer.from(fileData, 'base64');
+            if (buffer.length === 0) {
+                return res.status(400).json({ error: "El archivo recibido está vacío (0 bytes)." });
+            }
             fs.writeFileSync(destFilePath, buffer);
         } else {
-            fs.writeFileSync(destFilePath, '');
+            return res.status(400).json({ error: "No se encontró la ruta en disco ni se recibieron datos del archivo." });
         }
 
-        console.log(`[IA INGEST] Saved: ${destFilePath}`);
+        const stats = fs.statSync(destFilePath);
+        console.log(`[IA INGEST] Saved: ${destFilePath} (${stats.size} bytes)`);
         res.json({
             success: true,
             destination: destFilePath,
-            filename: filename
+            filename: filename,
+            size: stats.size
         });
     } catch (err) {
         console.error("Ingest Error:", err);

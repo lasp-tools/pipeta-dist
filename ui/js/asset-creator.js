@@ -793,6 +793,10 @@ const AssetCreator = {
     executeCreation: async () => {
         const { mode, assetName, categoryPath, targetCategoryNode, targets, checkedProcs, injectMeta } = AssetCreator.pendingCreation;
 
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('create', `[ASSET CREATOR] 🎨 ${mode === 'create' ? `Creando nuevo asset '${assetName}'` : `Inyectando procesos en ${targets.length} asset(s)`} en ${categoryPath} [Preset: ${AssetCreator.selectedPreset?.name || 'Asset Preset'}] (Procesos: ${checkedProcs.length > 0 ? checkedProcs.join(', ') : 'todos'})`, 'info');
+        }
+
         // Change Overlay to Loading
         AssetCreator.showOverlay(`
             <div class="spinner-large" style="border-top-color:var(--accent);"></div>
@@ -817,20 +821,26 @@ const AssetCreator = {
                     if (injectMeta) await AssetCreator.writeMetadataFile(assetNode, assetRootPath);
                     await AssetCreator.createNodesRecursively(assetNode.id, assetRootPath, AssetCreator.selectedPreset.nodes, checkedProcs, assetName, injectMeta);
                 }
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('create', ` ↳ [ASSET] 📁 Estructura creada: ${assetRootPath}`, 'ok');
+                }
             } else {
                 // Batch
                 for (const assetPath of targets) {
-                    // assetPath is the full existing paths
-                    // We need to inject nodes inside it.
                     if (assetNode) {
-                        // Extract Name for Placeholders
                         const currentAssetName = assetPath.trim().replace(/\\/g, '/').split('/').pop();
                         if (injectMeta) await AssetCreator.writeMetadataFile(assetNode, assetPath);
                         await AssetCreator.createNodesRecursively(assetNode.id, assetPath, AssetCreator.selectedPreset.nodes, checkedProcs, currentAssetName, injectMeta);
+                        if (typeof PipetaConsole !== 'undefined') {
+                            PipetaConsole.log('create', ` ↳ [ASSET INJECT] 📁 Procesos inyectados en: ${assetPath}`, 'ok');
+                        }
                     }
                 }
             }
         } catch (e) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('create', `[ASSET CREATOR] ❌ Error en creación: ${e.message}`, 'error');
+            }
             AssetCreator.showOverlay(`
                 <div style="font-size:2rem; margin-bottom:10px;">❌</div>
                 <div style="font-size:1.2rem; color:#F44336; margin-bottom:10px;">Error</div>
@@ -841,6 +851,10 @@ const AssetCreator = {
         }
 
         // SUCCESS
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('create', `[ASSET CREATOR] ✅ ${mode === 'create' ? `Asset '${assetName}' creado con éxito` : `Inyección completada en ${targets.length} asset(s)`} [V0: ${AssetCreator.createVersionZero ? 'Activado' : 'Desactivado'}]`, 'ok');
+        }
+
         AssetCreator.showOverlay(`
             <div style="font-size:3rem; margin-bottom:10px;">✅</div>
             <div style="font-size:1.5rem; color:#fff; font-weight:bold;">${mode === 'create' ? 'Creado con Éxito' : 'Actualización Completa'}</div>

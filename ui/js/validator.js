@@ -171,6 +171,10 @@ class NamingValidator {
         statusEl.innerText = `Iniciando escaneo...`;
         statusEl.style.color = '#ff9800';
 
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('audit', `[NAMING VALIDATOR] 🛡️ Escaneando nomenclatura en: ${startPath} (${isGlobal ? 'Proyecto completo' : 'Selección'})`, 'info');
+        }
+
         document.getElementById('val-fix-all').disabled = true;
         document.getElementById('val-fix-sel').disabled = true;
 
@@ -185,11 +189,19 @@ class NamingValidator {
             statusEl.innerText = `Completo. ${this.scannedCount} items analizados.`;
             statusEl.style.color = '#4caf50';
 
+            if (typeof PipetaConsole !== 'undefined') {
+                const level = this.issues.length > 0 ? 'warn' : 'ok';
+                PipetaConsole.log('audit', `[NAMING VALIDATOR] 🛡️ Escaneo finalizado: ${this.scannedCount} elementos analizados, ${this.issues.length} no conformes encontrados.`, level);
+            }
+
             this.renderResults();
         } catch (err) {
             console.error(err);
             statusEl.innerText = `Error: ${err.message}`;
             statusEl.style.color = 'red';
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[NAMING VALIDATOR] ❌ Error durante el escaneo: ${err.message}`, 'error');
+            }
             alert(`Error: ${err.message}`);
         }
     }
@@ -411,9 +423,19 @@ class NamingValidator {
             const res = await API.fs.rename(issue.path, newPath);
             if (res.error) {
                 errors.push(`${issue.currentBytes}: ${res.error}`);
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('rename', `[NAMING FIX] ❌ Error renombrando ${issue.currentBytes}: ${res.error}`, 'error');
+                }
             } else {
                 successCount++;
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('rename', `[NAMING FIX] ✏️ ${issue.currentBytes}  ➡️  ${issue.fixedBytes}`, 'ok');
+                }
             }
+        }
+
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('audit', `[NAMING VALIDATOR] ✅ Corrección finalizada: ${successCount} elemento(s) corregidos con éxito.`, 'ok');
         }
 
         // Show Success in Modal

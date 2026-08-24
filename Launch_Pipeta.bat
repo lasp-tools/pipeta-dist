@@ -18,9 +18,9 @@ echo [INFO] Sincronizando archivos a disco local...
 :: Creamos el directorio si no existe
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
-:: Copiamos todo EXCEPTO repositorios temporales .git/.gemini y presets
+:: Copiamos todo EXCEPTO repositorios temporales .git/.gemini, presets y logs
 :: Usamos robocopy para ser eficientes
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets /NFL /NDL /NJH /NJS /R:0 /W:0
+robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /NFL /NDL /NJH /NJS /R:0 /W:0
 
 echo [INFO] Sincronizacion completada.
 echo [INFO] Lanzando instancia local segura...

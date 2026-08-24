@@ -1352,6 +1352,10 @@ async function executeIaIngestBatch() {
     if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
     if (iaActiveSubfolders.has('export')) activeTargets.push(baseIaPath + '/export');
 
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('ingest', `[IA INGEST] 🚀 Iniciando ingesta por lote de ${checkedItems.length} archivo(s) hacia [${activeTargets.map(t => t.split('/').slice(-2).join('/')).join(', ')}]`, 'info');
+    }
+
     for (let i = 0; i < checkedItems.length; i++) {
         const item = checkedItems[i];
         item.status = 'Ingestando...';
@@ -1361,12 +1365,27 @@ async function executeIaIngestBatch() {
             let fileDataBase64 = null;
             let sourceFilePath = null;
 
-            if (item.originalPath && !item.originalPath.startsWith('[') && !item.originalPath.startsWith('http')) {
+            const isAbsolutePath = item.originalPath && 
+                (item.originalPath.includes(':') || item.originalPath.startsWith('/') || item.originalPath.startsWith('\\\\')) &&
+                !item.originalPath.startsWith('[') && !item.originalPath.startsWith('http');
+
+            if (isAbsolutePath) {
                 sourceFilePath = item.originalPath;
-            } else if (item.file) {
-                fileDataBase64 = await new Promise((resolve) => {
+            } 
+            
+            if (item.file) {
+                fileDataBase64 = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onload = () => {
+                        const res = reader.result;
+                        if (typeof res === 'string') {
+                            const commaIdx = res.indexOf(',');
+                            resolve(commaIdx !== -1 ? res.substring(commaIdx + 1) : res);
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    reader.onerror = (err) => reject(err);
                     reader.readAsDataURL(item.file);
                 });
             }
@@ -1402,18 +1421,32 @@ async function executeIaIngestBatch() {
 
             if (allSuccess) {
                 item.status = '✓ Ingestado';
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('ingest', ` ↳ [IA CANONICAL] 📄 ${item.name || item.originalName}  ➡️  ${item.canonicalName} (${item.motor || 'MOTOR'}, ${item.res || 'RES'}, ${item.framing || 'FRAMING'})`, 'ok');
+                }
             } else {
                 item.status = `❌ ${lastErr || 'Error'}`;
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('ingest', ` ↳ [IA ERROR] ❌ ${item.name || item.originalName}: ${lastErr || 'Error'}`, 'error');
+                }
             }
 
         } catch (e) {
             item.status = `❌ ${e.message}`;
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('ingest', ` ↳ [IA EXCEPTION] ❌ ${item.name || item.originalName}: ${e.message}`, 'error');
+            }
         }
         renderIaBatchTable();
     }
 
     // Persistir tokens personalizados si la casilla 'Save after queue' está marcada
     await saveCustomTokensIfRequested();
+
+    const okCount = checkedItems.filter(i => i.status === '✓ Ingestado').length;
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('ingest', `[IA INGEST] ✅ Procesamiento por lote finalizado: ${okCount} de ${checkedItems.length} archivos guardados con éxito.`, okCount === checkedItems.length ? 'ok' : 'warn');
+    }
 
     showIaAlert(`✓ Procesamiento por lote completado.`, "#4caf50");
     updateIaResolution(); // Recalcular siguiente versión base

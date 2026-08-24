@@ -557,6 +557,10 @@ class FileAuditor {
             const badgeEl = document.getElementById('file-auditor-badge');
             if (badgeEl) badgeEl.innerText = `PRESET: ${presetCfg.presetName.toUpperCase()}`;
 
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] 🪞 Iniciando auditoría Mirror (${scope}) [Preset: ${presetCfg.presetName}] en Proyecto: ${roots.work} ↔ Media: ${roots.media}`, 'info');
+            }
+
             let targetEpisodes = [];
 
             if (scope === 'selection' && selectedContextPath) {
@@ -599,12 +603,21 @@ class FileAuditor {
 
             const diffsCount = this.mirrorResults.filter(r => r.status !== 'ok').length;
             this._setMirrorStatus(`✅ Auditoría finalizada: ${this.mirrorResults.length} planos analizados (${diffsCount} discrepancias).`, diffsCount > 0 ? '#FF9800' : '#4CAF50');
+            
+            if (typeof PipetaConsole !== 'undefined') {
+                const level = diffsCount > 0 ? 'warn' : 'ok';
+                PipetaConsole.log('audit', `[FILE AUDITOR] 🪞 Auditoría Mirror finalizada: ${this.mirrorResults.length} planos analizados (${diffsCount} discrepancias encontradas).`, level);
+            }
+
             this.renderMirrorResults();
 
         } catch (err) {
             this.isMirrorAuditing = false;
             console.error("Mirror audit error:", err);
             this._setMirrorStatus('❌ Error durante la auditoría: ' + err.message, '#f44336');
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] ❌ Error en auditoría Mirror: ${err.message}`, 'error');
+            }
         }
     }
 
@@ -747,6 +760,10 @@ class FileAuditor {
 
         this._setMirrorStatus(`⏳ Reparando ${selected.length} plano(s)...`, '#4fc3f7');
 
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('audit', `[FILE AUDITOR] 🛠️ Iniciando reparación Mirror (${mode}) para ${selected.length} plano(s)...`, 'info');
+        }
+
         try {
             const presetCfg = await this._loadPresetConfig();
 
@@ -766,14 +783,26 @@ class FileAuditor {
             if (data.success) {
                 const msg = `✅ Reparación completada: ${data.repairedCount} estructura(s) de espejo creadas con éxito.`;
                 this._setMirrorStatus(msg, '#4CAF50');
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('audit', `[FILE AUDITOR] ${msg}`, 'ok', data);
+                    selected.forEach(s => {
+                        PipetaConsole.log('audit', ` ↳ [REPAIR] 📁 ${s.shotId || s.shotName || s.relativePath || 'Plano'} ➔ Media: ${s.mediaPath || 'Estructura espejo OK'}`, 'ok');
+                    });
+                }
                 alert(msg);
             } else {
                 this._setMirrorStatus(`❌ Error al reparar: ${data.error || 'Desconocido'}`, '#f44336');
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('audit', `[FILE AUDITOR] ❌ Error al reparar espejo: ${data.error || 'Desconocido'}`, 'error');
+                }
                 alert(`❌ Error al reparar: ${data.error || 'Desconocido'}`);
             }
         } catch (e) {
             console.error("Repair error:", e);
             this._setMirrorStatus(`❌ Error: ${e.message}`, '#f44336');
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] ❌ Excepción al reparar espejo: ${e.message}`, 'error');
+            }
             alert(`Error al reparar: ${e.message}`);
         }
     }
@@ -826,6 +855,10 @@ class FileAuditor {
         try {
             const presetCfg = await this._loadPresetConfig();
 
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] 🎬 Iniciando auditoría de ${modeLabel.toUpperCase()} (${scope}) [Proceso: ${this.renderConfig.process}] en: ${roots.work}`, 'info');
+            }
+
             let targetEpisodes = [];
             if (scope === 'selection' && selectedContextPath) {
                 const normSel = selectedContextPath.replace(/\\/g, '/');
@@ -870,12 +903,20 @@ class FileAuditor {
             this.isRenderAuditing = false;
 
             this._setRenderStatus(`✅ Auditoría finalizada: ${this.renderResults.length} plano(s) analizados.`, '#4CAF50');
+            
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] 🎬 Auditoría de ${modeLabel.toUpperCase()} finalizada: ${this.renderResults.length} plano(s) analizados.`, 'ok');
+            }
+
             this.renderRenderResults();
 
         } catch (e) {
             this.isRenderAuditing = false;
             console.error("Render status audit error:", e);
             this._setRenderStatus('❌ Error al auditar: ' + e.message, '#f44336');
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('audit', `[FILE AUDITOR] ❌ Error en auditoría de renders: ${e.message}`, 'error');
+            }
         }
     }
 

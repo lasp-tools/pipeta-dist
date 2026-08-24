@@ -1127,9 +1127,21 @@ const settings = {
 
                         <div class="config-group">
                             <label class="config-label">Ruta de logs</label>
-                            <input class="config-input" type="text" value="${settings.logsPath}"
-                                onchange="settings.logsPath = this.value;" 
-                                style="font-family:monospace; font-size:0.8rem;">
+                            <div style="display:flex; gap:8px;">
+                                <input class="config-input" type="text" value="${settings.logsPath}"
+                                    onchange="settings.logsPath = this.value;" 
+                                    style="flex:1; font-family:monospace; font-size:0.8rem;">
+                                <button type="button" class="btn" onclick="settings.openLogsDirectory()" 
+                                    style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
+                                    title="Abrir carpeta de logs en el explorador de Windows">
+                                    <span>📂 Abrir Carpeta</span>
+                                </button>
+                                <button type="button" class="btn" onclick="settings.openLatestLogFile()" 
+                                    style="background:#222; color:var(--accent); border:1px solid #444; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
+                                    title="Abrir directamente el archivo de log activo de hoy">
+                                    <span>📄 Abrir Log de Hoy</span>
+                                </button>
+                            </div>
                             <div style="font-size:0.7rem; color:#555; margin-top:4px;">Formato: JSONL (un JSON por línea). Archivo diario: pipeta_YYYY-MM-DD.jsonl</div>
                         </div>
                     </div>
@@ -1198,6 +1210,34 @@ const settings = {
                 `;
             default:
                 return `<h3>Seleccione una categoría</h3>`;
+        }
+    },
+
+    openLogsDirectory: async () => {
+        const logsDir = settings.logsPath || 'C:/TOOLS/APPS/Pipeta/logs';
+        try {
+            await fetch('/api/fs/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: logsDir })
+            });
+        } catch(e) {
+            console.error("Open logs dir error:", e);
+        }
+    },
+
+    openLatestLogFile: async () => {
+        const logsDir = (settings.logsPath || 'C:/TOOLS/APPS/Pipeta/logs').replace(/\\/g, '/').replace(/\/+$/, '');
+        const today = new Date().toISOString().split('T')[0];
+        const logFile = `${logsDir}/pipeta_${today}.jsonl`;
+        try {
+            await fetch('/api/fs/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: logFile })
+            });
+        } catch(e) {
+            console.error("Open log file error:", e);
         }
     },
 

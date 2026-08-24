@@ -1218,6 +1218,10 @@ const ShotCreator = {
             <div style="margin-top:15px; color:#ccc;">${mode === 'create' ? 'Creando estructura...' : 'Inyectando procesos...'}</div>
         `);
 
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('create', `[SHOT CREATOR] 🎬 ${mode === 'create' ? `Creando ${level.toUpperCase()}: '${shotName}'` : `Inyectando procesos en ${targets.length} planos`} (Episodio: ${ShotCreator.selectedParentEpisode || '-'}, Escena: ${ShotCreator.selectedParentScene || '-'}) [Preset: ${ShotCreator.selectedPreset?.name || 'Shot Preset'}]`, 'info');
+        }
+
         // Ensure Category Path exists
         if (!ShotCreator.currentContext.category && targetCategoryNode && mode === 'create') {
             try { await API.fs.mkdir(categoryPath); } catch (e) { }
@@ -1245,7 +1249,9 @@ const ShotCreator = {
                         if (injectMeta) await ShotCreator.writeMetadataFile(mainNode, finalPath);
 
                         await ShotCreator.createNodesRecursively(mainNode.id, finalPath, ShotCreator.selectedPreset.nodes, allAllowed, shotName, true, {}, injectMeta);
-
+                        if (typeof PipetaConsole !== 'undefined') {
+                            PipetaConsole.log('create', ` ↳ [SHOT WORK] 📁 Estructura creada en: ${finalPath}`, 'ok');
+                        }
                     } catch (err) {
                         console.error("Error creating project structure:", finalPath, err);
                     }
@@ -1268,6 +1274,9 @@ const ShotCreator = {
 
                             // For Mirror, we pass 'checkedMediaNodes' and the 'destMediaFull' flag
                             await ShotCreator.createNodesRecursively(mirrorNodeId, mirrorTargetPath, ShotCreator.selectedPreset.nodes, checkedMediaNodes, shotName, destMediaFull, {}, injectMeta);
+                            if (typeof PipetaConsole !== 'undefined') {
+                                PipetaConsole.log('create', ` ↳ [SHOT MEDIA] 📁 Espejo creado en: ${mirrorTargetPath}`, 'ok');
+                            }
                         }
                     } catch (err) {
                         console.error("Error creating mirror structure:", mirrorTargetPath, err);
@@ -1285,11 +1294,17 @@ const ShotCreator = {
                     for (const shotPath of targets) {
                         const currentShotName = shotPath.trim().replace(/\\/g, '/').split('/').pop();
                         await ShotCreator.createNodesRecursively(mainNode.id, shotPath, ShotCreator.selectedPreset.nodes, checkedProcs, currentShotName);
+                        if (typeof PipetaConsole !== 'undefined') {
+                            PipetaConsole.log('create', ` ↳ [SHOT INJECT] 📁 Procesos inyectados en: ${shotPath}`, 'ok');
+                        }
                     }
                 }
             }
         } catch (e) {
             console.error("Critical Error in executeCreation", e);
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('create', `[SHOT CREATOR] ❌ Error en creación: ${e.message}`, 'error');
+            }
             ShotCreator.showOverlay(`
                 <div style="font-size:2rem; margin-bottom:10px;">❌</div>
                 <div style="color:#f88;">Error Crítico</div>
@@ -1306,6 +1321,10 @@ const ShotCreator = {
         }
         if (typeof loadShotList === 'function') loadShotList();
         if (typeof refreshCurrentView === 'function') refreshCurrentView();
+
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('create', `[SHOT CREATOR] ✅ ${level.toUpperCase()} '${shotName}' creado con éxito en Proyecto y Media.`, 'ok');
+        }
 
         ShotCreator.showOverlay(`
             <div style="font-size:2.5rem; margin-bottom:10px;">✅</div>
