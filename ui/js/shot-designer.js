@@ -520,6 +520,8 @@ const ShotDesigner = {
             if (node.isShot) badgesHtml += `<span class="sd-badge sd-badge-item">SHOT</span>`;
             if (node.isRenderFile) badgesHtml += `<span class="sd-badge out-render-badge">RND</span>`;
             if (node.isRenderFolder) badgesHtml += `<span class="sd-badge out-render-badge">R-FOL</span>`;
+            if (node.isFinalRender) badgesHtml += `<span class="sd-badge" style="background:#FFCA28; color:#000;">FULLRES</span>`;
+            if (node.isCompressionRender) badgesHtml += `<span class="sd-badge" style="background:#42A5F5; color:#000;">MOV</span>`;
             if (node.isExternalTcl) badgesHtml += `<span class="sd-badge" style="background:#00BCD4; color:#000;">TCL</span>`;
 
             if (node.isVariable)
@@ -1398,6 +1400,14 @@ const ShotDesigner = {
                                     <input type="checkbox" ${node.isRenderFolder ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isRenderFolder', this.checked); ShotDesigner.renderCanvas();">
                                 </div>
                             ` : ''}
+                            <div style="display:flex; align-items:center;" title="Marca este nodo como FullRes / Entrega Final">
+                                <label class="prop-label" style="margin-right:5px; color:#FFCA28; font-size:0.85em;">FullRes</label>
+                                <input type="checkbox" ${node.isFinalRender ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isFinalRender', this.checked); ShotDesigner.renderCanvas();">
+                            </div>
+                            <div style="display:flex; align-items:center;" title="Marca este nodo como Mov / Video de compresión">
+                                <label class="prop-label" style="margin-right:5px; color:#42A5F5; font-size:0.85em;">Mov</label>
+                                <input type="checkbox" ${node.isCompressionRender ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isCompressionRender', this.checked); ShotDesigner.renderCanvas();">
+                            </div>
                             <div style="display:flex; align-items:center;" title="Generación externa por TCL/Nuke. Pipeta documenta su ubicación pero NO crea carpetas vacías en disco.">
                                 <label class="prop-label" style="margin-right:5px; color:#00BCD4; font-size:0.85em;">TCL Ext</label>
                                 <input type="checkbox" ${node.isExternalTcl ? 'checked' : ''} onchange="ShotDesigner.updateNodeProp('${node.id}', 'isExternalTcl', this.checked); ShotDesigner.renderCanvas();">

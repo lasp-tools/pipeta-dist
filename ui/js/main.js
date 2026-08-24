@@ -76,8 +76,8 @@ const headerToolsTemplates = {
         <button class="tool-btn" onclick="toggleSyncAnalyzer()" title="Sync Analyzer (Local ↔ Online)">
             <img src="icons/sync_analyzer.svg" class="btn-icon-svg btn-icon-white">
         </button>
-        <button class="tool-btn" onclick="toggleMirrorAuditor()" title="Mirror Integrity Auditor (Proyecto ↔ Media)" id="btnMirrorAuditorTool">
-            <span style="font-size:1.1rem;">🪞</span>
+        <button class="tool-btn" onclick="toggleFileAuditor()" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
+            <span style="font-size:1.1rem;">📊</span>
         </button>
         <button class="tool-btn" onclick="AssetCreator.open()" title="Asset Creator">
             <img src="icons/asset_creator.svg" class="btn-icon-svg btn-icon-orange">
@@ -456,10 +456,14 @@ function _formatSize(bytes) {
     return gb.toFixed(2) + ' GB';
 }
 
-function toggleMirrorAuditor() {
-    if (window.mirrorAuditor) {
-        window.mirrorAuditor.toggle();
+function toggleFileAuditor() {
+    if (window.fileAuditor) {
+        window.fileAuditor.toggle();
     }
+}
+
+function toggleMirrorAuditor() {
+    toggleFileAuditor();
 }
 
 // Start

@@ -514,6 +514,404 @@ app.post('/api/mirror/repairBatch', async (req, res) => {
     }
 });
 
+// --- FAST FILE AUDIT SCAN (MIRROR & RENDERS) ---
+app.post('/api/audit/scan', async (req, res) => {
+    const { auditType, roots, scope = 'all', targetEpisodes = [], config = {} } = req.body;
+    if (!roots || !roots.work || !roots.media) {
+        return res.status(400).json({ error: 'Missing roots configuration' });
+    }
+
+    const normWork = roots.work.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normMedia = roots.media.replace(/\\/g, '/').replace(/\/+$/, '');
+    const workEpRoot = normWork + '/episodios';
+
+    function extractVersion(str) {
+        const match = str.match(/_?v(\d{2,4})/i);
+        return match ? { str: 'v' + match[1], num: parseInt(match[1], 10) } : null;
+    }
+
+    try {
+        if (auditType === 'mirror') {
+            const expectedMediaFolders = config.expectedMedia || [];
+            const expectedWorkFolders = config.expectedWork || [];
+
+            // 1. Scan Work
+            const workShotsMap = new Map();
+            if (await fs.pathExists(workEpRoot)) {
+                const epItems = await fs.readdir(workEpRoot);
+                for (const ep of epItems) {
+                    if (targetEpisodes.length > 0 && !targetEpisodes.includes(ep)) continue;
+                    const epPath = path.join(workEpRoot, ep);
+                    try {
+                        if (!(await fs.stat(epPath)).isDirectory()) continue;
+                    } catch(e) { continue; }
+
+                    const seqRoot = path.join(epPath, 'secuencias');
+                    if (!await fs.pathExists(seqRoot)) continue;
+                    const seqItems = await fs.readdir(seqRoot);
+
+                    for (const seq of seqItems) {
+                        const seqPath = path.join(seqRoot, seq);
+                        try {
+                            if (!(await fs.stat(seqPath)).isDirectory()) continue;
+                        } catch(e) { continue; }
+
+                        const shotsRoot = path.join(seqPath, 'shots');
+                        if (!await fs.pathExists(shotsRoot)) continue;
+                        const shotItems = await fs.readdir(shotsRoot);
+
+                        for (const shot of shotItems) {
+                            const shotPath = path.join(shotsRoot, shot);
+                            try {
+                                if (!(await fs.stat(shotPath)).isDirectory()) continue;
+                            } catch(e) { continue; }
+
+                            const key = `${ep}/${seq}/${shot}`.toLowerCase();
+                            workShotsMap.set(key, { ep, seq, shot, path: shotPath.replace(/\\/g, '/') });
+                        }
+                    }
+                }
+            }
+
+            // 2. Scan Media
+            const mediaShotsMap = new Map();
+            if (await fs.pathExists(normMedia)) {
+                const mediaEpItems = await fs.readdir(normMedia);
+                for (const ep of mediaEpItems) {
+                    if (targetEpisodes.length > 0 && !targetEpisodes.includes(ep)) continue;
+                    const epPath = path.join(normMedia, ep);
+                    try {
+                        if (!(await fs.stat(epPath)).isDirectory()) continue;
+                    } catch(e) { continue; }
+
+                    const seqItems = await fs.readdir(epPath);
+                    for (const seq of seqItems) {
+                        const seqPath = path.join(epPath, seq);
+                        try {
+                            if (!(await fs.stat(seqPath)).isDirectory()) continue;
+                        } catch(e) { continue; }
+
+                        const shotItems = await fs.readdir(seqPath);
+                        for (const shot of shotItems) {
+                            const shotPath = path.join(seqPath, shot);
+                            try {
+                                if (!(await fs.stat(shotPath)).isDirectory()) continue;
+                            } catch(e) { continue; }
+
+                            const key = `${ep}/${seq}/${shot}`.toLowerCase();
+                            mediaShotsMap.set(key, { ep, seq, shot, path: shotPath.replace(/\\/g, '/') });
+                        }
+                    }
+                }
+            }
+
+            // 3. Cross Compare
+            const allKeys = Array.from(new Set([...workShotsMap.keys(), ...mediaShotsMap.keys()]));
+            const results = [];
+
+            for (const key of allKeys) {
+                const inWork = workShotsMap.has(key);
+                const inMedia = mediaShotsMap.has(key);
+                const wData = workShotsMap.get(key);
+                const mData = mediaShotsMap.get(key);
+
+                const ep = wData?.ep || mData?.ep;
+                const seq = wData?.seq || mData?.seq;
+                const shot = wData?.shot || mData?.shot;
+
+                const expectedWorkPath = `${normWork}/episodios/${ep}/secuencias/${seq}/shots/${shot}`;
+                const expectedMediaPath = `${normMedia}/${ep}/${seq}/${shot}`;
+
+                const record = {
+                    key,
+                    ep,
+                    seq,
+                    shot,
+                    workPath: inWork ? wData.path : expectedWorkPath,
+                    mediaPath: inMedia ? mData.path : expectedMediaPath,
+                    existsInWork: inWork,
+                    existsInMedia: inMedia,
+                    missingMediaFolders: [],
+                    missingWorkFolders: [],
+                    status: 'ok',
+                    selected: false
+                };
+
+                if (!inMedia) {
+                    record.status = 'missing-media';
+                    record.missingMediaFolders = expectedMediaFolders;
+                } else if (!inWork) {
+                    record.status = 'missing-work';
+                    record.missingWorkFolders = expectedWorkFolders;
+                } else {
+                    let mSubNames = [];
+                    let wSubNames = [];
+                    try {
+                        const mFiles = await fs.readdir(record.mediaPath);
+                        for (const f of mFiles) {
+                            if ((await fs.stat(path.join(record.mediaPath, f))).isDirectory()) mSubNames.push(f.toLowerCase());
+                        }
+                    } catch (e) { }
+                    try {
+                        const wFiles = await fs.readdir(record.workPath);
+                        for (const f of wFiles) {
+                            if ((await fs.stat(path.join(record.workPath, f))).isDirectory()) wSubNames.push(f.toLowerCase());
+                        }
+                    } catch (e) { }
+
+                    const missingM = expectedMediaFolders.filter(f => !mSubNames.includes(f.toLowerCase()) && !mSubNames.includes(f.split('/')[0].toLowerCase()));
+                    const missingW = expectedWorkFolders.filter(f => !wSubNames.includes(f.toLowerCase()));
+
+                    record.missingMediaFolders = missingM;
+                    record.missingWorkFolders = missingW;
+
+                    if (missingM.length > 0 || missingW.length > 0) {
+                        record.status = 'incomplete';
+                    }
+                }
+                results.push(record);
+            }
+
+            results.sort((a, b) => a.key.localeCompare(b.key));
+            return res.json({ success: true, results });
+
+        } else {
+            // Render / Scenes Audit
+            const targetProc = config.process || 'compo';
+            const allowedExts = config.allowedExtensions || ['.nk', '.hip', '.blend', '.ma', '.mb', '.aep', '.prproj', '.c4d'];
+            const processes = config.processes || ['compo'];
+            const procExtMap = config.procExtMap || { 'compo': '.nk' };
+
+            const results = [];
+            if (await fs.pathExists(workEpRoot)) {
+                const epItems = await fs.readdir(workEpRoot);
+                for (const ep of epItems) {
+                    if (targetEpisodes.length > 0 && !targetEpisodes.includes(ep)) continue;
+                    const epPath = path.join(workEpRoot, ep);
+                    try {
+                        if (!(await fs.stat(epPath)).isDirectory()) continue;
+                    } catch(e) { continue; }
+
+                    const seqRoot = path.join(epPath, 'secuencias');
+                    if (!await fs.pathExists(seqRoot)) continue;
+                    const seqItems = await fs.readdir(seqRoot);
+
+                    for (const seq of seqItems) {
+                        const seqPath = path.join(seqRoot, seq);
+                        try {
+                            if (!(await fs.stat(seqPath)).isDirectory()) continue;
+                        } catch(e) { continue; }
+
+                        const shotsRoot = path.join(seqPath, 'shots');
+                        if (!await fs.pathExists(shotsRoot)) continue;
+                        const shotItems = await fs.readdir(shotsRoot);
+
+                        for (const shot of shotItems) {
+                            const shotPath = path.join(shotsRoot, shot);
+                            try {
+                                if (!(await fs.stat(shotPath)).isDirectory()) continue;
+                            } catch(e) { continue; }
+
+                            const shotWorkPath = shotPath.replace(/\\/g, '/');
+                            const shotMediaPath = `${normMedia}/${ep}/${seq}/${shot}`;
+                            const procList = (targetProc === 'all') ? processes : [targetProc];
+
+                            for (const procName of procList) {
+                                const procWorkPath = `${shotWorkPath}/${procName}`;
+                                let rawFiles = [];
+                                try {
+                                    if (await fs.pathExists(procWorkPath)) {
+                                        rawFiles = await fs.readdir(procWorkPath);
+                                    }
+                                } catch (e) { }
+
+                                // Filter script scene files
+                                const scriptFiles = [];
+                                for (const rf of rawFiles) {
+                                    const rfLower = rf.toLowerCase();
+                                    if (rfLower.endsWith('.txt') || rfLower.endsWith('.json') || rfLower.endsWith('.bak') || rfLower.endsWith('.tmp') || rfLower.endsWith('.log') || rfLower.endsWith('~')) continue;
+                                    const ext = '.' + rfLower.split('.').pop();
+                                    if (allowedExts.includes(ext)) {
+                                        scriptFiles.push(rf);
+                                    }
+                                }
+
+                                const scriptVersions = [];
+                                const badScriptFiles = [];
+                                for (const sf of scriptFiles) {
+                                    const vInfo = extractVersion(sf);
+                                    const sfLower = sf.toLowerCase();
+                                    const hasShot = sfLower.includes(shot.toLowerCase());
+                                    if (!hasShot || !vInfo) {
+                                        badScriptFiles.push(sf);
+                                    }
+                                    if (vInfo) {
+                                        scriptVersions.push({ name: sf, ...vInfo });
+                                    }
+                                }
+                                scriptVersions.sort((a, b) => b.num - a.num);
+                                const latestScript = scriptVersions[0] || null;
+
+                                // Check renders in Media
+                                const foundRenders = [];
+                                if (await fs.pathExists(shotMediaPath)) {
+                                    try {
+                                        const mediaSubs = await fs.readdir(shotMediaPath);
+                                        for (const mSub of mediaSubs) {
+                                            const mSubPath = path.join(shotMediaPath, mSub);
+                                            try {
+                                                if (!(await fs.stat(mSubPath)).isDirectory()) continue;
+                                            } catch(e) { continue; }
+                                            const subNameLower = mSub.toLowerCase();
+
+                                            const deepItems = await fs.readdir(mSubPath);
+                                            for (const deepItem of deepItems) {
+                                                const deepPath = path.join(mSubPath, deepItem);
+                                                let deepStat;
+                                                try {
+                                                    deepStat = await fs.stat(deepPath);
+                                                } catch(e) { continue; }
+                                                const deepLower = deepItem.toLowerCase();
+                                                const vFolder = extractVersion(deepItem);
+
+                                                if (deepStat.isDirectory() && vFolder) {
+                                                    const frameFiles = (await fs.readdir(deepPath)).filter(f => !f.startsWith('.'));
+                                                    const isMov = subNameLower.includes('mov') || deepLower.includes('mov') || deepLower.includes('compres') || deepLower.includes('mp4');
+                                                    const isTcl = subNameLower.includes('prerender') || deepLower.includes('prerender');
+                                                    const rType = isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres');
+
+                                                    const badFiles = [];
+                                                    if (!isTcl && frameFiles.length > 0) {
+                                                        for (const ff of frameFiles) {
+                                                            const ffLower = ff.toLowerCase();
+                                                            const hasShot = ffLower.includes(shot.toLowerCase());
+                                                            const hasVer = ffLower.includes(vFolder.str.toLowerCase());
+                                                            if (!hasShot || !hasVer) badFiles.push(ff);
+                                                        }
+                                                    }
+
+                                                    foundRenders.push({
+                                                        type: rType,
+                                                        folderName: deepItem,
+                                                        versionStr: vFolder.str,
+                                                        versionNum: vFolder.num,
+                                                        path: deepPath.replace(/\\/g, '/'),
+                                                        frameCount: frameFiles.length,
+                                                        hasBadNaming: badFiles.length > 0,
+                                                        badFiles
+                                                    });
+                                                } else if (!deepStat.isDirectory()) {
+                                                    const vFile = extractVersion(deepItem);
+                                                    if (vFile) {
+                                                        const isMov = deepLower.endsWith('.mov') || deepLower.endsWith('.mp4');
+                                                        const isTcl = subNameLower.includes('prerender') || deepLower.includes('prerender');
+                                                        const badFiles = [];
+                                                        if (!isTcl) {
+                                                            const hasShot = deepLower.includes(shot.toLowerCase());
+                                                            const hasVer = deepLower.includes(vFile.str.toLowerCase());
+                                                            if (!hasShot || !hasVer) badFiles.push(deepItem);
+                                                        }
+                                                        foundRenders.push({
+                                                            type: isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres'),
+                                                            folderName: mSub,
+                                                            versionStr: vFile.str,
+                                                            versionNum: vFile.num,
+                                                            path: deepPath.replace(/\\/g, '/'),
+                                                            frameCount: 1,
+                                                            hasBadNaming: badFiles.length > 0,
+                                                            badFiles
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (e) { }
+                                }
+
+                                foundRenders.sort((a, b) => b.versionNum - a.versionNum);
+
+                                const shotRecord = {
+                                    key: `${ep}/${seq}/${shot}/${procName}`,
+                                    ep,
+                                    seq,
+                                    shot,
+                                    process: procName,
+                                    expectedExt: procExtMap[procName] || '.nk',
+                                    scriptCount: scriptFiles.length,
+                                    scriptFiles: scriptFiles,
+                                    badScriptFiles: badScriptFiles,
+                                    latestScriptVer: latestScript ? latestScript.str : null,
+                                    latestScriptNum: latestScript ? latestScript.num : null,
+                                    latestScriptName: latestScript ? latestScript.name : null,
+                                    scriptPath: procWorkPath,
+                                    renders: foundRenders,
+                                    badFiles: [],
+                                    sceneStatus: 'no-script',
+                                    renderStatus: 'no-script'
+                                };
+
+                                // 1. Scene Status
+                                if (scriptFiles.length === 0) {
+                                    shotRecord.sceneStatus = 'no-script';
+                                } else if (badScriptFiles.length > 0) {
+                                    shotRecord.sceneStatus = 'bad-naming';
+                                } else {
+                                    shotRecord.sceneStatus = 'has-scene';
+                                }
+
+                                // 2. Render Status
+                                const targetRenders = foundRenders.filter(r => {
+                                    if (config.onlyFullRes && r.type !== 'fullres') return false;
+                                    return true;
+                                });
+
+                                const matchingRender = targetRenders.find(r => latestScript && r.versionNum === latestScript.num);
+                                const highestRender = targetRenders[0] || null;
+
+                                if (!latestScript) {
+                                    if (highestRender) {
+                                        shotRecord.renderStatus = 'orphan-render';
+                                    } else {
+                                        shotRecord.renderStatus = 'no-script';
+                                    }
+                                } else {
+                                    if (highestRender && highestRender.versionNum > latestScript.num) {
+                                        shotRecord.renderStatus = 'orphan-render';
+                                    } else if (matchingRender) {
+                                        if (matchingRender.hasBadNaming) {
+                                            shotRecord.renderStatus = 'bad-naming';
+                                            shotRecord.badFiles = matchingRender.badFiles;
+                                        } else {
+                                            shotRecord.renderStatus = 'up-to-date';
+                                        }
+                                    } else if (highestRender && highestRender.versionNum < latestScript.num) {
+                                        if (highestRender.hasBadNaming) {
+                                            shotRecord.renderStatus = 'bad-naming';
+                                            shotRecord.badFiles = highestRender.badFiles;
+                                        } else {
+                                            shotRecord.renderStatus = 'outdated';
+                                        }
+                                    } else {
+                                        shotRecord.renderStatus = 'missing-render';
+                                    }
+                                }
+
+                                results.push(shotRecord);
+                            }
+                        }
+                    }
+                }
+            }
+
+            results.sort((a, b) => a.key.localeCompare(b.key));
+            return res.json({ success: true, results });
+        }
+    } catch (err) {
+        console.error("[AUDIT] Scan error:", err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // --- APP CONTROL ---
 
 app.post('/api/app/close', (req, res) => {

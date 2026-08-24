@@ -136,8 +136,8 @@
       "id": "node_work_nuke_nk",
       "type": "file",
       "name": "nuke_File.nk",
-      "x": 3105.797619047617,
-      "y": -1077.0476190476181,
+      "x": 3064.547619047617,
+      "y": -267.0476190476181,
       "parent": "node_work_comp",
       "isScene": true,
       "isVariable": true,
@@ -252,8 +252,8 @@
       "id": "node_media_in",
       "type": "folder",
       "name": "in",
-      "x": 2652.111111111114,
-      "y": 221.5555555555556,
+      "x": 2668.361111111114,
+      "y": 82.8055555555556,
       "parent": "node_media_shot_id",
       "isRenderFolder": true
     },
@@ -269,8 +269,8 @@
       "id": "node_media_fullres",
       "type": "folder",
       "name": "fullres",
-      "x": 2996.6666666666656,
-      "y": 269.44444444444423,
+      "x": 2967.9166666666656,
+      "y": 361.94444444444423,
       "parent": "node_media_nuke",
       "isRenderFolder": false
     },
@@ -278,8 +278,8 @@
       "id": "node_media_prerender",
       "type": "folder",
       "name": "prerender",
-      "x": 2980.3174603174607,
-      "y": 737.6984126984129,
+      "x": 2951.428571428572,
+      "y": 772.4206349206349,
       "parent": "node_media_nuke",
       "isRenderFolder": false
     },
@@ -287,8 +287,8 @@
       "id": "node_media_exportia",
       "type": "folder",
       "name": "exportIA",
-      "x": 2986.111111111112,
-      "y": 883.4920634920643,
+      "x": 2945.9722222222235,
+      "y": 1008.214285714286,
       "parent": "node_media_nuke",
       "isRenderFolder": false
     },
@@ -305,8 +305,8 @@
       "id": "n_1787260641960",
       "type": "folder",
       "name": "IA",
-      "x": 2688.611111111115,
-      "y": 1175.5555555555554,
+      "x": 2687.2222222222263,
+      "y": 1462.7777777777776,
       "parent": "node_media_shot_id",
       "isRenderFolder": true
     },
@@ -314,8 +314,8 @@
       "id": "n_1787260687088",
       "type": "folder",
       "name": "export",
-      "x": 2984.861111111115,
-      "y": 1080.5555555555554,
+      "x": 2990.1388888888937,
+      "y": 1346.6666666666667,
       "parent": "n_1787260641960",
       "isRenderFolder": true
     },
@@ -323,8 +323,8 @@
       "id": "n_1787260705337",
       "type": "folder",
       "name": "ref",
-      "x": 2989.861111111115,
-      "y": 1169.3055555555554,
+      "x": 2988.4722222222263,
+      "y": 1456.5277777777776,
       "parent": "n_1787260641960",
       "isRenderFolder": true
     },
@@ -332,8 +332,8 @@
       "id": "n_1787260709228",
       "type": "folder",
       "name": "enc",
-      "x": 2989.861111111115,
-      "y": 1255.5555555555554,
+      "x": 2988.4722222222263,
+      "y": 1542.7777777777776,
       "parent": "n_1787260641960",
       "isRenderFolder": true
     },
@@ -383,8 +383,8 @@
       "id": "n_1787338396108",
       "type": "folder",
       "name": "Render version",
-      "x": 3214.6666666666647,
-      "y": 261.68253968253964,
+      "x": 3200.9166666666647,
+      "y": 355.43253968253964,
       "parent": "node_media_fullres",
       "nameConfig": {
         "enabled": true,
@@ -392,31 +392,157 @@
         "versionPadding": 3
       },
       "isRenderFolder": true,
-      "isVariable": true
+      "isVariable": true,
+      "isFinalRender": true
     },
     {
       "id": "n_1787338520954",
       "type": "folder",
       "name": "mov",
-      "x": 2975.000000000004,
-      "y": 576.8888888888893,
+      "x": 2962.500000000004,
+      "y": 503.13888888888926,
       "parent": "node_media_nuke",
-      "isRenderFolder": true
+      "isRenderFolder": true,
+      "isCompressionRender": false
     },
     {
       "id": "n_1787340276003",
       "type": "file",
       "name": "Full ress de nuke",
-      "x": 3413.238095238093,
-      "y": 263.1111111111111,
+      "x": 3495.738095238093,
+      "y": 351.8611111111111,
       "parent": "n_1787338396108",
       "isVariable": true,
       "isRenderFile": true,
       "nameConfig": {
         "enabled": true,
         "pattern": "[SceneName][SceneVersion]_[RenderCounter####][ext]",
-        "versionPadding": 4
-      }
+        "versionPadding": 4,
+        "allowedExtensions": ".exr"
+      },
+      "isFinalRender": true
+    },
+    {
+      "id": "n_1787340876494",
+      "type": "file",
+      "name": "Mov  en baja",
+      "x": 3494.666666666664,
+      "y": 463.46825396825375,
+      "parent": "n_1787338520954",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mov"
+      },
+      "isCompressionRender": true
+    },
+    {
+      "id": "n_1787341075693",
+      "type": "file",
+      "name": "mov en alta",
+      "x": 3483.952380952378,
+      "y": 592.468253968254,
+      "parent": "n_1787338520954",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]_st2084[ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mov"
+      },
+      "isCompressionRender": true
+    },
+    {
+      "id": "n_1787341247594",
+      "type": "folder",
+      "name": "prerender name",
+      "x": 3198.095238095239,
+      "y": 775.0873015873017,
+      "parent": "node_media_prerender",
+      "isRenderFolder": true,
+      "isVariable": true,
+      "variableName": "Prerender",
+      "exampleValue": "denoise",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[EP]_[ESC]_[SHOT]_[Prerender]",
+        "versionPadding": 3
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787341791084",
+      "type": "file",
+      "name": "Full ress de nuke",
+      "x": 3482.738095238093,
+      "y": 781.8611111111111,
+      "parent": "n_1787341247594",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[Prerender]_[RenderCounter####][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".exr"
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787341942233",
+      "type": "folder",
+      "name": "export de ia folder",
+      "x": 3210.7738095238105,
+      "y": 1007.5873015873017,
+      "parent": "node_media_exportia",
+      "isRenderFolder": true,
+      "isVariable": true,
+      "variableName": "prerenderia",
+      "exampleValue": "1920x1080_CRP",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[EP]_[ESC]_[SHOT]_[prerenderia]",
+        "versionPadding": 3
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787342035715",
+      "type": "file",
+      "name": "export ia png",
+      "x": 3475.5952380952353,
+      "y": 1007.5753968253968,
+      "parent": "n_1787341942233",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[Prerenderia]_[RenderCounter####][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".png"
+      },
+      "isExternalTcl": true,
+      "variableName": "EXPIA"
+    },
+    {
+      "id": "n_1787342063228",
+      "type": "file",
+      "name": "export de ia mp4",
+      "x": 3212.7380952380927,
+      "y": 1110.4325396825402,
+      "parent": "node_media_exportia",
+      "isVariable": true,
+      "isRenderFile": false,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[prerenderia][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mp4"
+      },
+      "isExternalTcl": true
     }
   ],
   "connections": [
@@ -459,6 +585,24 @@
     {
       "from": "node_work_nuke_nk",
       "to": "n_1787338396108",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787338520954",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787341247594",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787341942233",
       "fromPort": "out-render",
       "toPort": "in-render"
     }
