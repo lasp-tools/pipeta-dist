@@ -61,9 +61,15 @@ const API = {
             }
         },
 
-        // Legacy/Existing methods
         fetchDir: (path, cb) => fetchDir(path, cb),
         open: async (path) => {
+            return await fetch('/api/fs/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            }).then(r => r.json());
+        },
+        openFolder: async (path) => {
             return await fetch('/api/fs/open', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

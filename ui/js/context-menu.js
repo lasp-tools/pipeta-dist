@@ -114,8 +114,17 @@ class ContextMenu {
     // --- ACTIONS ---
 
     async openInExplorer(path, multi) {
-        if (multi) {
-            // Potentially allow opening first 5?
+        if (!path && typeof selectedContextPath !== 'undefined' && selectedContextPath) {
+            path = selectedContextPath;
+        }
+        if (!path && window.selectedPaths && window.selectedPaths.size > 0) {
+            path = Array.from(window.selectedPaths)[0];
+        }
+        if (!path) {
+            console.warn("[ContextMenu] No hay ninguna ruta seleccionada para abrir en el Explorador.");
+            return;
+        }
+        if (multi && window.selectedPaths && window.selectedPaths.size > 1) {
             const paths = Array.from(window.selectedPaths).slice(0, 5);
             for (const p of paths) {
                 await API.fs.open(p);

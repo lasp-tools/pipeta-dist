@@ -8,14 +8,28 @@ class SyncAnalyzer {
         this.isVisible = false;
         this.differences = [];
         this.isScanning = false;
+        this.abortScan = false;
+        this.abortSync = false;
+        this.syncReader = null;
         this.scanPath = null;
+        this.collapsedFolders = new Set();
+
+        const savedOnlyShotsAssets = localStorage.getItem('pipeta_sync_only_shots_assets');
+        this.onlyShotsAssets = savedOnlyShotsAssets !== null ? savedOnlyShotsAssets === 'true' : true; // Default ON
+
         const savedOmit = localStorage.getItem('pipeta_sync_omit_control');
         this.omitControlFiles = savedOmit !== null ? savedOmit === 'true' : true;
+
         const savedFoldersOnly = localStorage.getItem('pipeta_sync_only_folders');
         this.onlyFolders = savedFoldersOnly !== null ? savedFoldersOnly === 'true' : false;
 
         window.syncAnalyzer = this;
         this.renderUI();
+    }
+
+    toggleOnlyShotsAssets(checked) {
+        this.onlyShotsAssets = checked;
+        localStorage.setItem('pipeta_sync_only_shots_assets', checked ? 'true' : 'false');
     }
 
     toggleOmitControl(checked) {
@@ -29,6 +43,24 @@ class SyncAnalyzer {
         this.renderResults();
     }
 
+    stopScan() {
+        if (this.isScanning) {
+            this.abortScan = true;
+            this._setStatus('⏹️ Deteniendo escaneo...', '#ff9800');
+            const stopBtn = document.getElementById('sync-stop-scan-btn');
+            if (stopBtn) stopBtn.style.display = 'none';
+        }
+    }
+
+    stopSync() {
+        this.abortSync = true;
+        if (this.syncReader) {
+            try { this.syncReader.cancel(); } catch(e){}
+        }
+        this._setStatus('⏹️ Transferencia cancelada por el usuario.', '#ff9800');
+        this._hideProgressBar();
+    }
+
     renderUI() {
         if (document.getElementById('sync-analyzer-window')) return;
 
@@ -38,14 +70,14 @@ class SyncAnalyzer {
         this.container.style.display = 'none';
 
         // Resizable & Positioned
-        this.container.style.width = '700px';
-        this.container.style.height = '600px';
-        this.container.style.minWidth = '450px';
-        this.container.style.minHeight = '350px';
+        this.container.style.width = '750px';
+        this.container.style.height = '620px';
+        this.container.style.minWidth = '500px';
+        this.container.style.minHeight = '380px';
         this.container.style.resize = 'both';
         this.container.style.overflow = 'hidden';
-        this.container.style.top = '80px';
-        this.container.style.left = '150px';
+        this.container.style.top = '70px';
+        this.container.style.left = '120px';
 
         const engine = (settings && settings.copyEngine) ? settings.copyEngine : 'auto';
         let engineIcon = '🤖'; // Auto
@@ -65,7 +97,7 @@ class SyncAnalyzer {
                 </div>
             </div>
             <div class="validator-body" style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
-                <!-- INFO -->
+                <!-- INFO & SCOPES -->
                 <div style="padding:8px; background:#1a1a1a; border-bottom:1px solid #333; flex-shrink:0;">
                     <div style="font-size:0.75rem; color:#888; margin-bottom:6px;">
                         Compara la estructura entre <b style="color:#4fc3f7;">Local (Z:)</b> y <b style="color:#81c784;">Online (G:)</b>
@@ -74,11 +106,18 @@ class SyncAnalyzer {
                         <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('work')">📁 Proyecto</button>
                         <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('media')">🎬 Media</button>
                         <button class="action-btn-small" style="flex:1;" onclick="syncAnalyzer.runScan('selection')">📂 Selección</button>
+                        <button id="sync-stop-scan-btn" class="tool-btn danger" style="display:none; width:auto; padding:2px 10px; font-size:0.75rem;" onclick="syncAnalyzer.stopScan()">⏹️ Detener</button>
                     </div>
-                    <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">
-                        <input type="checkbox" id="sync-omit-control" ${this.omitControlFiles ? 'checked' : ''} onchange="syncAnalyzer.toggleOmitControl(this.checked)">
-                        <span>Omitir archivos de control (<code>vfx_control.json</code>)</span>
-                    </label>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                        <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;" title="Limita el análisis a carpetas canónicas de episodios, secuencias, shots y assets">
+                            <input type="checkbox" id="sync-shots-assets-only" ${this.onlyShotsAssets ? 'checked' : ''} onchange="syncAnalyzer.toggleOnlyShotsAssets(this.checked)">
+                            <span>🎯 <b>Solo Shots y Assets</b> (estructura de proyecto)</span>
+                        </label>
+                        <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">
+                            <input type="checkbox" id="sync-omit-control" ${this.omitControlFiles ? 'checked' : ''} onchange="syncAnalyzer.toggleOmitControl(this.checked)">
+                            <span>Omitir control (<code>vfx_control.json</code>)</span>
+                        </label>
+                    </div>
                 </div>
 
                 <!-- PATHS DISPLAY -->
@@ -101,13 +140,12 @@ class SyncAnalyzer {
                     </button>
                 </div>
 
-                <!-- SELECT ALL HEADER (LEFT ALIGNED ABOVE CHECKBOXES) -->
-                <div style="display:flex; align-items:center; justify-content:space-between; padding:5px 8px; flex-shrink:0; border-bottom:1px solid #222; background:#181818;">
-                    <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:flex; align-items:center; gap:8px; user-select:none;">
-                        <input type="checkbox" id="sync-select-all" onchange="syncAnalyzer.toggleSelectAll(this.checked)">
-                        <span style="font-weight:bold;">Seleccionar todo</span>
-                    </label>
-                    <span id="sync-select-summary" style="font-size:0.7rem; color:#888;"></span>
+                <!-- SELECT ALL & COLUMNS HEADER -->
+                <div style="display:grid; grid-template-columns:26px 1fr 75px 85px; align-items:center; padding:5px 8px; flex-shrink:0; border-bottom:1px solid #222; background:#181818; font-size:0.72rem; color:#888;">
+                    <input type="checkbox" id="sync-select-all" onchange="syncAnalyzer.toggleSelectAll(this.checked)" title="Seleccionar todo">
+                    <span style="font-weight:bold; color:#ccc;">Elemento / Ruta</span>
+                    <span style="text-align:right; padding-right:6px;">Tamaño</span>
+                    <span style="text-align:right;">Estado</span>
                 </div>
 
                 <!-- RESULTS LIST -->
@@ -139,6 +177,41 @@ class SyncAnalyzer {
                         <button id="sync-btn-pull" class="action-btn-primary" disabled style="flex:1; background:#444;" onclick="syncAnalyzer.syncSelected('pull')">
                             ⬇️ Download
                         </button>
+                    </div>
+
+                    <!-- PROGRESS BAR CONTAINER (UNDERNEATH UPLOAD & DOWNLOAD BUTTONS) -->
+                    <div id="sync-progress-container" style="display:none; background:#111; border:1px solid #333; border-radius:6px; padding:8px; margin-top:2px;">
+                        <!-- TOP: Direction, counts, speed, eta, stop button -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-bottom:5px;">
+                            <span id="sync-prog-direction" style="font-weight:bold; color:var(--accent);">⬆️ Transfiriendo...</span>
+                            <div style="display:flex; align-items:center; gap:10px; font-family:monospace; font-size:0.72rem; color:#aaa;">
+                                <span id="sync-prog-speed" style="color:#4caf50; font-weight:bold;">⚡ 0.0 MB/s</span>
+                                <span id="sync-prog-eta" style="color:#ffb74d;">⏱️ ETA: --</span>
+                                <button class="tool-btn danger" style="padding:2px 8px; font-size:0.7rem; margin-left:6px;" onclick="syncAnalyzer.stopSync()">⏹️ Detener</button>
+                            </div>
+                        </div>
+
+                        <!-- TOTAL PROGRESS BAR -->
+                        <div style="margin-bottom:6px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#888; margin-bottom:2px;">
+                                <span>Progreso Total (<span id="sync-prog-total-items">0/0</span>)</span>
+                                <b id="sync-prog-total-pct" style="color:#eee;">0%</b>
+                            </div>
+                            <div style="width:100%; height:6px; background:#222; border-radius:3px; overflow:hidden;">
+                                <div id="sync-prog-total-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #2196f3, #4caf50); transition:width 0.15s ease;"></div>
+                            </div>
+                        </div>
+
+                        <!-- CURRENT FILE PROGRESS BAR -->
+                        <div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.68rem; color:#aaa; margin-bottom:2px;">
+                                <span id="sync-prog-file-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:70%; font-family:monospace;">Archivo actual</span>
+                                <b id="sync-prog-file-pct" style="color:#4fc3f7;">0%</b>
+                            </div>
+                            <div style="width:100%; height:4px; background:#222; border-radius:2px; overflow:hidden;">
+                                <div id="sync-prog-file-bar" style="width:0%; height:100%; background:#4fc3f7; transition:width 0.1s ease;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -233,6 +306,133 @@ class SyncAnalyzer {
         return null;
     }
 
+    async _getKnownProjectShotsAndAssets() {
+        const r = this._getAllRoots();
+        const workRoot = r.localWork || '';
+        const known = {
+            knownEpisodes: new Set(),
+            knownSequences: new Set(),
+            knownShots: new Set(),
+            knownAssetCategories: new Set(),
+            knownAssets: new Set(),
+            knownRootFolders: new Set(['episodios', 'assets', 'media', 'shots', 'secuencias'])
+        };
+
+        if (!workRoot) return known;
+
+        try {
+            const rootData = await fetchDir(workRoot).catch(() => ({ items: [] }));
+            const rootItems = (rootData && rootData.items) ? rootData.items : [];
+            
+            for (const item of rootItems) {
+                if (!item.isDirectory) continue;
+                const lower = item.name.toLowerCase();
+
+                if (lower === 'episodios') {
+                    const epData = await fetchDir(item.path).catch(() => ({ items: [] }));
+                    for (const ep of (epData.items || [])) {
+                        if (!ep.isDirectory) continue;
+                        const epLower = ep.name.toLowerCase();
+                        known.knownEpisodes.add(epLower);
+                        known.knownRootFolders.add(epLower);
+
+                        const seqRoot = ep.path + '/secuencias';
+                        const seqData = await fetchDir(seqRoot).catch(() => ({ items: [] }));
+                        for (const seq of (seqData.items || [])) {
+                            if (!seq.isDirectory) continue;
+                            const seqLower = seq.name.toLowerCase();
+                            known.knownSequences.add(seqLower);
+
+                            const shotsRoot = seq.path + '/shots';
+                            const shotsData = await fetchDir(shotsRoot).catch(() => ({ items: [] }));
+                            for (const shot of (shotsData.items || [])) {
+                                if (shot.isDirectory) {
+                                    known.knownShots.add(shot.name.toLowerCase());
+                                }
+                            }
+                        }
+                    }
+                } else if (/^b\d+|^ep?\d+/i.test(lower)) {
+                    known.knownEpisodes.add(lower);
+                    known.knownRootFolders.add(lower);
+                } else if (lower === 'assets') {
+                    known.knownRootFolders.add('assets');
+                    const catData = await fetchDir(item.path).catch(() => ({ items: [] }));
+                    for (const cat of (catData.items || [])) {
+                        if (!cat.isDirectory) continue;
+                        const catLower = cat.name.toLowerCase();
+                        known.knownAssetCategories.add(catLower);
+                        known.knownRootFolders.add(catLower);
+
+                        const astData = await fetchDir(cat.path).catch(() => ({ items: [] }));
+                        for (const ast of (astData.items || [])) {
+                            if (ast.isDirectory) {
+                                known.knownAssets.add(ast.name.toLowerCase());
+                            }
+                        }
+                    }
+                }
+            }
+        } catch(e) {
+            console.warn("SyncAnalyzer pre-scan work error:", e);
+        }
+
+        return known;
+    }
+
+    _isAllowedStructurePath(name, relativePath, depth) {
+        if (!this.onlyShotsAssets) return true;
+        const lowerName = (name || '').toLowerCase();
+        
+        // Excluir siempre carpetas fuera de Shots / Assets si está en modo filtro (incluyendo _auxiliar, _temp, etc.)
+        if (lowerName.startsWith('_')) return false;
+
+        const ignoredFolders = [
+            'admin', 'administracion', 'documentacion', 'docs', 'tools', 'software', 
+            'scripts', 'config', 'presets', 'cache', 'temp', 'tmp', '.git', '.gemini', 
+            'logs', 'backup', 'backups', 'trash', 'papelera', 'edit', 'offline', 'guiones',
+            'offline_edit', 'sound', 'musica', 'audio', 'locucion', 'deliveries', 'exports_general',
+            'auxiliar', 'plates_raw', 'footage_raw'
+        ];
+        if (ignoredFolders.includes(lowerName)) return false;
+
+        if (this.knownProject) {
+            // Nivel Raíz (ej. Media / Proyecto)
+            if (depth === 0) {
+                const isKnownRoot = this.knownProject.knownRootFolders.has(lowerName) 
+                    || this.knownProject.knownEpisodes.has(lowerName)
+                    || /^b\d+|^ep?\d+/i.test(lowerName)
+                    || lowerName === 'episodios' || lowerName === 'assets';
+                if (!isKnownRoot) return false;
+            }
+        }
+
+        return true;
+    }
+
+    _calculateCumulativeSizes() {
+        this.differences.forEach(diff => {
+            if (diff.isDirectory) {
+                const prefix = diff.relativePath + '/';
+                let totalFolderBytes = 0;
+                this.differences.forEach(child => {
+                    if (!child.isDirectory && child.relativePath.startsWith(prefix)) {
+                        totalFolderBytes += (child.size || 0);
+                    }
+                });
+                diff.size = totalFolderBytes;
+            }
+        });
+    }
+
+    _formatSize(bytes) {
+        if (!bytes || bytes <= 0) return '0 B';
+        if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return bytes + ' B';
+    }
+
     // --- SCANNING ---
     async runScan(targetScope = 'selection') {
         if (this.isScanning) return;
@@ -284,29 +484,105 @@ class SyncAnalyzer {
         document.getElementById('sync-path-online').innerText = scanPairs.map(p => p.online).join(' | ');
 
         this.isScanning = true;
+        this.abortScan = false;
         this.differences = [];
+        this.scanScope = targetScope;
         this._setStatus('🔍 Escaneando...', '#4fc3f7');
-        document.getElementById('sync-results-list').innerHTML = '<div style="padding:20px; text-align:center; color:#666;"><div class="spinner-small"></div> Analizando estructuras...</div>';
+
+        const stopBtn = document.getElementById('sync-stop-scan-btn');
+        if (stopBtn) stopBtn.style.display = 'inline-block';
+
+        // OVERLAY PROMINENTE DE DETENER ESCANEO EN LA VENTANA CENTRAL
+        const resultsEl = document.getElementById('sync-results-list');
+        if (resultsEl) {
+            resultsEl.innerHTML = `
+                <div style="padding:45px 20px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+                    <div class="spinner-small" style="width:36px; height:36px;"></div>
+                    <div style="font-size:1.05rem; color:#fff; font-weight:bold;">Analizando estructuras y diferencias...</div>
+                    <div id="sync-scan-live-path" style="font-size:0.75rem; color:#aaa; font-family:monospace; max-width:90%; overflow:hidden; text-overflow:ellipsis;">
+                        Obteniendo estructura canónica del proyecto...
+                    </div>
+                    <button class="tool-btn danger" style="padding:8px 28px; font-size:0.9rem; font-weight:bold; width:auto; border-radius:6px; cursor:pointer; box-shadow:0 3px 12px rgba(244,67,54,0.4);" onclick="syncAnalyzer.stopScan()">
+                        ⏹️ Detener Escaneo
+                    </button>
+                </div>
+            `;
+        }
 
         if (typeof PipetaConsole !== 'undefined') {
-            PipetaConsole.log('sync', `Iniciando escaneo (${targetScope}) en Local [${scanPairs.map(p => p.local).join(' | ')}] vs Online [${scanPairs.map(p => p.online).join(' | ')}]`, 'info');
+            PipetaConsole.log('sync', `Iniciando escaneo (${targetScope}) en Local [${scanPairs.map(p => p.local).join(' | ')}] vs Online [${scanPairs.map(p => p.online).join(' | ')}] [Filtro Shots/Assets: ${this.onlyShotsAssets ? 'ON' : 'OFF'}]`, 'info');
         }
 
         try {
-            for (const pair of scanPairs) {
-                await this._compareDirs(pair.local, pair.online, '');
+            // 1. Obtener estructura conocida de shots/assets del proyecto si el filtro está activo
+            if (this.onlyShotsAssets) {
+                this.knownProject = await this._getKnownProjectShotsAndAssets();
+            } else {
+                this.knownProject = null;
             }
+
+            for (const pair of scanPairs) {
+                if (this.abortScan) break;
+                await this._compareDirs(pair.local, pair.online, '', 0);
+            }
+
             this.isScanning = false;
-            this._setStatus(`✅ Escaneo completo: ${this.differences.length} diferencias encontradas.`, this.differences.length > 0 ? '#FF9800' : '#4CAF50');
+            if (stopBtn) stopBtn.style.display = 'none';
+
+            // 2. Síntesis de carpetas padre para crear un árbol jerárquico perfecto
+            const existingPaths = new Set(this.differences.map(d => d.relativePath));
+            const syntheticFolders = [];
+
+            this.differences.forEach(diff => {
+                const parts = diff.relativePath.split('/');
+                for (let i = 1; i < parts.length; i++) {
+                    const parentRel = parts.slice(0, i).join('/');
+                    if (!existingPaths.has(parentRel)) {
+                        existingPaths.add(parentRel);
+                        syntheticFolders.push({
+                            name: parts[i - 1],
+                            relativePath: parentRel,
+                            isDirectory: true,
+                            type: diff.type,
+                            size: 0,
+                            localPath: diff.localPath ? diff.localPath.split('/').slice(0, -(parts.length - i)).join('/') : '',
+                            onlinePath: diff.onlinePath ? diff.onlinePath.split('/').slice(0, -(parts.length - i)).join('/') : '',
+                            selected: false,
+                            isSynthetic: true
+                        });
+                    }
+                }
+            });
+
+            this.differences = [...syntheticFolders, ...this.differences];
+            this.differences.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+            // 3. Calcular pesos acumulados por carpeta
+            this._calculateCumulativeSizes();
+
+            // 4. Colapsar TODAS las carpetas por defecto
+            this.collapsedFolders = new Set();
+            this.differences.forEach(d => {
+                if (d.isDirectory) {
+                    this.collapsedFolders.add(d.relativePath);
+                }
+            });
+
+            if (this.abortScan) {
+                this._setStatus(`⏹️ Escaneo detenido: ${this.differences.length} diferencias parciales.`, '#ff9800');
+            } else {
+                this._setStatus(`✅ Escaneo completo: ${this.differences.length} diferencias encontradas.`, this.differences.length > 0 ? '#FF9800' : '#4CAF50');
+            }
             
             if (typeof PipetaConsole !== 'undefined') {
                 const level = this.differences.length > 0 ? 'warn' : 'ok';
-                PipetaConsole.log('sync', `Escaneo completado: ${this.differences.length} diferencia(s) encontrada(s) (${this.onlyFolders ? 'Modo solo carpetas' : 'Todos'}).`, level);
+                PipetaConsole.log('sync', `Escaneo finalizado: ${this.differences.length} diferencia(s) encontrada(s) (${this.onlyFolders ? 'Modo solo carpetas' : 'Todos'}).`, level);
             }
 
             this.renderResults();
         } catch (err) {
             this.isScanning = false;
+            if (stopBtn) stopBtn.style.display = 'none';
             console.error('SyncAnalyzer scan error:', err);
             this._setStatus('❌ Error durante el escaneo: ' + err.message, '#f44336');
             if (typeof PipetaConsole !== 'undefined') {
@@ -315,12 +591,19 @@ class SyncAnalyzer {
         }
     }
 
-    async _compareDirs(localPath, onlinePath, relativePath) {
+    async _compareDirs(localPath, onlinePath, relativePath, depth = 0) {
+        if (this.abortScan) return;
+
+        const liveEl = document.getElementById('sync-scan-live-path');
+        if (liveEl) liveEl.innerText = `Analizando: ${relativePath || 'Raíz'} (${this.differences.length} diffs)...`;
+
         // Fetch both directories in parallel
         const [localData, onlineData] = await Promise.all([
             fetchDir(localPath).catch(() => ({ error: true, items: [] })),
             fetchDir(onlinePath).catch(() => ({ error: true, items: [] }))
         ]);
+
+        if (this.abortScan) return;
 
         const localItems = (localData && localData.items) ? localData.items : [];
         const onlineItems = (onlineData && onlineData.items) ? onlineData.items : [];
@@ -336,6 +619,8 @@ class SyncAnalyzer {
         const allLowerNames = new Set([...localMap.keys(), ...onlineMap.keys()]);
 
         for (const lowerName of allLowerNames) {
+            if (this.abortScan) return;
+
             // Omit control files if option is active
             if (this.omitControlFiles && (lowerName === 'vfx_control.json' || lowerName.endsWith('_control.json'))) {
                 continue;
@@ -348,12 +633,19 @@ class SyncAnalyzer {
             const name = localItem ? localItem.name : onlineItem.name;
 
             const isDir = (localItem && localItem.isDirectory) || (onlineItem && onlineItem.isDirectory);
+
+            // Filtrar carpetas fuera de Shots / Assets si la opción está activa
+            if (!this._isAllowedStructurePath(name, relativePath, depth)) {
+                continue;
+            }
+
             // Si 'Solo carpetas' está activo y es un archivo, no registrar diferencia
             if (this.onlyFolders && !isDir) {
                 continue;
             }
 
             const relPath = relativePath ? `${relativePath}/${name}` : name;
+            const itemSize = (localItem ? localItem.size : (onlineItem ? onlineItem.size : 0)) || 0;
 
             if (inLocal && !inOnline) {
                 this.differences.push({
@@ -361,13 +653,14 @@ class SyncAnalyzer {
                     relativePath: relPath,
                     type: 'local-only',
                     isDirectory: !!(localItem && localItem.isDirectory),
+                    size: itemSize,
                     localPath: localItem.path,
                     onlinePath: onlinePath.replace(/\/+$/, '') + '/' + name,
                     selected: false
                 });
                 // Si es un directorio exclusivo de local, escanear todo su contenido para permitir selección granular
                 if (localItem && localItem.isDirectory) {
-                    await this._scanSingleSide(localItem.path, onlinePath.replace(/\/+$/, '') + '/' + name, relPath, 'local-only');
+                    await this._scanSingleSide(localItem.path, onlinePath.replace(/\/+$/, '') + '/' + name, relPath, 'local-only', depth + 1);
                 }
             } else if (!inLocal && inOnline) {
                 this.differences.push({
@@ -375,18 +668,19 @@ class SyncAnalyzer {
                     relativePath: relPath,
                     type: 'online-only',
                     isDirectory: !!(onlineItem && onlineItem.isDirectory),
+                    size: itemSize,
                     localPath: localPath.replace(/\/+$/, '') + '/' + name,
                     onlinePath: onlineItem.path,
                     selected: false
                 });
                 // Si es un directorio exclusivo de online, escanear todo su contenido para permitir selección granular
                 if (onlineItem && onlineItem.isDirectory) {
-                    await this._scanSingleSide(localPath.replace(/\/+$/, '') + '/' + name, onlineItem.path, relPath, 'online-only');
+                    await this._scanSingleSide(localPath.replace(/\/+$/, '') + '/' + name, onlineItem.path, relPath, 'online-only', depth + 1);
                 }
             } else if (inLocal && inOnline) {
                 // Both exist — if both are directories, recurse
                 if (localItem.isDirectory && onlineItem.isDirectory) {
-                    await this._compareDirs(localItem.path, onlineItem.path, relPath);
+                    await this._compareDirs(localItem.path, onlineItem.path, relPath, depth + 1);
                 }
             }
         }
@@ -395,14 +689,21 @@ class SyncAnalyzer {
         this._setStatus(`🔍 Escaneando... ${this.differences.length} diferencias · ${relativePath || '/'}`, '#4fc3f7');
     }
 
-    async _scanSingleSide(localDir, onlineDir, relativePath, type) {
+    async _scanSingleSide(localDir, onlineDir, relativePath, type, depth = 1) {
+        if (this.abortScan) return;
+
         const scanDir = type === 'local-only' ? localDir : onlineDir;
         const dirData = await fetchDir(scanDir).catch(() => ({ error: true, items: [] }));
         const items = (dirData && dirData.items) ? dirData.items : [];
 
         for (const item of items) {
+            if (this.abortScan) return;
+
             const lowerName = item.name.toLowerCase();
             if (this.omitControlFiles && (lowerName === 'vfx_control.json' || lowerName.endsWith('_control.json'))) {
+                continue;
+            }
+            if (!this._isAllowedStructurePath(item.name, relativePath, depth)) {
                 continue;
             }
             if (this.onlyFolders && !item.isDirectory) {
@@ -417,13 +718,14 @@ class SyncAnalyzer {
                 relativePath: relPath,
                 type: type,
                 isDirectory: !!item.isDirectory,
+                size: item.size || 0,
                 localPath: itemLocalPath,
                 onlinePath: itemOnlinePath,
                 selected: false
             });
 
             if (item.isDirectory) {
-                await this._scanSingleSide(itemLocalPath, itemOnlinePath, relPath, type);
+                await this._scanSingleSide(itemLocalPath, itemOnlinePath, relPath, type, depth + 1);
             }
         }
     }
@@ -488,9 +790,10 @@ class SyncAnalyzer {
 
             const baseName = diff.name || diff.relativePath.split('/').pop();
             const parentPath = diff.relativePath.includes('/') ? diff.relativePath.substring(0, diff.relativePath.lastIndexOf('/')) : '';
+            const sizeStr = this._formatSize(diff.size);
 
             html += `
-                <div class="sync-result-row" style="display:grid; grid-template-columns:26px 1fr auto; align-items:center; padding:4px 6px; padding-left:${indentPx + 6}px; border-bottom:1px solid #1a1a1a; font-size:0.78rem; background:${diff.selected ? 'rgba(79,195,247,0.08)' : 'transparent'};">
+                <div class="sync-result-row" style="display:grid; grid-template-columns:26px 1fr 75px 85px; align-items:center; padding:4px 6px; padding-left:${indentPx + 6}px; border-bottom:1px solid #1a1a1a; font-size:0.78rem; background:${diff.selected ? 'rgba(79,195,247,0.08)' : 'transparent'};">
                     <input type="checkbox" ${diff.selected ? 'checked' : ''} onchange="syncAnalyzer.toggleItem(${globalIdx}, this.checked)">
                     <div style="overflow:hidden; display:flex; align-items:center;">
                         ${toggleArrow}
@@ -499,7 +802,10 @@ class SyncAnalyzer {
                             ${parentPath ? `<span style="color:#666; font-size:0.72rem;">${escapeHtml(parentPath)}/</span>` : ''}<b style="color:${diff.isDirectory ? '#fff' : '#ccc'};">${escapeHtml(baseName)}</b>
                         </span>
                     </div>
-                    <span style="color:${typeColor}; font-size:0.68rem; padding:1px 5px; background:${typeColor}18; border-radius:3px; white-space:nowrap; margin-left:6px;">
+                    <span style="font-family:monospace; font-size:0.72rem; color:${diff.isDirectory ? '#bbb' : '#888'}; text-align:right; padding-right:6px; white-space:nowrap;" title="${diff.isDirectory ? 'Peso acumulado de la carpeta' : 'Peso del archivo'}">
+                        ${sizeStr}
+                    </span>
+                    <span style="color:${typeColor}; font-size:0.68rem; padding:1px 5px; background:${typeColor}18; border-radius:3px; white-space:nowrap; text-align:right;">
                         ${typeArrow} ${typeLabel}
                     </span>
                 </div>
@@ -643,39 +949,151 @@ class SyncAnalyzer {
             });
         }
 
+        this.abortSync = false;
+        this._showProgressBar(direction, relevant.length);
+
         try {
-            // Use the batch sync endpoint (rclone or native fallback)
             const enginePref = (settings && settings.copyEngine) ? settings.copyEngine : 'auto';
-            const res = await fetch('/api/rclone/syncBatch', {
+            const response = await fetch('/api/rclone/syncStream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     items: itemsToCopy,
                     engine: enginePref,
-                    onlyFolders: !!this.onlyFolders
+                    onlyFolders: !!this.onlyFolders,
+                    direction
                 })
             });
-            const data = await res.json();
 
-            const engineLabel = data.engine === 'mkdir_only' 
-                ? '📁 Solo Carpetas' 
-                : (data.engine === 'rclone' ? '🚀 Rclone' : (data.engine === 'native_fallback' ? '⚡ Rclone (Fallback Nativo)' : '📁 Nativo'));
+            if (!response.body) {
+                throw new Error("No se pudo inicializar el stream de transferencia.");
+            }
+
+            this.syncReader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let completeData = null;
+
+            while (true) {
+                if (this.abortSync) {
+                    try { await this.syncReader.cancel(); } catch(e){}
+                    break;
+                }
+
+                const { value, done } = await this.syncReader.read();
+                if (done || this.abortSync) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep remainder
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        if (msg.type === 'progress') {
+                            this._updateProgressBar(msg);
+                        } else if (msg.type === 'complete') {
+                            completeData = msg;
+                        }
+                    } catch (err) {
+                        console.warn("Stream parse error:", err, line);
+                    }
+                }
+            }
+
+            this.syncReader = null;
+
+            if (this.abortSync) {
+                this._setStatus('⏹️ Transferencia detenida por el usuario.', '#ff9800');
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', 'Transferencia cancelada por el usuario.', 'warn');
+                }
+                this._hideProgressBar();
+                return;
+            }
+
+            const data = completeData || { succeeded: relevant.length, failed: 0 };
             const msg = data.failed === 0 
-                ? `${engineLabel}: ✅ ${data.succeeded} elemento(s) sincronizados con éxito.`
-                : `${engineLabel}: ✅ ${data.succeeded} ok, ❌ ${data.failed} error(es).`;
+                ? `✅ ${data.succeeded} elemento(s) sincronizados con éxito.`
+                : `⚠️ ${data.succeeded} ok, ❌ ${data.failed} error(es).`;
             this._setStatus(msg, data.failed > 0 ? '#FF9800' : '#4CAF50');
             
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', msg, data.failed > 0 ? 'error' : 'ok', data);
             }
 
+            this._hideProgressBar();
             alert(msg);
+
+            // Re-ejecutar escaneo si hay contexto activo
+            if (this.scanScope) {
+                this.runScan(this.scanScope);
+            }
         } catch (e) {
+            this.syncReader = null;
+            this._hideProgressBar();
             this._setStatus(`❌ Error de conexión: ${e.message}`, '#f44336');
             if (typeof PipetaConsole !== 'undefined') {
-                PipetaConsole.log('sync', `Error de conexión en sincronización: ${e.message}`, 'error');
+                PipetaConsole.log('sync', `Error en streaming de sincronización: ${e.message}`, 'error');
             }
             alert(`Error: ${e.message}`);
+        }
+    }
+
+    // --- PROGRESS BAR CONTROLS ---
+    _showProgressBar(direction, totalCount) {
+        const container = document.getElementById('sync-progress-container');
+        if (!container) return;
+        container.style.display = 'block';
+
+        const dirEl = document.getElementById('sync-prog-direction');
+        const speedEl = document.getElementById('sync-prog-speed');
+        const etaEl = document.getElementById('sync-prog-eta');
+        const itemsEl = document.getElementById('sync-prog-total-items');
+        const totalPctEl = document.getElementById('sync-prog-total-pct');
+        const totalBar = document.getElementById('sync-prog-total-bar');
+        const filePctEl = document.getElementById('sync-prog-file-pct');
+        const fileBar = document.getElementById('sync-prog-file-bar');
+        const fileNameEl = document.getElementById('sync-prog-file-name');
+
+        if (dirEl) dirEl.innerHTML = direction === 'push' ? '⬆️ <b>Subiendo (Upload)...</b>' : '⬇️ <b>Descargando (Download)...</b>';
+        if (speedEl) speedEl.innerText = '⚡ 0.0 MB/s';
+        if (etaEl) etaEl.innerText = '⏱️ ETA: calculando...';
+        if (itemsEl) itemsEl.innerText = `0/${totalCount}`;
+        if (totalPctEl) totalPctEl.innerText = '0%';
+        if (totalBar) totalBar.style.width = '0%';
+        if (filePctEl) filePctEl.innerText = '0%';
+        if (fileBar) fileBar.style.width = '0%';
+        if (fileNameEl) fileNameEl.innerText = 'Iniciando transferencia...';
+    }
+
+    _updateProgressBar(data) {
+        const speedEl = document.getElementById('sync-prog-speed');
+        const etaEl = document.getElementById('sync-prog-eta');
+        const itemsEl = document.getElementById('sync-prog-total-items');
+        const totalPctEl = document.getElementById('sync-prog-total-pct');
+        const totalBar = document.getElementById('sync-prog-total-bar');
+        const filePctEl = document.getElementById('sync-prog-file-pct');
+        const fileBar = document.getElementById('sync-prog-file-bar');
+        const fileNameEl = document.getElementById('sync-prog-file-name');
+
+        if (speedEl && data.speedText) speedEl.innerText = `⚡ ${data.speedText}`;
+        if (etaEl && data.etaText) etaEl.innerText = `⏱️ ETA: ${data.etaText}`;
+        if (itemsEl && data.itemIndex && data.totalItems) itemsEl.innerText = `${data.itemIndex}/${data.totalItems}`;
+        if (totalPctEl) totalPctEl.innerText = `${data.totalPercent || 0}%`;
+        if (totalBar) totalBar.style.width = `${data.totalPercent || 0}%`;
+        if (filePctEl) filePctEl.innerText = `${data.filePercent || 0}%`;
+        if (fileBar) fileBar.style.width = `${data.filePercent || 0}%`;
+        if (fileNameEl && data.filename) fileNameEl.innerText = data.filename;
+    }
+
+    _hideProgressBar() {
+        const container = document.getElementById('sync-progress-container');
+        if (container) {
+            setTimeout(() => {
+                container.style.display = 'none';
+            }, 3000);
         }
     }
 

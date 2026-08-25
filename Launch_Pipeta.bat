@@ -1,6 +1,6 @@
 @echo off
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v0.9.50"
+set "APP_VERSION=v0.9.64"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
 
@@ -19,8 +19,13 @@ echo [INFO] Sincronizando archivos a disco local...
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
 :: Copiamos todo EXCEPTO repositorios temporales .git/.gemini, presets y logs
-:: Usamos robocopy para ser eficientes
 robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /NFL /NDL /NJH /NJS /R:0 /W:0
+
+:: Sincronizamos presets base (solo archivos faltantes, sin sobreescribir configuraciones locales)
+if exist "%~dp0presets" (
+    if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
+    robocopy "%~dp0presets" "%LOCAL_DIR%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+)
 
 echo [INFO] Sincronizacion completada.
 echo [INFO] Lanzando instancia local segura...

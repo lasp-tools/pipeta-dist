@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v0.9.50";
+const VERSION = "v0.9.64";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -38,7 +38,7 @@ try {
         console.log('[RCLONE] Not found. Native copy will be used.');
     }
 } catch (e) {
-    console.log('[RCLONE] Detection failed:', e.message);
+    console.log('[RCLONE] Check error:', e.message);
 }
 
 app.use(cors());
@@ -126,11 +126,23 @@ app.get('/api/fs/list', (req, res) => {
         }
 
         const items = fs.readdirSync(targetPath, { withFileTypes: true });
-        const result = items.map(item => ({
-            name: item.name,
-            isDirectory: item.isDirectory(),
-            path: path.join(targetPath, item.name).replace(/\\/g, '/')
-        }));
+        const result = items.map(item => {
+            const isDir = item.isDirectory();
+            const fullItemPath = path.join(targetPath, item.name).replace(/\\/g, '/');
+            let size = 0;
+            if (!isDir) {
+                try {
+                    const st = fs.statSync(fullItemPath);
+                    size = st.size;
+                } catch(e) {}
+            }
+            return {
+                name: item.name,
+                isDirectory: isDir,
+                path: fullItemPath,
+                size: size
+            };
+        });
 
         result.sort((a, b) => {
             if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
@@ -151,12 +163,45 @@ app.get('/api/fs/list', (req, res) => {
 // --- I/O OPERATIONS ---
 
 app.post('/api/fs/open', async (req, res) => {
-    const { path: p } = req.body;
-    if (!p) return res.status(400).json({ error: "No path provided" });
+    let p = req.body?.path;
+    if (!p) return res.status(400).json({ error: "No se especificó ninguna ruta para abrir" });
+    p = path.resolve(p.replace(/\//g, '\\'));
+
+    let targetPath = p;
+    let isFile = false;
+
     try {
-        await open(p);
-        res.json({ success: true });
+        if (fs.existsSync(p)) {
+            const stat = fs.statSync(p);
+            isFile = stat.isFile();
+        } else {
+            // Si la ruta específica no existe aún, buscar la carpeta padre más cercana
+            let current = path.dirname(p);
+            while (current && current.length > 3 && !fs.existsSync(current)) {
+                current = path.dirname(current);
+            }
+            if (fs.existsSync(current)) {
+                targetPath = current;
+                isFile = false;
+            }
+        }
+    } catch (e) {
+        console.warn("[FS_OPEN] Stat warning:", e.message);
+    }
+
+    try {
+        const { spawn } = require('child_process');
+        const args = isFile ? [`/select,${targetPath}`] : [targetPath];
+        const child = spawn('explorer.exe', args, {
+            detached: true,
+            stdio: 'ignore'
+        });
+        child.unref();
+
+        console.log(`[FS_OPEN] Explorador de Windows lanzado en: ${targetPath} (isFile: ${isFile})`);
+        res.json({ success: true, opened: targetPath, isFile });
     } catch (err) {
+        console.error(`[FS_OPEN] Error al abrir en Explorador:`, err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -278,6 +323,309 @@ app.post('/api/system/pickFolder', async (req, res) => {
     });
 });
 
+// --- PORTABLE PACKAGE EXPORTER (.ZIP + .BAT EXTRACTOR) ---
+app.post('/api/system/package-dist', async (req, res) => {
+    let targetDir = req.body?.targetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts';
+    targetDir = targetDir.replace(/\//g, '\\');
+
+    const pipetaRoot = path.resolve(__dirname, '..');
+    const zipName = `Pipeta_${VERSION}.zip`;
+    const destZip = path.join(targetDir, zipName);
+    const destBat = path.join(targetDir, 'Instalar_o_Actualizar_Pipeta_Local.bat');
+
+    const { exec } = require('child_process');
+
+    const psScript = `
+$source = "${pipetaRoot.replace(/\\/g, '\\\\')}"
+$destDir = "${targetDir.replace(/\\/g, '\\\\')}"
+$destZip = "${destZip.replace(/\\/g, '\\\\')}"
+$destBat = "${destBat.replace(/\\/g, '\\\\')}"
+$tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "Pipeta_Pkg_" + [System.Guid]::NewGuid().ToString())
+$pkgRoot = [System.IO.Path]::Combine($tempDir, "Pipeta")
+
+try {
+    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+    New-Item -ItemType Directory -Path $pkgRoot -Force | Out-Null
+    
+    # 1. Copiar base completa de Pipeta hacia la subcarpeta 'Pipeta'
+    robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+    
+    # 2. Asegurar que los presets locales más recientes se incluyan en Pipeta\presets
+    $localPresets = "C:\\TOOLS\\APPS\\Pipeta\\presets"
+    if (Test-Path $localPresets) {
+        robocopy "$localPresets" "$pkgRoot\\presets" /E /NFL /NDL /NJH /NJS /R:0 /W:0
+    }
+
+    # 3. Comprimir localmente en $tempDir para máxima velocidad y mover a destino
+    $tempZip = Join-Path $tempDir "package.zip"
+    if (Test-Path $destZip) { Remove-Item $destZip -Force }
+    
+    where.exe tar >$null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        tar.exe -caf "$tempZip" -C "$tempDir" "Pipeta"
+    } else {
+        Compress-Archive -Path "$pkgRoot" -DestinationPath "$tempZip" -Force
+    }
+
+    Move-Item -Path "$tempZip" -Destination "$destZip" -Force
+
+    # 4. Generar el script .BAT instalador/descompresor en la misma carpeta
+    $batScript = @'
+@echo off
+setlocal enabledelayedexpansion
+title Instalador / Actualizador de Pipeta Local
+
+echo ============================================================
+echo   INSTALADOR / ACTUALIZADOR DE PIPETA LOCAL
+echo ============================================================
+echo.
+
+set "TARGET_DIR=C:\\TOOLS\\APPS"
+set "PIPETA_DIR=C:\\TOOLS\\APPS\\Pipeta"
+set "ZIP_FILE=%~dp0Pipeta_${VERSION}.zip"
+
+if not exist "%ZIP_FILE%" (
+    for %%f in ("%~dp0Pipeta_*.zip") do set "ZIP_FILE=%%f"
+)
+
+if not exist "%ZIP_FILE%" (
+    echo [ERROR] No se encontro el archivo Pipeta_*.zip en esta carpeta.
+    echo Asegurate de que el archivo .zip este en el mismo directorio.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [INFO] Archivo detectado: %ZIP_FILE%
+echo [INFO] Destino: %TARGET_DIR%\\Pipeta
+echo.
+
+echo [1/3] Cerrando instancias previas de Pipeta...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do taskkill /F /PID %%a >nul 2>&1
+taskkill /F /IM node.exe >nul 2>&1
+
+echo [2/3] Descomprimiendo Pipeta en %TARGET_DIR%...
+if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
+
+where tar >nul 2>&1
+if %errorlevel% equ 0 (
+    tar -xf "%ZIP_FILE%" -C "%TARGET_DIR%"
+) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP_FILE%' -DestinationPath '%TARGET_DIR%' -Force"
+)
+
+if not exist "%PIPETA_DIR%\\Launch_Pipeta.bat" (
+    echo [ERROR] No se encontro Launch_Pipeta.bat en %PIPETA_DIR%.
+    pause
+    exit /b 1
+)
+
+echo [3/3] Creando acceso directo en Escritorio con icono...
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk')); $s.TargetPath = 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat'; $s.WorkingDirectory = 'C:\\TOOLS\\APPS\\Pipeta'; $ico = 'C:\\TOOLS\\APPS\\Pipeta\\Pipeta.ico'; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
+
+echo.
+echo ============================================================
+echo   OK: Pipeta instalada con exito en C:\\TOOLS\\APPS\\Pipeta
+echo ============================================================
+echo.
+timeout /t 2 >nul
+
+start "" "C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat"
+exit
+'@
+
+    [System.IO.File]::WriteAllText($destBat, $batScript, [System.Text.Encoding]::ASCII)
+
+    $bytes = (Get-Item $destZip).Length
+    Write-Output "SUCCESS:$bytes"
+} catch {
+    Write-Error $_.Exception.Message
+    exit 1
+} finally {
+    if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+`;
+
+    const tmpPsFile = path.join(os.tmpdir(), `pipeta_pkg_${Date.now()}.ps1`);
+    try {
+        await fs.writeFile(tmpPsFile, psScript, 'utf8');
+        const { execFile } = require('child_process');
+        execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmpPsFile], { timeout: 300000 }, async (err, stdout, stderr) => {
+            try { await fs.remove(tmpPsFile); } catch(e) {}
+
+            if (err) {
+                console.error("[PACKAGE DIST] Error:", err, stderr);
+                return res.status(500).json({ error: err.message || stderr });
+            }
+
+            const outStr = (stdout || '').trim();
+            let bytes = 0;
+            if (outStr.includes('SUCCESS:')) {
+                bytes = parseInt(outStr.split('SUCCESS:')[1].trim(), 10) || 0;
+            }
+
+            function formatBytes(b) {
+                if (!b || b <= 0) return '0 MB';
+                return (b / (1024 * 1024)).toFixed(1) + ' MB';
+            }
+
+            res.json({
+                success: true,
+                zipPath: destZip,
+                zipName: zipName,
+                batPath: destBat,
+                batName: 'Instalar_o_Actualizar_Pipeta_Local.bat',
+                targetDir: targetDir,
+                version: VERSION,
+                sizeBytes: bytes,
+                sizeFormatted: formatBytes(bytes)
+            });
+        });
+    } catch(err) {
+        try { await fs.remove(tmpPsFile); } catch(e) {}
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- AUTO-UPDATE FROM NETWORK SOURCE ---
+app.post('/api/app/update-from-server', async (req, res) => {
+    const netSource = '\\\\LASP-VM\\Pipeta';
+    const localDest = 'C:\\TOOLS\\APPS\\Pipeta';
+
+    const psScript = `
+$foundSource = '\\\\LASP-VM\\Pipeta'
+
+if (-not (Test-Path "$foundSource\\server\\server.js")) {
+    Write-Error "No se pudo acceder al servidor maestro en \\\\LASP-VM\\Pipeta. Verifica la conexion de red con \\\\LASP-VM."
+    exit 1
+}
+
+$dest = 'C:\\TOOLS\\APPS\\Pipeta'
+if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+
+# 1. Sincronizar archivos principales directamente y UNICAMENTE desde \\LASP-VM\Pipeta
+# Excluimos 'bin' para no intentar sobreescribir node.exe en ejecucion
+& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets bin node_modules\\.cache /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+
+# 2. Sincronizar presets base sin sobreescribir configuraciones locales
+if (Test-Path "$foundSource\\presets") {
+    & robocopy "$foundSource\\presets" "$dest\\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+    if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+}
+
+Write-Output "UPDATE_SUCCESS:$foundSource"
+`;
+
+    const tmpPsFile = path.join(os.tmpdir(), `pipeta_update_${Date.now()}.ps1`);
+    try {
+        await fs.writeFile(tmpPsFile, psScript, 'utf8');
+        const { execFile } = require('child_process');
+        execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmpPsFile], { timeout: 120000 }, async (err, stdout, stderr) => {
+            try { await fs.remove(tmpPsFile); } catch(e) {}
+
+            if (err) {
+                console.error("[AUTO-UPDATE] Error:", err, stderr);
+                return res.status(500).json({ error: err.message || stderr });
+            }
+
+            console.log("[AUTO-UPDATE] Synchronized successfully. Scheduling restart...");
+            
+            try { fs.writeFileSync(RESTART_FLAG_FILE, 'restart'); } catch (e) { }
+
+            res.json({ success: true, updatedFrom: netSource, localDest: localDest });
+
+            setTimeout(() => {
+                const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
+                const batPath = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat' : path.join(__dirname, '../Launch_Pipeta.bat');
+                const { spawn } = require('child_process');
+                spawn('cmd.exe', ['/c', batPath], {
+                    detached: true,
+                    stdio: 'ignore',
+                    cwd: path.dirname(batPath)
+                }).unref();
+
+                setTimeout(() => {
+                    process.exit(0);
+                }, 300);
+            }, 600);
+        });
+    } catch(err) {
+        try { await fs.remove(tmpPsFile); } catch(e) {}
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- CREATE DESKTOP SHORTCUT ---
+app.post('/api/app/create-desktop-shortcut', async (req, res) => {
+    const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
+    const localDir = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta' : path.resolve(__dirname, '..');
+    const batPath = path.join(localDir, 'Launch_Pipeta.bat');
+    const icoPath = path.join(localDir, 'Pipeta.ico');
+
+    const psScript = `
+$ws = New-Object -ComObject WScript.Shell
+$desktop = [Environment]::GetFolderPath('Desktop')
+$lnkPath = [System.IO.Path]::Combine($desktop, 'Pipeta.lnk')
+$s = $ws.CreateShortcut($lnkPath)
+$s.TargetPath = '${batPath.replace(/\\/g, '\\\\')}'
+$s.WorkingDirectory = '${localDir.replace(/\\/g, '\\\\')}'
+$ico = '${icoPath.replace(/\\/g, '\\\\')}'
+if (Test-Path $ico) {
+    $s.IconLocation = $ico
+}
+$s.Description = 'Pipeta - VFX Pipeline & IA Ingest Manager'
+$s.Save()
+Write-Output "SHORTCUT_CREATED"
+`;
+
+    const tmpPsFile = path.join(os.tmpdir(), `pipeta_shortcut_${Date.now()}.ps1`);
+    try {
+        await fs.writeFile(tmpPsFile, psScript, 'utf8');
+        const { execFile } = require('child_process');
+        execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmpPsFile], { timeout: 15000 }, async (err, stdout, stderr) => {
+            try { await fs.remove(tmpPsFile); } catch(e) {}
+            if (err) {
+                console.error("[SHORTCUT] Error:", err, stderr);
+                return res.status(500).json({ error: err.message || stderr });
+            }
+            res.json({ success: true, shortcutPath: path.join(process.env.USERPROFILE || '', 'Desktop', 'Pipeta.lnk') });
+        });
+    } catch(err) {
+        try { await fs.remove(tmpPsFile); } catch(e) {}
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- VERSION INFO ---
+app.get('/api/app/version-info', async (req, res) => {
+    const netSource = '\\\\LASP-VM\\Pipeta';
+    let serverOnline = false;
+    let serverVersion = null;
+
+    try {
+        if (fs.existsSync(netSource)) {
+            serverOnline = true;
+            const netServerJs = path.join(netSource, 'server', 'server.js');
+            if (fs.existsSync(netServerJs)) {
+                const content = fs.readFileSync(netServerJs, 'utf8');
+                const m = content.match(/const VERSION = ["']([^"']+)["']/);
+                if (m) serverVersion = m[1];
+            }
+        }
+    } catch(e) {
+        serverOnline = false;
+    }
+
+    res.json({
+        currentVersion: VERSION,
+        serverPath: netSource,
+        serverOnline: serverOnline,
+        serverVersion: serverVersion || VERSION,
+        runtimePath: path.resolve(__dirname, '..')
+    });
+});
+
 // --- DISK USAGE ---
 app.get('/api/system/diskUsage', async (req, res) => {
     const drives = (req.query.drives || 'C').split(',').map(d => d.trim().toUpperCase().replace(':', ''));
@@ -350,6 +698,210 @@ async function replicateEmptyDirectories(srcDir, destDir) {
         console.warn(`[MKDIR_ONLY] Error en ${srcDir}:`, e.message);
     }
 }
+
+// Streaming sync with real-time percentage, file progress, speed and ETA
+app.post('/api/rclone/syncStream', async (req, res) => {
+    const { items, engine = 'auto', onlyFolders = false, direction = 'push' } = req.body;
+    if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ error: 'Missing items array' });
+    }
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    function formatSpeed(bytesPerSec) {
+        if (bytesPerSec >= 1024 * 1024 * 1024) return (bytesPerSec / (1024 * 1024 * 1024)).toFixed(1) + ' GB/s';
+        if (bytesPerSec >= 1024 * 1024) return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+        if (bytesPerSec >= 1024) return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+        return bytesPerSec.toFixed(0) + ' B/s';
+    }
+
+    function formatEta(seconds) {
+        if (!seconds || seconds <= 0 || !isFinite(seconds)) return '0s';
+        if (seconds < 60) return `${seconds}s`;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins < 60) return `${mins}m ${secs}s`;
+        const hours = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        return `${hours}h ${remMins}m`;
+    }
+
+    let totalBytesAll = 0;
+    const fileStatsList = [];
+    for (const item of items) {
+        let size = 0;
+        if (!onlyFolders && !item.onlyFolders && !item.isDirectory) {
+            try {
+                if (fs.existsSync(item.src)) {
+                    const st = fs.statSync(item.src);
+                    size = st.size;
+                }
+            } catch(e) { size = 0; }
+        }
+        fileStatsList.push({ ...item, size });
+        totalBytesAll += size;
+    }
+
+    let totalTransferredBytes = 0;
+    const startTime = Date.now();
+    const results = [];
+    const dirLabel = direction === 'push' ? 'Subida (Upload)' : 'Descarga (Download)';
+
+    for (let i = 0; i < fileStatsList.length; i++) {
+        const item = fileStatsList[i];
+        const baseName = path.basename(item.src) || (item.isDirectory ? 'Carpeta' : 'Archivo');
+
+        try {
+            if (onlyFolders || item.onlyFolders) {
+                if (item.isDirectory) {
+                    await replicateEmptyDirectories(item.src, item.dest);
+                } else {
+                    await fs.ensureDir(path.dirname(item.dest));
+                }
+                results.push({ src: item.src, dest: item.dest, success: true, engine: 'mkdir_only' });
+
+                const totalPct = Math.round(((i + 1) / fileStatsList.length) * 100);
+                res.write(JSON.stringify({
+                    type: 'progress',
+                    direction: dirLabel,
+                    itemIndex: i + 1,
+                    totalItems: fileStatsList.length,
+                    filename: baseName,
+                    filePercent: 100,
+                    totalPercent: totalPct,
+                    speedText: 'Estructura',
+                    etaText: '--'
+                }) + '\n');
+                continue;
+            }
+
+            if (item.isDirectory) {
+                await fs.ensureDir(item.dest);
+                results.push({ src: item.src, dest: item.dest, success: true, engine: 'mkdir' });
+                const totalPct = totalBytesAll > 0 
+                    ? Math.round((totalTransferredBytes / totalBytesAll) * 100)
+                    : Math.round(((i + 1) / fileStatsList.length) * 100);
+                res.write(JSON.stringify({
+                    type: 'progress',
+                    direction: dirLabel,
+                    itemIndex: i + 1,
+                    totalItems: fileStatsList.length,
+                    filename: `📁 ${baseName}`,
+                    filePercent: 100,
+                    totalPercent: totalPct,
+                    speedText: 'Carpeta',
+                    etaText: '--'
+                }) + '\n');
+                continue;
+            }
+
+            // Single File Copy with Real-time Chunked Stream Progress
+            await fs.ensureDir(path.dirname(item.dest));
+
+            if (!item.size || item.size === 0) {
+                await fs.copyFile(item.src, item.dest);
+                totalTransferredBytes += (item.size || 0);
+            } else {
+                await new Promise((resolve, reject) => {
+                    let isResolved = false;
+                    const safeResolve = () => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            resolve();
+                        }
+                    };
+                    const safeReject = (err) => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            reject(err);
+                        }
+                    };
+
+                    const readStream = fs.createReadStream(item.src);
+                    const writeStream = fs.createWriteStream(item.dest);
+                    let fileTransferred = 0;
+                    let lastProgressEmit = Date.now();
+
+                    readStream.on('data', (chunk) => {
+                        fileTransferred += chunk.length;
+                        totalTransferredBytes += chunk.length;
+
+                        const now = Date.now();
+                        if (now - lastProgressEmit > 100 || fileTransferred >= item.size) {
+                            lastProgressEmit = now;
+                            const elapsedSec = Math.max(0.1, (now - startTime) / 1000);
+                            const speedBytesPerSec = totalTransferredBytes / elapsedSec;
+                            const remainingBytes = Math.max(0, totalBytesAll - totalTransferredBytes);
+                            const etaSec = speedBytesPerSec > 0 ? Math.round(remainingBytes / speedBytesPerSec) : 0;
+
+                            const filePct = item.size > 0 ? Math.min(100, Math.round((fileTransferred / item.size) * 100)) : 100;
+                            const totalPct = totalBytesAll > 0 ? Math.min(100, Math.round((totalTransferredBytes / totalBytesAll) * 100)) : Math.round(((i + 1) / fileStatsList.length) * 100);
+
+                            res.write(JSON.stringify({
+                                type: 'progress',
+                                direction: dirLabel,
+                                itemIndex: i + 1,
+                                totalItems: fileStatsList.length,
+                                filename: baseName,
+                                filePercent: filePct,
+                                totalPercent: totalPct,
+                                speedText: formatSpeed(speedBytesPerSec),
+                                etaText: formatEta(etaSec)
+                            }) + '\n');
+                        }
+                    });
+
+                    readStream.on('error', safeReject);
+                    writeStream.on('error', safeReject);
+                    writeStream.on('finish', safeResolve);
+                    writeStream.on('close', safeResolve);
+
+                    readStream.pipe(writeStream);
+                });
+            }
+
+            // Emitir evento de 100% completado para este archivo
+            const elapsedSec = Math.max(0.1, (Date.now() - startTime) / 1000);
+            const speedBytesPerSec = totalTransferredBytes / elapsedSec;
+            const remainingBytes = Math.max(0, totalBytesAll - totalTransferredBytes);
+            const etaSec = speedBytesPerSec > 0 ? Math.round(remainingBytes / speedBytesPerSec) : 0;
+            const totalPct = totalBytesAll > 0 ? Math.min(100, Math.round((totalTransferredBytes / totalBytesAll) * 100)) : Math.round(((i + 1) / fileStatsList.length) * 100);
+
+            res.write(JSON.stringify({
+                type: 'progress',
+                direction: dirLabel,
+                itemIndex: i + 1,
+                totalItems: fileStatsList.length,
+                filename: baseName,
+                filePercent: 100,
+                totalPercent: totalPct,
+                speedText: formatSpeed(speedBytesPerSec),
+                etaText: formatEta(etaSec)
+            }) + '\n');
+
+            results.push({ src: item.src, dest: item.dest, success: true, engine: 'stream' });
+
+        } catch(err) {
+            console.error(`[SYNC STREAM] Error on ${item.src}:`, err);
+            results.push({ src: item.src, dest: item.dest, success: false, error: err.message });
+        }
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    res.write(JSON.stringify({
+        type: 'complete',
+        direction: dirLabel,
+        total: fileStatsList.length,
+        succeeded,
+        failed,
+        results
+    }) + '\n');
+    res.end();
+});
 
 // Batch sync via rclone (or fallback to native)
 app.post('/api/rclone/syncBatch', async (req, res) => {

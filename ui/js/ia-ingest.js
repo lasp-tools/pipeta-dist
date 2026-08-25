@@ -909,7 +909,11 @@ function updateIaMediaPreview(activeItem) {
         } catch(e) {
             console.error("Object URL error", e);
         }
-    } else if (activeItem.originalPath && !activeItem.originalPath.startsWith('[')) {
+    } else if (activeItem.destination) {
+        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.destination)}`;
+    } else if (activeItem.targetPath) {
+        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.targetPath)}`;
+    } else if (activeItem.originalPath && (activeItem.originalPath.includes(':') || activeItem.originalPath.startsWith('/') || activeItem.originalPath.startsWith('\\\\'))) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
     }
 
@@ -1525,6 +1529,18 @@ function switchIaWorkMode(mode) {
     populateIaTokenSelectsFromProject();
 
     if (isSimple) {
+        // En Modo Simple, asegurar defaults de niveles B y C en vacío (Ninguno) y A según subcarpeta
+        const tagB = document.getElementById('tokTagBLevel');
+        if (tagB) tagB.value = '';
+        const tagC = document.getElementById('tokTagCLevel');
+        if (tagC) tagC.value = '';
+
+        const isRefSubfolder = typeof iaActiveSubfolders !== 'undefined' && iaActiveSubfolders.has('ref');
+        const tagA = document.getElementById('tokTagALevel');
+        if (tagA) {
+            tagA.value = isRefSubfolder ? 'ref' : '';
+        }
+
         showIaAlert("⚡ Modo Simple activo (Flujo directo y simplificado)", "#03A9F4");
     } else {
         showIaAlert("🛠️ Modo Avanzado activo (Control total de tokens y lotes)", "#4caf50");

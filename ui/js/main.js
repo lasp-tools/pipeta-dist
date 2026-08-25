@@ -101,14 +101,14 @@ const headerToolsTemplates = {
                 <button class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
                     <img src="icons/new_folder.svg" class="btn-icon-svg">
                 </button>
+                <button class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
+                    <img src="icons/delete.svg" class="btn-icon-svg">
+                </button>
                 <button class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
                     <img src="icons/copy_path.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="API.fs.open(selectedContextPath)" title="Abrir en Explorer">
+                <button class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
                     <img src="icons/open_explorer.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
-                    <img src="icons/delete.svg" class="btn-icon-svg">
                 </button>
             </div>
         </div>
@@ -345,7 +345,11 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 
 // --- INIT ---
 fetch('/api/version').then(r => r.json()).then(d => {
-    if (d.version) document.getElementById('appVersion').innerText = d.version;
+    if (d.version) {
+        window.APP_VERSION = d.version;
+        const el = document.getElementById('appVersion');
+        if (el) el.innerText = d.version;
+    }
 });
 
 // Initialize Browser Component

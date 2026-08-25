@@ -581,7 +581,8 @@ const settings = {
             { id: 'interfaz', label: '🎨 Interfaz' },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
             { id: 'avanzado', label: '⚙️ Avanzado' },
-            { id: 'exportar', label: '📦 Exportar Presets' }
+            { id: 'exportar', label: '📦 Exportar Presets' },
+            { id: 'version', label: '🚀 Versión & Updates' }
         ];
 
         return items.map(i => `
@@ -1200,16 +1201,224 @@ const settings = {
                         </div>
                     </div>
 
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; padding-bottom:15px; border-bottom:1px solid #333;">
                         <div id="expStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
                         <button class="btn" onclick="settings.executeExportPresets()" 
                             style="background:var(--accent); color:black; font-weight:bold; padding:10px 20px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px;">
                             <span>🚀 EXPORTAR / PUBLICAR PRESETS</span>
                         </button>
                     </div>
+
+                    <!-- SECCIÓN: EMPAQUETAR VERSIÓN PORTABLE (.ZIP) -->
+                    <div style="background:rgba(0,188,212,0.04); padding:18px; border-radius:8px; border:1px solid #00bcd444; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <div style="font-weight:bold; color:#00bcd4; font-size:0.95rem; display:flex; align-items:center; gap:8px;">
+                                <span>📦 Empaquetar Versión Portable Completa (.zip)</span>
+                            </div>
+                            <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
+                                Pipeta ${window.APP_VERSION || 'v0.9.63'}
+                            </span>
+                        </div>
+                        <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
+                            Genera un archivo comprimido <code>Pipeta_vX.XX.zip</code> autocontenido con el runtime de Node.js, todas las interfaces, el lanzador y los presets de configuración. Cualquier usuario puede descomprimirlo en cualquier máquina o disco (<code>C:</code>, <code>D:</code>, pendrive) y ejecutarlo de inmediato sin instalaciones previas ni dependencias de red.
+                        </p>
+
+                        <div style="margin-bottom:14px;">
+                            <label style="font-size:0.8rem; color:#888; display:block; margin-bottom:6px;">Carpeta de Salida para el archivo comprimido:</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="pkgTargetDir" class="config-input" 
+                                    value="${settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts'}" 
+                                    oninput="settings.pkgTargetDir = this.value"
+                                    style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:#00bcd4;">
+                                <button id="pkgBrowseBtn" class="btn" onclick="settings.browsePackageDir()" 
+                                    style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:8px 14px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                    <span>📁 Examinar...</span>
+                                </button>
+                                <button class="btn" onclick="settings.openPackageTargetDir()" title="Abrir carpeta de salida en el Explorador de Windows"
+                                    style="background:#222; color:#00bcd4; border:1px solid #00bcd488; border-radius:4px; padding:8px 12px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                    <span>📂 Abrir Carpeta</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div id="pkgStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
+                            <button id="pkgGenerateBtn" class="btn" onclick="settings.executePackageZip()" 
+                                style="background:#00bcd4; color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(0,188,212,0.3);">
+                                <span>📦 COMPRIMIR & GENERAR PIPETA .ZIP</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            case 'version':
+                return `
+                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>🚀 Versión & Actualizaciones</span>
+                        <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
+                            ${window.APP_VERSION || 'v0.9.64'}
+                        </span>
+                    </h3>
+
+                    <!-- CARD 1: ESTADO Y ACCIONES -->
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px; font-size:0.95rem;">
+                            🔄 Actualizador Directo & Accesos
+                        </div>
+                        <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
+                            Sincroniza en caliente tu instalación local con la versión más reciente del servidor maestro en el recurso compartido exclusivo <code>\\\\LASP-VM\\Pipeta</code> y reinicia el sistema automáticamente.
+                        </p>
+
+                        <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; margin-bottom:15px; font-size:0.8rem;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
+                                <span style="color:#4fc3f7; font-family:monospace;">\\\\LASP-VM\\Pipeta</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                <span style="color:#888;">Instalación Local (Destino):</span>
+                                <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span style="color:#888;">Versión Instalada:</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.64'}</span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; flex:1; min-width:200px;"></div>
+                            <div style="display:flex; gap:10px;">
+                                <button id="createShortcutBtn" class="btn" onclick="settings.createDesktopShortcut()" title="Crea un acceso directo en tu Escritorio con el icono de Pipeta"
+                                    style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:10px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                    <span>📌 Crear Acceso Directo</span>
+                                </button>
+                                <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
+                                    style="background:var(--accent); color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
+                                    <span>🚀 ACTUALIZAR PIPETA (\\LASP-VM\Pipeta)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 2: HISTORIAL DE VERSIONES & PATCH NOTES -->
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:12px; font-size:0.95rem;">
+                            📋 Notas de la Versión (Patch Notes)
+                        </div>
+
+                        <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
+                            <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.64 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Origen UNC Exclusivo:</b> Actualizador configurado estrictamente contra <code>\\\\LASP-VM\\Pipeta</code> sin fallbacks a unidades de red locales potencialmente desactualizadas.</li>
+                                    <li><b>Abrir en Explorer:</b> Desacople con spawn detached para cualquier usuario y detección automática de archivo vs carpeta.</li>
+                                    <li><b>Barra de Explorer:</b> Botón Borrar reubicado a la derecha de Nueva Carpeta.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v0.9.61</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Icono de Pipeta:</b> Generación de icono multirresolución <code>Pipeta.ico</code> y asignación en accesos directos.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                 `;
             default:
                 return `<h3>Seleccione una categoría</h3>`;
+        }
+    },
+
+    createDesktopShortcut: async () => {
+        const btn = document.getElementById('createShortcutBtn');
+        const statusMsg = document.getElementById('updateStatusMsg');
+
+        if (btn) btn.innerHTML = '<span>⏳ Creando...</span>';
+
+        try {
+            const res = await fetch('/api/app/create-desktop-shortcut', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                if (statusMsg) statusMsg.innerHTML = '<span style="color:#4caf50; font-weight:bold;">✅ Acceso directo creado en tu Escritorio con el icono de Pipeta.</span>';
+                alert("¡Acceso directo creado con éxito en tu Escritorio!");
+            } else {
+                throw new Error(data ? data.error : 'Error al crear acceso directo');
+            }
+        } catch(e) {
+            console.error("Create shortcut error:", e);
+            if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error: ${e.message}</span>`;
+            alert("Error al crear acceso directo: " + e.message);
+        } finally {
+            if (btn) btn.innerHTML = '<span>📌 Crear Acceso Directo</span>';
+        }
+    },
+
+    openPackageTargetDir: async () => {
+        const input = document.getElementById('pkgTargetDir');
+        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        try {
+            await API.fs.openFolder(current.replace(/\\/g, '/'));
+        } catch(e) {
+            console.error("Open package dir error:", e);
+        }
+    },
+
+    executeUpdateFromServer: async () => {
+        const btn = document.getElementById('updateFromNetBtn');
+        const statusMsg = document.getElementById('updateStatusMsg');
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳ Actualizando...</span>';
+            btn.style.opacity = '0.7';
+        }
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Sincronizando con \\\\LASP-VM\\Pipeta y reiniciando sistema...</span>';
+        }
+
+        try {
+            const res = await fetch('/api/app/update-from-server', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourcePath: '\\\\LASP-VM\\Pipeta' })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                if (statusMsg) {
+                    statusMsg.innerHTML = '<span style="color:#4caf50; font-weight:bold;">✅ ¡Actualización completada! Reiniciando Pipeta...</span>';
+                }
+                
+                // Polling de health y recarga automática
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const hRes = await fetch('/api/health');
+                        if (hRes.ok) {
+                            clearInterval(checkInterval);
+                            window.location.reload();
+                        }
+                    } catch(e) {
+                        if (attempts > 20) {
+                            clearInterval(checkInterval);
+                            window.location.reload();
+                        }
+                    }
+                }, 1000);
+            } else {
+                throw new Error(data ? data.error : 'Error desconocido');
+            }
+        } catch(e) {
+            console.error("Auto-update error:", e);
+            if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al actualizar: ${e.message}</span>`;
+            alert("Error durante la actualización: " + e.message);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span>🚀 ACTUALIZAR PIPETA (lasp-munro)</span>';
+                btn.style.opacity = '1';
+            }
         }
     },
 
@@ -1270,6 +1479,94 @@ const settings = {
             console.error("Browse error:", e);
         } finally {
             if (btn) btn.innerHTML = '<span>📁 Examinar...</span>';
+        }
+    },
+
+    setDefaultPackageDir: () => {
+        const defaultPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts';
+        const input = document.getElementById('pkgTargetDir');
+        if (input) input.value = defaultPath;
+        settings.pkgTargetDir = defaultPath;
+        const msg = document.getElementById('pkgStatusMsg');
+        if (msg) msg.innerHTML = '<span style="color:#aaa;">Ruta de salida restablecida a la carpeta Scripts de Z:</span>';
+    },
+
+    browsePackageDir: async () => {
+        const input = document.getElementById('pkgTargetDir');
+        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        const btn = document.getElementById('pkgBrowseBtn');
+        if (btn) btn.innerHTML = '<span>⏳ Abriendo...</span>';
+        try {
+            const res = await fetch('/api/system/pickFolder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initialPath: current })
+            });
+            const data = await res.json();
+            if (data && data.success && data.path) {
+                if (input) input.value = data.path;
+                settings.pkgTargetDir = data.path;
+            }
+        } catch(e) {
+            console.error("Browse pkg error:", e);
+        } finally {
+            if (btn) btn.innerHTML = '<span>📁 Examinar...</span>';
+        }
+    },
+
+    executePackageZip: async () => {
+        const input = document.getElementById('pkgTargetDir');
+        const targetDir = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        if (!targetDir) {
+            alert("Por favor especifica una carpeta de salida para el archivo .ZIP.");
+            return;
+        }
+
+        const btn = document.getElementById('pkgGenerateBtn');
+        const statusMsg = document.getElementById('pkgStatusMsg');
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳ Comprimiendo Pipeta...</span>';
+            btn.style.opacity = '0.7';
+        }
+        if (statusMsg) {
+            statusMsg.innerHTML = '<span style="color:#00bcd4;">⏳ Empaquetando Pipeta completa con todos los presets y runtime (esto puede tomar 15-30 segundos)...</span>';
+        }
+
+        try {
+            const res = await fetch('/api/system/package-dist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetDir: targetDir })
+            });
+
+            const data = await res.json();
+            if (data && data.success) {
+                if (statusMsg) {
+                    statusMsg.innerHTML = `
+                        <span style="color:#4caf50; font-weight:bold;">
+                            ✅ ¡Paquete creado!: <code>${data.zipName}</code> (${data.sizeFormatted}) + <code>${data.batName}</code>
+                        </span>
+                        <button class="btn" onclick="API.fs.openFolder('${escapeHtml((data.targetDir || '').replace(/\\/g, '/'))}')" style="margin-left:8px; padding:3px 8px; font-size:0.75rem; background:#333; color:#eee;">
+                            📂 Abrir Carpeta
+                        </button>
+                    `;
+                }
+                alert(`¡Pipeta Comprimida con Éxito!\n\nSe generaron en la carpeta de destino:\n1. ${data.zipPath} (${data.sizeFormatted})\n2. ${data.batPath}\n\nLos usuarios solo deben ejecutar 'Instalar_o_Actualizar_Pipeta_Local.bat' para descomprimir automáticamente en C:\\TOOLS\\APPS\\Pipeta.`);
+            } else {
+                throw new Error(data ? data.error : 'Error desconocido del servidor');
+            }
+        } catch(e) {
+            console.error("Package error:", e);
+            if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al generar .ZIP: ${e.message}</span>`;
+            alert("Error al comprimir Pipeta: " + e.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span>📦 COMPRIMIR & GENERAR PIPETA .ZIP</span>';
+                btn.style.opacity = '1';
+            }
         }
     },
 
@@ -1335,7 +1632,10 @@ const settings = {
             if (doAsset) await copyDirectory('AssetDesigner');
             if (doProj) await copyDirectory('Projects');
             if (doIa) await copySingleFile('ia_custom_tokens.json');
-            if (doConfig) await copySingleFile('config.json');
+            if (doConfig) {
+                await copySingleFile('config.json');
+                await copySingleFile('pipeline_config.json');
+            }
 
             if (errors.length > 0) {
                 if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">⚠️ ${exportedCount} archivos exportados con ${errors.length} errores.</span>`;
