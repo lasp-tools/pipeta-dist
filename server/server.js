@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v0.9.64";
+const VERSION = "v0.9.70";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -624,6 +624,208 @@ app.get('/api/app/version-info', async (req, res) => {
         serverVersion: serverVersion || VERSION,
         runtimePath: path.resolve(__dirname, '..')
     });
+});
+
+// ==========================================
+// --- USERS & ROLES CONFIGURATION ---
+// ==========================================
+
+const USERS_CONFIG_FILE = path.join(__dirname, '../presets/users_config.json');
+const STATUS_CONFIG_FILE = path.join(__dirname, '../presets/status_config.json');
+
+app.get('/api/users', async (req, res) => {
+    try {
+        if (!fs.existsSync(USERS_CONFIG_FILE)) {
+            return res.json({ adminPassword: "Pipetadmin.321", roles: [], users: [], activeUser: "lasp-mpastorino" });
+        }
+        const data = await fs.readJson(USERS_CONFIG_FILE);
+        const safeData = { ...data, hasAdminPassword: !!data.adminPassword };
+        delete safeData.adminPassword;
+        res.json(safeData);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/users', async (req, res) => {
+    try {
+        const current = fs.existsSync(USERS_CONFIG_FILE) ? await fs.readJson(USERS_CONFIG_FILE) : {};
+        const incoming = req.body || {};
+        
+        if (!incoming.adminPassword && current.adminPassword) {
+            incoming.adminPassword = current.adminPassword;
+        }
+
+        await fs.writeJson(USERS_CONFIG_FILE, incoming, { spaces: 2 });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/users/verify-admin', async (req, res) => {
+    try {
+        const { password } = req.body;
+        let adminPass = "Pipetadmin.321";
+        if (fs.existsSync(USERS_CONFIG_FILE)) {
+            const data = await fs.readJson(USERS_CONFIG_FILE);
+            if (data.adminPassword) adminPass = data.adminPassword;
+        }
+        if (password === adminPass) {
+            res.json({ success: true, authorized: true });
+        } else {
+            res.status(401).json({ success: false, authorized: false, error: "Contraseña de administrador incorrecta" });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/users/set-active', async (req, res) => {
+    try {
+        const { laspUser } = req.body;
+        if (!laspUser) return res.status(400).json({ error: "No user specified" });
+        if (fs.existsSync(USERS_CONFIG_FILE)) {
+            const data = await fs.readJson(USERS_CONFIG_FILE);
+            data.activeUser = laspUser;
+            await fs.writeJson(USERS_CONFIG_FILE, data, { spaces: 2 });
+        }
+        res.json({ success: true, activeUser: laspUser });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// --- STATUS CONFIGURATION ---
+// ==========================================
+
+app.get('/api/statuses', async (req, res) => {
+    try {
+        if (!fs.existsSync(STATUS_CONFIG_FILE)) {
+            return res.json({ statuses: [] });
+        }
+        const data = await fs.readJson(STATUS_CONFIG_FILE);
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/statuses', async (req, res) => {
+    try {
+        await fs.writeJson(STATUS_CONFIG_FILE, req.body, { spaces: 2 });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// --- WORKFLOW & SHOT TRACKER API ---
+// ==========================================
+
+app.post('/api/workflow/shot-tracker/load', async (req, res) => {
+    try {
+        const { projectPath, workflowDir } = req.body;
+        if (!projectPath) return res.status(400).json({ error: "No projectPath specified" });
+
+        const effectiveWorkflowDir = workflowDir || path.join(projectPath, 'workflow');
+        const trackerFile = path.join(effectiveWorkflowDir, 'shot_tracker.json');
+
+        let trackerData = { projectPath, shots: {}, updatedAt: new Date().toISOString() };
+        if (fs.existsSync(trackerFile)) {
+            try {
+                trackerData = await fs.readJson(trackerFile);
+            } catch (e) {
+                console.warn("[WORKFLOW] Error reading trackerFile:", e);
+            }
+        }
+
+        res.json({ success: true, trackerFile, trackerData });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/workflow/shot-tracker/save', async (req, res) => {
+    try {
+        const { workflowDir, trackerData } = req.body;
+        if (!workflowDir || !trackerData) return res.status(400).json({ error: "Missing workflowDir or trackerData" });
+
+        await fs.ensureDir(workflowDir);
+        const trackerFile = path.join(workflowDir, 'shot_tracker.json');
+        trackerData.updatedAt = new Date().toISOString();
+        await fs.writeJson(trackerFile, trackerData, { spaces: 2 });
+
+        res.json({ success: true, trackerFile });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Per-User Task Export & Import
+app.post('/api/workflow/user-tasks/export', async (req, res) => {
+    try {
+        const { workflowDir, laspUser, userTasks, projectInfo } = req.body;
+        if (!workflowDir || !laspUser) return res.status(400).json({ error: "Missing parameters" });
+
+        const assignmentsDir = path.join(workflowDir, 'assignments');
+        await fs.ensureDir(assignmentsDir);
+        const userFile = path.join(assignmentsDir, `tasks_${laspUser}.json`);
+
+        const payload = {
+            laspUser,
+            exportedAt: new Date().toISOString(),
+            project: projectInfo || {},
+            tasksCount: (userTasks || []).length,
+            tasks: userTasks || []
+        };
+
+        await fs.writeJson(userFile, payload, { spaces: 2 });
+        res.json({ success: true, filePath: userFile, payload });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/workflow/user-tasks/load', async (req, res) => {
+    try {
+        const { workflowDir, laspUser } = req.body;
+        if (!workflowDir || !laspUser) return res.status(400).json({ error: "Missing parameters" });
+
+        const userFile = path.join(workflowDir, 'assignments', `tasks_${laspUser}.json`);
+        if (!fs.existsSync(userFile)) {
+            return res.status(404).json({ error: `No se encontraron tareas asignadas para el usuario ${laspUser}` });
+        }
+
+        const data = await fs.readJson(userFile);
+        res.json({ success: true, userTasks: data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/workflow/ensure-process-folders', async (req, res) => {
+    try {
+        const { folderPaths } = req.body;
+        if (!Array.isArray(folderPaths) || folderPaths.length === 0) {
+            return res.status(400).json({ error: "No folder paths provided" });
+        }
+
+        const created = [];
+        for (const f of folderPaths) {
+            const clean = path.resolve(f.replace(/\//g, '\\'));
+            if (!fs.existsSync(clean)) {
+                await fs.ensureDir(clean);
+                created.push(clean);
+            }
+        }
+
+        res.json({ success: true, createdCount: created.length, createdFolders: created });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // --- DISK USAGE ---

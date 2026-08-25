@@ -115,6 +115,59 @@ const API = {
                 return { username: 'unknown' };
             }
         }
+    },
+    users: {
+        get: async () => fetch('/api/users').then(r => r.json()),
+        save: async (data) => fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(r => r.json()),
+        verifyAdmin: async (password) => fetch('/api/users/verify-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        }).then(r => r.json()),
+        setActive: async (laspUser) => fetch('/api/users/set-active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ laspUser })
+        }).then(r => r.json())
+    },
+    statuses: {
+        get: async () => fetch('/api/statuses').then(r => r.json()),
+        save: async (data) => fetch('/api/statuses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(r => r.json())
+    },
+    workflow: {
+        loadTracker: async (projectPath, workflowDir) => fetch('/api/workflow/shot-tracker/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectPath, workflowDir })
+        }).then(r => r.json()),
+        saveTracker: async (workflowDir, trackerData) => fetch('/api/workflow/shot-tracker/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workflowDir, trackerData })
+        }).then(r => r.json()),
+        exportUserTasks: async (workflowDir, laspUser, userTasks, projectInfo) => fetch('/api/workflow/user-tasks/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workflowDir, laspUser, userTasks, projectInfo })
+        }).then(r => r.json()),
+        loadUserTasks: async (workflowDir, laspUser) => fetch('/api/workflow/user-tasks/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workflowDir, laspUser })
+        }).then(r => r.json()),
+        ensureProcessFolders: async (folderPaths) => fetch('/api/workflow/ensure-process-folders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderPaths })
+        }).then(r => r.json())
     }
 };
 

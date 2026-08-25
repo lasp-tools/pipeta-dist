@@ -2,6 +2,7 @@
 const tabs = {
     'Inicio': 'view-home',
     'Explorer': 'view-browser',
+    'Shot Navigator': 'view-shot-navigator',
     'Asset Designer': 'view-asset-designer',
     'Shot Designer': 'view-shot-designer',
     'IA Ingest': 'view-ia-ingest',
@@ -11,6 +12,42 @@ const tabs = {
 // --- DYNAMIC HEADER TOOLS ---
 const headerToolsTemplates = {
     'view-home': () => `<!-- No tools for home -->`,
+    'view-shot-navigator': () => `
+        <div class="toolbar-section-group" title="Filtros Rápidos">
+            <span class="toolbar-section-label">Filtros</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn ${typeof ShotNavigator !== 'undefined' && ShotNavigator.onlyMyShots ? 'active' : ''}" onclick="ShotNavigator.toggleOnlyMyShots()" title="Filtrar únicamente mis shots asignados">
+                    <span style="font-size:1rem;">👤</span>
+                </button>
+                <button class="tool-btn" onclick="ShotNavigator.loadWorkflow().then(() => ShotNavigator.render())" title="Recargar Workflow y Planos">
+                    <img src="icons/refresh.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Acciones de Planos Seleccionados">
+            <span class="toolbar-section-label">Workflow</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="ShotNavigator.ensureMissingFoldersForSelected()" title="Crear carpetas faltantes para los shots seleccionados">
+                    <span style="font-size:0.95rem;">📁➕</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Herramientas de Administración">
+            <span class="toolbar-section-label">Admin Tools</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="ShotNavigator.exportMyTasksFile()" title="Exportar Archivo de Tareas Asignadas (.json)">
+                    <img src="icons/copy.svg" class="btn-icon-svg">
+                    <span style="font-size:0.75rem; font-weight:bold; margin-left:4px;">Exportar Tareas</span>
+                </button>
+            </div>
+        </div>
+    `,
     'view-asset-designer': () => `
         <div class="toolbar-section-group" title="Añadir Elementos al Árbol">
             <span class="toolbar-section-label">Add Nodes</span>
@@ -317,6 +354,9 @@ function switchView(viewId) {
         if (viewId === 'view-home' && typeof Tutorials !== 'undefined') {
             Tutorials.init();
         }
+        if (viewId === 'view-shot-navigator') {
+            if (typeof ShotNavigator !== 'undefined') ShotNavigator.init();
+        }
         if (viewId === 'view-asset-designer' && typeof AssetDesigner !== 'undefined' && !AssetDesigner.initialized) {
             AssetDesigner.init();
             AssetDesigner.initialized = true;
@@ -333,6 +373,19 @@ function switchView(viewId) {
 
     // 4. Update Toolbar
     updateHeaderTools(viewId);
+}
+
+window.toggleCanvasFullscreen = () => {
+    document.body.classList.toggle('canvas-fullscreen');
+    const isFull = document.body.classList.contains('canvas-fullscreen');
+    try {
+        localStorage.setItem('pipeta_canvas_fullscreen', isFull ? 'true' : 'false');
+    } catch(e){}
+};
+
+// Check saved fullscreen preference
+if (localStorage.getItem('pipeta_canvas_fullscreen') === 'true') {
+    document.body.classList.add('canvas-fullscreen');
 }
 
 // Bind Click Events
@@ -392,7 +445,71 @@ async function initApp() {
 
     // 7. Check Rclone Status
     checkRcloneStatus();
+
+    // 8. Init Header User Selector
+    updateHeaderUserSelector();
 }
+
+// --- HEADER USER SWITCHER ---
+window.handleHeaderUserSwitch = async (laspUser) => {
+    try {
+        const uData = await API.users.get();
+        const targetUser = (uData.users || []).find(u => u.laspUser === laspUser);
+        
+        // If switching to an admin user, require authentication unless already remembered
+        if (targetUser && targetUser.role === 'admin') {
+            const isUnlocked = localStorage.getItem('pipeta_admin_unlocked') === 'true';
+            if (!isUnlocked) {
+                const pass = prompt(`🔒 Ingrese la contraseña de Administrador para cambiar al usuario ${targetUser.firstName || laspUser}:`);
+                if (!pass) {
+                    updateHeaderUserSelector();
+                    return;
+                }
+                const authRes = await API.users.verifyAdmin(pass);
+                if (!authRes || !authRes.authorized) {
+                    alert("❌ Contraseña de Administrador incorrecta.");
+                    updateHeaderUserSelector();
+                    return;
+                }
+                const remember = confirm("¿Deseas recordar la sesión de Administrador en este equipo?");
+                if (remember) {
+                    try { localStorage.setItem('pipeta_admin_unlocked', 'true'); } catch(e){}
+                }
+            }
+        }
+        
+        await API.users.setActive(laspUser);
+        if (typeof ShotNavigator !== 'undefined') {
+            ShotNavigator.activeUser = laspUser;
+            ShotNavigator.render();
+        }
+        updateHeaderUserSelector();
+    } catch(e) {
+        console.error("Error switching user:", e);
+        alert("Error al cambiar usuario: " + e.message);
+    }
+};
+
+window.updateHeaderUserSelector = async () => {
+    try {
+        const uData = await API.users.get();
+        const select = document.getElementById('headerUserSelect');
+        const avatar = document.getElementById('headerUserAvatar');
+        if (!select || !uData) return;
+        
+        const active = uData.activeUser || 'lasp-mpastorino';
+        const activeObj = (uData.users || []).find(u => u.laspUser === active);
+        if (avatar) avatar.style.background = activeObj?.avatarColor || '#ff9800';
+        
+        select.innerHTML = (uData.users || []).map(u => `
+            <option value="${u.laspUser}" ${u.laspUser === active ? 'selected' : ''}>
+                ${u.firstName} (${u.laspUser.replace('lasp-', '')})
+            </option>
+        `).join('');
+    } catch(e) {
+        console.warn("Could not load users for header selector:", e);
+    }
+};
 
 // --- RCLONE STATUS ---
 async function checkRcloneStatus() {

@@ -23,7 +23,7 @@ const CANONICAL_BASE_PRESETS = {
         onlineWork: "G:/Unidades compartidas/[proyecto]",
         onlineMedia: "G:/Unidades compartidas/[proyecto]_media"
     },
-    defaultShotPresetId: "asset_surf_love_canon_v1",
+    defaultShotPresetId: "pipeline_test",
     defaultAssetPresetId: "",
     iaPresets: {
         defaultImageEngine: "NB2P",
@@ -183,16 +183,42 @@ const settings = {
         settings.updateHeaderProjectSelector();
     },
 
+    updateSidebarButtonsState: () => {
+        const btnSettings = document.getElementById('btn-settings-toggle');
+        const topButtons = document.querySelectorAll('.sidebar-top .mode-btn');
+
+        if (settings.isVisible && settings.isMaximized) {
+            if (btnSettings) btnSettings.classList.add('active');
+            topButtons.forEach(b => b.classList.remove('active'));
+        } else {
+            if (btnSettings) btnSettings.classList.remove('active');
+            // Restore active class on the current view's mode button
+            const currentTabName = Object.keys(tabs).find(k => {
+                const el = document.getElementById(tabs[k]);
+                return el && el.style.display !== 'none';
+            });
+            topButtons.forEach(btn => {
+                if (btn.getAttribute('title') === currentTabName) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+    },
+
     open: async () => {
         if (!settings.container) await settings.init();
         settings.isVisible = true;
         settings.render();
         settings.container.style.display = 'flex';
+        settings.updateSidebarButtonsState();
     },
 
     close() {
         settings.isVisible = false;
         if (settings.container) settings.container.style.display = 'none';
+        settings.updateSidebarButtonsState();
     },
 
     switchCategory(cat) {
@@ -545,6 +571,16 @@ const settings = {
         obj[parts[parts.length - 1]] = value;
     },
 
+    isMaximized: false,
+    toggleMaximize() {
+        settings.isMaximized = !settings.isMaximized;
+        if (settings.container) {
+            settings.container.classList.toggle('maximized', settings.isMaximized);
+        }
+        settings.updateSidebarButtonsState();
+        settings.render();
+    },
+
     render() {
         if (!settings.container) return;
 
@@ -554,7 +590,12 @@ const settings = {
                     <img src="icons/settings.svg" style="width:20px; filter:invert(1);">
                     <h2 style="margin:0; font-size:1.2rem;">Configuraciones</h2>
                 </div>
-                <button class="icon-btn" onclick="settings.close()">&times;</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button class="icon-btn" onclick="settings.toggleMaximize()" title="${settings.isMaximized ? 'Restaurar a Ventana' : 'Maximizar a Canvas Completo'}" style="background:transparent; border:none; color:#aaa; font-size:1rem; cursor:pointer; padding:4px 8px;">
+                        ${settings.isMaximized ? '🗗' : '🗖'}
+                    </button>
+                    <button class="icon-btn" onclick="settings.close()">&times;</button>
+                </div>
             </div>
             
             <div class="settings-body">
@@ -578,7 +619,10 @@ const settings = {
     renderMenu() {
         const items = [
             { id: 'proyecto', label: '📁 Proyectos' },
-            { id: 'interfaz', label: '🎨 Interfaz' },
+            { id: 'users', label: '👥 Usuarios & Roles', restricted: true },
+            { id: 'statuses', label: '🏷️ Diseñador Estados', restricted: true },
+            { id: 'workflow', label: '🗂️ Workflow & Sync DB', restricted: true },
+            { id: 'interfaz', label: '🎨 Interfaz & Canvas' },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
             { id: 'avanzado', label: '⚙️ Avanzado' },
             { id: 'exportar', label: '📦 Exportar Presets' },
@@ -588,15 +632,58 @@ const settings = {
         return items.map(i => `
             <div class="settings-nav-item ${settings.currentCategory === i.id ? 'active' : ''}" 
                  onclick="settings.setCategory('${i.id}')"
-                 style="padding:10px; cursor:pointer; margin-bottom:5px; border-radius:4px; background:${settings.currentCategory === i.id ? 'rgba(255,255,255,0.1)' : 'transparent'}; color:${settings.currentCategory === i.id ? 'white' : '#888'};">
-                ${i.label}
+                 style="padding:10px; cursor:pointer; margin-bottom:5px; border-radius:4px; display:flex; justify-content:space-between; align-items:center; background:${settings.currentCategory === i.id ? 'rgba(255,255,255,0.1)' : 'transparent'}; color:${settings.currentCategory === i.id ? 'white' : '#888'};">
+                <span>${i.label}</span>
+                ${i.restricted ? `<span style="font-size:0.75rem; opacity:0.6;" title="Requiere contraseña Admin">🔒</span>` : ''}
             </div>
         `).join('');
     },
 
+    isAdminUnlocked() {
+        if (settings.adminUnlocked) return true;
+        try {
+            if (localStorage.getItem('pipeta_admin_unlocked') === 'true') {
+                settings.adminUnlocked = true;
+                return true;
+            }
+        } catch(e){}
+        return false;
+    },
+
+    promptAdminPassword(targetCat) {
+        const pass = prompt("🔒 Ingrese la contraseña de Administrador de Pipeta:");
+        if (!pass) return;
+
+        API.users.verifyAdmin(pass).then(res => {
+            if (res && res.authorized) {
+                settings.adminUnlocked = true;
+                const remember = confirm("¿Deseas recordar la sesión de Administrador en este equipo?");
+                if (remember) {
+                    try { localStorage.setItem('pipeta_admin_unlocked', 'true'); } catch(e){}
+                }
+                settings.currentCategory = targetCat;
+                settings.render();
+            } else {
+                alert("❌ Contraseña de Administrador incorrecta.");
+            }
+        }).catch(err => {
+            alert("Error al verificar contraseña: " + err.message);
+        });
+    },
+
     setCategory(cat) {
+        const restricted = ['users', 'statuses', 'workflow'];
+        if (restricted.includes(cat) && !settings.isAdminUnlocked()) {
+            settings.promptAdminPassword(cat);
+            return;
+        }
+
         settings.currentCategory = cat;
-        if (cat === 'avanzado' && settings.presetsList.length === 0) {
+        if (cat === 'users') {
+            settings.loadUsersConfig().then(() => settings.render());
+        } else if (cat === 'statuses') {
+            settings.loadStatusesConfig().then(() => settings.render());
+        } else if (cat === 'avanzado' && settings.presetsList.length === 0) {
             settings.loadPresets().then(() => {
                 if (settings.currentCategory === 'avanzado') settings.render();
             });
@@ -1044,9 +1131,180 @@ const settings = {
                         </div>
                     </div>
                 `;
+            case 'users':
+                const uData = settings.usersData || { users: [], roles: [], activeUser: 'lasp-mpastorino' };
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
+                        <div>
+                            <h3 style="margin:0;">👥 Usuarios & Roles de Pipeta</h3>
+                            <p style="margin:4px 0 0 0; color:#888; font-size:0.85rem;">Define los artistas, operadores y permisos para asignación de tareas y filtrado de shots.</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn" onclick="settings.addUserModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer;">
+                                + Agregar Usuario
+                            </button>
+                            <button class="btn" onclick="settings.changeAdminPasswordModal()" style="background:#222; color:#ff9800; border:1px solid #ff980066; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.8rem;">
+                                🔑 Cambiar Pass Admin
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Usuario Activo Actual -->
+                    <div style="background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.3); border-radius:6px; padding:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="color:#aaa; font-size:0.8rem;">Usuario Activo en este Equipo: </span>
+                            <b style="color:var(--accent); font-size:0.95rem;">${uData.activeUser || 'Sin Seleccionar'}</b>
+                        </div>
+                        <select onchange="settings.setActiveUser(this.value)" style="background:#1c222d; color:#fff; border:1px solid #444; border-radius:4px; padding:4px 10px; font-size:0.85rem;">
+                            ${(uData.users || []).map(u => `
+                                <option value="${u.laspUser}" ${uData.activeUser === u.laspUser ? 'selected' : ''}>${u.firstName} ${u.lastName} (${u.laspUser})</option>
+                            `).join('')}
+                        </select>
+                    </div>
+
+                    <!-- Tabla de Usuarios -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px; margin-bottom:25px;">
+                        <h4 style="margin:0 0 12px 0; color:#eee;">Listado de Usuarios (${(uData.users || []).length})</h4>
+                        <table style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align:left;">
+                            <thead>
+                                <tr style="border-bottom:1px solid #444; color:#888; font-size:0.75rem; text-transform:uppercase;">
+                                    <th style="padding:8px;">Nombre Completo</th>
+                                    <th style="padding:8px;">Usuario LASP</th>
+                                    <th style="padding:8px;">Rol</th>
+                                    <th style="padding:8px;">Email / Notas</th>
+                                    <th style="padding:8px; text-align:right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${(uData.users || []).map(u => {
+                                    const roleObj = (uData.roles || []).find(r => r.id === u.role) || { name: u.role, color: '#888' };
+                                    return `
+                                        <tr style="border-bottom:1px solid #222;">
+                                            <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
+                                                <div style="width:12px; height:12px; border-radius:50%; background:${u.avatarColor || '#ff9800'};"></div>
+                                                <span style="font-weight:bold; color:#fff;">${u.firstName} ${u.lastName}</span>
+                                            </td>
+                                            <td style="padding:10px 8px; font-family:monospace; color:var(--accent);">${u.laspUser}</td>
+                                            <td style="padding:10px 8px;">
+                                                <span style="background:${roleObj.color}22; color:${roleObj.color}; border:1px solid ${roleObj.color}44; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">
+                                                    ${roleObj.name}
+                                                </span>
+                                            </td>
+                                            <td style="padding:10px 8px; color:#aaa; font-size:0.8rem;">${u.notes || u.email || '—'}</td>
+                                            <td style="padding:10px 8px; text-align:right;">
+                                                <button onclick="settings.deleteUser('${u.laspUser}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Usuario">🗑️</button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Roles y Permisos -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px;">
+                        <h4 style="margin:0 0 10px 0; color:#eee;">Roles y Permisos Configurados</h4>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
+                            ${(uData.roles || []).map(r => `
+                                <div style="background:#161a22; border:1px solid #28303d; border-radius:6px; padding:12px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                        <b style="color:${r.color}; font-size:0.9rem;">${r.name}</b>
+                                        <span style="font-size:0.75rem; font-family:monospace; color:#666;">${r.id}</span>
+                                    </div>
+                                    <p style="font-size:0.78rem; color:#aaa; margin:0 0 8px 0;">${r.description || ''}</p>
+                                    <div style="font-size:0.72rem; color:#777;">
+                                        ${r.permissions ? Object.entries(r.permissions).map(([k, v]) => `<div>${v ? '✅' : '❌'} ${k}</div>`).join('') : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+
+            case 'statuses':
+                const sData = settings.statusesData || { statuses: [] };
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
+                        <div>
+                            <h3 style="margin:0;">🏷️ Diseñador de Estados (Shots / Assets)</h3>
+                            <p style="margin:4px 0 0 0; color:#888; font-size:0.85rem;">Define y personaliza los estados de procesos y avance aplicables a shots y assets.</p>
+                        </div>
+                        <button class="btn" onclick="settings.addStatusModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer;">
+                            + Nuevo Estado
+                        </button>
+                    </div>
+
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px;">
+                        <table style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align:left;">
+                            <thead>
+                                <tr style="border-bottom:1px solid #444; color:#888; font-size:0.75rem; text-transform:uppercase;">
+                                    <th style="padding:8px;">Icono & Estado</th>
+                                    <th style="padding:8px;">Identificador</th>
+                                    <th style="padding:8px;">Ámbito</th>
+                                    <th style="padding:8px;">Color</th>
+                                    <th style="padding:8px; text-align:right;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${(sData.statuses || []).map(st => `
+                                    <tr style="border-bottom:1px solid #222;">
+                                        <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
+                                            <span style="font-size:1.1rem;">${st.icon || '⚪'}</span>
+                                            <b style="color:${st.color || '#fff'};">${st.name}</b>
+                                            ${st.isDefault ? `<span style="background:#333; color:#aaa; font-size:0.7rem; padding:1px 6px; border-radius:3px;">Por Defecto</span>` : ''}
+                                        </td>
+                                        <td style="padding:10px 8px; font-family:monospace; color:#888;">${st.id}</td>
+                                        <td style="padding:10px 8px; text-transform:capitalize; color:#ccc;">${st.scope === 'both' ? 'Shots & Assets' : st.scope}</td>
+                                        <td style="padding:10px 8px;">
+                                            <div style="display:flex; align-items:center; gap:6px;">
+                                                <div style="width:16px; height:16px; border-radius:3px; background:${st.color}; border:1px solid #555;"></div>
+                                                <span style="font-family:monospace; font-size:0.75rem; color:#aaa;">${st.color}</span>
+                                            </div>
+                                        </td>
+                                        <td style="padding:10px 8px; text-align:right;">
+                                            ${!st.isDefault ? `<button onclick="settings.deleteStatus('${st.id}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Estado">🗑️</button>` : ''}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+            case 'workflow':
+                const curProj = settings.currentProject || settings.getBaseProject();
+                const defaultWfDir = (curProj.roots?.work || 'Z:/[cliente]/[proyecto]').replace(/\//g, '\\') + '\\workflow';
+
+                return `
+                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">🗂️ Workflow, Asignaciones & Base de Datos</h3>
+                    <p style="color:#aaa; font-size:0.85rem; line-height:1.6;">
+                        Pipeta mantiene la base de datos de planos, estados y asignaciones en un archivo estructurado <code>shot_tracker.json</code> dentro de la carpeta de workflow del proyecto.
+                    </p>
+
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px;">Carpeta de Workflow del Proyecto</div>
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <input type="text" readonly value="${defaultWfDir}" style="flex:1; background:#111; border:1px solid #444; border-radius:4px; padding:8px 12px; color:#ccc; font-family:monospace; font-size:0.82rem;">
+                            <button class="btn" onclick="API.fs.open('${defaultWfDir.replace(/\\/g, '\\\\')}')" style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px 14px; cursor:pointer; font-size:0.82rem;">📂 Abrir</button>
+                        </div>
+
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
+                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.loadWorkflow(); alert('✅ Base de datos de workflow recargada con éxito.'); }" style="background:#1c222d; color:#4fc3f7; border:1px solid #4fc3f766; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
+                                🔄 Recargar Workflow Local
+                            </button>
+                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.saveTracker(); alert('✅ Base de datos de workflow guardada.'); }" style="background:#1c222d; color:#4caf50; border:1px solid #4caf5066; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
+                                💾 Guardar / Publicar Tracker
+                            </button>
+                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.exportMyTasksFile(); }" style="background:#1c222d; color:#ff9800; border:1px solid #ff980066; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
+                                👤 Exportar Mis Tareas (.json)
+                            </button>
+                        </div>
+                    </div>
+                `;
+
             case 'interfaz':
                 return `
-                    <h3>Interfaz de Usuario</h3>
+                    <h3>Interfaz de Usuario & Canvas</h3>
                     
                     <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
                         <h4 style="margin-top:0; margin-bottom:10px; color:#ccc;">Modo de Explorador por Defecto</h4>
@@ -1068,8 +1326,16 @@ const settings = {
                             </label>
                         </div>
                     </div>
-                    
-                    <p style="color:#666; font-style:italic;">Más opciones de visualización próximamente.</p>
+
+                    <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
+                        <h4 style="margin-top:0; margin-bottom:10px; color:var(--accent);">🖥️ Modo Pantalla Completa & Maximizar Canvas</h4>
+                        <div style="font-size:0.85rem; color:#888; margin-bottom:12px;">
+                            Permite ocultar la barra lateral y cabeceras para aprovechar el 100% de la pantalla en los módulos <b>Shot Navigator</b>, <b>Asset Designer</b> y <b>Explorer</b>.
+                        </div>
+                        <button class="btn" onclick="window.toggleCanvasFullscreen()" style="background:#1c222d; color:#fff; border:1px solid #555; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold;">
+                            🔲 Alternar Modo Canvas Completo
+                        </button>
+                    </div>
                 `;
             case 'avanzado':
                 // Build options for presets
@@ -1255,7 +1521,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión & Actualizaciones</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v0.9.64'}
+                            ${window.APP_VERSION || 'v0.9.70'}
                         </span>
                     </h3>
 
@@ -1279,7 +1545,7 @@ const settings = {
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.64'}</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.70'}</span>
                             </div>
                         </div>
 
@@ -1306,8 +1572,20 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.64 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.70 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Shot Navigator:</b> Módulo completo con jerarquía visual de episodios, escenas y planos, procesos extraídos dinámicamente del preset de Shot Designer, selección múltiple y creación de carpetas faltantes para planos seleccionados.</li>
+                                    <li><b>Asignaciones & Multi-Usuario:</b> Columna de asignados con desplegable por proceso y soporte para múltiples operadores asignados.</li>
+                                    <li><b>Sistema de Usuarios y Roles:</b> Usuarios protegidos del sistema (<code>admin</code>, <code>user</code>), gestión de roles, autocompletado LASP y control de acceso por contraseña admin (<code>Pipetadmin.321</code>).</li>
+                                    <li><b>Selector de Usuario en Cabecera:</b> Conmutador de operador activo en la barra superior con contraste oscuro y autenticación fluida.</li>
+                                    <li><b>Configuraciones Maximizables:</b> Botón para alternar Configuraciones a módulo de canvas completo y resaltado en sidebar.</li>
+                                    <li><b>Workflow por Proyecto:</b> Sincronización limpia estructurada en <code>[roots.work]/workflow/</code> con exportación por usuario.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v0.9.64</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
                                     <li><b>Origen UNC Exclusivo:</b> Actualizador configurado estrictamente contra <code>\\\\LASP-VM\\Pipeta</code> sin fallbacks a unidades de red locales potencialmente desactualizadas.</li>
                                     <li><b>Abrir en Explorer:</b> Desacople con spawn detached para cualquier usuario y detección automática de archivo vs carpeta.</li>
                                     <li><b>Barra de Explorer:</b> Botón Borrar reubicado a la derecha de Nueva Carpeta.</li>
@@ -1650,6 +1928,154 @@ const settings = {
             console.error("Export error:", e);
             if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error en la exportación: ${e.message}</span>`;
             alert("Error al exportar: " + e.message);
+        }
+    },
+
+    // --- USERS & STATUSES ACTIONS ---
+    loadUsersConfig: async () => {
+        try {
+            settings.usersData = await API.users.get();
+        } catch(e) {
+            console.error("Error loading users config:", e);
+        }
+    },
+
+    saveUsersConfig: async () => {
+        try {
+            await API.users.save(settings.usersData);
+        } catch(e) {
+            console.error("Error saving users config:", e);
+        }
+    },
+
+    setActiveUser: async (laspUser) => {
+        try {
+            await API.users.setActive(laspUser);
+            if (settings.usersData) settings.usersData.activeUser = laspUser;
+            if (typeof ShotNavigator !== 'undefined') {
+                ShotNavigator.activeUser = laspUser;
+                ShotNavigator.render();
+            }
+            settings.render();
+        } catch(e) {
+            alert("Error al cambiar usuario activo: " + e.message);
+        }
+    },
+
+    addUserModal: async () => {
+        const firstName = prompt("Nombre del usuario:");
+        if (!firstName) return;
+        const lastName = prompt("Apellido del usuario:");
+        if (!lastName) return;
+
+        const defaultLasp = `lasp-${firstName.trim()[0].toLowerCase()}${lastName.trim().toLowerCase().replace(/\s+/g, '')}`;
+        const laspUser = prompt("Usuario LASP:", defaultLasp);
+        if (!laspUser) return;
+
+        const role = prompt("Rol (admin, user, lead):", "user") || "user";
+        const email = prompt("Email (opcional):", "") || "";
+        const notes = prompt("Notas / Departamento (opcional):", "") || "";
+
+        const colors = ['#ff9800', '#00bcd4', '#4caf50', '#9c27b0', '#e91e63', '#2196f3', '#ff5722'];
+        const avatarColor = colors[Math.floor(Math.random() * colors.length)];
+
+        if (!settings.usersData) settings.usersData = { users: [], roles: [] };
+        if (!settings.usersData.users) settings.usersData.users = [];
+
+        settings.usersData.users.push({
+            id: 'u_' + laspUser.replace(/[^a-zA-Z0-9_]/g, '_'),
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            laspUser: laspUser.trim(),
+            role: role.trim(),
+            email: email.trim(),
+            notes: notes.trim(),
+            avatarColor
+        });
+
+        await settings.saveUsersConfig();
+        settings.render();
+        alert(`✅ Usuario ${laspUser} agregado con éxito.`);
+    },
+
+    deleteUser: async (laspUser) => {
+        const u = (settings.usersData?.users || []).find(x => x.laspUser === laspUser);
+        if (u && (u.isSystem || u.laspUser === 'lasp-admin' || u.laspUser === 'lasp-user')) {
+            alert(`⚠️ El usuario ${laspUser} es un usuario por defecto del sistema y no se puede borrar.`);
+            return;
+        }
+        if (!confirm(`¿Estás seguro de que deseas eliminar al usuario ${laspUser}?`)) return;
+        if (settings.usersData && settings.usersData.users) {
+            settings.usersData.users = settings.usersData.users.filter(u => u.laspUser !== laspUser);
+            await settings.saveUsersConfig();
+            settings.render();
+        }
+    },
+
+    changeAdminPasswordModal: async () => {
+        const newPass = prompt("Ingresa la nueva contraseña de Administrador:");
+        if (!newPass) return;
+        if (newPass.length < 4) {
+            alert("La contraseña debe tener al menos 4 caracteres.");
+            return;
+        }
+
+        try {
+            await API.users.save({ ...settings.usersData, adminPassword: newPass });
+            alert("✅ Contraseña de Administrador actualizada con éxito.");
+        } catch(e) {
+            alert("Error al actualizar contraseña: " + e.message);
+        }
+    },
+
+    loadStatusesConfig: async () => {
+        try {
+            settings.statusesData = await API.statuses.get();
+        } catch(e) {
+            console.error("Error loading statuses config:", e);
+        }
+    },
+
+    saveStatusesConfig: async () => {
+        try {
+            await API.statuses.save(settings.statusesData);
+        } catch(e) {
+            console.error("Error saving statuses config:", e);
+        }
+    },
+
+    addStatusModal: async () => {
+        const name = prompt("Nombre del Estado (ej: En Review, Aprobado Técnico):");
+        if (!name) return;
+
+        const id = name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        const icon = prompt("Icono o Emoji distintivo (ej: 🟣, 🟢, 🚀, ⏳):", "🟣") || "🟣";
+        const color = prompt("Color HEX (ej: #9c27b0, #4caf50):", "#9c27b0") || "#9c27b0";
+        const scope = prompt("Ámbito (both, shots, assets):", "both") || "both";
+
+        if (!settings.statusesData) settings.statusesData = { statuses: [] };
+        if (!settings.statusesData.statuses) settings.statusesData.statuses = [];
+
+        settings.statusesData.statuses.push({
+            id,
+            name: name.trim(),
+            color: color.trim(),
+            icon: icon.trim(),
+            scope: scope.trim(),
+            isDefault: false
+        });
+
+        await settings.saveStatusesConfig();
+        settings.render();
+        alert(`✅ Estado "${name}" creado con éxito.`);
+    },
+
+    deleteStatus: async (statusId) => {
+        if (!confirm(`¿Eliminar el estado ${statusId}?`)) return;
+        if (settings.statusesData && settings.statusesData.statuses) {
+            settings.statusesData.statuses = settings.statusesData.statuses.filter(s => s.id !== statusId);
+            await settings.saveStatusesConfig();
+            settings.render();
         }
     },
 

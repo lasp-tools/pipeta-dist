@@ -1,6 +1,6 @@
 {
     "name": "pipeta-server",
-    "version": "0.9.64",
+    "version": "0.9.70",
     "description": "Core logic server for Pipeta",
     "main": "server.js",
     "scripts": {

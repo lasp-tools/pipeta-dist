@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeta - Pipeline Manager v0.9.64</title>
+    <title>Pipeta - Pipeline Manager v0.9.70</title>
     <!-- MODULAR CSS -->
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/components.css">
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v0.9.64</span>
+                <span class="app-version" id="appVersion">v0.9.70</span>
             </div>
         </div>
 
@@ -88,6 +88,17 @@
                 </button>
             </div>
 
+            <!-- USER SWITCHER SELECTOR -->
+            <div id="headerUserSelectorContainer" style="display:flex; align-items:center; gap:6px; background:#161c24; border:1px solid #2e3846; border-radius:4px; padding:3px 8px;" title="Cambiar Operador Activo">
+                <div id="headerUserAvatar" style="width:9px; height:9px; border-radius:50%; background:#ff9800;"></div>
+                <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)" style="background:#161c24; color:#ffffff; font-size:0.78rem; font-weight:bold; border:none; outline:none; cursor:pointer; max-width:130px;">
+                    <option style="background:#161c24; color:#ffffff;">Cargando...</option>
+                </select>
+            </div>
+
+            <button class="control-btn" title="Maximizar Canvas / Modo Pantalla Completa" onclick="toggleCanvasFullscreen()">
+                <span style="font-size:0.9rem;">🔲</span>
+            </button>
             <button class="control-btn" title="Recargar Sistema (Reinicia Servidor + Sync)" onclick="reloadApp()">
                 <img src="icons/reload.svg" class="btn-icon-svg">
             </button>
@@ -107,6 +118,9 @@
                 <div class="mode-btn active" title="Explorer">
                     <img src="icons/view_classic.svg" class="btn-icon-svg">
                 </div>
+                <div class="mode-btn" title="Shot Navigator">
+                    <img src="icons/video_camera_back.svg" class="btn-icon-svg" style="filter: hue-rotate(45deg);">
+                </div>
                 <div class="mode-btn" title="Asset Designer">
                     <img src="icons/design_shots.svg" class="btn-icon-svg">
                 </div>
@@ -122,7 +136,7 @@
             </div>
 
             <div class="sidebar-bottom">
-                <button class="mode-btn" title="Configuración Global" onclick="settings.open()"
+                <button class="mode-btn" id="btn-settings-toggle" title="Configuración Global" onclick="settings.open()"
                     style="background:transparent; border:none; padding:0;">
                     <img src="icons/settings.svg" class="btn-icon-svg">
                 </button>
@@ -222,6 +236,10 @@
                     </div>
                 </div>
 
+            </div>
+
+            <!-- VISTA SHOT NAVIGATOR -->
+            <div id="view-shot-navigator" class="view-section" style="display:none; flex-direction:row; height:100%; width:100%; overflow:hidden;">
             </div>
 
             <!-- VISTA ASSET DESIGNER (NEW) -->
@@ -675,6 +693,7 @@
     <script src="js/sync-analyzer.js"></script>
     <script src="js/ia-ingest.js"></script>
     <script src="js/file-auditor.js"></script>
+    <script src="js/shot-navigator.js"></script>
     <!-- Main Entry -->
     <script src="js/main.js"></script>
 

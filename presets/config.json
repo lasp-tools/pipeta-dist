@@ -1,7 +1,7 @@
 {
   "defaultViewMode": "local",
   "validationPresetAsset": null,
-  "validationPresetShot": "asset_surf_love_canon_v1",
+  "validationPresetShot": "pipeline_test",
   "loggingEnabled": true,
   "logsPath": "C:\\TOOLS\\APPS\\Pipeta\\logs"
 }

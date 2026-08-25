@@ -10,7 +10,7 @@
     "onlineWork": "G:/Unidades compartidas/[proyecto]",
     "onlineMedia": "G:/Unidades compartidas/[proyecto]_media"
   },
-  "defaultShotPresetId": "asset_surf_love_canon_v1",
+  "defaultShotPresetId": "pipeline_test",
   "defaultAssetPresetId": "",
   "iaPresets": {
     "defaultImageEngine": "NB2P",

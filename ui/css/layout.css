@@ -508,3 +508,21 @@
 .tool-space-flex {
     flex: 1;
 }
+
+/* --- CANVAS FULLSCREEN MODE --- */
+body.canvas-fullscreen .mode-sidebar {
+    display: none !important;
+}
+
+body.canvas-fullscreen .header-zone-brand {
+    display: none !important;
+}
+
+body.canvas-fullscreen .header-bar {
+    height: 42px;
+    padding: 0 10px;
+}
+
+body.canvas-fullscreen .main-container {
+    height: calc(100vh - 42px);
+}

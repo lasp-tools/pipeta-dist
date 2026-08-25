@@ -1,0 +1,85 @@
+{
+  "adminPassword": "Pipetadmin.321",
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Administrador",
+      "description": "Control total de configuración, gestión de usuarios y templates",
+      "color": "#ff9800",
+      "permissions": {
+        "manageUsers": true,
+        "manageSettings": true,
+        "manageStatuses": true,
+        "assignAllShots": true,
+        "exportPackages": true,
+        "createAssetsShots": true,
+        "runAllTools": true
+      }
+    },
+    {
+      "id": "user",
+      "name": "Artista / Operador",
+      "description": "Trabajo en shots y tareas asignadas, sincronización y herramientas",
+      "color": "#00bcd4",
+      "permissions": {
+        "manageUsers": false,
+        "manageSettings": false,
+        "manageStatuses": false,
+        "assignAllShots": false,
+        "exportPackages": false,
+        "createAssetsShots": true,
+        "runAllTools": true
+      }
+    },
+    {
+      "id": "lead",
+      "name": "Lead / Supervisor",
+      "description": "Supervisión de procesos, asignación de tareas y aprobación de shots",
+      "color": "#9c27b0",
+      "permissions": {
+        "manageUsers": false,
+        "manageSettings": false,
+        "manageStatuses": true,
+        "assignAllShots": true,
+        "exportPackages": false,
+        "createAssetsShots": true,
+        "runAllTools": true
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "u_admin",
+      "firstName": "Admin",
+      "lastName": "Pipeta",
+      "laspUser": "lasp-admin",
+      "role": "admin",
+      "email": "",
+      "notes": "Administrador del Sistema (Protegido)",
+      "avatarColor": "#ff9800",
+      "isSystem": true
+    },
+    {
+      "id": "u_user",
+      "firstName": "Usuario",
+      "lastName": "Estándar",
+      "laspUser": "lasp-user",
+      "role": "user",
+      "email": "",
+      "notes": "Usuario Estándar (Protegido)",
+      "avatarColor": "#00bcd4",
+      "isSystem": true
+    },
+    {
+      "id": "u_lasp_mpastorino",
+      "firstName": "Matias",
+      "lastName": "Pastorino",
+      "laspUser": "lasp-mpastorino",
+      "role": "admin",
+      "email": "",
+      "notes": "Lead Supervisor",
+      "avatarColor": "#ff9800"
+    }
+  ],
+  "activeUser": "lasp-mpastorino"
+}
