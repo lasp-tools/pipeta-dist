@@ -1,8 +1,8 @@
 {
   "statuses": [
     {
-      "id": "not_started",
-      "name": "No Iniciado",
+      "id": "none",
+      "name": "Ninguno",
       "color": "#757575",
       "icon": "⚪",
       "scope": "both",
@@ -26,7 +26,7 @@
     },
     {
       "id": "review",
-      "name": "En Review",
+      "name": "Review",
       "color": "#9c27b0",
       "icon": "🟣",
       "scope": "both",
@@ -41,15 +41,15 @@
       "isDefault": false
     },
     {
-      "id": "retake",
-      "name": "Retake",
+      "id": "canceled",
+      "name": "Cancelado",
       "color": "#f44336",
       "icon": "🔴",
       "scope": "both",
       "isDefault": false
     },
     {
-      "id": "on_hold",
+      "id": "hold",
       "name": "En Pausa / Hold",
       "color": "#ffc107",
       "icon": "🟡",

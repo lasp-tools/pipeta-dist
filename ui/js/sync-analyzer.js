@@ -1025,11 +1025,6 @@ class SyncAnalyzer {
 
             this._hideProgressBar();
             alert(msg);
-
-            // Re-ejecutar escaneo si hay contexto activo
-            if (this.scanScope) {
-                this.runScan(this.scanScope);
-            }
         } catch (e) {
             this.syncReader = null;
             this._hideProgressBar();

@@ -619,7 +619,7 @@ const settings = {
     renderMenu() {
         const items = [
             { id: 'proyecto', label: '📁 Proyectos' },
-            { id: 'users', label: '👥 Usuarios & Roles', restricted: true },
+            { id: 'users', label: '👤 User Settings', restricted: true },
             { id: 'statuses', label: '🏷️ Diseñador Estados', restricted: true },
             { id: 'workflow', label: '🗂️ Workflow & Sync DB', restricted: true },
             { id: 'interfaz', label: '🎨 Interfaz & Canvas' },
@@ -1132,16 +1132,19 @@ const settings = {
                     </div>
                 `;
             case 'users':
-                const uData = settings.usersData || { users: [], roles: [], activeUser: 'lasp-mpastorino' };
+                const uData = settings.usersData || { users: [], roles: [], activeUser: 'admin' };
                 return `
                     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
                         <div>
-                            <h3 style="margin:0;">👥 Usuarios & Roles de Pipeta</h3>
-                            <p style="margin:4px 0 0 0; color:#888; font-size:0.85rem;">Define los artistas, operadores y permisos para asignación de tareas y filtrado de shots.</p>
+                            <h3 style="margin:0;">👤 User Settings</h3>
+                            <p style="margin:4px 0 0 0; color:#888; font-size:0.85rem;">Gestión de usuarios, credenciales, roles y permisos de acceso al pipeline.</p>
                         </div>
                         <div style="display:flex; gap:10px;">
-                            <button class="btn" onclick="settings.addUserModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer;">
+                            <button class="btn" onclick="settings.openUserModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer;">
                                 + Agregar Usuario
+                            </button>
+                            <button class="btn" onclick="settings.openRoleModal()" style="background:#222; color:#00bcd4; border:1px solid #00bcd466; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.8rem;">
+                                + Nuevo Rol
                             </button>
                             <button class="btn" onclick="settings.changeAdminPasswordModal()" style="background:#222; color:#ff9800; border:1px solid #ff980066; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.8rem;">
                                 🔑 Cambiar Pass Admin
@@ -1153,11 +1156,13 @@ const settings = {
                     <div style="background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.3); border-radius:6px; padding:12px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
                         <div>
                             <span style="color:#aaa; font-size:0.8rem;">Usuario Activo en este Equipo: </span>
-                            <b style="color:var(--accent); font-size:0.95rem;">${uData.activeUser || 'Sin Seleccionar'}</b>
+                            <b style="color:var(--accent); font-size:0.95rem;">${uData.activeUser || 'admin'}</b>
                         </div>
                         <select onchange="settings.setActiveUser(this.value)" style="background:#1c222d; color:#fff; border:1px solid #444; border-radius:4px; padding:4px 10px; font-size:0.85rem;">
                             ${(uData.users || []).map(u => `
-                                <option value="${u.laspUser}" ${uData.activeUser === u.laspUser ? 'selected' : ''}>${u.firstName} ${u.lastName} (${u.laspUser})</option>
+                                <option value="${u.username || u.laspUser || u.id}" ${uData.activeUser === (u.username || u.laspUser || u.id) ? 'selected' : ''}>
+                                    ${u.username || u.laspUser} ${u.firstName ? `(${u.firstName} ${u.lastName})` : ''}
+                                </option>
                             `).join('')}
                         </select>
                     </div>
@@ -1165,34 +1170,45 @@ const settings = {
                     <!-- Tabla de Usuarios -->
                     <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px; margin-bottom:25px;">
                         <h4 style="margin:0 0 12px 0; color:#eee;">Listado de Usuarios (${(uData.users || []).length})</h4>
-                        <table style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align:left;">
+                        <table style="width:100%; border-collapse:collapse; font-size:0.82rem; text-align:left;">
                             <thead>
                                 <tr style="border-bottom:1px solid #444; color:#888; font-size:0.75rem; text-transform:uppercase;">
-                                    <th style="padding:8px;">Nombre Completo</th>
+                                    <th style="padding:8px;">Nombre de Usuario</th>
+                                    <th style="padding:8px;">Nombre</th>
+                                    <th style="padding:8px;">Apellido</th>
                                     <th style="padding:8px;">Usuario LASP</th>
                                     <th style="padding:8px;">Rol</th>
-                                    <th style="padding:8px;">Email / Notas</th>
+                                    <th style="padding:8px;">Email</th>
+                                    <th style="padding:8px;">Notas</th>
                                     <th style="padding:8px; text-align:right;">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${(uData.users || []).map(u => {
-                                    const roleObj = (uData.roles || []).find(r => r.id === u.role) || { name: u.role, color: '#888' };
+                                    const roleObj = (uData.roles || []).find(r => r.id === u.role) || { name: u.role || 'user', color: '#888' };
+                                    const uName = u.username || (u.laspUser ? u.laspUser.replace('lasp-', '') : u.id);
                                     return `
                                         <tr style="border-bottom:1px solid #222;">
                                             <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
-                                                <div style="width:12px; height:12px; border-radius:50%; background:${u.avatarColor || '#ff9800'};"></div>
-                                                <span style="font-weight:bold; color:#fff;">${u.firstName} ${u.lastName}</span>
+                                                <div style="width:10px; height:10px; border-radius:50%; background:${u.avatarColor || '#ff9800'};"></div>
+                                                <b style="color:#fff; font-family:monospace;">${uName}</b>
+                                                ${u.isSystem ? '<span style="font-size:0.65rem; background:#333; color:#aaa; padding:1px 4px; border-radius:3px;">default</span>' : ''}
                                             </td>
-                                            <td style="padding:10px 8px; font-family:monospace; color:var(--accent);">${u.laspUser}</td>
+                                            <td style="padding:10px 8px; color:#ccc;">${u.firstName || '—'}</td>
+                                            <td style="padding:10px 8px; color:#ccc;">${u.lastName || '—'}</td>
+                                            <td style="padding:10px 8px; font-family:monospace; color:var(--accent);">${u.laspUser || '—'}</td>
                                             <td style="padding:10px 8px;">
-                                                <span style="background:${roleObj.color}22; color:${roleObj.color}; border:1px solid ${roleObj.color}44; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">
+                                                <span style="background:${roleObj.color}22; color:${roleObj.color}; border:1px solid ${roleObj.color}44; padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:bold;">
                                                     ${roleObj.name}
                                                 </span>
                                             </td>
-                                            <td style="padding:10px 8px; color:#aaa; font-size:0.8rem;">${u.notes || u.email || '—'}</td>
-                                            <td style="padding:10px 8px; text-align:right;">
-                                                <button onclick="settings.deleteUser('${u.laspUser}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Usuario">🗑️</button>
+                                            <td style="padding:10px 8px; color:#888; font-size:0.78rem;">${u.email || '—'}</td>
+                                            <td style="padding:10px 8px; color:#888; font-size:0.78rem;">${u.notes || '—'}</td>
+                                            <td style="padding:10px 8px; text-align:right; white-space:nowrap;">
+                                                <button onclick="settings.openUserModal('${u.id}')" class="icon-btn" style="background:transparent; border:none; color:#4fc3f7; cursor:pointer; margin-right:6px;" title="Editar Usuario">✏️</button>
+                                                ${!u.isSystem ? `
+                                                    <button onclick="settings.deleteUser('${u.id}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Usuario">🗑️</button>
+                                                ` : ''}
                                             </td>
                                         </tr>
                                     `;
@@ -1201,22 +1217,110 @@ const settings = {
                         </table>
                     </div>
 
-                    <!-- Roles y Permisos -->
+                    <!-- Roles y Permisos Configurables -->
                     <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px;">
-                        <h4 style="margin:0 0 10px 0; color:#eee;">Roles y Permisos Configurados</h4>
-                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
-                            ${(uData.roles || []).map(r => `
-                                <div style="background:#161a22; border:1px solid #28303d; border-radius:6px; padding:12px;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                        <b style="color:${r.color}; font-size:0.9rem;">${r.name}</b>
-                                        <span style="font-size:0.75rem; font-family:monospace; color:#666;">${r.id}</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h4 style="margin:0; color:#eee;">Roles y Permisos Configurados (${(uData.roles || []).length})</h4>
+                            <button class="btn" onclick="settings.openRoleModal()" style="background:#1c222d; color:#00bcd4; border:1px solid #00bcd466; padding:4px 10px; border-radius:4px; font-size:0.78rem; cursor:pointer;">
+                                + Crear Nuevo Rol
+                            </button>
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:14px;">
+                            ${(uData.roles || []).map(r => {
+                                const permCats = [
+                                    {
+                                        title: '🎬 Módulos Principales (Sidebar)',
+                                        color: 'var(--accent)',
+                                        items: [
+                                            { key: 'access_explorer', label: 'Explorer' },
+                                            { key: 'access_shot_navigator', label: 'Shot Navigator' },
+                                            { key: 'access_asset_designer', label: 'Asset Designer' },
+                                            { key: 'access_shot_designer', label: 'Shot Designer' },
+                                            { key: 'access_ia_ingest', label: 'IA Ingest' }
+                                        ]
+                                    },
+                                    {
+                                        title: '🛠️ Herramientas (Header Toolbar)',
+                                        color: '#4fc3f7',
+                                        items: [
+                                            { key: 'access_tool_naming_validator', label: 'Naming Validator' },
+                                            { key: 'access_tool_sync_analyze', label: 'Sync Analyzer' },
+                                            { key: 'access_tool_file_auditor', label: 'File Auditor' },
+                                            { key: 'access_tool_asset_creator', label: 'Asset Creator' },
+                                            { key: 'access_tool_shot_creator', label: 'Shot Creator' }
+                                        ]
+                                    },
+                                    {
+                                        title: '🎯 Workflow & Shot Navigator',
+                                        color: '#8bc34a',
+                                        items: [
+                                            { key: 'assignAllShots', label: 'Asignar a otros artistas' },
+                                            { key: 'workflow_edit_statuses', label: 'Cambiar estados de procesos' },
+                                            { key: 'workflow_create_folders', label: 'Crear carpetas en disco' },
+                                            { key: 'exportPackages', label: 'Exportar paquetes de tareas' }
+                                        ]
+                                    },
+                                    {
+                                        title: '📁 Acciones en Explorer',
+                                        color: '#ffb74d',
+                                        items: [
+                                            { key: 'explorer_create_folder', label: 'Crear nuevas carpetas' },
+                                            { key: 'explorer_delete_items', label: 'Eliminar archivos/carpetas' },
+                                            { key: 'explorer_rename_items', label: 'Renombrar archivos/carpetas' },
+                                            { key: 'explorer_open_desktop', label: 'Abrir en Windows Explorer' }
+                                        ]
+                                    },
+                                    {
+                                        title: '⚙️ Administración & Sistema',
+                                        color: '#e91e63',
+                                        items: [
+                                            { key: 'manageUsers', label: 'Gestionar Usuarios & Roles' },
+                                            { key: 'manageSettings', label: 'Configuración Global' },
+                                            { key: 'manageStatuses', label: 'Diseñador de Estados' }
+                                        ]
+                                    }
+                                ];
+
+                                return `
+                                    <div style="background:#14171d; border:1px solid #28303d; border-radius:6px; padding:14px; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+                                        <div>
+                                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #232a35; padding-bottom:8px;">
+                                                <div style="display:flex; align-items:center; gap:8px;">
+                                                    <div style="width:12px; height:12px; border-radius:3px; background:${r.color};"></div>
+                                                    <b style="color:${r.color}; font-size:0.95rem;">${r.name}</b>
+                                                    <span style="font-family:monospace; font-size:0.75rem; color:#666;">(${r.id})</span>
+                                                </div>
+                                                <div style="display:flex; align-items:center; gap:6px;">
+                                                    <button onclick="settings.openRoleModal('${r.id}')" class="icon-btn" style="background:transparent; border:none; color:#4fc3f7; cursor:pointer; font-size:0.95rem;" title="Editar Permisos">✏️</button>
+                                                    ${!r.isSystem ? `<button onclick="settings.deleteRole('${r.id}')" class="icon-btn" style="background:transparent; border:none; color:#f44336; cursor:pointer; font-size:0.95rem;" title="Eliminar Rol">🗑️</button>` : ''}
+                                                </div>
+                                            </div>
+                                            <p style="font-size:0.78rem; color:#aaa; margin:0 0 12px 0;">${r.description || 'Sin descripción'}</p>
+                                            
+                                            <div style="display:flex; flex-direction:column; gap:10px; background:#0c0e12; padding:10px; border-radius:6px; border:1px solid #1a202c;">
+                                                ${permCats.map(cat => `
+                                                    <div>
+                                                        <div style="font-size:0.72rem; font-weight:bold; color:${cat.color}; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">
+                                                            ${cat.title}
+                                                        </div>
+                                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:3px; font-size:0.72rem;">
+                                                            ${cat.items.map(it => {
+                                                                const isAllowed = r.permissions ? r.permissions[it.key] === true : false;
+                                                                return `
+                                                                    <div style="display:flex; align-items:center; gap:5px; color:${isAllowed ? '#ddd' : '#666'}; padding:2px 4px; border-radius:3px; background:${isAllowed ? 'rgba(255,255,255,0.02)' : 'transparent'};">
+                                                                        <span>${isAllowed ? '✅' : '❌'}</span>
+                                                                        <span style="${isAllowed ? '' : 'text-decoration:none; opacity:0.6;'}">${it.label}</span>
+                                                                    </div>
+                                                                `;
+                                                            }).join('')}
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <p style="font-size:0.78rem; color:#aaa; margin:0 0 8px 0;">${r.description || ''}</p>
-                                    <div style="font-size:0.72rem; color:#777;">
-                                        ${r.permissions ? Object.entries(r.permissions).map(([k, v]) => `<div>${v ? '✅' : '❌'} ${k}</div>`).join('') : ''}
-                                    </div>
-                                </div>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                 `;
@@ -1572,14 +1676,20 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.70 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.71 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
-                                    <li><b>Shot Navigator:</b> Módulo completo con jerarquía visual de episodios, escenas y planos, procesos extraídos dinámicamente del preset de Shot Designer, selección múltiple y creación de carpetas faltantes para planos seleccionados.</li>
-                                    <li><b>Asignaciones & Multi-Usuario:</b> Columna de asignados con desplegable por proceso y soporte para múltiples operadores asignados.</li>
-                                    <li><b>Sistema de Usuarios y Roles:</b> Usuarios protegidos del sistema (<code>admin</code>, <code>user</code>), gestión de roles, autocompletado LASP y control de acceso por contraseña admin (<code>Pipetadmin.321</code>).</li>
-                                    <li><b>Selector de Usuario en Cabecera:</b> Conmutador de operador activo en la barra superior con contraste oscuro y autenticación fluida.</li>
-                                    <li><b>Configuraciones Maximizables:</b> Botón para alternar Configuraciones a módulo de canvas completo y resaltado en sidebar.</li>
-                                    <li><b>Workflow por Proyecto:</b> Sincronización limpia estructurada en <code>[roots.work]/workflow/</code> con exportación por usuario.</li>
+                                    <li><b>User Settings Completo:</b> Modal interactivo unificado para crear y editar usuarios sin prompts intrusivos, campos separados (Nombre de usuario, Nombre, Apellido, Usuario LASP, Rol, Email, Notas).</li>
+                                    <li><b>Gestión de Roles & Permisos:</b> Creación y edición granular de roles con control de acceso individual para cada módulo (Explorer, Shot Navigator, Asset Designer, Shot Designer, IA Ingest) y herramientas de toolbar (Naming Validator, Sync Analyzer, File Auditor, Asset Creator, Shot Creator). Desactivación visual e interactiva si el rol carece de permiso.</li>
+                                    <li><b>Diseñador de Estados Canónico:</b> Estado por defecto <code>Ninguno</code> (⚪), seguido de <code>Asignado</code>, <code>En Proceso</code>, <code>Review</code>, <code>Aprobado</code>, <code>Cancelado</code> y <code>En Pausa / Hold</code>.</li>
+                                    <li><b>Sync Analyzer:</b> Eliminado el re-análisis automático innecesario al finalizar una transferencia.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v0.9.70</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Shot Navigator:</b> Módulo completo con jerarquía visual de episodios, escenas y planos, procesos dinámicos y creación de carpetas por selección.</li>
+                                    <li><b>Preset Cleanup:</b> Eliminado preset fantasma y unificación dinámica con las Opciones de Proyecto.</li>
                                 </ul>
                             </div>
 
@@ -1962,54 +2072,367 @@ const settings = {
         }
     },
 
-    addUserModal: async () => {
-        const firstName = prompt("Nombre del usuario:");
-        if (!firstName) return;
-        const lastName = prompt("Apellido del usuario:");
-        if (!lastName) return;
+    openUserModal: (userId = null) => {
+        const uData = settings.usersData || { users: [], roles: [] };
+        const user = userId ? (uData.users || []).find(u => u.id === userId) : null;
+        const isEditing = !!user;
 
-        const defaultLasp = `lasp-${firstName.trim()[0].toLowerCase()}${lastName.trim().toLowerCase().replace(/\s+/g, '')}`;
-        const laspUser = prompt("Usuario LASP:", defaultLasp);
-        if (!laspUser) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'pipeta-settings-modal-overlay';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:10000; display:flex; align-items:center; justify-content:center;';
 
-        const role = prompt("Rol (admin, user, lead):", "user") || "user";
-        const email = prompt("Email (opcional):", "") || "";
-        const notes = prompt("Notas / Departamento (opcional):", "") || "";
+        const rolesOptions = (uData.roles || []).map(r => `
+            <option value="${r.id}" ${user?.role === r.id ? 'selected' : ''}>${r.name} (${r.id})</option>
+        `).join('');
 
-        const colors = ['#ff9800', '#00bcd4', '#4caf50', '#9c27b0', '#e91e63', '#2196f3', '#ff5722'];
-        const avatarColor = colors[Math.floor(Math.random() * colors.length)];
+        overlay.innerHTML = `
+            <div style="background:#14171e; border:1px solid #28303d; border-radius:8px; width:480px; max-width:92vw; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.7); color:#eee;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #28303d; padding-bottom:12px; margin-bottom:16px;">
+                    <b style="font-size:1.05rem; color:var(--accent);">${isEditing ? '✏️ Editar Usuario' : '👤 Nuevo Usuario'}</b>
+                    <button class="icon-btn" onclick="settings.closeModalOverlay()" style="background:transparent; border:none; color:#888; font-size:1.2rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem;">
+                    <div>
+                        <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Nombre de Usuario *</label>
+                        <input id="modal-u-username" type="text" value="${user?.username || ''}" placeholder="artista compo" 
+                               style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; font-family:monospace; outline:none;">
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Nombre</label>
+                            <input id="modal-u-firstname" type="text" value="${user?.firstName || ''}" placeholder="" 
+                                   oninput="settings.updateLaspFieldFromNames()"
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                        </div>
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Apellido</label>
+                            <input id="modal-u-lastname" type="text" value="${user?.lastName || ''}" placeholder="" 
+                                   oninput="settings.updateLaspFieldFromNames()"
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Usuario LASP</label>
+                            <input id="modal-u-lasp" type="text" value="${user?.laspUser || ''}" placeholder="lasp-aroberto" 
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:var(--accent); font-family:monospace; outline:none;">
+                        </div>
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Rol Asignado *</label>
+                            <select id="modal-u-role" style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                                ${rolesOptions}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px;">
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Email</label>
+                            <input id="modal-u-email" type="email" value="${user?.email || ''}" placeholder="" 
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                        </div>
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Color Avatar</label>
+                            <input id="modal-u-color" type="color" value="${user?.avatarColor || '#ff9800'}" 
+                                   style="width:100%; height:32px; background:#1c222d; border:1px solid #2e3846; border-radius:4px; cursor:pointer; padding:2px;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="color:#aaa; display:block; margin-bottom:4px;">Notas</label>
+                        <input id="modal-u-notes" type="text" value="${user?.notes || ''}" placeholder="" 
+                               style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid #28303d; padding-top:14px;">
+                    <button class="btn" onclick="settings.closeModalOverlay()" style="background:#222; color:#ccc; border:1px solid #444; padding:6px 14px; border-radius:4px; cursor:pointer;">Cancelar</button>
+                    <button class="btn" onclick="settings.saveUserModal('${userId || ''}')" style="background:var(--accent); color:black; font-weight:bold; border:none; padding:6px 16px; border-radius:4px; cursor:pointer;">
+                        ${isEditing ? 'Guardar Cambios' : 'Crear Usuario'}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    },
+
+    updateLaspFieldFromNames: () => {
+        const fn = document.getElementById('modal-u-firstname')?.value.trim() || '';
+        const ln = document.getElementById('modal-u-lastname')?.value.trim() || '';
+        const laspInput = document.getElementById('modal-u-lasp');
+        if (!laspInput) return;
+
+        if (fn || ln) {
+            const cleanFn = fn.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanLn = ln.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, '');
+            const initial = cleanFn.length > 0 ? cleanFn[0] : '';
+            laspInput.value = `lasp-${initial}${cleanLn}`;
+        } else {
+            laspInput.value = '';
+        }
+    },
+
+    saveUserModal: async (existingId) => {
+        const username = document.getElementById('modal-u-username')?.value.trim();
+        if (!username) {
+            alert("El nombre de usuario es obligatorio.");
+            return;
+        }
+
+        const firstName = document.getElementById('modal-u-firstname')?.value.trim() || '';
+        const lastName = document.getElementById('modal-u-lastname')?.value.trim() || '';
+        const laspUser = document.getElementById('modal-u-lasp')?.value.trim() || (firstName && lastName ? `lasp-${firstName[0].toLowerCase()}${lastName.toLowerCase().replace(/\s+/g, '')}` : `lasp-${username}`);
+        const role = document.getElementById('modal-u-role')?.value || 'user';
+        const email = document.getElementById('modal-u-email')?.value.trim() || '';
+        const avatarColor = document.getElementById('modal-u-color')?.value || '#ff9800';
+        const notes = document.getElementById('modal-u-notes')?.value.trim() || '';
 
         if (!settings.usersData) settings.usersData = { users: [], roles: [] };
         if (!settings.usersData.users) settings.usersData.users = [];
 
-        settings.usersData.users.push({
-            id: 'u_' + laspUser.replace(/[^a-zA-Z0-9_]/g, '_'),
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            laspUser: laspUser.trim(),
-            role: role.trim(),
-            email: email.trim(),
-            notes: notes.trim(),
-            avatarColor
-        });
+        if (existingId) {
+            const u = settings.usersData.users.find(x => x.id === existingId);
+            if (u) {
+                u.username = username;
+                u.firstName = firstName;
+                u.lastName = lastName;
+                u.laspUser = laspUser;
+                u.role = role;
+                u.email = email;
+                u.avatarColor = avatarColor;
+                u.notes = notes;
+            }
+        } else {
+            settings.usersData.users.push({
+                id: 'u_' + username.replace(/[^a-zA-Z0-9_]/g, '_') + '_' + Date.now().toString().slice(-4),
+                username,
+                firstName,
+                lastName,
+                laspUser,
+                role,
+                email,
+                avatarColor,
+                notes,
+                isSystem: false
+            });
+        }
 
         await settings.saveUsersConfig();
+        settings.closeModalOverlay();
         settings.render();
-        alert(`✅ Usuario ${laspUser} agregado con éxito.`);
+        if (typeof updateHeaderUserSelector === 'function') updateHeaderUserSelector();
+        if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
     },
 
-    deleteUser: async (laspUser) => {
-        const u = (settings.usersData?.users || []).find(x => x.laspUser === laspUser);
-        if (u && (u.isSystem || u.laspUser === 'lasp-admin' || u.laspUser === 'lasp-user')) {
-            alert(`⚠️ El usuario ${laspUser} es un usuario por defecto del sistema y no se puede borrar.`);
+    deleteUser: async (userId) => {
+        const u = (settings.usersData?.users || []).find(x => x.id === userId || x.laspUser === userId || x.username === userId);
+        if (u && (u.isSystem || u.username === 'admin' || u.username === 'user')) {
+            alert(`⚠️ El usuario "${u.username || u.laspUser}" es un usuario por defecto del sistema y no se puede borrar.`);
             return;
         }
-        if (!confirm(`¿Estás seguro de que deseas eliminar al usuario ${laspUser}?`)) return;
+        if (!confirm(`¿Estás seguro de que deseas eliminar al usuario "${u?.username || userId}"?`)) return;
         if (settings.usersData && settings.usersData.users) {
-            settings.usersData.users = settings.usersData.users.filter(u => u.laspUser !== laspUser);
+            settings.usersData.users = settings.usersData.users.filter(x => x.id !== userId && x.laspUser !== userId && x.username !== userId);
             await settings.saveUsersConfig();
             settings.render();
+            if (typeof updateHeaderUserSelector === 'function') updateHeaderUserSelector();
+            if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
         }
+    },
+
+    openRoleModal: (roleId = null) => {
+        const uData = settings.usersData || { users: [], roles: [] };
+        const role = roleId ? (uData.roles || []).find(r => r.id === roleId) : null;
+        const isEditing = !!role;
+        const perms = role?.permissions || {};
+
+        const overlay = document.createElement('div');
+        overlay.id = 'pipeta-settings-modal-overlay';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:10000; display:flex; align-items:center; justify-content:center;';
+
+        const permCheckbox = (key, label, icon) => `
+            <label style="display:flex; align-items:center; gap:8px; background:#181d26; border:1px solid #28303d; border-radius:4px; padding:6px 10px; cursor:pointer; font-size:0.78rem;">
+                <input type="checkbox" id="perm_${key}" ${perms[key] !== false && (isEditing ? perms[key] : true) ? 'checked' : ''} style="cursor:pointer; accent-color:var(--accent);">
+                <span>${icon} ${label}</span>
+            </label>
+        `;
+
+        overlay.innerHTML = `
+            <div style="background:#14171e; border:1px solid #28303d; border-radius:8px; width:560px; max-width:92vw; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.7); color:#eee; max-height:90vh; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #28303d; padding-bottom:12px; margin-bottom:16px;">
+                    <b style="font-size:1.05rem; color:var(--accent);">${isEditing ? `✏️ Editar Rol: ${role.name}` : '🛡️ Nuevo Rol de Usuario'}</b>
+                    <button class="icon-btn" onclick="settings.closeModalOverlay()" style="background:transparent; border:none; color:#888; font-size:1.2rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem;">
+                    <div style="display:grid; grid-template-columns:1fr 2fr 1fr; gap:10px;">
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">ID del Rol *</label>
+                            <input id="modal-r-id" type="text" value="${role?.id || ''}" ${isEditing ? 'disabled' : ''} placeholder="ej: lead" 
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; font-family:monospace; outline:none;">
+                        </div>
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Nombre del Rol *</label>
+                            <input id="modal-r-name" type="text" value="${role?.name || ''}" placeholder="ej: Lead Supervisor" 
+                                   style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                        </div>
+                        <div>
+                            <label style="color:#aaa; display:block; margin-bottom:4px;">Color</label>
+                            <input id="modal-r-color" type="color" value="${role?.color || '#00bcd4'}" 
+                                   style="width:100%; height:32px; background:#1c222d; border:1px solid #2e3846; border-radius:4px; cursor:pointer; padding:2px;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="color:#aaa; display:block; margin-bottom:4px;">Descripción</label>
+                        <input id="modal-r-desc" type="text" value="${role?.description || ''}" placeholder="Descripción breve de responsabilidades" 
+                               style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
+                    </div>
+
+                    <!-- Permisos de Módulos & Vistas -->
+                    <div style="margin-top:6px;">
+                        <b style="color:var(--accent); font-size:0.8rem; display:block; margin-bottom:6px;">Acceso a Módulos Principales (Sidebar):</b>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('access_explorer', 'Explorer (Árbol y Miller)', '📁')}
+                            ${permCheckbox('access_shot_navigator', 'Shot Navigator (Workflow)', '🎬')}
+                            ${permCheckbox('access_asset_designer', 'Asset Designer', '📦')}
+                            ${permCheckbox('access_shot_designer', 'Shot Designer', '🛠️')}
+                            ${permCheckbox('access_ia_ingest', 'IA Ingest', '🤖')}
+                        </div>
+                    </div>
+
+                    <!-- Permisos de Tools -->
+                    <div style="margin-top:6px;">
+                        <b style="color:#4fc3f7; font-size:0.8rem; display:block; margin-bottom:6px;">Acceso a Herramientas (Pipeline Tools):</b>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('access_tool_naming_validator', 'Naming Validator', '🏷️')}
+                            ${permCheckbox('access_tool_sync_analyze', 'Sync Analyzer (Local ↔ Online)', '🔄')}
+                            ${permCheckbox('access_tool_file_auditor', 'File Auditor', '🔍')}
+                            ${permCheckbox('access_tool_asset_creator', 'Asset Creator', '📦➕')}
+                            ${permCheckbox('access_tool_shot_creator', 'Shot Creator', '🎬➕')}
+                        </div>
+                    </div>
+
+                    <!-- Permisos de Workflow & Tracker -->
+                    <div style="margin-top:6px;">
+                        <b style="color:#8bc34a; font-size:0.8rem; display:block; margin-bottom:6px;">Workflow & Shot Navigator:</b>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('assignAllShots', 'Asignar a otros artistas', '👥')}
+                            ${permCheckbox('workflow_edit_statuses', 'Cambiar estados de procesos', '🏷️')}
+                            ${permCheckbox('workflow_create_folders', 'Crear carpetas en disco', '📁➕')}
+                            ${permCheckbox('exportPackages', 'Exportar paquetes de tareas', '📦📤')}
+                        </div>
+                    </div>
+
+                    <!-- Permisos de Explorer -->
+                    <div style="margin-top:6px;">
+                        <b style="color:#ffb74d; font-size:0.8rem; display:block; margin-bottom:6px;">Acciones en Explorer de Archivos:</b>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('explorer_create_folder', 'Crear carpetas', '📁')}
+                            ${permCheckbox('explorer_delete_items', 'Eliminar archivos/carpetas', '🗑️')}
+                            ${permCheckbox('explorer_rename_items', 'Renombrar archivos/carpetas', '✏️')}
+                            ${permCheckbox('explorer_open_desktop', 'Abrir en Windows Explorer', '🖥️')}
+                        </div>
+                    </div>
+
+                    <!-- Permisos de Admin -->
+                    <div style="margin-top:6px;">
+                        <b style="color:#e91e63; font-size:0.8rem; display:block; margin-bottom:6px;">Privilegios de Administración & Sistema:</b>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('manageUsers', 'Gestionar Usuarios & Roles', '👥')}
+                            ${permCheckbox('manageSettings', 'Configuraciones Globales', '⚙️')}
+                            ${permCheckbox('manageStatuses', 'Diseñador de Estados', '🏷️')}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid #28303d; padding-top:14px;">
+                    <button class="btn" onclick="settings.closeModalOverlay()" style="background:#222; color:#ccc; border:1px solid #444; padding:6px 14px; border-radius:4px; cursor:pointer;">Cancelar</button>
+                    <button class="btn" onclick="settings.saveRoleModal('${roleId || ''}')" style="background:#00bcd4; color:black; font-weight:bold; border:none; padding:6px 16px; border-radius:4px; cursor:pointer;">
+                        ${isEditing ? 'Guardar Cambios' : 'Crear Rol'}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    },
+
+    saveRoleModal: async (existingId) => {
+        const id = (existingId || document.getElementById('modal-r-id')?.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+        const name = document.getElementById('modal-r-name')?.value.trim();
+        if (!id || !name) {
+            alert("ID y Nombre del rol son obligatorios.");
+            return;
+        }
+
+        const color = document.getElementById('modal-r-color')?.value || '#00bcd4';
+        const description = document.getElementById('modal-r-desc')?.value.trim() || '';
+
+        const permKeys = [
+            'access_explorer', 'access_shot_navigator', 'access_asset_designer', 'access_shot_designer', 'access_ia_ingest',
+            'access_tool_naming_validator', 'access_tool_sync_analyze', 'access_tool_file_auditor', 'access_tool_asset_creator', 'access_tool_shot_creator',
+            'assignAllShots', 'workflow_edit_statuses', 'workflow_create_folders', 'exportPackages',
+            'explorer_create_folder', 'explorer_delete_items', 'explorer_rename_items', 'explorer_open_desktop',
+            'manageUsers', 'manageSettings', 'manageStatuses'
+        ];
+
+        const permissions = {};
+        permKeys.forEach(k => {
+            const el = document.getElementById(`perm_${k}`);
+            permissions[k] = el ? el.checked : true;
+        });
+
+        if (!settings.usersData) settings.usersData = { users: [], roles: [] };
+        if (!settings.usersData.roles) settings.usersData.roles = [];
+
+        if (existingId) {
+            const r = settings.usersData.roles.find(x => x.id === existingId);
+            if (r) {
+                r.name = name;
+                r.color = color;
+                r.description = description;
+                r.permissions = permissions;
+            }
+        } else {
+            settings.usersData.roles.push({
+                id,
+                name,
+                color,
+                description,
+                permissions,
+                isSystem: false
+            });
+        }
+
+        await settings.saveUsersConfig();
+        settings.closeModalOverlay();
+        settings.render();
+        if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
+    },
+
+    deleteRole: async (roleId) => {
+        const r = (settings.usersData?.roles || []).find(x => x.id === roleId);
+        if (r && (r.isSystem || roleId === 'admin' || roleId === 'user')) {
+            alert(`⚠️ El rol "${r.name}" es un rol por defecto del sistema y no se puede borrar.`);
+            return;
+        }
+        if (!confirm(`¿Estás seguro de que deseas eliminar el rol "${r?.name || roleId}"?`)) return;
+        if (settings.usersData && settings.usersData.roles) {
+            settings.usersData.roles = settings.usersData.roles.filter(x => x.id !== roleId);
+            await settings.saveUsersConfig();
+            settings.render();
+            if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
+        }
+    },
+
+    closeModalOverlay: () => {
+        const overlay = document.getElementById('pipeta-settings-modal-overlay');
+        if (overlay) overlay.remove();
     },
 
     changeAdminPasswordModal: async () => {

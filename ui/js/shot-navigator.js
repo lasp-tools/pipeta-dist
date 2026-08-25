@@ -104,34 +104,41 @@ const ShotNavigator = {
                 } catch(e) {}
             }
 
-            if (presetObj) {
+            if (presetObj && presetObj.nodes && Array.isArray(presetObj.nodes)) {
                 ShotNavigator.shotPreset = presetObj;
                 
-                // Encontrar el nodo SHOT en el grafo
-                if (presetObj.nodes && Array.isArray(presetObj.nodes)) {
-                    const shotNode = presetObj.nodes.find(n => n.isShot || n.variableName === 'SHOT' || n.variableName === 'SHOTNAME');
-                    if (shotNode) {
-                        // Encontrar todos los descendientes bajo el nodo shot que sean carpetas de proceso
-                        const childNodes = presetObj.nodes.filter(n => 
-                            n.parent === shotNode.id || 
-                            presetObj.nodes.some(p => p.parent === shotNode.id && n.parent === p.id)
-                        );
+                // Encontrar el nodo SHOT en el árbol de TRABAJO (work tree: y < 0 o no media)
+                let shotNode = presetObj.nodes.find(n => 
+                    (n.isShot || n.variableName === 'SHOT' || n.variableName === 'SHOTNAME') &&
+                    (!n.id.toLowerCase().includes('media') && (n.y === undefined || n.y < 0))
+                );
+                if (!shotNode) {
+                    shotNode = presetObj.nodes.find(n => n.isShot || n.variableName === 'SHOT' || n.variableName === 'SHOTNAME');
+                }
 
-                        const seen = new Set();
-                        childNodes.forEach(n => {
-                            if (n.name && !n.isVariable && n.type === 'folder') {
-                                const cleanName = n.name.toLowerCase().trim();
-                                if (!seen.has(cleanName) && cleanName.length > 1 && !cleanName.includes('.')) {
-                                    seen.add(cleanName);
-                                    ShotNavigator.availableProcesses.push({
-                                        id: cleanName,
-                                        name: n.name.toUpperCase(),
-                                        nodeId: n.id
-                                    });
-                                }
+                if (shotNode) {
+                    // Los procesos son ÚNICAMENTE las carpetas hijas directas del nodo SHOT de trabajo, o marcadas isProcess: true
+                    const childNodes = presetObj.nodes.filter(n => 
+                        n.type === 'folder' && 
+                        (n.parent === shotNode.id || n.isProcess === true) &&
+                        !n.isRenderFolder &&
+                        !n.isVariable
+                    );
+
+                    const seen = new Set();
+                    childNodes.forEach(n => {
+                        if (n.name) {
+                            const cleanName = n.name.toLowerCase().trim();
+                            if (!seen.has(cleanName) && cleanName.length > 1 && !cleanName.includes('.')) {
+                                seen.add(cleanName);
+                                ShotNavigator.availableProcesses.push({
+                                    id: cleanName,
+                                    name: n.name.toUpperCase(),
+                                    nodeId: n.id
+                                });
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             }
         } catch(e) {
@@ -233,7 +240,7 @@ const ShotNavigator = {
                                             scene: sc.name,
                                             path: shotPath,
                                             processes: {},
-                                            status: 'not_started',
+                                            status: 'none',
                                             notes: '',
                                             updatedAt: new Date().toISOString()
                                         };
@@ -243,24 +250,21 @@ const ShotNavigator = {
                                     sObj.path = shotPath;
                                     if (!sObj.processes) sObj.processes = {};
 
+                                    const allowedProcIds = (ShotNavigator.availableProcesses || []).map(p => p.id.toLowerCase());
+
                                     // 1. Escanear carpetas reales en disco dentro del plano
                                     const diskItems = await scanDir(shotPath);
                                     const existingFolders = (diskItems && diskItems.items) 
                                         ? diskItems.items.filter(i => i.isDirectory).map(i => i.name.toLowerCase().trim())
                                         : [];
 
-                                    const sub2d = await scanDir(pathJoin(shotPath, '2d'));
-                                    if (sub2d && sub2d.items) {
-                                        sub2d.items.filter(i => i.isDirectory).forEach(i => existingFolders.push(i.name.toLowerCase().trim()));
-                                    }
-                                    const sub3d = await scanDir(pathJoin(shotPath, '3d'));
-                                    if (sub3d && sub3d.items) {
-                                        sub3d.items.filter(i => i.isDirectory).forEach(i => existingFolders.push(i.name.toLowerCase().trim()));
-                                    }
-
-                                    // 2. Actualizar estado de las carpetas que ya existían en el tracker
+                                    // 2. Limpiar y sincronizar procesos del tracker
                                     for (const pId of Object.keys(sObj.processes)) {
                                         const pLower = pId.toLowerCase();
+                                        const isAllowed = allowedProcIds.includes(pLower) || 
+                                                          (pLower === 'comp' && allowedProcIds.includes('compo')) || 
+                                                          (pLower === 'compo' && allowedProcIds.includes('comp'));
+
                                         const exists = existingFolders.includes(pLower) || 
                                                        (pLower === 'compo' && existingFolders.includes('comp')) ||
                                                        (pLower === 'comp' && existingFolders.includes('compo'));
@@ -275,24 +279,34 @@ const ShotNavigator = {
                                             sObj.processes[pId].assignedUsers = [];
                                         }
 
-                                        // Si NO existe en disco, NO tiene usuarios y está 'not_started', purgar del shot
-                                        if (!exists && sObj.processes[pId].assignedUsers.length === 0 && sObj.processes[pId].status === 'not_started') {
+                                        // Si NO es un proceso definido en el Shot Designer y no tiene usuarios asignados, PURGARLO (ej: '2d', '3d')
+                                        if (!isAllowed && sObj.processes[pId].assignedUsers.length === 0) {
+                                            delete sObj.processes[pId];
+                                        } else if (!exists && sObj.processes[pId].assignedUsers.length === 0 && (sObj.processes[pId].status === 'none' || sObj.processes[pId].status === 'not_started')) {
                                             delete sObj.processes[pId];
                                         }
                                     }
 
-                                    // 3. Si en disco hay carpetas reales, agregarlas al shot como procesos activos
+                                    // 3. Si en disco hay carpetas reales que correspondan a procesos válidos, agregarlas
                                     for (const fName of existingFolders) {
-                                        const normName = (fName === 'comp') ? 'compo' : fName;
-                                        if (!sObj.processes[normName]) {
-                                            sObj.processes[normName] = {
-                                                assignedUsers: [],
-                                                status: 'in_progress',
-                                                folderExists: true,
-                                                notes: ''
-                                            };
-                                        } else {
-                                            sObj.processes[normName].folderExists = true;
+                                        let matchedProcId = null;
+                                        if (allowedProcIds.includes(fName)) {
+                                            matchedProcId = fName;
+                                        } else if (fName === 'comp' && allowedProcIds.includes('compo')) {
+                                            matchedProcId = 'compo';
+                                        }
+
+                                        if (matchedProcId) {
+                                            if (!sObj.processes[matchedProcId]) {
+                                                sObj.processes[matchedProcId] = {
+                                                    assignedUsers: [],
+                                                    status: 'in_progress',
+                                                    folderExists: true,
+                                                    notes: ''
+                                                };
+                                            } else {
+                                                sObj.processes[matchedProcId].folderExists = true;
+                                            }
                                         }
                                     }
                                 }
@@ -499,7 +513,7 @@ const ShotNavigator = {
         const shot = ShotNavigator.trackerData.shots[shotKey];
         if (!shot) return;
         if (!shot.processes[processId]) {
-            shot.processes[processId] = { assignedUsers: [], status: 'not_started', folderExists: false };
+            shot.processes[processId] = { assignedUsers: [], status: 'none', folderExists: false };
         }
         if (!Array.isArray(shot.processes[processId].assignedUsers)) {
             shot.processes[processId].assignedUsers = [];
@@ -511,7 +525,7 @@ const ShotNavigator = {
             list.splice(idx, 1);
         } else {
             list.push(laspUser);
-            if (shot.processes[processId].status === 'not_started') {
+            if (shot.processes[processId].status === 'none' || shot.processes[processId].status === 'not_started') {
                 shot.processes[processId].status = 'assigned';
             }
         }
@@ -525,7 +539,7 @@ const ShotNavigator = {
         const shot = ShotNavigator.trackerData.shots[shotKey];
         if (!shot) return;
         if (!shot.processes[processId]) {
-            shot.processes[processId] = { assignedUsers: [], status: 'not_started', folderExists: false };
+            shot.processes[processId] = { assignedUsers: [], status: 'none', folderExists: false };
         }
         shot.processes[processId].status = statusId;
         shot.updatedAt = new Date().toISOString();
@@ -533,8 +547,8 @@ const ShotNavigator = {
         const procs = Object.values(shot.processes);
         if (procs.length > 0 && procs.every(p => p.status === 'approved')) {
             shot.status = 'approved';
-        } else if (procs.some(p => p.status === 'retake')) {
-            shot.status = 'retake';
+        } else if (procs.some(p => p.status === 'canceled' || p.status === 'retake')) {
+            shot.status = 'canceled';
         } else if (procs.some(p => p.status === 'in_progress')) {
             shot.status = 'in_progress';
         }
@@ -550,7 +564,7 @@ const ShotNavigator = {
         if (!shot.processes[processId]) {
             shot.processes[processId] = {
                 assignedUsers: [],
-                status: 'not_started',
+                status: 'none',
                 folderExists: false,
                 notes: ''
             };
@@ -732,12 +746,14 @@ const ShotNavigator = {
                         const isFocused = ShotNavigator.selectedShotId === sh.id;
                         const statusObj = ShotNavigator.statuses.find(s => s.id === sh.status) || { name: sh.status, color: '#666', icon: '⚪' };
                         
-                        // Extract only processes that ACTUALLY exist in this shot
+                        // Extract only processes that ACTUALLY exist in this shot and belong to the design
                         const activeProcs = [];
                         for (const [pId, pData] of Object.entries(sh.processes || {})) {
-                            const matchedName = (ShotNavigator.availableProcesses.find(p => p.id === pId)?.name || pId).toUpperCase();
+                            const isKnown = ShotNavigator.availableProcesses.some(p => p.id.toLowerCase() === pId.toLowerCase());
                             const users = pData.assignedUsers || (pData.assignedUser ? [pData.assignedUser] : []);
-                            if (pData.folderExists || users.length > 0 || pData.status !== 'not_started') {
+                            if (!isKnown && users.length === 0) continue;
+                            const matchedName = (ShotNavigator.availableProcesses.find(p => p.id.toLowerCase() === pId.toLowerCase())?.name || pId).toUpperCase();
+                            if (pData.folderExists || users.length > 0 || (pData.status && pData.status !== 'none' && pData.status !== 'not_started')) {
                                 activeProcs.push({ id: pId, name: matchedName, ...pData, users });
                             }
                         }

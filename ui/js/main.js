@@ -156,19 +156,19 @@ const headerToolsTemplates = {
         <div class="toolbar-section-group" title="Herramientas del Pipeline">
             <span class="toolbar-section-label">Tools</span>
             <div class="toolbar-section-content">
-                <button class="tool-btn" onclick="window.toggleValidator()" title="Naming Validator">
+                <button class="tool-btn" data-perm-tool="access_tool_naming_validator" onclick="if(window.checkUserPermission('access_tool_naming_validator')) window.toggleValidator(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Naming Validator.');" title="Naming Validator">
                     <img src="icons/scanning-scan-svgrepo-com.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="toggleSyncAnalyzer()" title="Sync Analyzer (Local ↔ Online)">
+                <button class="tool-btn" data-perm-tool="access_tool_sync_analyze" onclick="if(window.checkUserPermission('access_tool_sync_analyze')) toggleSyncAnalyzer(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Sync Analyzer.');" title="Sync Analyzer (Local ↔ Online)">
                     <img src="icons/sync-analyzer.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="toggleFileAuditor()" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
+                <button class="tool-btn" data-perm-tool="access_tool_file_auditor" onclick="if(window.checkUserPermission('access_tool_file_auditor')) toggleFileAuditor(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para File Auditor.');" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
                     <img src="icons/file-auditor.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="AssetCreator.open()" title="Asset Creator">
+                <button class="tool-btn" data-perm-tool="access_tool_asset_creator" onclick="if(window.checkUserPermission('access_tool_asset_creator')) AssetCreator.open(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Asset Creator.');" title="Asset Creator">
                     <img src="icons/asset_creator.svg" class="btn-icon-svg btn-icon-orange">
                 </button>
-                <button class="tool-btn" onclick="ShotCreator.open()" title="Shot Creator">
+                <button class="tool-btn" data-perm-tool="access_tool_shot_creator" onclick="if(window.checkUserPermission('access_tool_shot_creator')) ShotCreator.open(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Shot Creator.');" title="Shot Creator">
                     <img src="icons/asset_creator.svg" class="btn-icon-svg">
                 </button>
             </div>
@@ -333,6 +333,20 @@ function updateHeaderTools(viewId) {
 }
 
 function switchView(viewId) {
+    // Permission check for views
+    const viewPermMap = {
+        'view-browser': 'access_explorer',
+        'view-shot-navigator': 'access_shot_navigator',
+        'view-asset-designer': 'access_asset_designer',
+        'view-shot-designer': 'access_shot_designer',
+        'view-ia-ingest': 'access_ia_ingest'
+    };
+    const reqPerm = viewPermMap[viewId];
+    if (reqPerm && !window.checkUserPermission(reqPerm)) {
+        alert("🔒 Acceso Restringido: Tu rol de usuario no tiene permisos para acceder a esta sección.");
+        return;
+    }
+
     // 1. Update Buttons State
     document.querySelectorAll('.mode-btn').forEach(btn => {
         const btnView = tabs[btn.getAttribute('title')];
@@ -373,6 +387,7 @@ function switchView(viewId) {
 
     // 4. Update Toolbar
     updateHeaderTools(viewId);
+    if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
 }
 
 window.toggleCanvasFullscreen = () => {
@@ -396,6 +411,75 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     });
 });
 
+// --- ROLE PERMISSIONS & ACCESS CONTROL ---
+window.checkUserPermission = (permKey) => {
+    const uData = window.cachedUsersData || settings?.usersData;
+    if (!uData) return true;
+    const active = uData.activeUser || 'admin';
+    const user = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
+    if (!user) return true;
+    if (user.role === 'admin' || user.username === 'admin') return true; // Full admin access
+    const role = (uData.roles || []).find(r => r.id === user.role);
+    if (!role || !role.permissions) return true;
+    return role.permissions[permKey] !== false;
+};
+
+window.applyRolePermissionsToUI = async () => {
+    try {
+        const uData = await API.users.get();
+        window.cachedUsersData = uData;
+        const active = uData.activeUser || 'admin';
+        const user = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
+        const isAdmin = user?.role === 'admin' || user?.username === 'admin';
+        const role = (uData.roles || []).find(r => r.id === (user?.role || 'user'));
+
+        // 1. Sidebar Buttons
+        const sidebarMap = {
+            'Explorer': 'access_explorer',
+            'Shot Navigator': 'access_shot_navigator',
+            'Asset Designer': 'access_asset_designer',
+            'Shot Designer': 'access_shot_designer',
+            'IA Ingest': 'access_ia_ingest'
+        };
+
+        document.querySelectorAll('.sidebar-top .mode-btn').forEach(btn => {
+            const title = btn.getAttribute('title');
+            const reqPerm = sidebarMap[title];
+            if (reqPerm) {
+                const allowed = isAdmin || (role?.permissions ? role.permissions[reqPerm] !== false : true);
+                if (allowed) {
+                    btn.style.opacity = '1';
+                    btn.style.filter = 'none';
+                    btn.style.pointerEvents = 'auto';
+                    btn.removeAttribute('data-disabled-by-role');
+                } else {
+                    btn.style.opacity = '0.22';
+                    btn.style.filter = 'grayscale(1) brightness(0.7)';
+                    btn.style.pointerEvents = 'none';
+                    btn.setAttribute('data-disabled-by-role', 'true');
+                }
+            }
+        });
+
+        // 2. Header Tools
+        document.querySelectorAll('[data-perm-tool]').forEach(el => {
+            const pKey = el.getAttribute('data-perm-tool');
+            const allowed = isAdmin || (role?.permissions ? role.permissions[pKey] !== false : true);
+            if (allowed) {
+                el.style.opacity = '1';
+                el.style.filter = 'none';
+                el.style.pointerEvents = 'auto';
+            } else {
+                el.style.opacity = '0.22';
+                el.style.filter = 'grayscale(1) brightness(0.7)';
+                el.style.pointerEvents = 'none';
+            }
+        });
+    } catch(e) {
+        console.warn("Could not apply role permissions:", e);
+    }
+};
+
 // --- INIT ---
 fetch('/api/version').then(r => r.json()).then(d => {
     if (d.version) {
@@ -406,10 +490,6 @@ fetch('/api/version').then(r => r.json()).then(d => {
 });
 
 // Initialize Browser Component
-// We need to wait for settings to load to know the default view mode
-// settings is loaded via script tag, but we need to ensure it's ready or load it manually if needed.
-// 'settings' object is global.
-
 async function initApp() {
     // 1. Load Settings (Projects, Configs)
     if (typeof settings !== 'undefined') {
@@ -418,14 +498,13 @@ async function initApp() {
 
     // Init Inspector (Presets)
     if (typeof Inspector !== 'undefined') {
-        await Inspector.init();
+        Inspector.init();
     }
 
-    // 2. Determine View Mode
-    let initialMode = 'local'; // Default
-    if (typeof settings !== 'undefined' && settings.defaultViewMode) {
-        initialMode = settings.defaultViewMode;
-    }
+    // 2. Set Default View Mode (from config if available)
+    const initialMode = settings && settings.config && settings.config.defaultViewMode
+        ? settings.config.defaultViewMode
+        : 'local';
 
     // Set global mode (without triggering refesh yet)
     window.viewLocationMode = initialMode;
@@ -446,21 +525,22 @@ async function initApp() {
     // 7. Check Rclone Status
     checkRcloneStatus();
 
-    // 8. Init Header User Selector
-    updateHeaderUserSelector();
+    // 8. Init Header User Selector and Permissions
+    await updateHeaderUserSelector();
+    await applyRolePermissionsToUI();
 }
 
 // --- HEADER USER SWITCHER ---
-window.handleHeaderUserSwitch = async (laspUser) => {
+window.handleHeaderUserSwitch = async (userVal) => {
     try {
         const uData = await API.users.get();
-        const targetUser = (uData.users || []).find(u => u.laspUser === laspUser);
+        const targetUser = (uData.users || []).find(u => u.username === userVal || u.laspUser === userVal || u.id === userVal);
         
         // If switching to an admin user, require authentication unless already remembered
         if (targetUser && targetUser.role === 'admin') {
             const isUnlocked = localStorage.getItem('pipeta_admin_unlocked') === 'true';
             if (!isUnlocked) {
-                const pass = prompt(`🔒 Ingrese la contraseña de Administrador para cambiar al usuario ${targetUser.firstName || laspUser}:`);
+                const pass = prompt(`🔒 Ingrese la contraseña de Administrador para cambiar al usuario ${targetUser.username || targetUser.firstName || userVal}:`);
                 if (!pass) {
                     updateHeaderUserSelector();
                     return;
@@ -478,12 +558,15 @@ window.handleHeaderUserSwitch = async (laspUser) => {
             }
         }
         
-        await API.users.setActive(laspUser);
+        const activeKey = targetUser ? (targetUser.username || targetUser.laspUser || targetUser.id) : userVal;
+        await API.users.setActive(activeKey);
+        window.cachedUsersData = null;
         if (typeof ShotNavigator !== 'undefined') {
-            ShotNavigator.activeUser = laspUser;
+            ShotNavigator.activeUser = activeKey;
             ShotNavigator.render();
         }
-        updateHeaderUserSelector();
+        await updateHeaderUserSelector();
+        await applyRolePermissionsToUI();
     } catch(e) {
         console.error("Error switching user:", e);
         alert("Error al cambiar usuario: " + e.message);
@@ -493,19 +576,20 @@ window.handleHeaderUserSwitch = async (laspUser) => {
 window.updateHeaderUserSelector = async () => {
     try {
         const uData = await API.users.get();
+        window.cachedUsersData = uData;
         const select = document.getElementById('headerUserSelect');
         const avatar = document.getElementById('headerUserAvatar');
         if (!select || !uData) return;
         
-        const active = uData.activeUser || 'lasp-mpastorino';
-        const activeObj = (uData.users || []).find(u => u.laspUser === active);
+        const active = uData.activeUser || 'admin';
+        const activeObj = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
         if (avatar) avatar.style.background = activeObj?.avatarColor || '#ff9800';
         
-        select.innerHTML = (uData.users || []).map(u => `
-            <option value="${u.laspUser}" ${u.laspUser === active ? 'selected' : ''}>
-                ${u.firstName} (${u.laspUser.replace('lasp-', '')})
-            </option>
-        `).join('');
+        select.innerHTML = (uData.users || []).map(u => {
+            const val = u.username || u.laspUser || u.id;
+            const label = u.firstName ? `${u.username || u.laspUser} (${u.firstName} ${u.lastName})` : (u.username || u.laspUser);
+            return `<option value="${val}" ${val === active ? 'selected' : ''}>${label}</option>`;
+        }).join('');
     } catch(e) {
         console.warn("Could not load users for header selector:", e);
     }
