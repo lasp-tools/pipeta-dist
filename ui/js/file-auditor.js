@@ -433,7 +433,7 @@ class FileAuditor {
 
         try {
             const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
-            const presetId = proj?.defaultShotPresetId || (typeof settings !== 'undefined' ? settings.validationPresetShot : null) || 'pipeline_test';
+            const presetId = proj?.defaultShotPresetId || (typeof settings !== 'undefined' ? settings.validationPresetShot : null) || 'master_shot';
             
             let preset = null;
             if (typeof Inspector !== 'undefined' && Inspector.getPreset) {

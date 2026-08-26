@@ -1,0 +1,431 @@
+{
+  "id": "master_asset",
+  "name": "Master_Asset",
+  "nodes": [
+    {
+      "id": "n_1787759161938",
+      "type": "unit",
+      "name": "Z",
+      "x": -72.90909090909088,
+      "y": 153.90909090909093,
+      "parent": null
+    },
+    {
+      "id": "n_1787759164677",
+      "type": "unit",
+      "name": "G",
+      "x": -67,
+      "y": -102,
+      "parent": null
+    },
+    {
+      "id": "n_1787759213931",
+      "type": "folder",
+      "name": "Cliente",
+      "x": 172.5454545454546,
+      "y": 153.90909090909093,
+      "parent": "n_1787759161938",
+      "isClientNode": true,
+      "isVariable": true,
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "n_1787759221741",
+      "type": "folder",
+      "name": " Proyecto",
+      "x": 515,
+      "y": 137,
+      "parent": "n_1787759213931",
+      "isVariable": true,
+      "isProjectNode": true,
+      "isSyncPoint": true,
+      "parentOnline": "n_1787759287671",
+      "exampleValue": "surf_love"
+    },
+    {
+      "id": "n_1787759287671",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 172,
+      "y": -110,
+      "parent": "n_1787759164677"
+    },
+    {
+      "id": "n_1787759438996",
+      "type": "folder",
+      "name": "assets2D",
+      "x": 756.8181818181813,
+      "y": 139.72727272727272,
+      "parent": "n_1787759221741",
+      "isMainCategory": true,
+      "isVariable": false,
+      "variableName": "MAIN_CAT",
+      "exampleValue": "3D"
+    },
+    {
+      "id": "n_1787770763638_eiaf",
+      "type": "folder",
+      "name": "assets3D",
+      "x": 741.4025974025974,
+      "y": 627.8961038961039,
+      "parent": "n_1787759221741",
+      "isMainCategory": true,
+      "isVariable": false,
+      "variableName": "MAIN_CAT",
+      "exampleValue": "3D"
+    },
+    {
+      "id": "n_1787770861682",
+      "type": "folder",
+      "name": "concepts",
+      "x": 1113.9772727272727,
+      "y": -376.8636363636363,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787770889778_sfd9",
+      "type": "folder",
+      "name": "gizmos",
+      "x": 1120.1136363636367,
+      "y": -260.1590909090909,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787771113748_q3nn",
+      "type": "folder",
+      "name": "grafica",
+      "x": 1109.886363636364,
+      "y": -119.59090909090907,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787771119422_p3p4",
+      "type": "folder",
+      "name": "HDRi",
+      "x": 1110.7954545454552,
+      "y": 149.61363636363632,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787773117311",
+      "type": "folder",
+      "name": "nombre_concept",
+      "x": 1313.9772727272727,
+      "y": -376.8636363636363,
+      "parent": "n_1787770861682",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773605719",
+      "type": "folder",
+      "name": "Export",
+      "x": 1527.7272727272727,
+      "y": -493.11363636363626,
+      "parent": "n_1787773117311"
+    },
+    {
+      "id": "n_1787773611287_vh9n",
+      "type": "folder",
+      "name": "Ilustracion",
+      "x": 1528.9772727272727,
+      "y": -423.1136363636363,
+      "parent": "n_1787773117311"
+    },
+    {
+      "id": "n_1787773618180_b4q9",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1527.7272727272727,
+      "y": -354.3636363636363,
+      "parent": "n_1787773117311"
+    },
+    {
+      "id": "n_1787773721050_nxge",
+      "type": "folder",
+      "name": "nombre_grafica",
+      "x": 1316.4772727272727,
+      "y": -118.11363636363632,
+      "parent": "n_1787771113748_q3nn",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773779718_yv23",
+      "type": "folder",
+      "name": "_Input",
+      "x": 1520.2272727272727,
+      "y": -226.86363636363632,
+      "parent": "n_1787773721050_nxge"
+    },
+    {
+      "id": "n_1787773796373_20ww",
+      "type": "folder",
+      "name": "Animacion",
+      "x": 1518.9772727272727,
+      "y": -159.36363636363632,
+      "parent": "n_1787773721050_nxge"
+    },
+    {
+      "id": "n_1787773813389_c43a",
+      "type": "folder",
+      "name": "Export",
+      "x": 1518.9772727272727,
+      "y": -88.11363636363632,
+      "parent": "n_1787773721050_nxge"
+    },
+    {
+      "id": "n_1787773819861_ykpf",
+      "type": "folder",
+      "name": "Ilustracion",
+      "x": 1518.9772727272727,
+      "y": -18.113636363636317,
+      "parent": "n_1787773721050_nxge"
+    },
+    {
+      "id": "n_1787773827014_8h3r",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1517.7272727272727,
+      "y": 51.88636363636368,
+      "parent": "n_1787773721050_nxge"
+    },
+    {
+      "id": "n_1787773851159_ewtc",
+      "type": "folder",
+      "name": "matte_painting",
+      "x": 1110.7954545454552,
+      "y": 227.11363636363632,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787773903809_injn",
+      "type": "folder",
+      "name": "nombre_matte",
+      "x": 1302.4772727272723,
+      "y": 227.2196969696969,
+      "parent": "n_1787773851159_ewtc",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773928819",
+      "type": "folder",
+      "name": "Boceto",
+      "x": 1516.4772727272723,
+      "y": 191.2196969696969,
+      "parent": "n_1787773903809_injn"
+    },
+    {
+      "id": "n_1787773942114_zktv",
+      "type": "folder",
+      "name": "Export",
+      "x": 1517.4772727272723,
+      "y": 260.2196969696969,
+      "parent": "n_1787773903809_injn"
+    },
+    {
+      "id": "n_1787773947203_f8gn",
+      "type": "folder",
+      "name": "Ilustracion",
+      "x": 1514.4772727272723,
+      "y": 326.2196969696969,
+      "parent": "n_1787773903809_injn"
+    },
+    {
+      "id": "n_1787773956283_5qg0",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1514.4772727272723,
+      "y": 398.2196969696969,
+      "parent": "n_1787773903809_injn"
+    },
+    {
+      "id": "n_1787774155251_d174",
+      "type": "folder",
+      "name": "personajes",
+      "x": 1004.3668831168836,
+      "y": 626.3993506493505,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774167189_xqqh",
+      "type": "folder",
+      "name": "previs",
+      "x": 1005.0811688311692,
+      "y": 784.2564935064934,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774175083_pwnp",
+      "type": "folder",
+      "name": "props",
+      "x": 1005.7954545454548,
+      "y": 886.3993506493506,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774180259_01i3",
+      "type": "folder",
+      "name": "sets",
+      "x": 997.9383116883122,
+      "y": 1039.9707792207791,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774219390_1mea",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1449.143939393938,
+      "y": 625.55303030303,
+      "parent": "n_1787774155251_d174",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774240968_lxd7",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1235.3344155844152,
+      "y": 774.362554112554,
+      "parent": "n_1787774167189_xqqh",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774250407_o34w",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1226.048701298701,
+      "y": 882.219696969697,
+      "parent": "n_1787774175083_pwnp",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "grua",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774253711_rfo2",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1229.6201298701299,
+      "y": 1042.933982683983,
+      "parent": "n_1787774180259_01i3",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "hotel",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774351467",
+      "type": "folder",
+      "name": "Chequeo_Escala",
+      "x": 1674.1439393939386,
+      "y": 617.2196969696968,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774358666_qlki",
+      "type": "folder",
+      "name": "Diseno",
+      "x": 1675.8106060606053,
+      "y": 687.2196969696967,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774365172_81p3",
+      "type": "folder",
+      "name": "Modelado",
+      "x": 1677.477272727272,
+      "y": 757.2196969696967,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774370244_55vx",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1834.1439393939388,
+      "y": 615.5530303030301,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774376076_tz8z",
+      "type": "folder",
+      "name": "Rig",
+      "x": 1835.8106060606056,
+      "y": 687.2196969696967,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774381532_e5c4",
+      "type": "folder",
+      "name": "Shading",
+      "x": 1994.1439393939388,
+      "y": 612.2196969696964,
+      "parent": "n_1787774219390_1mea"
+    },
+    {
+      "id": "n_1787774385987_raut",
+      "type": "folder",
+      "name": "Texturas",
+      "x": 1997.4772727272714,
+      "y": 673.8863636363633,
+      "parent": "n_1787774219390_1mea"
+    }
+  ],
+  "connections": [],
+  "_fileName": "master_asset.json"
+}

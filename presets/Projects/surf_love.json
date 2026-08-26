@@ -9,5 +9,6 @@
     "onlineWork": "G:\\Unidades compartidas\\surf_love",
     "onlineMedia": "G:\\Unidades compartidas\\surf_love_media"
   },
-  "defaultShotPresetId": "pipeline_test"
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset"
 }

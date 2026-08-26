@@ -23,8 +23,8 @@ const CANONICAL_BASE_PRESETS = {
         onlineWork: "G:/Unidades compartidas/[proyecto]",
         onlineMedia: "G:/Unidades compartidas/[proyecto]_media"
     },
-    defaultShotPresetId: "pipeline_test",
-    defaultAssetPresetId: "",
+    defaultShotPresetId: "master_shot",
+    defaultAssetPresetId: "master_asset",
     iaPresets: {
         defaultImageEngine: "NB2P",
         defaultVideoEngine: "SD2",
@@ -97,36 +97,47 @@ const settings = {
 
     loadPresets: async () => {
         settings.presetsList = [];
-        const presetDirs = [
-            "C:\\TOOLS\\APPS\\Pipeta\\presets\\AssetDesigner",
-            "C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner"
-        ];
+        const seenKeys = new Set();
+        const basePaths = [
+            "C:\\TOOLS\\APPS\\Pipeta\\presets",
+            settings.exportPresetsPath
+        ].filter(Boolean);
+
+        const subDirs = ['AssetDesigner', 'ShotDesigner'];
 
         try {
             if (window.API && API.fs && API.fs.getFiles) {
-                for (const dir of presetDirs) {
-                    try {
-                        const files = await API.fs.getFiles(dir);
-                        for (const f of files) {
-                            if (f.endsWith('.json')) {
-                                const content = await API.fs.readFile(dir + "\\" + f);
-                                if (content) {
-                                    try {
-                                        const p = JSON.parse(content);
-                                        if (p.id && p.name) {
-                                            settings.presetsList.push({
-                                                id: p.id,
-                                                name: p.name,
-                                                type: dir.includes('Asset') ? 'asset' : 'shot',
-                                                fullPath: dir + "\\" + f
-                                            });
-                                        }
-                                    } catch (e) { }
+                for (const basePath of basePaths) {
+                    for (const sub of subDirs) {
+                        const dir = basePath + "\\" + sub;
+                        try {
+                            const files = await API.fs.getFiles(dir);
+                            for (const f of files) {
+                                if (f.endsWith('.json')) {
+                                    const content = await API.fs.readFile(dir + "\\" + f);
+                                    if (content) {
+                                        try {
+                                            const p = JSON.parse(content);
+                                            const pId = p.id || f.replace('.json', '');
+                                            const pName = p.name || pId;
+                                            const type = sub.includes('Asset') ? 'asset' : 'shot';
+                                            const key = `${type}_${pId.toLowerCase()}`;
+                                            if (!seenKeys.has(key)) {
+                                                seenKeys.add(key);
+                                                settings.presetsList.push({
+                                                    id: pId,
+                                                    name: pName,
+                                                    type: type,
+                                                    fullPath: dir + "\\" + f
+                                                });
+                                            }
+                                        } catch (e) { }
+                                    }
                                 }
                             }
+                        } catch (errDir) {
+                            // Directory might not exist on network/local, ignore
                         }
-                    } catch (errDir) {
-                        console.warn("Could not load presets from " + dir, errDir);
                     }
                 }
             }
@@ -209,6 +220,7 @@ const settings = {
 
     open: async () => {
         if (!settings.container) await settings.init();
+        await settings.loadPresets();
         settings.isVisible = true;
         settings.render();
         settings.container.style.display = 'flex';
@@ -231,9 +243,9 @@ const settings = {
 
     switchCategory(cat) {
         settings.currentCategory = cat;
-        if (cat === 'avanzado' && settings.presetsList.length === 0) {
+        if (cat === 'proyecto' || cat === 'proyectos' || cat === 'avanzado') {
             settings.loadPresets().then(() => {
-                if (settings.currentCategory === 'avanzado') settings.render();
+                if (settings.currentCategory === cat) settings.render();
             });
         }
         settings.render();
@@ -631,6 +643,7 @@ const settings = {
             { id: 'statuses', label: '🏷️ Diseñador Estados', restricted: true },
             { id: 'workflow', label: '🗂️ Workflow & Sync DB', restricted: true },
             { id: 'interfaz', label: '🎨 Interfaz & Canvas' },
+            { id: 'shortcuts', label: '⌨️ Atajos de Teclado' },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
             { id: 'avanzado', label: '⚙️ Avanzado' },
             { id: 'exportar', label: '📦 Exportar Presets' },
@@ -691,9 +704,9 @@ const settings = {
             settings.loadUsersConfig().then(() => settings.render());
         } else if (cat === 'statuses') {
             settings.loadStatusesConfig().then(() => settings.render());
-        } else if (cat === 'avanzado' && settings.presetsList.length === 0) {
+        } else if (cat === 'proyecto' || cat === 'proyectos' || cat === 'avanzado') {
             settings.loadPresets().then(() => {
-                if (settings.currentCategory === 'avanzado') settings.render();
+                if (settings.currentCategory === cat) settings.render();
             });
         }
         settings.render();
@@ -706,6 +719,111 @@ const settings = {
 
     renderCategoryContent() {
         switch (settings.currentCategory) {
+            case 'shortcuts':
+                return `
+                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; align-items:center; gap:8px;">
+                        <span>⌨️ Asignaciones de Teclas & Atajos (Hotkeys)</span>
+                    </h3>
+                    <p style="color:#888; margin-bottom:20px; font-size:0.9rem;">
+                        Referencia de atajos de teclado y acciones rápidas disponibles en cada módulo de Pipeta.
+                    </p>
+
+                    <div style="display:flex; flex-direction:column; gap:20px;">
+                        <!-- SHOT & ASSET DESIGNER -->
+                        <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:8px; border:1px solid #333;">
+                            <div style="font-weight:bold; color:var(--accent); margin-bottom:12px; font-size:0.95rem;">
+                                📐 Shot Designer & Asset Designer (Canvas de Nodos)
+                            </div>
+                            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #444; color:#aaa; text-align:left;">
+                                        <th style="padding:6px 10px; width:230px;">Atajo / Acción</th>
+                                        <th style="padding:6px 10px;">Descripción y Comportamiento</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ffca28; font-weight:bold;">Ctrl + Z</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>Deshacer (Undo):</b> Revierte la última acción (mover, agregar, borrar, modificar)</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ffca28; font-weight:bold;">Ctrl + Y</kbd> / <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ffca28; font-weight:bold;">Ctrl + Shift + Z</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>Rehacer (Redo):</b> Restaura la última acción deshecha</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + D</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Duplicar nodo(s) seleccionado(s) manteniendo conexiones relativas</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + C</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Copiar nodo(s) seleccionado(s) al portapapeles del diseñador</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + V</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Pegar nodo(s) copiados con desplazamiento automático en el canvas</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#81c784; font-weight:bold;">Doble Clic</kbd> o <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#81c784; font-weight:bold;">Enter</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Renombrar nodo directamente en el canvas (inline, sin ventanas)</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#f06292; font-weight:bold;">Supr</kbd> / <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#f06292; font-weight:bold;">Backspace</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Borrar nodo(s) seleccionado(s) del preset</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ffb74d; font-weight:bold;">Shift + Clic</kbd> / <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ffb74d; font-weight:bold;">Ctrl + Clic</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Selección múltiple o deselección individual de nodos</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">Arrastrar Nodo</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Mueve todos los nodos seleccionados en bloque manteniendo distancias</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">Rueda del Ratón</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Zoom In / Zoom Out fluido en el canvas</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">Espacio + Arrastrar</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Desplazamiento / Panning por el canvas</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">Escape</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Cancelar edición de nombre inline / deseleccionar nodos</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- EXPLORER & GLOBAL -->
+                        <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:8px; border:1px solid #333;">
+                            <div style="font-weight:bold; color:#4fc3f7; margin-bottom:12px; font-size:0.95rem;">
+                                🗂️ Explorer, Navegación & IA Ingest
+                            </div>
+                            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #444; color:#aaa; text-align:left;">
+                                        <th style="padding:6px 10px; width:230px;">Atajo</th>
+                                        <th style="padding:6px 10px;">Módulo / Descripción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + C</kbd> / <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + V</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>Explorer:</b> Copiar y pegar archivos o carpetas seleccionadas</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#4fc3f7; font-weight:bold;">Ctrl + V</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>IA Ingest:</b> Pegar imagen capturada desde el portapapeles de Windows</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">F5</kbd> / <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#bbb;">Ctrl + R</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;">Recargar vista y estado de la aplicación</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
             case 'sincronizacion':
                 const engine = settings.copyEngine || 'auto';
                 return `

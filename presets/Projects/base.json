@@ -10,8 +10,8 @@
     "onlineWork": "G:/Unidades compartidas/[proyecto]",
     "onlineMedia": "G:/Unidades compartidas/[proyecto]_media"
   },
-  "defaultShotPresetId": "pipeline_test",
-  "defaultAssetPresetId": "",
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
   "iaPresets": {
     "defaultImageEngine": "NB2P",
     "defaultVideoEngine": "SD2",

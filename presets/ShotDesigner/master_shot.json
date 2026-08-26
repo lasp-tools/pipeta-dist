@@ -1,6 +1,6 @@
 {
-  "id": "pipeline_test",
-  "name": "Pipeline_Test",
+  "id": "master_shot",
+  "name": "Master_Shot",
   "nodes": [
     {
       "id": "node_work_unit",
@@ -822,5 +822,5 @@
       "toPort": "in-render"
     }
   ],
-  "_fileName": "pipeline_test.json"
+  "_fileName": "master_shot.json"
 }

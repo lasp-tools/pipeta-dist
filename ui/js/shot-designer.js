@@ -30,19 +30,102 @@ const ShotDesigner = {
     boxStart: { x: 0, y: 0 },
     boxCurrent: { x: 0, y: 0 },
 
+    // History (Undo / Redo) State
+    history: [],
+    historyIndex: -1,
+    isApplyingHistory: false,
+
+    initHistory: () => {
+        ShotDesigner.history = [];
+        ShotDesigner.historyIndex = -1;
+        ShotDesigner.pushHistory();
+    },
+
+    pushHistory: () => {
+        if (ShotDesigner.isApplyingHistory || !ShotDesigner.currentAsset) return;
+        const snapshot = JSON.stringify(ShotDesigner.currentAsset);
+        if (ShotDesigner.historyIndex >= 0 && ShotDesigner.history[ShotDesigner.historyIndex] === snapshot) {
+            return;
+        }
+
+        if (ShotDesigner.historyIndex < ShotDesigner.history.length - 1) {
+            ShotDesigner.history = ShotDesigner.history.slice(0, ShotDesigner.historyIndex + 1);
+        }
+
+        ShotDesigner.history.push(snapshot);
+        if (ShotDesigner.history.length > 60) {
+            ShotDesigner.history.shift();
+        }
+        ShotDesigner.historyIndex = ShotDesigner.history.length - 1;
+    },
+
+    undo: () => {
+        if (!ShotDesigner.currentAsset || ShotDesigner.historyIndex <= 0) {
+            console.log("[ShotDesigner] No hay más pasos para deshacer.");
+            return;
+        }
+        ShotDesigner.isApplyingHistory = true;
+        ShotDesigner.historyIndex--;
+        const restored = JSON.parse(ShotDesigner.history[ShotDesigner.historyIndex]);
+
+        const idx = ShotDesigner.assets.findIndex(a => a.id === restored.id);
+        if (idx !== -1) {
+            ShotDesigner.assets[idx] = restored;
+        }
+        ShotDesigner.currentAsset = restored;
+
+        ShotDesigner.selectedNodeIds = [];
+        ShotDesigner.selectedNodeId = null;
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.saveAsset();
+        ShotDesigner.isApplyingHistory = false;
+        console.log(`[ShotDesigner] Undo aplicado (${ShotDesigner.historyIndex + 1}/${ShotDesigner.history.length})`);
+    },
+
+    redo: () => {
+        if (!ShotDesigner.currentAsset || ShotDesigner.historyIndex >= ShotDesigner.history.length - 1) {
+            console.log("[ShotDesigner] No hay más pasos para rehacer.");
+            return;
+        }
+        ShotDesigner.isApplyingHistory = true;
+        ShotDesigner.historyIndex++;
+        const restored = JSON.parse(ShotDesigner.history[ShotDesigner.historyIndex]);
+
+        const idx = ShotDesigner.assets.findIndex(a => a.id === restored.id);
+        if (idx !== -1) {
+            ShotDesigner.assets[idx] = restored;
+        }
+        ShotDesigner.currentAsset = restored;
+
+        ShotDesigner.selectedNodeIds = [];
+        ShotDesigner.selectedNodeId = null;
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.saveAsset();
+        ShotDesigner.isApplyingHistory = false;
+        console.log(`[ShotDesigner] Redo aplicado (${ShotDesigner.historyIndex + 1}/${ShotDesigner.history.length})`);
+    },
+
     init: async () => {
-        console.log("Initializing Asset Designer... Version: 2026-02-08-v2");
+        console.log("Initializing Shot Designer... Version: 2026-02-08-v2");
         await ShotDesigner.loadPresets();
 
         // If no assets, create default
         if (ShotDesigner.assets.length === 0) {
-            ShotDesigner.newAsset("Default Asset");
+            await ShotDesigner.newAsset("Master_Shot");
         } else {
-            ShotDesigner.currentAsset = ShotDesigner.assets[0];
+            const master = ShotDesigner.assets.find(a => a.id === 'master_shot' || a.name?.toLowerCase() === 'master_shot');
+            ShotDesigner.currentAsset = master || ShotDesigner.assets[0];
         }
         // Ensure connections array exists for the current asset
         if (ShotDesigner.currentAsset && !ShotDesigner.currentAsset.connections) ShotDesigner.currentAsset.connections = [];
 
+        ShotDesigner.initHistory();
 
         ShotDesigner.renderUI();
         ShotDesigner.renderCanvas();
@@ -89,6 +172,9 @@ const ShotDesigner = {
         ShotDesigner.isRenaming = false;
         ShotDesigner.renamingNodeId = null;
         ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.saveAsset();
     },
 
     cancelRenaming: () => {
@@ -255,6 +341,8 @@ const ShotDesigner = {
         if (asset) {
             ShotDesigner.currentAsset = asset;
             ShotDesigner.selectedNodeId = null;
+            ShotDesigner.selectedNodeIds = [];
+            ShotDesigner.initHistory();
             ShotDesigner.renderCanvas();
             ShotDesigner.renderUI();
             ShotDesigner.updateSidebar();
@@ -268,39 +356,75 @@ const ShotDesigner = {
         }
 
         const oldName = ShotDesigner.currentAsset.name;
+        const oldId = ShotDesigner.currentAsset.id || oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const newName = prompt("Nuevo nombre para el Asset:", oldName);
 
         if (!newName || newName === oldName) return;
 
+        const newId = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const oldFileName = ShotDesigner.currentAsset._fileName || (oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const newFileName = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
 
         const oldPath = ShotDesigner.presetsPath + "\\" + oldFileName;
         const newPath = ShotDesigner.presetsPath + "\\" + newFileName;
 
-        console.log(`[Rename] ${oldFileName} -> ${newFileName}`);
+        console.log(`[Rename] ${oldFileName} (${oldId}) -> ${newFileName} (${newId})`);
 
         try {
-            let renamed = false;
-            try {
-                const result = await API.fs.rename(oldPath, newPath);
-                if (result && result.success) renamed = true;
-            } catch (rErr) {
-                console.warn("[Rename] Native rename note:", rErr);
+            // Actualizar objeto en memoria
+            ShotDesigner.currentAsset.name = newName;
+            ShotDesigner.currentAsset.id = newId;
+            ShotDesigner.currentAsset._fileName = newFileName;
+
+            // Eliminar archivo viejo si cambió de nombre
+            if (oldPath !== newPath) {
+                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
             }
 
-            ShotDesigner.currentAsset.name = newName;
-            ShotDesigner.currentAsset._fileName = newFileName;
+            // Guardar con el nuevo nombre y nuevo ID
             await ShotDesigner.saveAsset();
 
-            if (!renamed && oldPath !== newPath) {
-                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
+            // Auto-configurar proyectos y configuraciones que apuntaban al nombre/id viejo
+            if (typeof settings !== 'undefined') {
+                if (settings.projects && Array.isArray(settings.projects)) {
+                    for (const proj of settings.projects) {
+                        const oldIdMatch = (proj.defaultShotPresetId === oldId || 
+                                            proj.defaultShotPresetId === oldName || 
+                                            proj.defaultShotPresetId === oldFileName.replace('.json', ''));
+                        if (oldIdMatch) {
+                            proj.defaultShotPresetId = newId;
+                            const projFile = (proj.id === 'proj_base' || proj.isBase) ? 'base.json' : `${proj.name || proj.id}.json`;
+                            try {
+                                await API.fs.writeFile(settings.projectsPath + "\\" + projFile, JSON.stringify(proj, null, 2));
+                            } catch (pErr) {
+                                console.warn("[Rename] Auto-save project note:", pErr);
+                            }
+                        }
+                    }
+                }
+
+                if (settings.validationPresetShot === oldId || 
+                    settings.validationPresetShot === oldName || 
+                    settings.validationPresetShot === oldFileName.replace('.json', '')) {
+                    settings.validationPresetShot = newId;
+                    settings.saveConfig();
+                }
+
+                await settings.loadPresets();
+                if (settings.isVisible) {
+                    settings.render();
+                }
+            }
+
+            // Invalidar caché en Shot Navigator
+            if (typeof ShotNavigator !== 'undefined' && ShotNavigator.invalidatePresetCache) {
+                ShotNavigator.invalidatePresetCache();
             }
 
             ShotDesigner.renderUI();
             ShotDesigner.renderCanvas();
             ShotDesigner.updateSidebar();
-            console.log("[Rename] OK");
+            console.log("[Rename] OK & auto-propagado a proyectos");
         } catch (e) {
             console.error("[Rename] Exception:", e);
             alert("Error: " + e.message);
@@ -573,6 +697,12 @@ const ShotDesigner = {
                 renderDot.setAttribute('data-type', 'in-render');
                 el.appendChild(renderDot);
             }
+
+            el.ondblclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ShotDesigner.startRenaming(node.id);
+            };
 
             nodesLayer.appendChild(el);
         });
@@ -936,6 +1066,8 @@ const ShotDesigner = {
         if (ShotDesigner.isDraggingNode) {
             ShotDesigner.isDraggingNode = false;
             ShotDesigner.dragNode = null;
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
         }
 
         if (ShotDesigner.isConnecting) {
@@ -983,25 +1115,48 @@ const ShotDesigner = {
         const delta = -Math.sign(e.deltaY) * zoomSpeed;
         const newZoom = Math.min(Math.max(0.2, ShotDesigner.zoomLevel + delta), 3.0);
 
-        // Zoom towards mouse pointer logic (simplified: zoom center of screen for now, or just scale)
-        // For proper zoom-to-mouse:
-        // 1. Get mouse pos in world space
-        // 2. Scale
-        // 3. Adjust pan so mouse pos in world space remains under mouse pointer
-
         // Simple zoom for now (Top-Left origin, shifts view)
         ShotDesigner.zoomLevel = newZoom;
         ShotDesigner.renderCanvas();
     },
 
     onKeyDown: (e) => {
-        // Only if Asset Designer is active view
+        // Only if Shot Designer is active view
         if (document.getElementById('view-shot-designer').style.display === 'none') return;
 
         // If typing in input, don't trigger global shortcuts
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-        if (e.key === 'Delete') {
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === 'z' || e.key === 'Z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    ShotDesigner.redo();
+                } else {
+                    ShotDesigner.undo();
+                }
+                return;
+            } else if (e.key === 'y' || e.key === 'Y') {
+                e.preventDefault();
+                ShotDesigner.redo();
+                return;
+            } else if (e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                ShotDesigner.duplicateSelected();
+                return;
+            } else if (e.key === 'c' || e.key === 'C') {
+                e.preventDefault();
+                ShotDesigner.copySelected();
+                return;
+            } else if (e.key === 'v' || e.key === 'V') {
+                e.preventDefault();
+                ShotDesigner.pasteSelected();
+                return;
+            }
+            return;
+        }
+
+        if (e.key === 'Delete' || e.key === 'Backspace') {
             ShotDesigner.deleteSelected();
         }
 
@@ -1059,6 +1214,8 @@ const ShotDesigner = {
             }
 
             ShotDesigner.renderCanvas(); // Force redraw
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
         }
     },
 
@@ -1109,6 +1266,8 @@ const ShotDesigner = {
             }
         }
         ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
     },
 
     mirrorSync: (sourceId, targetId) => {
@@ -1663,6 +1822,8 @@ const ShotDesigner = {
         }
 
         ShotDesigner.renderCanvas(); // Reflect changes
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
 
         // Mirror Propagation
         if (ShotDesigner.currentAsset.connections) {
@@ -1709,50 +1870,187 @@ const ShotDesigner = {
 
         ShotDesigner.currentAsset.nodes.push(newNode);
         ShotDesigner.selectNode(newNode.id);
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
     },
 
     deleteSelected: () => {
-        if (ShotDesigner.selectedNodeId) {
-            // Remove node matches id
-            ShotDesigner.currentAsset.nodes = ShotDesigner.currentAsset.nodes.filter(n => n.id !== ShotDesigner.selectedNodeId);
-            // Also remove children? Or Orphan them? For now Orphan.
-            ShotDesigner.currentAsset.nodes.forEach(n => {
-                if (n.parent === ShotDesigner.selectedNodeId) n.parent = null;
-                if (n.parentOnline === ShotDesigner.selectedNodeId) n.parentOnline = null;
-            });
+        if (!ShotDesigner.currentAsset) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length > 0)
+            ? ShotDesigner.selectedNodeIds
+            : (ShotDesigner.selectedNodeId ? [ShotDesigner.selectedNodeId] : []);
 
-            // Remove supplemental connections (Mirror, Render)
-            if (ShotDesigner.currentAsset.connections) {
-                ShotDesigner.currentAsset.connections = ShotDesigner.currentAsset.connections.filter(c =>
-                    c.from !== ShotDesigner.selectedNodeId && c.to !== ShotDesigner.selectedNodeId
-                );
+        if (targetIds.length === 0) return;
+
+        const idsToDelete = new Set(targetIds);
+        ShotDesigner.currentAsset.nodes = ShotDesigner.currentAsset.nodes.filter(n => !idsToDelete.has(n.id));
+        ShotDesigner.currentAsset.nodes.forEach(n => {
+            if (idsToDelete.has(n.parent)) n.parent = null;
+            if (idsToDelete.has(n.parentOnline)) n.parentOnline = null;
+            if (n.itemConfig && Array.isArray(n.itemConfig.additionalParents)) {
+                n.itemConfig.additionalParents = n.itemConfig.additionalParents.filter(p => !idsToDelete.has(p));
             }
+            if (n.processConfig && Array.isArray(n.processConfig.additionalParents)) {
+                n.processConfig.additionalParents = n.processConfig.additionalParents.filter(p => !idsToDelete.has(p));
+            }
+        });
 
-            ShotDesigner.selectNode(null);
+        // Remove supplemental connections (Mirror, Render)
+        if (ShotDesigner.currentAsset.connections) {
+            ShotDesigner.currentAsset.connections = ShotDesigner.currentAsset.connections.filter(c =>
+                !idsToDelete.has(c.from) && !idsToDelete.has(c.to)
+            );
         }
+
+        ShotDesigner.selectNode(null);
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+    },
+
+    nodeClipboard: null,
+
+    copySelected: () => {
+        if (!ShotDesigner.currentAsset) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length > 0)
+            ? ShotDesigner.selectedNodeIds
+            : (ShotDesigner.selectedNodeId ? [ShotDesigner.selectedNodeId] : []);
+        if (targetIds.length === 0) return;
+
+        const copied = [];
+        targetIds.forEach(id => {
+            const node = ShotDesigner.currentAsset.nodes.find(n => n.id === id);
+            if (node) copied.push(JSON.parse(JSON.stringify(node)));
+        });
+        ShotDesigner.nodeClipboard = copied;
+        console.log(`[ShotDesigner] Copiados ${copied.length} nodos al portapapeles.`);
+    },
+
+    pasteSelected: () => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.nodeClipboard || ShotDesigner.nodeClipboard.length === 0) return;
+
+        const newIds = [];
+        const idMap = {};
+
+        ShotDesigner.nodeClipboard.forEach(orig => {
+            const newNode = JSON.parse(JSON.stringify(orig));
+            newNode.id = 'n_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            newNode.x += 30;
+            newNode.y += 30;
+            idMap[orig.id] = newNode.id;
+            ShotDesigner.currentAsset.nodes.push(newNode);
+            newIds.push(newNode.id);
+        });
+
+        // Remap internal parent connections among pasted nodes
+        newIds.forEach(nid => {
+            const n = ShotDesigner.currentAsset.nodes.find(node => node.id === nid);
+            if (n && n.parent && idMap[n.parent]) {
+                n.parent = idMap[n.parent];
+            }
+            if (n && n.parentOnline && idMap[n.parentOnline]) {
+                n.parentOnline = idMap[n.parentOnline];
+            }
+            if (n && n.processConfig && n.processConfig.parentItem && idMap[n.processConfig.parentItem]) {
+                n.processConfig.parentItem = idMap[n.processConfig.parentItem];
+            }
+            if (n && n.renderConfig && n.renderConfig.sourceScene && idMap[n.renderConfig.sourceScene]) {
+                n.renderConfig.sourceScene = idMap[n.renderConfig.sourceScene];
+            }
+        });
+
+        // Duplicate supplemental connections among copied nodes
+        if (Array.isArray(ShotDesigner.currentAsset.connections)) {
+            const copiedOldIds = new Set(ShotDesigner.nodeClipboard.map(n => n.id));
+            ShotDesigner.currentAsset.connections.forEach(conn => {
+                if (copiedOldIds.has(conn.from) && copiedOldIds.has(conn.to)) {
+                    ShotDesigner.currentAsset.connections.push({
+                        id: 'c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        from: idMap[conn.from],
+                        to: idMap[conn.to],
+                        fromPort: conn.fromPort,
+                        toPort: conn.toPort,
+                        isMirror: conn.isMirror
+                    });
+                }
+            });
+        }
+
+        ShotDesigner.selectedNodeIds = newIds;
+        ShotDesigner.selectedNodeId = newIds.length === 1 ? newIds[0] : null;
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
     },
 
     duplicateSelected: () => {
-        if (!ShotDesigner.selectedNodeId) return;
+        if (!ShotDesigner.currentAsset) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length > 0)
+            ? ShotDesigner.selectedNodeIds
+            : (ShotDesigner.selectedNodeId ? [ShotDesigner.selectedNodeId] : []);
 
-        const original = ShotDesigner.currentAsset.nodes.find(n => n.id === ShotDesigner.selectedNodeId);
-        if (!original) return;
+        if (targetIds.length === 0) return;
 
-        // Deep Copy
-        const newNode = JSON.parse(JSON.stringify(original));
+        const newIds = [];
+        const idMap = {};
 
-        // Update Unique Props
-        newNode.id = 'n_' + Date.now();
-        newNode.x += 20;
-        newNode.y += 20;
+        targetIds.forEach(id => {
+            const original = ShotDesigner.currentAsset.nodes.find(n => n.id === id);
+            if (!original) return;
+            const newNode = JSON.parse(JSON.stringify(original));
+            newNode.id = 'n_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            newNode.x += 25;
+            newNode.y += 25;
+            idMap[id] = newNode.id;
+            ShotDesigner.currentAsset.nodes.push(newNode);
+            newIds.push(newNode.id);
+        });
 
-        // Append _copy if desired, or keep same name (user said "incluye todas las configuraciones")
-        // Usually duplicate implies exact copy of content, but unique ID.
-        // Let's keep name identical as per "todas las configuraciones".
-        // newNode.name += '_copy'; 
+        // Remap internal parent connections among duplicated nodes
+        newIds.forEach(nid => {
+            const n = ShotDesigner.currentAsset.nodes.find(node => node.id === nid);
+            if (n && n.parent && idMap[n.parent]) {
+                n.parent = idMap[n.parent];
+            }
+            if (n && n.parentOnline && idMap[n.parentOnline]) {
+                n.parentOnline = idMap[n.parentOnline];
+            }
+            if (n && n.processConfig && n.processConfig.parentItem && idMap[n.processConfig.parentItem]) {
+                n.processConfig.parentItem = idMap[n.processConfig.parentItem];
+            }
+            if (n && n.renderConfig && n.renderConfig.sourceScene && idMap[n.renderConfig.sourceScene]) {
+                n.renderConfig.sourceScene = idMap[n.renderConfig.sourceScene];
+            }
+        });
 
-        ShotDesigner.currentAsset.nodes.push(newNode);
-        ShotDesigner.selectNode(newNode.id);
+        // Duplicate supplemental connections
+        if (Array.isArray(ShotDesigner.currentAsset.connections)) {
+            const dupOldIds = new Set(targetIds);
+            ShotDesigner.currentAsset.connections.forEach(conn => {
+                if (dupOldIds.has(conn.from) && dupOldIds.has(conn.to)) {
+                    ShotDesigner.currentAsset.connections.push({
+                        id: 'c_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                        from: idMap[conn.from],
+                        to: idMap[conn.to],
+                        fromPort: conn.fromPort,
+                        toPort: conn.toPort,
+                        isMirror: conn.isMirror
+                    });
+                }
+            });
+        }
+
+        ShotDesigner.selectedNodeIds = newIds;
+        ShotDesigner.selectedNodeId = newIds.length === 1 ? newIds[0] : null;
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
     },
 
     updatePreview: () => {
@@ -2002,20 +2300,32 @@ const ShotDesigner = {
                 }
 
                 // Standard Resolution (No Name Constructor)
-                if (n.isEpisode) return n.exampleValue || "[Episodio]";
-                if (n.isScene) return n.exampleValue || "[Escena]";
-                if (n.isShot) return n.exampleValue || "[Shot]";
-
-                if (n.isVariable) return n.exampleValue || `[${n.variableName || 'VAR'}]`;
+                if (n.isEpisode) {
+                    if (!n.isVariable) return n.name;
+                    return n.exampleValue || `[${n.variableName || 'Episodio'}]`;
+                }
+                if (n.isScene) {
+                    if (!n.isVariable) return n.name;
+                    return n.exampleValue || `[${n.variableName || 'Escena'}]`;
+                }
+                if (n.isShot) {
+                    if (!n.isVariable) return n.name;
+                    return n.exampleValue || `[${n.variableName || 'Shot'}]`;
+                }
 
                 if (n.isCategory) {
-                    const disp = n.categoryConfig?.cosmeticName || n.name;
+                    if (!n.isVariable) return n.name;
+                    const disp = n.categoryConfig?.cosmeticName || n.variableName || n.name;
                     return n.exampleValue || `[${disp}]`;
                 }
 
-                if (n.itemConfig?.cosmeticName && n.isVariable) {
-                    return n.exampleValue || `[${n.itemConfig.cosmeticName}]`;
+                if (n.isItem) {
+                    if (!n.isVariable) return n.name;
+                    const disp = n.itemConfig?.cosmeticName || n.variableName || n.name;
+                    return n.exampleValue || `[${disp}]`;
                 }
+
+                if (n.isVariable) return n.exampleValue || `[${n.variableName || 'VAR'}]`;
 
                 if (n.type === 'unit') return n.name + ':';
                 return n.name;
@@ -2101,6 +2411,7 @@ const ShotDesigner = {
         });
 
         ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
         ShotDesigner.saveAsset();
     },
 
@@ -2118,6 +2429,7 @@ const ShotDesigner = {
         });
 
         ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
         ShotDesigner.saveAsset();
     },
 

@@ -181,31 +181,61 @@ const AssetCreator = {
 
     loadPresets: async () => {
         AssetCreator.presets = [];
+        const seenIds = new Set();
+        const seenFiles = new Set();
+        const searchDirs = [
+            AssetCreator.presetsPath,
+            "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\AssetDesigner"
+        ];
+
         try {
             if (window.API && API.fs && API.fs.getFiles) {
-                const files = await API.fs.getFiles(AssetCreator.presetsPath);
-                for (const f of files) {
-                    if (f.endsWith('.json')) {
-                        const content = await API.fs.readFile(AssetCreator.presetsPath + "\\" + f);
-                        if (content) {
-                            try {
-                                const preset = JSON.parse(content);
-                                AssetCreator.presets.push(preset);
-                            } catch (e) {
-                                console.error("Error parsing preset:", f, e);
+                for (const dir of searchDirs) {
+                    try {
+                        const files = await API.fs.getFiles(dir);
+                        if (files && Array.isArray(files)) {
+                            for (const f of files) {
+                                if (f.endsWith('.json')) {
+                                    const fileBase = f.toLowerCase();
+                                    if (seenFiles.has(fileBase)) continue;
+                                    const content = await API.fs.readFile(dir + "\\" + f);
+                                    if (content) {
+                                        try {
+                                            const preset = JSON.parse(content);
+                                            const pId = preset.id || f.replace('.json', '');
+                                            if (seenIds.has(pId)) continue;
+                                            preset.id = pId;
+                                            AssetCreator.presets.push(preset);
+                                            seenIds.add(pId);
+                                            seenFiles.add(fileBase);
+                                        } catch (e) {
+                                            console.error("Error parsing preset:", f, e);
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
+                    } catch (dirErr) {}
                 }
             }
 
-            // Restore last selected preset
+            // Restore last selected preset or project default / master_asset
             const lastId = localStorage.getItem('pipeta_ac_last_preset');
+            const targetDefaultId = (typeof settings !== 'undefined' && settings.activeProject && settings.activeProject.defaultAssetPresetId)
+                ? settings.activeProject.defaultAssetPresetId
+                : 'master_asset';
+
             if (lastId) {
                 const found = AssetCreator.presets.findIndex(p => p.id === lastId);
                 if (found !== -1) {
                     AssetCreator.selectPreset(found);
+                } else if (AssetCreator.presets.length > 0) {
+                    const defIdx = AssetCreator.presets.findIndex(p => p.id === targetDefaultId || p.name?.toLowerCase() === targetDefaultId.toLowerCase());
+                    AssetCreator.selectPreset(defIdx !== -1 ? defIdx : 0);
                 }
+            } else if (AssetCreator.presets.length > 0) {
+                const defIdx = AssetCreator.presets.findIndex(p => p.id === targetDefaultId || p.name?.toLowerCase() === targetDefaultId.toLowerCase());
+                AssetCreator.selectPreset(defIdx !== -1 ? defIdx : 0);
             }
 
         } catch (e) {

@@ -174,6 +174,50 @@ const headerToolsTemplates = {
             </div>
         </div>
     `,
+    'view-asset-designer': () => `
+        <div class="toolbar-section-group" title="Añadir Elementos al Grafo">
+            <span class="toolbar-section-label">Add Nodes</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="AssetDesigner.addNode('unit')" title="Añadir Unidad de Disco">
+                    <img src="icons/hdd.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addNode('folder')" title="Añadir Carpeta">
+                    <img src="icons/new_folder.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addNode('file')" title="Añadir Archivo">
+                    <img src="icons/file.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+        
+        <div class="tool-space-small"></div>
+        
+        <div class="toolbar-section-group" title="Alineación en Canvas">
+            <span class="toolbar-section-label">Alignment</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="AssetDesigner.alignNodesVertical()" title="Alinear en Línea Horizontal (Center Line)">
+                     <img src="icons/align_horizontal.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.alignNodesHorizontal()" title="Alinear en Columna Vertical (Center Column)">
+                     <img src="icons/align_vertical.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+        
+        <div class="tool-space-small"></div>
+        
+        <div class="toolbar-section-group" title="Acciones de Selección">
+            <span class="toolbar-section-label">Actions</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn" onclick="AssetDesigner.duplicateSelected()" title="Duplicar Selección">
+                    <img src="icons/duplicate.svg" class="btn-icon-svg">
+                </button>
+                <button class="tool-btn danger" onclick="AssetDesigner.deleteSelected()" title="Borrar Selección">
+                    <img src="icons/delete.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+    `,
     'view-shot-designer': () => `
         <div class="toolbar-section-group" title="Añadir Elementos al Grafo">
             <span class="toolbar-section-label">Add Nodes</span>
@@ -377,13 +421,25 @@ function switchView(viewId) {
         if (viewId === 'view-shot-navigator') {
             if (typeof ShotNavigator !== 'undefined') ShotNavigator.init();
         }
-        if (viewId === 'view-asset-designer' && typeof AssetDesigner !== 'undefined' && !AssetDesigner.initialized) {
-            AssetDesigner.init();
-            AssetDesigner.initialized = true;
+        if (viewId === 'view-asset-designer' && typeof AssetDesigner !== 'undefined') {
+            if (!AssetDesigner.initialized) {
+                AssetDesigner.init();
+                AssetDesigner.initialized = true;
+            } else {
+                AssetDesigner.renderUI();
+                AssetDesigner.renderCanvas();
+                AssetDesigner.updateSidebar();
+            }
         }
-        if (viewId === 'view-shot-designer' && typeof ShotDesigner !== 'undefined' && !ShotDesigner.initialized) {
-            ShotDesigner.init();
-            ShotDesigner.initialized = true;
+        if (viewId === 'view-shot-designer' && typeof ShotDesigner !== 'undefined') {
+            if (!ShotDesigner.initialized) {
+                ShotDesigner.init();
+                ShotDesigner.initialized = true;
+            } else {
+                ShotDesigner.renderUI();
+                ShotDesigner.renderCanvas();
+                ShotDesigner.updateSidebar();
+            }
         }
         if (viewId === 'view-ia-ingest') {
             if (typeof initIaIngest === 'function') initIaIngest();

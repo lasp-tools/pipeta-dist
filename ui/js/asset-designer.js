@@ -5,6 +5,7 @@ const AssetDesigner = {
     assets: [],
     currentAsset: null,
     selectedNodeId: null,
+    selectedNodeIds: [], // Multi-selection support
     presetsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\AssetDesigner",
 
     // Interaction State
@@ -26,16 +27,100 @@ const AssetDesigner = {
     connectionStartNode: null,
     connectionCurrentPos: { x: 0, y: 0 },
 
+    // History (Undo / Redo) State
+    history: [],
+    historyIndex: -1,
+    isApplyingHistory: false,
+
+    initHistory: () => {
+        AssetDesigner.history = [];
+        AssetDesigner.historyIndex = -1;
+        AssetDesigner.pushHistory();
+    },
+
+    pushHistory: () => {
+        if (AssetDesigner.isApplyingHistory || !AssetDesigner.currentAsset) return;
+        const snapshot = JSON.stringify(AssetDesigner.currentAsset);
+        if (AssetDesigner.historyIndex >= 0 && AssetDesigner.history[AssetDesigner.historyIndex] === snapshot) {
+            return;
+        }
+
+        if (AssetDesigner.historyIndex < AssetDesigner.history.length - 1) {
+            AssetDesigner.history = AssetDesigner.history.slice(0, AssetDesigner.historyIndex + 1);
+        }
+
+        AssetDesigner.history.push(snapshot);
+        if (AssetDesigner.history.length > 60) {
+            AssetDesigner.history.shift();
+        }
+        AssetDesigner.historyIndex = AssetDesigner.history.length - 1;
+    },
+
+    undo: () => {
+        if (!AssetDesigner.currentAsset || AssetDesigner.historyIndex <= 0) {
+            console.log("[AssetDesigner] No hay más pasos para deshacer.");
+            return;
+        }
+        AssetDesigner.isApplyingHistory = true;
+        AssetDesigner.historyIndex--;
+        const restored = JSON.parse(AssetDesigner.history[AssetDesigner.historyIndex]);
+
+        const idx = AssetDesigner.assets.findIndex(a => a.id === restored.id);
+        if (idx !== -1) {
+            AssetDesigner.assets[idx] = restored;
+        }
+        AssetDesigner.currentAsset = restored;
+
+        AssetDesigner.selectedNodeIds = [];
+        AssetDesigner.selectedNodeId = null;
+
+        AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.saveAsset();
+        AssetDesigner.isApplyingHistory = false;
+        console.log(`[AssetDesigner] Undo aplicado (${AssetDesigner.historyIndex + 1}/${AssetDesigner.history.length})`);
+    },
+
+    redo: () => {
+        if (!AssetDesigner.currentAsset || AssetDesigner.historyIndex >= AssetDesigner.history.length - 1) {
+            console.log("[AssetDesigner] No hay más pasos para rehacer.");
+            return;
+        }
+        AssetDesigner.isApplyingHistory = true;
+        AssetDesigner.historyIndex++;
+        const restored = JSON.parse(AssetDesigner.history[AssetDesigner.historyIndex]);
+
+        const idx = AssetDesigner.assets.findIndex(a => a.id === restored.id);
+        if (idx !== -1) {
+            AssetDesigner.assets[idx] = restored;
+        }
+        AssetDesigner.currentAsset = restored;
+
+        AssetDesigner.selectedNodeIds = [];
+        AssetDesigner.selectedNodeId = null;
+
+        AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.saveAsset();
+        AssetDesigner.isApplyingHistory = false;
+        console.log(`[AssetDesigner] Redo aplicado (${AssetDesigner.historyIndex + 1}/${AssetDesigner.history.length})`);
+    },
+
     init: async () => {
         console.log("Initializing Asset Designer... Version: 2026-02-08-v2");
         await AssetDesigner.loadPresets();
 
         // If no assets, create default
         if (AssetDesigner.assets.length === 0) {
-            AssetDesigner.newAsset("Default Asset");
+            await AssetDesigner.newAsset("Master_Asset");
         } else {
-            AssetDesigner.currentAsset = AssetDesigner.assets[0];
+            const master = AssetDesigner.assets.find(a => a.id === 'master_asset' || a.name?.toLowerCase() === 'master_asset');
+            AssetDesigner.currentAsset = master || AssetDesigner.assets[0];
         }
+
+        AssetDesigner.initHistory();
 
         AssetDesigner.renderUI();
         AssetDesigner.renderCanvas();
@@ -82,6 +167,9 @@ const AssetDesigner = {
         AssetDesigner.isRenaming = false;
         AssetDesigner.renamingNodeId = null;
         AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.saveAsset();
     },
 
     cancelRenaming: () => {
@@ -113,41 +201,54 @@ const AssetDesigner = {
     // --- PERSISTENCE ---
     loadPresets: async () => {
         AssetDesigner.assets = [];
-        try {
-            // Ensure folder exists
-            if (window.API && API.fs && API.fs.mkdir) {
-                await API.fs.mkdir(AssetDesigner.presetsPath);
-            }
+        const seenIds = new Set();
+        const seenFiles = new Set();
+        const searchDirs = [
+            AssetDesigner.presetsPath,
+            "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\AssetDesigner"
+        ];
 
-            const files = await API.fs.getFiles(AssetDesigner.presetsPath);
-            console.log("Found preset files:", files);
-
-            for (const f of files) {
-                if (f.endsWith('.json')) {
-                    const content = await API.fs.readFile(AssetDesigner.presetsPath + "\\" + f);
-                    if (content) {
-                        try {
-                            const asset = JSON.parse(content);
-                            // IMPORTANTE: Asegurar ID único
-                            if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
-                            asset._fileName = f;
-                            AssetDesigner.assets.push(asset);
-                        } catch (parseErr) {
-                            console.error("Error parsing " + f, parseErr);
+        for (const dir of searchDirs) {
+            try {
+                if (window.API && API.fs && API.fs.mkdir) {
+                    await API.fs.mkdir(dir);
+                }
+                const files = await API.fs.getFiles(dir);
+                if (files && Array.isArray(files)) {
+                    for (const f of files) {
+                        if (f.endsWith('.json')) {
+                            const fileBase = f.toLowerCase();
+                            if (seenFiles.has(fileBase)) continue;
+                            const content = await API.fs.readFile(dir + "\\" + f);
+                            if (content) {
+                                try {
+                                    const asset = JSON.parse(content);
+                                    if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
+                                    if (seenIds.has(asset.id)) continue;
+                                    asset._fileName = f;
+                                    AssetDesigner.assets.push(asset);
+                                    seenIds.add(asset.id);
+                                    seenFiles.add(fileBase);
+                                } catch (parseErr) {
+                                    console.error("Error parsing " + f, parseErr);
+                                }
+                            }
                         }
                     }
                 }
+            } catch (dirErr) {
+                // Ignore missing dir in network/local
             }
-        } catch (e) {
-            console.error("loadPresets error:", e);
         }
 
         if (AssetDesigner.assets.length === 0) {
             console.log("No assets found. Using default.");
+            await AssetDesigner.newAsset("Master_Asset");
         } else {
             console.log("Loaded", AssetDesigner.assets.length, "assets.");
-            // Seleccionar el primero por defecto
-            AssetDesigner.currentAsset = AssetDesigner.assets[0];
+            // Seleccionar Master_Asset por defecto si existe, o el primero
+            const master = AssetDesigner.assets.find(a => a.id === 'master_asset' || a.name?.toLowerCase() === 'master_asset');
+            AssetDesigner.currentAsset = master || AssetDesigner.assets[0];
         }
     },
 
@@ -155,21 +256,23 @@ const AssetDesigner = {
         if (!AssetDesigner.currentAsset) return;
         const fileName = AssetDesigner.currentAsset._fileName || (AssetDesigner.currentAsset.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         AssetDesigner.currentAsset._fileName = fileName;
-        const filePath = AssetDesigner.presetsPath + "\\" + fileName;
         const content = JSON.stringify(AssetDesigner.currentAsset, null, 2);
 
-        try {
-            const result = await API.fs.writeFile(filePath, content);
-            console.log("Save result:", result);
-            if (!result || !result.success) {
-                console.error("Error al guardar:", result?.error || "Unknown");
+        const targetPaths = [
+            AssetDesigner.presetsPath + "\\" + fileName,
+            "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\AssetDesigner\\" + fileName
+        ];
+
+        for (const filePath of targetPaths) {
+            try {
+                await API.fs.writeFile(filePath, content);
+            } catch (e) {
+                // Ignore path failure if offline
             }
-        } catch (e) {
-            console.error("Save error:", e);
         }
     },
 
-    newAsset: (name) => {
+    newAsset: async (name) => {
         const assetName = name || "New Asset";
         const newAsset = {
             id: 'asset_' + Date.now(),
@@ -177,13 +280,15 @@ const AssetDesigner = {
             _fileName: assetName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json",
             nodes: [
                 { id: "root", type: "folder", name: "ROOT", x: 50, y: 50, parent: null }
-            ]
+            ],
+            connections: []
         };
         AssetDesigner.assets.push(newAsset);
         AssetDesigner.currentAsset = newAsset;
         AssetDesigner.renderUI();
         AssetDesigner.renderCanvas();
         AssetDesigner.updateSidebar();
+        await AssetDesigner.saveAsset();
     },
 
     deleteAsset: async () => {
@@ -227,6 +332,8 @@ const AssetDesigner = {
         if (asset) {
             AssetDesigner.currentAsset = asset;
             AssetDesigner.selectedNodeId = null;
+            AssetDesigner.selectedNodeIds = [];
+            AssetDesigner.initHistory();
             AssetDesigner.renderCanvas();
             AssetDesigner.renderUI();
             AssetDesigner.updateSidebar();
@@ -240,39 +347,66 @@ const AssetDesigner = {
         }
 
         const oldName = AssetDesigner.currentAsset.name;
+        const oldId = AssetDesigner.currentAsset.id || oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const newName = prompt("Nuevo nombre para el Asset:", oldName);
 
         if (!newName || newName === oldName) return;
 
+        const newId = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const oldFileName = AssetDesigner.currentAsset._fileName || (oldName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const newFileName = newName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
 
         const oldPath = AssetDesigner.presetsPath + "\\" + oldFileName;
         const newPath = AssetDesigner.presetsPath + "\\" + newFileName;
 
-        console.log(`[Rename] ${oldFileName} -> ${newFileName}`);
+        console.log(`[Rename] ${oldFileName} (${oldId}) -> ${newFileName} (${newId})`);
 
         try {
-            let renamed = false;
-            try {
-                const result = await API.fs.rename(oldPath, newPath);
-                if (result && result.success) renamed = true;
-            } catch (rErr) {
-                console.warn("[Rename] Native rename note:", rErr);
+            AssetDesigner.currentAsset.name = newName;
+            AssetDesigner.currentAsset.id = newId;
+            AssetDesigner.currentAsset._fileName = newFileName;
+
+            if (oldPath !== newPath) {
+                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
             }
 
-            AssetDesigner.currentAsset.name = newName;
-            AssetDesigner.currentAsset._fileName = newFileName;
             await AssetDesigner.saveAsset();
 
-            if (!renamed && oldPath !== newPath) {
-                try { await API.fs.deleteFile(oldPath); } catch (dErr) {}
+            if (typeof settings !== 'undefined') {
+                if (settings.projects && Array.isArray(settings.projects)) {
+                    for (const proj of settings.projects) {
+                        const oldIdMatch = (proj.defaultAssetPresetId === oldId || 
+                                            proj.defaultAssetPresetId === oldName || 
+                                            proj.defaultAssetPresetId === oldFileName.replace('.json', ''));
+                        if (oldIdMatch) {
+                            proj.defaultAssetPresetId = newId;
+                            const projFile = (proj.id === 'proj_base' || proj.isBase) ? 'base.json' : `${proj.name || proj.id}.json`;
+                            try {
+                                await API.fs.writeFile(settings.projectsPath + "\\" + projFile, JSON.stringify(proj, null, 2));
+                            } catch (pErr) {
+                                console.warn("[Rename] Auto-save project note:", pErr);
+                            }
+                        }
+                    }
+                }
+
+                if (settings.validationPresetAsset === oldId || 
+                    settings.validationPresetAsset === oldName || 
+                    settings.validationPresetAsset === oldFileName.replace('.json', '')) {
+                    settings.validationPresetAsset = newId;
+                    settings.saveConfig();
+                }
+
+                await settings.loadPresets();
+                if (settings.isVisible) {
+                    settings.render();
+                }
             }
 
             AssetDesigner.renderUI();
             AssetDesigner.renderCanvas();
             AssetDesigner.updateSidebar();
-            console.log("[Rename] OK");
+            console.log("[Rename] OK & auto-propagado a proyectos");
         } catch (e) {
             console.error("[Rename] Exception:", e);
             alert("Error: " + e.message);
@@ -290,15 +424,6 @@ const AssetDesigner = {
         AssetDesigner.renderUI();
         AssetDesigner.renderCanvas();
         AssetDesigner.saveAsset(); // Save immediately?
-    },
-
-    selectAsset: (id) => {
-        const found = AssetDesigner.assets.find(a => a.id === id);
-        if (found) {
-            AssetDesigner.currentAsset = found;
-            AssetDesigner.renderCanvas();
-            AssetDesigner.updateSidebar();
-        }
     },
 
     // --- RENDERERS ---
@@ -385,8 +510,9 @@ const AssetDesigner = {
 
         // Draw Nodes
         AssetDesigner.currentAsset.nodes.forEach(node => {
+            const isSelected = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.includes(node.id)) || AssetDesigner.selectedNodeId === node.id;
             const el = document.createElement('div');
-            el.className = `ad-node ${node.type} ${AssetDesigner.selectedNodeId === node.id ? 'selected' : ''}`;
+            el.className = `ad-node ${node.type} ${isSelected ? 'selected' : ''}`;
             el.style.left = `${node.x}px`;
             el.style.top = `${node.y}px`;
             el.setAttribute('data-id', node.id);
@@ -434,10 +560,11 @@ const AssetDesigner = {
             // Badges HTML
             let badgesHtml = '<div class="ad-badges">';
             if (node.isSyncPoint) badgesHtml += `<span class="ad-badge" style="background:#009688">SYNC</span>`;
-            if (node.isCategory) badgesHtml += `<span class="ad-badge ad-badge-category">CAT</span>`;
+            if (node.isMainCategory) badgesHtml += `<span class="ad-badge" style="background:#9c27b0">MAIN CAT</span>`;
+            if (node.isCategory) badgesHtml += `<span class="ad-badge ad-badge-category">SUB CAT</span>`;
             if (node.isVariable)
                 badgesHtml += `<span class="ad-badge ad-badge-variable">${node.variableName || 'VAR'}</span>`;
-            else if (node.type !== 'file' && !node.isItem && !node.isProcess)
+            else if (node.type !== 'file' && !node.isItem && !node.isProcess && !node.isMainCategory && !node.isCategory)
                 badgesHtml += `<span class="ad-badge" style="background:#FBC02D; color:#000;">FIXED</span>`;
 
             if (node.isItem) badgesHtml += `<span class="ad-badge ad-badge-item">ITEM</span>`;
@@ -466,10 +593,23 @@ const AssetDesigner = {
                 if (e.target.classList.contains('ad-dot')) return; // handled by dot
                 e.preventDefault();
                 e.stopPropagation();
-                AssetDesigner.selectNode(node.id);
+                const isShift = e.shiftKey || e.ctrlKey;
+                if (isShift) {
+                    AssetDesigner.selectNode(node.id, true);
+                } else {
+                    if (!AssetDesigner.selectedNodeIds || !AssetDesigner.selectedNodeIds.includes(node.id)) {
+                        AssetDesigner.selectNode(node.id, false);
+                    }
+                }
                 if (!e.altKey) {
                     AssetDesigner.startDragNode(e, node);
                 }
+            };
+
+            el.ondblclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                AssetDesigner.startRenaming(node.id);
             };
 
             nodesLayer.appendChild(el);
@@ -560,10 +700,26 @@ const AssetDesigner = {
     },
 
     // --- INTERACTION ---
-    selectNode: (id) => {
-        AssetDesigner.selectedNodeId = id;
+    selectNode: (id, isShift = false) => {
+        if (!id) {
+            AssetDesigner.selectedNodeIds = [];
+        } else if (!isShift) {
+            AssetDesigner.selectedNodeIds = [id];
+        } else {
+            const idx = AssetDesigner.selectedNodeIds.indexOf(id);
+            if (idx === -1) {
+                AssetDesigner.selectedNodeIds.push(id);
+            } else {
+                AssetDesigner.selectedNodeIds.splice(idx, 1);
+            }
+        }
+
+        // Single selection compatibility
+        AssetDesigner.selectedNodeId = AssetDesigner.selectedNodeIds.length === 1 ? AssetDesigner.selectedNodeIds[0] : null;
+
         AssetDesigner.renderCanvas(); // Re-render for selection highlight
         AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
     },
 
     startDragNode: (e, node) => {
@@ -635,8 +791,10 @@ const AssetDesigner = {
             AssetDesigner.panStart = { x: e.clientX, y: e.clientY };
             document.body.style.cursor = 'grabbing';
         } else if (!e.target.closest('.ad-node')) {
-            // Deselect if clicking empty space
-            AssetDesigner.selectNode(null);
+            // Deselect if clicking empty space (unless holding shift)
+            if (!e.shiftKey && !e.ctrlKey) {
+                AssetDesigner.selectNode(null);
+            }
         }
     },
 
@@ -654,8 +812,18 @@ const AssetDesigner = {
         else if (AssetDesigner.isDraggingNode && AssetDesigner.dragNode) {
             const dx = (e.clientX - AssetDesigner.dragLastPos.x) / AssetDesigner.zoomLevel;
             const dy = (e.clientY - AssetDesigner.dragLastPos.y) / AssetDesigner.zoomLevel;
-            AssetDesigner.dragNode.x += dx;
-            AssetDesigner.dragNode.y += dy;
+            if (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length > 0) {
+                AssetDesigner.selectedNodeIds.forEach(id => {
+                    const n = AssetDesigner.currentAsset.nodes.find(node => node.id === id);
+                    if (n) {
+                        n.x += dx;
+                        n.y += dy;
+                    }
+                });
+            } else {
+                AssetDesigner.dragNode.x += dx;
+                AssetDesigner.dragNode.y += dy;
+            }
             AssetDesigner.dragLastPos = { x: e.clientX, y: e.clientY };
             AssetDesigner.renderCanvas();
         }
@@ -690,6 +858,8 @@ const AssetDesigner = {
         if (AssetDesigner.isDraggingNode) {
             AssetDesigner.isDraggingNode = false;
             AssetDesigner.dragNode = null;
+            AssetDesigner.pushHistory();
+            AssetDesigner.saveAsset();
         }
 
         if (AssetDesigner.isConnecting) {
@@ -745,7 +915,36 @@ const AssetDesigner = {
         // If typing in input, don't trigger global shortcuts
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-        if (e.key === 'Delete') {
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === 'z' || e.key === 'Z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    AssetDesigner.redo();
+                } else {
+                    AssetDesigner.undo();
+                }
+                return;
+            } else if (e.key === 'y' || e.key === 'Y') {
+                e.preventDefault();
+                AssetDesigner.redo();
+                return;
+            } else if (e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                AssetDesigner.duplicateSelected();
+                return;
+            } else if (e.key === 'c' || e.key === 'C') {
+                e.preventDefault();
+                AssetDesigner.copySelected();
+                return;
+            } else if (e.key === 'v' || e.key === 'V') {
+                e.preventDefault();
+                AssetDesigner.pasteSelected();
+                return;
+            }
+            return;
+        }
+
+        if (e.key === 'Delete' || e.key === 'Backspace') {
             AssetDesigner.deleteSelected();
         }
 
@@ -803,6 +1002,8 @@ const AssetDesigner = {
             }
 
             AssetDesigner.renderCanvas(); // Force redraw
+            AssetDesigner.pushHistory();
+            AssetDesigner.saveAsset();
         }
     },
 
@@ -963,18 +1164,22 @@ const AssetDesigner = {
 
                     <hr style="border: 0; border-top: 1px solid #444; margin: 5px 0; width:100%;">
 
-                    <!-- CATEGORIA | ITEM | PROCESO -->
-                    <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <div style="display:flex; align-items:center;">
-                            <label class="prop-label" style="margin-right:5px;">Categoria</label>
+                    <!-- ROLES: MAIN CAT | SUB CAT | ITEM | PROCESO -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; background:#1e1e1e; padding:6px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center;" title="Categoría Principal (ej: 2D, 3D)">
+                            <label class="prop-label" style="margin-right:4px; color:#ba68c8; font-size:0.75rem;">Main Cat</label>
+                            <input type="checkbox" ${node.isMainCategory ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'isMainCategory', this.checked); AssetDesigner.updateSidebar();">
+                        </div>
+                        <div style="display:flex; align-items:center;" title="Sub Categoría (ej: chars, props, env)">
+                            <label class="prop-label" style="margin-right:4px; color:#f06292; font-size:0.75rem;">Sub Cat</label>
                             <input type="checkbox" ${node.isCategory ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'isCategory', this.checked); AssetDesigner.updateSidebar();">
                         </div>
-                        <div style="display:flex; align-items:center;">
-                            <label class="prop-label" style="margin-right:5px;">Item</label>
+                        <div style="display:flex; align-items:center;" title="Item / Asset (ej: pepe, auto, arbol)">
+                            <label class="prop-label" style="margin-right:4px; color:#64b5f6; font-size:0.75rem;">Item</label>
                             <input type="checkbox" ${node.isItem ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'isItem', this.checked); AssetDesigner.updateSidebar();">
                         </div>
-                        <div style="display:flex; align-items:center;">
-                            <label class="prop-label" style="margin-right:5px;">Proceso</label>
+                        <div style="display:flex; align-items:center;" title="Proceso de Asset (ej: model, texture, rig, compo)">
+                            <label class="prop-label" style="margin-right:4px; color:#81c784; font-size:0.75rem;">Proceso</label>
                             <input type="checkbox" ${node.isProcess ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'isProcess', this.checked); AssetDesigner.updateSidebar();">
                         </div>
                     </div>
@@ -982,10 +1187,35 @@ const AssetDesigner = {
                     <!-- SPECIFIC CONFIGS -->
                     <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
                         
-                        <!-- CATEGORY CONFIG -->
+                        <!-- MAIN CATEGORY CONFIG -->
+                        ${node.isMainCategory ? `
+                        <div class="panel-section" style="border:1px solid #9c27b0; padding:6px; border-radius:4px; background:rgba(156,39,176,0.05);">
+                            <label class="prop-label" style="color:#ba68c8; font-weight:bold;">Configuración de Main Category</label>
+                            
+                            <div style="display:flex; gap:10px; margin:5px 0;">
+                                <label><input type="radio" name="mainCatType" ${(!node.mainCategoryConfig || !node.mainCategoryConfig.type || node.mainCategoryConfig.type === 'parent') ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'mainCategoryConfig.type', 'parent')"> Parent</label>
+                                <label><input type="radio" name="mainCatType" ${(node.mainCategoryConfig && node.mainCategoryConfig.type === 'custom') ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'mainCategoryConfig.type', 'custom')"> Custom</label>
+                            </div>
+
+                            ${(!node.mainCategoryConfig || !node.mainCategoryConfig.type || node.mainCategoryConfig.type === 'parent') ? `
+                            <div style="display:flex; flex-direction:column;">
+                                <label class="prop-label" style="font-size:0.75em;">Cosmetic Name (Linked)</label>
+                                <div style="font-size:0.7em; color:#888; margin-bottom:2px;">Se aplica a hermanos Main Category</div>
+                                <input class="prop-input" value="${node.mainCategoryConfig?.cosmeticName || ''}" onchange="AssetDesigner.updateNodeProp('${node.id}', 'mainCategoryConfig.cosmeticName', this.value)">
+                            </div>
+                            ` : `
+                            <div style="display:flex; flex-direction:column;">
+                                <label class="prop-label" style="font-size:0.75em;">Custom Name</label>
+                                <input class="prop-input" value="${node.mainCategoryConfig?.customName || ''}" onchange="AssetDesigner.updateNodeProp('${node.id}', 'mainCategoryConfig.customName', this.value)">
+                            </div>
+                            `}
+                        </div>
+                        ` : ''}
+
+                        <!-- SUB CATEGORY CONFIG -->
                         ${node.isCategory ? `
-                        <div class="panel-section" style="border:1px solid #444; padding:5px; border-radius:4px;">
-                            <label class="prop-label" style="color:#cf6bee;">Configuración de Categoría</label>
+                        <div class="panel-section" style="border:1px solid #e91e63; padding:6px; border-radius:4px; background:rgba(233,30,99,0.05);">
+                            <label class="prop-label" style="color:#f06292; font-weight:bold;">Configuración de Sub Categoría</label>
                             
                             <div style="display:flex; gap:10px; margin:5px 0;">
                                 <label><input type="radio" name="catType" ${(!node.categoryConfig || !node.categoryConfig.type || node.categoryConfig.type === 'parent') ? 'checked' : ''} onchange="AssetDesigner.updateNodeProp('${node.id}', 'categoryConfig.type', 'parent')"> Parent</label>
@@ -1009,8 +1239,8 @@ const AssetDesigner = {
 
                         <!-- ITEM CONFIG -->
                         ${node.isItem ? `
-                        <div class="panel-section" style="border:1px solid #444; padding:5px; border-radius:4px;">
-                            <label class="prop-label" style="color:#cf6bee;">Configuración de Item</label>
+                        <div class="panel-section" style="border:1px solid #2196f3; padding:6px; border-radius:4px; background:rgba(33,150,243,0.05);">
+                            <label class="prop-label" style="color:#64b5f6; font-weight:bold;">Configuración de Item</label>
                             
                             <div style="display:flex; justify-content:space-between; align-items:center; margin:5px 0;">
                                 <label class="prop-label">Focus Asset</label>
@@ -1039,8 +1269,8 @@ const AssetDesigner = {
 
                         <!-- PROCESS CONFIG -->
                         ${node.isProcess ? `
-                        <div class="panel-section" style="border:1px solid #444; padding:5px; border-radius:4px;">
-                             <label class="prop-label" style="color:#cf6bee;">Configuración de Proceso</label>
+                        <div class="panel-section" style="border:1px solid #4caf50; padding:6px; border-radius:4px; background:rgba(76,175,80,0.05);">
+                             <label class="prop-label" style="color:#81c784; font-weight:bold;">Configuración de Proceso</label>
                              
                              <div style="display:flex; justify-content:space-between; align-items:center; margin:5px 0;">
                                 <label class="prop-label">Default (On by default)</label>
@@ -1078,31 +1308,34 @@ const AssetDesigner = {
                                     <div style="display:flex; flex-direction:column; gap:5px; margin-top:5px;">
                                         <label class="prop-label" style="font-size:0.75em;">Tags Disponibles</label>
                                         <div style="display:flex; gap:3px; flex-wrap:wrap;">
-                                            <button class="nc-tag-btn item" onclick="AssetDesigner.appendNameTag('${node.id}', '[ASSET]')">[ASSET]</button>
-                                            
-                                            <!-- Dynamic Variables and Standard Tags -->
+                                            <!-- Dynamic and Semantic Tags -->
                                             ${(() => {
-                        const vars = new Set();
-                        const btns = [];
-                        // Exclude ASSET if already added manually above, but here we keep it separate.
-                        // Actually the user said "ASSET" appeared twice. One was hardcoded, one from variable?
-                        // If 'ASSET' is a variable in the nodes, it will appear again.
-                        // Let's filter out 'ASSET' from dynamic variables if it exists there to avoid dupe with the hardcoded one.
+                                                const vars = new Set();
+                                                const btns = [];
 
-                        AssetDesigner.currentAsset.nodes.forEach(n => {
-                            if (n.isVariable) {
-                                const vName = n.variableName || 'VAR';
-                                if (vName === 'ASSET') return; // Skip if variable is named ASSET to avoid confusion with the root token
-                                if (!vars.has(vName)) {
-                                    vars.add(vName);
-                                    const isItem = n.isItem;
-                                    const colorClass = isItem ? 'item' : 'var';
-                                    btns.push(`<button class="nc-tag-btn ${colorClass}" onclick="AssetDesigner.appendNameTag('${node.id}', '[${vName}]')">[${vName}]</button>`);
-                                }
-                            }
-                        });
-                        return btns.join('');
-                    })()}
+                                                AssetDesigner.currentAsset.nodes.forEach(n => {
+                                                    if (n.isVariable || n.isMainCategory || n.isCategory || n.isItem || n.isProjectNode || n.isClientNode) {
+                                                        const vName = AssetDesigner.getEffectiveVarName(n);
+                                                        if (!vars.has(vName)) {
+                                                            vars.add(vName);
+                                                            let colorClass = 'var';
+                                                            if (n.isMainCategory) colorClass = 'scene';
+                                                            else if (n.isCategory) colorClass = 'scene';
+                                                            else if (n.isItem) colorClass = 'item';
+                                                            else if (n.isProjectNode || n.isClientNode) colorClass = 'sys';
+                                                            btns.push(`<button class="nc-tag-btn ${colorClass}" onclick="AssetDesigner.appendNameTag('${node.id}', '[${vName}]')">[${vName}]</button>`);
+                                                        }
+                                                    }
+                                                    if (n.hasNickVar) {
+                                                        const nVar = n.nickVarName || 'NICK';
+                                                        if (!vars.has(nVar)) {
+                                                            vars.add(nVar);
+                                                            btns.push(`<button class="nc-tag-btn sys" onclick="AssetDesigner.appendNameTag('${node.id}', '[${nVar}]')">[${nVar}]</button>`);
+                                                        }
+                                                    }
+                                                });
+                                                return btns.join('');
+                                            })()}
 
                                             <button class="nc-tag-btn proc" onclick="AssetDesigner.appendNameTag('${node.id}', '[PROCESO]')">[PROC]</button>
                                             <button class="nc-tag-btn sys" onclick="AssetDesigner.appendNameTag('${node.id}', '[version]')">[VER]</button>
@@ -1154,6 +1387,19 @@ const AssetDesigner = {
         }
     },
 
+    getEffectiveVarName: (node) => {
+        if (!node) return 'VAR';
+        if (node.variableName && node.variableName.trim() !== '' && node.variableName !== 'VAR') {
+            return node.variableName.trim();
+        }
+        if (node.isMainCategory) return 'MAIN_CAT';
+        if (node.isCategory) return 'CAT';
+        if (node.isItem) return 'ASSET';
+        if (node.isProjectNode) return 'PROYECTO';
+        if (node.isClientNode) return 'CLIENTE';
+        return node.variableName || 'VAR';
+    },
+
     updateNodeProp: (id, prop, value) => {
         const node = AssetDesigner.currentAsset.nodes.find(n => n.id === id);
         if (!node) return;
@@ -1169,31 +1415,61 @@ const AssetDesigner = {
             obj[parts[parts.length - 1]] = value;
 
             // SPECIAL LOGIC: Linked Category Cosmetic Name
-            const isParentType = (nodeObj) => {
-                return !nodeObj.categoryConfig || !nodeObj.categoryConfig.type || nodeObj.categoryConfig.type === 'parent';
+            const isParentType = (nodeObj, cfgKey) => {
+                return !nodeObj[cfgKey] || !nodeObj[cfgKey].type || nodeObj[cfgKey].type === 'parent';
             };
 
-            if (prop === 'categoryConfig.cosmeticName' && isParentType(node)) {
+            if (prop === 'categoryConfig.cosmeticName' && isParentType(node, 'categoryConfig')) {
                 // Find siblings that are also categories and stick to parent type
-                const siblings = AssetDesigner.currentAsset.nodes.filter(n => n.parent === node.parent && n.isCategory && n.id !== node.id && isParentType(n));
+                const siblings = AssetDesigner.currentAsset.nodes.filter(n => n.parent === node.parent && n.isCategory && n.id !== node.id && isParentType(n, 'categoryConfig'));
                 siblings.forEach(sibling => {
                     if (!sibling.categoryConfig) sibling.categoryConfig = {};
                     sibling.categoryConfig.cosmeticName = value;
-                    // Ensure type is explicit for consistency
                     if (!sibling.categoryConfig.type) sibling.categoryConfig.type = 'parent';
+                });
+            }
+
+            if (prop === 'mainCategoryConfig.cosmeticName' && isParentType(node, 'mainCategoryConfig')) {
+                const siblings = AssetDesigner.currentAsset.nodes.filter(n => n.parent === node.parent && n.isMainCategory && n.id !== node.id && isParentType(n, 'mainCategoryConfig'));
+                siblings.forEach(sibling => {
+                    if (!sibling.mainCategoryConfig) sibling.mainCategoryConfig = {};
+                    sibling.mainCategoryConfig.cosmeticName = value;
+                    if (!sibling.mainCategoryConfig.type) sibling.mainCategoryConfig.type = 'parent';
                 });
             }
 
         } else {
             node[prop] = value;
 
-            // SPECIAL LOGIC: Items default to Variable
-            if (prop === 'isItem' && value === true) {
-                node.isVariable = true;
+            // Auto-fill semantic variable defaults if empty or generic VAR
+            if (value === true) {
+                if (prop === 'isMainCategory') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'MAIN_CAT';
+                    if (!node.exampleValue) node.exampleValue = '3D';
+                } else if (prop === 'isCategory') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'CAT';
+                    if (!node.exampleValue) node.exampleValue = 'chars';
+                } else if (prop === 'isItem') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'ASSET';
+                    if (!node.exampleValue) node.exampleValue = 'pepe';
+                } else if (prop === 'isProcess') {
+                    if (!node.exampleValue) node.exampleValue = node.name;
+                } else if (prop === 'isProjectNode') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'PROYECTO';
+                } else if (prop === 'isClientNode') {
+                    node.isVariable = true;
+                    if (!node.variableName || node.variableName === 'VAR') node.variableName = 'CLIENTE';
+                }
             }
         }
 
         AssetDesigner.renderCanvas(); // Reflect changes
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
     },
 
     // --- HEADER TOOLS ACTIONS ---
@@ -1229,41 +1505,173 @@ const AssetDesigner = {
 
         AssetDesigner.currentAsset.nodes.push(newNode);
         AssetDesigner.selectNode(newNode.id);
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
     },
 
     deleteSelected: () => {
-        if (AssetDesigner.selectedNodeId) {
-            // Remove node matches id
-            AssetDesigner.currentAsset.nodes = AssetDesigner.currentAsset.nodes.filter(n => n.id !== AssetDesigner.selectedNodeId);
-            // Also remove children? Or Orphan them? For now Orphan.
-            AssetDesigner.currentAsset.nodes.forEach(n => {
-                if (n.parent === AssetDesigner.selectedNodeId) n.parent = null;
-            });
-            AssetDesigner.selectNode(null);
-        }
+        if (!AssetDesigner.currentAsset) return;
+        const targetIds = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length > 0)
+            ? AssetDesigner.selectedNodeIds
+            : (AssetDesigner.selectedNodeId ? [AssetDesigner.selectedNodeId] : []);
+
+        if (targetIds.length === 0) return;
+
+        const idsToDelete = new Set(targetIds);
+        AssetDesigner.currentAsset.nodes = AssetDesigner.currentAsset.nodes.filter(n => !idsToDelete.has(n.id));
+        AssetDesigner.currentAsset.nodes.forEach(n => {
+            if (idsToDelete.has(n.parent)) n.parent = null;
+            if (idsToDelete.has(n.parentOnline)) n.parentOnline = null;
+            if (n.itemConfig && Array.isArray(n.itemConfig.additionalParents)) {
+                n.itemConfig.additionalParents = n.itemConfig.additionalParents.filter(p => !idsToDelete.has(p));
+            }
+            if (n.processConfig && Array.isArray(n.processConfig.additionalParents)) {
+                n.processConfig.additionalParents = n.processConfig.additionalParents.filter(p => !idsToDelete.has(p));
+            }
+        });
+        AssetDesigner.selectNode(null);
+        AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
+    },
+
+    nodeClipboard: null,
+
+    copySelected: () => {
+        if (!AssetDesigner.currentAsset) return;
+        const targetIds = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length > 0)
+            ? AssetDesigner.selectedNodeIds
+            : (AssetDesigner.selectedNodeId ? [AssetDesigner.selectedNodeId] : []);
+        if (targetIds.length === 0) return;
+
+        const copied = [];
+        targetIds.forEach(id => {
+            const node = AssetDesigner.currentAsset.nodes.find(n => n.id === id);
+            if (node) copied.push(JSON.parse(JSON.stringify(node)));
+        });
+        AssetDesigner.nodeClipboard = copied;
+        console.log(`[AssetDesigner] Copiados ${copied.length} nodos al portapapeles.`);
+    },
+
+    pasteSelected: () => {
+        if (!AssetDesigner.currentAsset || !AssetDesigner.nodeClipboard || AssetDesigner.nodeClipboard.length === 0) return;
+
+        const newIds = [];
+        const idMap = {};
+
+        AssetDesigner.nodeClipboard.forEach(orig => {
+            const newNode = JSON.parse(JSON.stringify(orig));
+            newNode.id = 'n_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            newNode.x += 30;
+            newNode.y += 30;
+            idMap[orig.id] = newNode.id;
+            AssetDesigner.currentAsset.nodes.push(newNode);
+            newIds.push(newNode.id);
+        });
+
+        // Remap internal parent connections among pasted nodes
+        newIds.forEach(nid => {
+            const n = AssetDesigner.currentAsset.nodes.find(node => node.id === nid);
+            if (n && n.parent && idMap[n.parent]) {
+                n.parent = idMap[n.parent];
+            }
+            if (n && n.parentOnline && idMap[n.parentOnline]) {
+                n.parentOnline = idMap[n.parentOnline];
+            }
+        });
+
+        AssetDesigner.selectedNodeIds = newIds;
+        AssetDesigner.selectedNodeId = newIds.length === 1 ? newIds[0] : null;
+        AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
     },
 
     duplicateSelected: () => {
-        if (!AssetDesigner.selectedNodeId) return;
+        if (!AssetDesigner.currentAsset) return;
+        const targetIds = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length > 0)
+            ? AssetDesigner.selectedNodeIds
+            : (AssetDesigner.selectedNodeId ? [AssetDesigner.selectedNodeId] : []);
 
-        const original = AssetDesigner.currentAsset.nodes.find(n => n.id === AssetDesigner.selectedNodeId);
-        if (!original) return;
+        if (targetIds.length === 0) return;
 
-        // Deep Copy
-        const newNode = JSON.parse(JSON.stringify(original));
+        const newIds = [];
+        const idMap = {};
 
-        // Update Unique Props
-        newNode.id = 'n_' + Date.now();
-        newNode.x += 20;
-        newNode.y += 20;
+        targetIds.forEach(id => {
+            const original = AssetDesigner.currentAsset.nodes.find(n => n.id === id);
+            if (!original) return;
+            const newNode = JSON.parse(JSON.stringify(original));
+            newNode.id = 'n_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            newNode.x += 25;
+            newNode.y += 25;
+            idMap[id] = newNode.id;
+            AssetDesigner.currentAsset.nodes.push(newNode);
+            newIds.push(newNode.id);
+        });
 
-        // Append _copy if desired, or keep same name (user said "incluye todas las configuraciones")
-        // Usually duplicate implies exact copy of content, but unique ID.
-        // Let's keep name identical as per "todas las configuraciones".
-        // newNode.name += '_copy'; 
+        // Remap internal parent connections among duplicated nodes
+        newIds.forEach(nid => {
+            const n = AssetDesigner.currentAsset.nodes.find(node => node.id === nid);
+            if (n && n.parent && idMap[n.parent]) {
+                n.parent = idMap[n.parent];
+            }
+            if (n && n.parentOnline && idMap[n.parentOnline]) {
+                n.parentOnline = idMap[n.parentOnline];
+            }
+        });
 
-        AssetDesigner.currentAsset.nodes.push(newNode);
-        AssetDesigner.selectNode(newNode.id);
+        AssetDesigner.selectedNodeIds = newIds;
+        AssetDesigner.selectedNodeId = newIds.length === 1 ? newIds[0] : null;
+        AssetDesigner.renderCanvas();
+        AssetDesigner.updateSidebar();
+        AssetDesigner.updatePreview();
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
+    },
+
+    alignNodesHorizontal: () => {
+        if (!AssetDesigner.currentAsset) return;
+        const targetIds = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length >= 2)
+            ? AssetDesigner.selectedNodeIds
+            : [];
+        if (targetIds.length < 2) return;
+
+        const nodes = AssetDesigner.currentAsset.nodes.filter(n => targetIds.includes(n.id));
+        if (nodes.length < 2) return;
+
+        const targetY = nodes[0].y;
+        nodes.forEach(n => {
+            n.y = targetY;
+        });
+
+        AssetDesigner.renderCanvas();
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
+    },
+
+    alignNodesVertical: () => {
+        if (!AssetDesigner.currentAsset) return;
+        const targetIds = (AssetDesigner.selectedNodeIds && AssetDesigner.selectedNodeIds.length >= 2)
+            ? AssetDesigner.selectedNodeIds
+            : [];
+        if (targetIds.length < 2) return;
+
+        const nodes = AssetDesigner.currentAsset.nodes.filter(n => targetIds.includes(n.id));
+        if (nodes.length < 2) return;
+
+        const targetX = nodes[0].x;
+        nodes.forEach(n => {
+            n.x = targetX;
+        });
+
+        AssetDesigner.renderCanvas();
+        AssetDesigner.pushHistory();
+        AssetDesigner.saveAsset();
     },
 
     updatePreview: () => {
@@ -1298,7 +1706,7 @@ const AssetDesigner = {
                     if (varMatches) {
                         varMatches.forEach(tag => {
                             const varName = tag.replace('[', '').replace(']', '');
-                            // Skip system tags (removed ASSET from here)
+                            // Skip system tags
                             if (['VAR', 'PROC', 'PROCESO', 'VER', 'version', 'ext'].includes(varName)) return;
 
                             // Find value in ancestor chain
@@ -1308,8 +1716,22 @@ const AssetDesigner = {
 
                             // Check self first, then parents
                             while (tempCurr && safetyCheck < 100) {
-                                if (tempCurr.isVariable && (tempCurr.variableName === varName)) {
-                                    foundValue = tempCurr.exampleValue || tempCurr.variableName;
+                                const effVar = AssetDesigner.getEffectiveVarName(tempCurr);
+                                const isMatch = (
+                                    (tempCurr.isVariable && effVar.toLowerCase() === varName.toLowerCase()) ||
+                                    (tempCurr.isMainCategory && (varName.toLowerCase() === 'main_cat' || varName.toLowerCase() === 'maincat' || varName.toLowerCase() === 'main_category' || varName.toLowerCase() === 'maincategory')) ||
+                                    (tempCurr.isCategory && (varName.toLowerCase() === 'cat' || varName.toLowerCase() === 'sub_cat' || varName.toLowerCase() === 'subcat' || varName.toLowerCase() === 'categoria' || varName.toLowerCase() === 'subcategory')) ||
+                                    (tempCurr.isItem && (varName.toLowerCase() === 'asset' || varName.toLowerCase() === 'item' || varName.toLowerCase() === 'assetname' || varName.toLowerCase() === 'asset_name')) ||
+                                    (tempCurr.isProjectNode && (varName.toLowerCase() === 'proyecto' || varName.toLowerCase() === 'project')) ||
+                                    (tempCurr.isClientNode && (varName.toLowerCase() === 'cliente' || varName.toLowerCase() === 'client'))
+                                );
+
+                                if (isMatch) {
+                                    foundValue = (tempCurr.isVariable ? tempCurr.exampleValue : null) || tempCurr.name;
+                                    break;
+                                }
+                                if (tempCurr.hasNickVar && ((tempCurr.nickVarName || 'NICK').toLowerCase() === varName.toLowerCase())) {
+                                    foundValue = tempCurr.nickExample || tempCurr.nickVarName || 'NICK';
                                     break;
                                 }
                                 // Move up
@@ -1375,16 +1797,25 @@ const AssetDesigner = {
                 }
 
                 // Standard Resolution
-                if (n.isVariable) return n.exampleValue || `[${n.variableName || 'VAR'}]`;
-
-                if (n.isCategory) {
-                    const disp = n.categoryConfig?.cosmeticName || n.name;
+                if (n.isMainCategory) {
+                    if (!n.isVariable) return n.name;
+                    const disp = n.mainCategoryConfig?.cosmeticName || n.variableName || n.name;
                     return n.exampleValue || `[${disp}]`;
                 }
 
-                if (n.itemConfig?.cosmeticName && n.isVariable) {
-                    return n.exampleValue || `[${n.itemConfig.cosmeticName}]`;
+                if (n.isCategory) {
+                    if (!n.isVariable) return n.name;
+                    const disp = n.categoryConfig?.cosmeticName || n.variableName || n.name;
+                    return n.exampleValue || `[${disp}]`;
                 }
+
+                if (n.isItem) {
+                    if (!n.isVariable) return n.name;
+                    const disp = n.itemConfig?.cosmeticName || n.variableName || n.name;
+                    return n.exampleValue || `[${disp}]`;
+                }
+
+                if (n.isVariable) return n.exampleValue || `[${n.variableName || 'VAR'}]`;
 
                 if (n.type === 'unit') return n.name + ':';
                 return n.name;

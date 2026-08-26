@@ -47,7 +47,7 @@ const Tutorials = {
                     </tr>
                     <tr style="border-bottom:1px solid #333;">
                         <td style="padding:8px; color:#00BCD4; font-weight:bold;">🎯 Preset Shot por Defecto</td>
-                        <td style="padding:8px; color:#999;">Define la plantilla de <b>Shot Designer</b> que usará este proyecto (ej: <code>pipeline_test</code>). Los módulos de Shot Creator e IA Ingest reconocerán la estructura automáticamente.</td>
+                        <td style="padding:8px; color:#999;">Define la plantilla de <b>Shot Designer</b> que usará este proyecto (ej: <code>master_shot</code>). Los módulos de Shot Creator e IA Ingest reconocerán la estructura automáticamente.</td>
                     </tr>
                     <tr style="border-bottom:1px solid #333;">
                         <td style="padding:8px; color:#00BCD4; font-weight:bold;">🎨 Preset Asset por Defecto</td>
@@ -173,7 +173,7 @@ const Tutorials = {
                 <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
                     <ol style="padding-left:20px; color:#ccc; line-height:2;">
                         <li><b style="color:#fff;">Proyecto:</b> Selecciona el proyecto activo en el desplegable superior (toma por defecto el de la barra de Pipeta).</li>
-                        <li><b style="color:#fff;">Preset:</b> Selecciona la plantilla deseada (ej: <code>pipeline_test</code>).</li>
+                        <li><b style="color:#fff;">Preset:</b> Selecciona la plantilla deseada (ej: <code>master_shot</code>).</li>
                         <li><b style="color:#fff;">Nivel de Creación:</b>
                             <ul style="margin:5px 0;">
                                 <li><b>Episodio:</b> Crea la carpeta de episodio y sus subcarpetas base.</li>

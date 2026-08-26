@@ -1229,7 +1229,7 @@ app.post('/api/mirror/repairBatch', async (req, res) => {
                         await fs.writeJson(ctrlFile, {
                             node_id: item.shot,
                             type: 'shot',
-                            preset_id: 'pipeline_test',
+                            preset_id: 'master_shot',
                             created_by: 'MirrorAuditor',
                             created_at: new Date().toISOString()
                         }, { spaces: 2 });
@@ -1251,7 +1251,7 @@ app.post('/api/mirror/repairBatch', async (req, res) => {
                         await fs.writeJson(ctrlFile, {
                             node_id: item.shot,
                             type: 'shot',
-                            preset_id: 'pipeline_test',
+                            preset_id: 'master_shot',
                             created_by: 'MirrorAuditor',
                             created_at: new Date().toISOString()
                         }, { spaces: 2 });

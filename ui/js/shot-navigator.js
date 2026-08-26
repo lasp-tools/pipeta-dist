@@ -124,35 +124,48 @@ const ShotNavigator = {
         ShotNavigator.availableProcesses = [];
         if (!ShotNavigator.project) return;
         
-        const presetId = ShotNavigator.project.defaultShotPresetId || 'pipeline_test';
+        const presetId = ShotNavigator.project.defaultShotPresetId || 'master_shot';
         try {
             let presetObj = null;
-            // 1. Intentar cargar por nombre directo
-            try {
-                const presetPath = `C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner\\${presetId}.json`;
-                const content = await API.fs.readFile(presetPath);
-                if (content) presetObj = JSON.parse(content);
-            } catch(e) {}
+            const searchDirs = [
+                'C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner',
+                'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\ShotDesigner'
+            ];
 
-            // 2. Si no cargó, buscar en la carpeta ShotDesigner
-            if (!presetObj) {
+            // 1. Intentar cargar por nombre directo
+            for (const dir of searchDirs) {
                 try {
-                    const files = await API.fs.fetchDir('C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner');
-                    if (files && files.items) {
-                        for (const item of files.items) {
-                            if (item.name.endsWith('.json')) {
-                                const c = await API.fs.readFile(pathJoin('C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner', item.name));
-                                if (c) {
-                                    const parsed = JSON.parse(c);
-                                    if (parsed.id === presetId || item.name.replace('.json', '') === presetId) {
-                                        presetObj = parsed;
-                                        break;
+                    const presetPath = `${dir}\\${presetId}.json`;
+                    const content = await API.fs.readFile(presetPath);
+                    if (content) {
+                        presetObj = JSON.parse(content);
+                        break;
+                    }
+                } catch(e) {}
+            }
+
+            // 2. Si no cargó, buscar en las carpetas ShotDesigner
+            if (!presetObj) {
+                for (const dir of searchDirs) {
+                    try {
+                        const files = await API.fs.fetchDir(dir);
+                        if (files && files.items) {
+                            for (const item of files.items) {
+                                if (item.name.endsWith('.json')) {
+                                    const c = await API.fs.readFile(pathJoin(dir, item.name));
+                                    if (c) {
+                                        const parsed = JSON.parse(c);
+                                        if (parsed.id === presetId || item.name.replace('.json', '') === presetId) {
+                                            presetObj = parsed;
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                } catch(e) {}
+                    } catch(e) {}
+                    if (presetObj) break;
+                }
             }
 
             if (presetObj && presetObj.nodes && Array.isArray(presetObj.nodes)) {
