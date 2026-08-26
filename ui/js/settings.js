@@ -187,18 +187,18 @@ const settings = {
         const btnSettings = document.getElementById('btn-settings-toggle');
         const topButtons = document.querySelectorAll('.sidebar-top .mode-btn');
 
-        if (settings.isVisible && settings.isMaximized) {
+        if (settings.isVisible) {
             if (btnSettings) btnSettings.classList.add('active');
             topButtons.forEach(b => b.classList.remove('active'));
         } else {
             if (btnSettings) btnSettings.classList.remove('active');
             // Restore active class on the current view's mode button
-            const currentTabName = Object.keys(tabs).find(k => {
+            const currentTabName = (typeof tabs !== 'undefined') ? Object.keys(tabs).find(k => {
                 const el = document.getElementById(tabs[k]);
                 return el && el.style.display !== 'none';
-            });
+            }) : null;
             topButtons.forEach(btn => {
-                if (btn.getAttribute('title') === currentTabName) {
+                if (currentTabName && btn.getAttribute('title') === currentTabName) {
                     btn.classList.add('active');
                 } else {
                     btn.classList.remove('active');
@@ -213,6 +213,14 @@ const settings = {
         settings.render();
         settings.container.style.display = 'flex';
         settings.updateSidebarButtonsState();
+    },
+
+    toggleOpen: async () => {
+        if (settings.isVisible) {
+            settings.close();
+        } else {
+            await settings.open();
+        }
     },
 
     close() {
@@ -1540,8 +1548,12 @@ const settings = {
                                 <span>📁 <b>Proyectos Configurados</b> (<code>presets/Projects/*.json</code>)</span>
                             </label>
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptIaTokens" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>🤖 <b>Tokens Personalizados de IA</b> (<code>presets/ia_custom_tokens.json</code>)</span>
+                                <input type="checkbox" id="expOptUsers" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>👥 <b>Usuarios y Roles</b> (<code>presets/users_config.json</code>)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
+                                <input type="checkbox" id="expOptStatuses" checked style="accent-color:var(--accent); width:16px; height:16px;">
+                                <span>🏷️ <b>Estados de Procesos y Planos</b> (<code>presets/status_config.json</code>)</span>
                             </label>
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
                                 <input type="checkbox" id="expOptConfig" checked style="accent-color:var(--accent); width:16px; height:16px;">
@@ -1586,7 +1598,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable Completa (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v0.9.63'}
+                                Pipeta ${window.APP_VERSION || 'v0.9.72'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -1625,7 +1637,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión & Actualizaciones</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v0.9.70'}
+                            ${window.APP_VERSION || 'v0.9.72'}
                         </span>
                     </h3>
 
@@ -1641,15 +1653,15 @@ const settings = {
                         <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; margin-bottom:15px; font-size:0.8rem;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                 <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
-                                <span style="color:#4fc3f7; font-family:monospace;">\\\\LASP-VM\\Pipeta</span>
+                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">\\\\LASP-VM\\Pipeta</span>
                             </div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                <span style="color:#888;">Instalación Local (Destino):</span>
+                                <span style="color:#888;">Instalación Local:</span>
                                 <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.70'}</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.72'}</span>
                             </div>
                         </div>
 
@@ -1662,7 +1674,7 @@ const settings = {
                                 </button>
                                 <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
                                     style="background:var(--accent); color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
-                                    <span>🚀 ACTUALIZAR PIPETA (\\LASP-VM\Pipeta)</span>
+                                    <span>🚀 ACTUALIZAR PIPETA (\\\\LASP-VM\\Pipeta)</span>
                                 </button>
                             </div>
                         </div>
@@ -1676,12 +1688,21 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.71 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.72 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
-                                    <li><b>User Settings Completo:</b> Modal interactivo unificado para crear y editar usuarios sin prompts intrusivos, campos separados (Nombre de usuario, Nombre, Apellido, Usuario LASP, Rol, Email, Notas).</li>
-                                    <li><b>Gestión de Roles & Permisos:</b> Creación y edición granular de roles con control de acceso individual para cada módulo (Explorer, Shot Navigator, Asset Designer, Shot Designer, IA Ingest) y herramientas de toolbar (Naming Validator, Sync Analyzer, File Auditor, Asset Creator, Shot Creator). Desactivación visual e interactiva si el rol carece de permiso.</li>
-                                    <li><b>Diseñador de Estados Canónico:</b> Estado por defecto <code>Ninguno</code> (⚪), seguido de <code>Asignado</code>, <code>En Proceso</code>, <code>Review</code>, <code>Aprobado</code>, <code>Cancelado</code> y <code>En Pausa / Hold</code>.</li>
-                                    <li><b>Sync Analyzer:</b> Eliminado el re-análisis automático innecesario al finalizar una transferencia.</li>
+                                    <li><b>Exportación Completa de Presets & Configs:</b> Se integró el respaldo y publicación de <code>users_config.json</code> (Usuarios & Roles) y <code>status_config.json</code> (Diseñador de Estados) en la herramienta de exportación.</li>
+                                    <li><b>Visualización Exhaustiva de Permisos:</b> Las tarjetas de rol en User Settings muestran directamente el desglose completo de las 5 categorías y 21 permisos sin necesidad de abrir el editor.</li>
+                                    <li><b>Autocompletado LASP & UI Limpia:</b> Autocompletado dinámico <code>lasp-[inicial][apellido]</code> en tiempo real y placeholders actualizados.</li>
+                                    <li><b>Filtrado de Procesos Canónicos en Shot Navigator:</b> Eliminadas carpetas fantasma intermedias (2D, 3D) y alineación estricta con el Work Tree del Shot Designer.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v0.9.71</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>User Settings Completo:</b> Modal interactivo unificado para crear y editar usuarios.</li>
+                                    <li><b>Gestión de Roles & Permisos:</b> Control de acceso granular por rol y bloqueo visual en UI.</li>
+                                    <li><b>Diseñador de Estados Canónico:</b> Estado por defecto <code>Ninguno</code>.</li>
                                 </ul>
                             </div>
 
@@ -1970,6 +1991,8 @@ const settings = {
         const doShot = document.getElementById('expOptShotDesigner')?.checked;
         const doAsset = document.getElementById('expOptAssetDesigner')?.checked;
         const doProj = document.getElementById('expOptProjects')?.checked;
+        const doUsers = document.getElementById('expOptUsers')?.checked;
+        const doStatuses = document.getElementById('expOptStatuses')?.checked;
         const doIa = document.getElementById('expOptIaTokens')?.checked;
         const doConfig = document.getElementById('expOptConfig')?.checked;
 
@@ -2019,6 +2042,8 @@ const settings = {
             if (doShot) await copyDirectory('ShotDesigner');
             if (doAsset) await copyDirectory('AssetDesigner');
             if (doProj) await copyDirectory('Projects');
+            if (doUsers) await copySingleFile('users_config.json');
+            if (doStatuses) await copySingleFile('status_config.json');
             if (doIa) await copySingleFile('ia_custom_tokens.json');
             if (doConfig) {
                 await copySingleFile('config.json');
@@ -2079,7 +2104,7 @@ const settings = {
 
         const overlay = document.createElement('div');
         overlay.id = 'pipeta-settings-modal-overlay';
-        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:10000; display:flex; align-items:center; justify-content:center;';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(5,7,11,0.85); z-index:10000; display:flex; align-items:center; justify-content:center; transform:translateZ(0); will-change:opacity;';
 
         const rolesOptions = (uData.roles || []).map(r => `
             <option value="${r.id}" ${user?.role === r.id ? 'selected' : ''}>${r.name} (${r.id})</option>
@@ -2252,7 +2277,7 @@ const settings = {
 
         const overlay = document.createElement('div');
         overlay.id = 'pipeta-settings-modal-overlay';
-        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:10000; display:flex; align-items:center; justify-content:center;';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(5,7,11,0.85); z-index:10000; display:flex; align-items:center; justify-content:center; transform:translateZ(0); will-change:opacity;';
 
         const permCheckbox = (key, label, icon) => `
             <label style="display:flex; align-items:center; gap:8px; background:#181d26; border:1px solid #28303d; border-radius:4px; padding:6px 10px; cursor:pointer; font-size:0.78rem;">
@@ -2502,6 +2527,42 @@ const settings = {
         }
     },
 
+    showSaveToast: () => {
+        const existing = document.getElementById('settings-save-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'settings-save-toast';
+        toast.style.cssText = 'position:absolute; bottom:65px; right:20px; background:#1b5e20; border:1px solid #4caf50; color:#fff; padding:10px 18px; border-radius:6px; font-size:0.85rem; display:flex; align-items:center; gap:12px; box-shadow:0 6px 20px rgba(0,0,0,0.6); z-index:9999; animation:fadeIn 0.2s ease;';
+        
+        let secondsLeft = 3;
+        toast.innerHTML = `
+            <span style="font-size:1.1rem;">✅</span>
+            <div>
+                <div style="font-weight:bold;">Configuraciones guardadas correctamente</div>
+                <div id="settings-toast-timer" style="font-size:0.75rem; color:#a5d6a7;">Este cartel se cerrará en ${secondsLeft}s</div>
+            </div>
+            <button onclick="document.getElementById('settings-save-toast')?.remove()" 
+                    style="background:transparent; border:none; color:#fff; font-size:1.2rem; cursor:pointer; padding:0 4px; line-height:1; margin-left:8px;" 
+                    title="Cerrar aviso">&times;</button>
+        `;
+
+        if (settings.container) settings.container.appendChild(toast);
+
+        const timerInterval = setInterval(() => {
+            secondsLeft--;
+            const timerEl = document.getElementById('settings-toast-timer');
+            if (timerEl) {
+                timerEl.innerText = `Este cartel se cerrará en ${secondsLeft}s`;
+            }
+            if (secondsLeft <= 0) {
+                clearInterval(timerInterval);
+                const t = document.getElementById('settings-save-toast');
+                if (t) t.remove();
+            }
+        }, 1000);
+    },
+
     saveAll: async () => {
         // Save currently active project to disk
         if (settings.currentProject) {
@@ -2510,7 +2571,7 @@ const settings = {
         await settings.saveConfig();
         settings.updateHeaderProjectSelector();
 
-        alert("Configuraciones guardadas localmente.");
-        settings.close();
+        // Mostrar cartel de éxito con 3s de autocierre o cierre manual sin cerrar la ventana
+        settings.showSaveToast();
     }
 };

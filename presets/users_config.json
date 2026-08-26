@@ -1,5 +1,4 @@
 {
-  "adminPassword": "Pipetadmin.321",
   "roles": [
     {
       "id": "admin",
@@ -33,7 +32,7 @@
     },
     {
       "id": "user",
-      "name": "Artista / Operador",
+      "name": "Artista",
       "description": "Operador estándar de trabajo",
       "color": "#00bcd4",
       "isSystem": true,
@@ -46,7 +45,7 @@
         "access_tool_naming_validator": true,
         "access_tool_sync_analyze": true,
         "access_tool_file_auditor": true,
-        "access_tool_asset_creator": false,
+        "access_tool_asset_creator": true,
         "access_tool_shot_creator": false,
         "assignAllShots": false,
         "workflow_edit_statuses": true,
@@ -63,7 +62,7 @@
     },
     {
       "id": "lead",
-      "name": "Lead / Supervisor",
+      "name": "Cordinadora",
       "description": "Supervisión de planos y diseño de pipeline",
       "color": "#9c27b0",
       "permissions": {
@@ -115,7 +114,21 @@
       "notes": "Usuario estándar por defecto",
       "avatarColor": "#00bcd4",
       "isSystem": true
+    },
+    {
+      "id": "u_Mati_pastorino_5943",
+      "username": "Mati pastorino",
+      "firstName": "Matias",
+      "lastName": "Pastorino",
+      "laspUser": "lasp-mpastorino",
+      "role": "user",
+      "email": "",
+      "avatarColor": "#ff9800",
+      "notes": "",
+      "isSystem": false
     }
   ],
-  "activeUser": "admin"
+  "activeUser": "admin",
+  "hasAdminPassword": true,
+  "adminPassword": "Pipetadmin.321"
 }

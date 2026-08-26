@@ -487,7 +487,12 @@ const ShotCreator = {
         ShotCreator.mediaFolderNodes = [];
 
         if (shotNode) {
-            ShotCreator.processNodes = preset.nodes.filter(n => n.parent === shotNode.id && n.type !== 'file');
+            const hasExplicit = preset.nodes.some(n => n.isProcess === true);
+            if (hasExplicit) {
+                ShotCreator.processNodes = preset.nodes.filter(n => n.isProcess === true && n.type !== 'file');
+            } else {
+                ShotCreator.processNodes = preset.nodes.filter(n => n.parent === shotNode.id && n.type !== 'file' && n.isProcess !== false && !n.isExternalTcl);
+            }
 
             // Find if ShotNode has a Mirror connection
             const mirrorConn = preset.connections?.find(c => (c.from === shotNode.id || c.to === shotNode.id) && (c.fromPort === 'mirror' || c.toPort === 'mirror'));
@@ -510,6 +515,39 @@ const ShotCreator = {
 
         // Also re-resolve context
         ShotCreator.resolveContext();
+    },
+
+    // Process Selection Persistence & Master Toggle
+    getSavedSelectedProcesses: (presetId) => {
+        if (!presetId) return null;
+        try {
+            const raw = localStorage.getItem('pipeta_sc_selected_procs_' + presetId);
+            if (raw) return JSON.parse(raw);
+        } catch(e) {}
+        return null;
+    },
+
+    saveSelectedProcesses: () => {
+        if (!ShotCreator.selectedPreset) return;
+        const presetId = ShotCreator.selectedPreset.id;
+        const checked = Array.from(document.querySelectorAll('.sc-proc-chk:checked')).map(el => el.value);
+        try {
+            localStorage.setItem('pipeta_sc_selected_procs_' + presetId, JSON.stringify(checked));
+        } catch(e) {}
+    },
+
+    toggleAllProcesses: (checked) => {
+        const checkboxes = document.querySelectorAll('.sc-proc-chk');
+        checkboxes.forEach(cb => { cb.checked = checked; });
+        ShotCreator.saveSelectedProcesses();
+    },
+
+    handleProcessCheckChange: () => {
+        const checkboxes = Array.from(document.querySelectorAll('.sc-proc-chk'));
+        const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+        const masterCb = document.getElementById('chk-proc-all');
+        if (masterCb) masterCb.checked = allChecked;
+        ShotCreator.saveSelectedProcesses();
     },
 
     // Result tags like [proyecto], [Episodio], etc into strings based on current UI state
@@ -880,7 +918,7 @@ const ShotCreator = {
 
             // --- PROCESSES & FOLDERS ---
             let rightColContentHTML = "";
-            let processesItemsHTML = ""; // Define here for reuse if needed
+            let processesItemsHTML = "";
 
             if (ShotCreator.creationLevel === 'episode') {
                 const foldersHTML = (ShotCreator.episodeFolderNodes || []).map(node => `
@@ -897,10 +935,20 @@ const ShotCreator = {
                     </div>
                 `;
             } else {
+                const savedProcs = ShotCreator.getSavedSelectedProcesses(ShotCreator.selectedPreset.id);
+                const allProcsChecked = ShotCreator.processNodes.length > 0 && (
+                    savedProcs === null || 
+                    ShotCreator.processNodes.every(p => savedProcs.includes(p.id))
+                );
+
                 ShotCreator.processNodes.forEach(proc => {
+                    const isChecked = savedProcs === null ? true : savedProcs.includes(proc.id);
                     processesItemsHTML += `
                         <div style="display:flex; align-items:center; margin-bottom:6px;">
-                            <input type="checkbox" id="chk-proc-${proc.id}" checked class="sc-proc-chk" value="${proc.id}" style="accent-color:var(--accent);">
+                            <input type="checkbox" id="chk-proc-${proc.id}" ${isChecked ? 'checked' : ''} 
+                                   class="sc-proc-chk" value="${proc.id}" 
+                                   onchange="ShotCreator.handleProcessCheckChange()"
+                                   style="accent-color:var(--accent); cursor:pointer;">
                             <label for="chk-proc-${proc.id}" style="margin-left:8px; font-size:0.9rem; cursor:pointer; user-select:none; color:#ccc;">${proc.name}</label>
                         </div>
                     `;
@@ -920,8 +968,16 @@ const ShotCreator = {
                     rightColContentHTML = `
                         <div style="flex:1; display:flex; flex-direction:column; gap:10px; overflow:hidden;">
                             <div style="flex:1; background:#1a1a1a; padding:10px; border-radius:4px; border:1px solid #333; overflow-y:auto;">
-                                <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Procesos (Proyecto)</label>
-                                ${processesItemsHTML}
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #333; padding-bottom:4px;">
+                                    <label style="color:#aaa; font-weight:bold; font-size:0.85rem; margin-bottom:0;">Procesos (Proyecto)</label>
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <input type="checkbox" id="chk-proc-all" ${allProcsChecked ? 'checked' : ''} 
+                                               onchange="ShotCreator.toggleAllProcesses(this.checked)" 
+                                               style="accent-color:var(--accent); cursor:pointer; width:13px; height:13px;">
+                                        <label for="chk-proc-all" style="font-size:0.75rem; color:var(--accent); cursor:pointer; user-select:none; font-weight:bold; margin-bottom:0;">Todos</label>
+                                    </div>
+                                </div>
+                                ${processesItemsHTML || '<div style="font-size:0.75rem; color:#666; font-style:italic;">No hay procesos definidos con isProcess: true</div>'}
                             </div>
                             <div style="flex:1; background:#1e1e1e; padding:10px; border-radius:4px; border:1px solid #444; overflow-y:auto; border-top: 4px solid #444;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #333; padding-bottom:4px;">
@@ -940,8 +996,16 @@ const ShotCreator = {
                 } else {
                     rightColContentHTML = `
                         <div style="flex:1; background:#1a1a1a; padding:10px; border-radius:4px; border:1px solid #333; overflow-y:auto;">
-                             <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Procesos a Crear</label>
-                             ${processesItemsHTML}
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #333; padding-bottom:4px;">
+                                <label style="color:#aaa; font-weight:bold; font-size:0.85rem; margin-bottom:0;">Procesos a Crear</label>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <input type="checkbox" id="chk-proc-all" ${allProcsChecked ? 'checked' : ''} 
+                                           onchange="ShotCreator.toggleAllProcesses(this.checked)" 
+                                           style="accent-color:var(--accent); cursor:pointer; width:13px; height:13px;">
+                                    <label for="chk-proc-all" style="font-size:0.75rem; color:var(--accent); cursor:pointer; user-select:none; font-weight:bold; margin-bottom:0;">Todos</label>
+                                </div>
+                            </div>
+                            ${processesItemsHTML || '<div style="font-size:0.75rem; color:#666; font-style:italic;">No hay procesos definidos con isProcess: true</div>'}
                         </div>
                     `;
                 }

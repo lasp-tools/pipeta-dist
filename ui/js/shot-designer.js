@@ -186,6 +186,10 @@ const ShotDesigner = {
             console.log("Save result:", result);
             if (!result || !result.success) {
                 console.error("Error al guardar:", result?.error || "Unknown");
+            } else {
+                if (typeof ShotNavigator !== 'undefined' && ShotNavigator.invalidatePresetCache) {
+                    ShotNavigator.invalidatePresetCache();
+                }
             }
         } catch (e) {
             console.error("Save error:", e);

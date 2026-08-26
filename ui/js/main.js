@@ -347,12 +347,18 @@ function switchView(viewId) {
         return;
     }
 
+    // 0. Si las configuraciones están abiertas, cerrarlas para ver el nuevo módulo
+    if (typeof settings !== 'undefined' && settings.isVisible) {
+        settings.close();
+    }
+
     // 1. Update Buttons State
     document.querySelectorAll('.mode-btn').forEach(btn => {
         const btnView = tabs[btn.getAttribute('title')];
         if (btnView === viewId) btn.classList.add('active');
         else btn.classList.remove('active');
     });
+    document.getElementById('btn-settings-toggle')?.classList.remove('active');
 
     // 2. Hide All Views
     document.querySelectorAll('.view-section').forEach(v => {
