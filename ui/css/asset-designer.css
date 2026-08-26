@@ -52,7 +52,7 @@
     border: 1px solid #333;
     border-radius: 4px;
     position: relative;
-    overflow: auto;
+    overflow: hidden;
     background-image: radial-gradient(#222 1px, transparent 1px);
     background-size: 20px 20px;
 }

@@ -203,6 +203,49 @@ const headerToolsTemplates = {
                 </button>
             </div>
         </div>
+
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Auto Arrange de Nodos Seleccionados">
+            <span class="toolbar-section-label">Auto Arrange</span>
+            <div class="toolbar-section-content" style="display:flex; align-items:center; gap:4px;">
+                <button class="tool-btn" onclick="AssetDesigner.arrangeHorizontal()" title="Alinear y espaciar horizontalmente los nodos seleccionados">
+                    <span style="font-size:0.75rem; font-weight:bold;">↔ Horiz</span>
+                </button>
+                <input type="number" id="header-ad-gap-x" value="${(typeof AssetDesigner !== 'undefined' && AssetDesigner.arrangeGapX) ? AssetDesigner.arrangeGapX : 50}" min="0" max="500" step="5" title="Separación horizontal en px (borde exterior)" style="width:38px; background:#111; color:#fff; border:1px solid #444; border-radius:3px; padding:1px 2px; font-size:0.7rem; text-align:center; height:20px;" onchange="if(typeof AssetDesigner!=='undefined') AssetDesigner.arrangeGapX = parseInt(this.value) || 50">
+                <span style="font-size:0.65rem; color:#666;">px</span>
+
+                <button class="tool-btn" onclick="AssetDesigner.arrangeVertical()" title="Alinear y espaciar verticalmente los nodos seleccionados" style="margin-left:2px;">
+                    <span style="font-size:0.75rem; font-weight:bold;">↕ Vert</span>
+                </button>
+                <input type="number" id="header-ad-gap-y" value="${(typeof AssetDesigner !== 'undefined' && AssetDesigner.arrangeGapY) ? AssetDesigner.arrangeGapY : 30}" min="0" max="500" step="5" title="Separación vertical en px (borde exterior)" style="width:38px; background:#111; color:#fff; border:1px solid #444; border-radius:3px; padding:1px 2px; font-size:0.7rem; text-align:center; height:20px;" onchange="if(typeof AssetDesigner!=='undefined') AssetDesigner.arrangeGapY = parseInt(this.value) || 30">
+                <span style="font-size:0.65rem; color:#666;">px</span>
+
+                <button class="tool-btn" onclick="AssetDesigner.arrangeFull()" title="Auto arrange jerárquico completo (Izquierda a Derecha / Arriba a Abajo)" style="margin-left:2px; background:rgba(33, 150, 243, 0.15); color:#64b5f6; font-weight:bold; font-size:0.75rem; padding:2px 6px;">
+                    📐 Full
+                </button>
+            </div>
+        </div>
+        
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Anotaciones y Elementos Cosméticos">
+            <span class="toolbar-section-label">Cosmetics</span>
+            <div class="toolbar-section-content" style="display:flex; align-items:center; gap:4px;">
+                <button class="tool-btn" onclick="AssetDesigner.addAnnotation('text')" title="Añadir Nota / Texto Cosmético">
+                    <span style="font-size:0.75rem; font-weight:bold;">🔤 Texto</span>
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addAnnotation('line')" title="Añadir Línea / Flecha">
+                    <span style="font-size:0.75rem; font-weight:bold;">↗️ Línea</span>
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addAnnotation('shape', 'rectangle')" title="Añadir Rectángulo / Cuadro (◻)" style="min-width:28px; padding:2px 6px;">
+                    <span style="font-size:0.95rem; font-weight:bold; line-height:1;">◻</span>
+                </button>
+                <button class="tool-btn" onclick="AssetDesigner.addAnnotation('shape', 'circle')" title="Añadir Círculo / Óvalo (◯)" style="min-width:28px; padding:2px 6px;">
+                    <span style="font-size:0.95rem; font-weight:bold; line-height:1;">◯</span>
+                </button>
+            </div>
+        </div>
         
         <div class="tool-space-small"></div>
         
@@ -244,6 +287,49 @@ const headerToolsTemplates = {
                 </button>
                 <button class="tool-btn" onclick="ShotDesigner.alignNodesHorizontal()" title="Alinear en Columna Vertical (Center Column)">
                      <img src="icons/align_vertical.svg" class="btn-icon-svg">
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Auto Arrange de Nodos Seleccionados">
+            <span class="toolbar-section-label">Auto Arrange</span>
+            <div class="toolbar-section-content" style="display:flex; align-items:center; gap:4px;">
+                <button class="tool-btn" onclick="ShotDesigner.arrangeHorizontal()" title="Alinear y espaciar horizontalmente los nodos seleccionados">
+                    <span style="font-size:0.75rem; font-weight:bold;">↔ Horiz</span>
+                </button>
+                <input type="number" id="header-sd-gap-x" value="${(typeof ShotDesigner !== 'undefined' && ShotDesigner.arrangeGapX) ? ShotDesigner.arrangeGapX : 50}" min="0" max="500" step="5" title="Separación horizontal en px (borde exterior)" style="width:38px; background:#111; color:#fff; border:1px solid #444; border-radius:3px; padding:1px 2px; font-size:0.7rem; text-align:center; height:20px;" onchange="if(typeof ShotDesigner!=='undefined') ShotDesigner.arrangeGapX = parseInt(this.value) || 50">
+                <span style="font-size:0.65rem; color:#666;">px</span>
+
+                <button class="tool-btn" onclick="ShotDesigner.arrangeVertical()" title="Alinear y espaciar verticalmente los nodos seleccionados" style="margin-left:2px;">
+                    <span style="font-size:0.75rem; font-weight:bold;">↕ Vert</span>
+                </button>
+                <input type="number" id="header-sd-gap-y" value="${(typeof ShotDesigner !== 'undefined' && ShotDesigner.arrangeGapY) ? ShotDesigner.arrangeGapY : 30}" min="0" max="500" step="5" title="Separación vertical en px (borde exterior)" style="width:38px; background:#111; color:#fff; border:1px solid #444; border-radius:3px; padding:1px 2px; font-size:0.7rem; text-align:center; height:20px;" onchange="if(typeof ShotDesigner!=='undefined') ShotDesigner.arrangeGapY = parseInt(this.value) || 30">
+                <span style="font-size:0.65rem; color:#666;">px</span>
+
+                <button class="tool-btn" onclick="ShotDesigner.arrangeFull()" title="Auto arrange jerárquico completo (Izquierda a Derecha / Arriba a Abajo)" style="margin-left:2px; background:rgba(33, 150, 243, 0.15); color:#64b5f6; font-weight:bold; font-size:0.75rem; padding:2px 6px;">
+                    📐 Full
+                </button>
+            </div>
+        </div>
+        
+        <div class="tool-space-small"></div>
+
+        <div class="toolbar-section-group" title="Anotaciones y Elementos Cosméticos">
+            <span class="toolbar-section-label">Cosmetics</span>
+            <div class="toolbar-section-content" style="display:flex; align-items:center; gap:4px;">
+                <button class="tool-btn" onclick="ShotDesigner.addAnnotation('text')" title="Añadir Nota / Texto Cosmético">
+                    <span style="font-size:0.75rem; font-weight:bold;">🔤 Texto</span>
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.addAnnotation('line')" title="Añadir Línea / Flecha">
+                    <span style="font-size:0.75rem; font-weight:bold;">↗️ Línea</span>
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.addAnnotation('shape', 'rectangle')" title="Añadir Rectángulo / Cuadro (◻)" style="min-width:28px; padding:2px 6px;">
+                    <span style="font-size:0.95rem; font-weight:bold; line-height:1;">◻</span>
+                </button>
+                <button class="tool-btn" onclick="ShotDesigner.addAnnotation('shape', 'circle')" title="Añadir Círculo / Óvalo (◯)" style="min-width:28px; padding:2px 6px;">
+                    <span style="font-size:0.95rem; font-weight:bold; line-height:1;">◯</span>
                 </button>
             </div>
         </div>

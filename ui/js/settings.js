@@ -763,6 +763,14 @@ const settings = {
                                         <td style="padding:8px 10px; color:#ccc;">Pegar nodo(s) copiados con desplazamiento automático en el canvas</td>
                                     </tr>
                                     <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ba68c8; font-weight:bold;">Ctrl + Shift + C</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>Copiar Configuración:</b> Copia todos los atributos y configuraciones del nodo seleccionado</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
+                                        <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#ba68c8; font-weight:bold;">Ctrl + Shift + V</kbd></td>
+                                        <td style="padding:8px 10px; color:#ccc;"><b>Pegar Configuración:</b> Aplica las configuraciones copiadas manteniendo el nombre y ejemplo del nodo destino</td>
+                                    </tr>
+                                    <tr style="border-bottom:1px solid #2a2a2a;">
                                         <td style="padding:8px 10px;"><kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#81c784; font-weight:bold;">Doble Clic</kbd> o <kbd style="background:#222; border:1px solid #555; padding:2px 6px; border-radius:3px; color:#81c784; font-weight:bold;">Enter</kbd></td>
                                         <td style="padding:8px 10px; color:#ccc;">Renombrar nodo directamente en el canvas (inline, sin ventanas)</td>
                                     </tr>

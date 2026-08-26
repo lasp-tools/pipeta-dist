@@ -267,10 +267,26 @@
                 <div class="ad-workspace">
                     <!-- Canvas Area -->
                     <div id="ad-canvas-area" class="ad-canvas">
+                        <!-- Back Annotations Layer (Backdrop) -->
+                        <div id="ad-annotations-layer-back" class="canvas-annotations-layer layer-back"></div>
                         <!-- SVG Layer for connections -->
                         <svg id="ad-connections-layer"></svg>
                         <!-- HTML Layer for nodes -->
                         <div id="ad-nodes-layer"></div>
+                        <!-- Front Annotations Layer (Foreground) -->
+                        <div id="ad-annotations-layer-front" class="canvas-annotations-layer layer-front"></div>
+
+                        <!-- Minimap Container -->
+                        <div id="ad-minimap-container" class="canvas-minimap-container">
+                            <div class="canvas-minimap-header">
+                                <span>🗺️ Mini Map</span>
+                                <button class="canvas-minimap-toggle" onclick="AssetDesigner.toggleMinimap()" title="Ocultar / Mostrar Minimapa">−</button>
+                            </div>
+                            <div id="ad-minimap-body" class="canvas-minimap-body" onmousedown="AssetDesigner.onMinimapMouseDown(event)">
+                                <svg id="ad-minimap-svg" class="canvas-minimap-svg"></svg>
+                                <div id="ad-minimap-viewport" class="canvas-minimap-viewport"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Config Sidebar -->
@@ -316,11 +332,27 @@
                     <!-- Canvas Area -->
                     <div id="sd-canvas-area" class="sd-canvas"
                         style="flex:1; background:#111; position:relative; overflow:hidden;">
+                        <!-- Back Annotations Layer (Backdrop) -->
+                        <div id="sd-annotations-layer-back" class="canvas-annotations-layer layer-back"></div>
                         <!-- SVG Layer for connections -->
                         <svg id="sd-connections-layer"
                             style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></svg>
                         <!-- HTML Layer for nodes -->
                         <div id="sd-nodes-layer" style="position:absolute; top:0; left:0; width:100%; height:100%;">
+                        </div>
+                        <!-- Front Annotations Layer (Foreground) -->
+                        <div id="sd-annotations-layer-front" class="canvas-annotations-layer layer-front"></div>
+
+                        <!-- Minimap Container -->
+                        <div id="sd-minimap-container" class="canvas-minimap-container">
+                            <div class="canvas-minimap-header">
+                                <span>🗺️ Mini Map</span>
+                                <button class="canvas-minimap-toggle" onclick="ShotDesigner.toggleMinimap()" title="Ocultar / Mostrar Minimapa">−</button>
+                            </div>
+                            <div id="sd-minimap-body" class="canvas-minimap-body" onmousedown="ShotDesigner.onMinimapMouseDown(event)">
+                                <svg id="sd-minimap-svg" class="canvas-minimap-svg"></svg>
+                                <div id="sd-minimap-viewport" class="canvas-minimap-viewport"></div>
+                            </div>
                         </div>
                     </div>
 

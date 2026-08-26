@@ -526,3 +526,217 @@ body.canvas-fullscreen .header-bar {
 body.canvas-fullscreen .main-container {
     height: calc(100vh - 42px);
 }
+
+/* --- CANVAS MINIMAP --- */
+.canvas-minimap-container {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 200px;
+    background: rgba(18, 18, 18, 0.92);
+    border: 1px solid #383838;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    z-index: 100;
+    overflow: hidden;
+    transition: width 0.2s ease, height 0.2s ease;
+    user-select: none;
+}
+
+.canvas-minimap-container.collapsed {
+    width: auto;
+}
+
+.canvas-minimap-container.collapsed .canvas-minimap-body {
+    display: none;
+}
+
+.canvas-minimap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background: #1f1f1f;
+    border-bottom: 1px solid #333;
+    font-size: 0.72rem;
+    font-weight: bold;
+    color: #888;
+    cursor: default;
+    gap: 8px;
+}
+
+.canvas-minimap-toggle {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0 4px;
+    border-radius: 3px;
+    line-height: 1;
+}
+
+.canvas-minimap-toggle:hover {
+    background: #333;
+    color: #fff;
+}
+
+.canvas-minimap-body {
+    position: relative;
+    width: 200px;
+    height: 130px;
+    background: #111;
+    overflow: hidden;
+    cursor: crosshair;
+}
+
+.canvas-minimap-svg {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.canvas-minimap-viewport {
+    position: absolute;
+    border: 1.5px solid #2196f3;
+    background: rgba(33, 150, 243, 0.15);
+    border-radius: 2px;
+    pointer-events: all;
+    cursor: grab;
+    box-sizing: border-box;
+}
+
+.canvas-minimap-viewport:active {
+    cursor: grabbing;
+    background: rgba(33, 150, 243, 0.3);
+}
+
+/* --- CANVAS ANNOTATIONS & COSMETICS LAYER --- */
+.canvas-annotations-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.canvas-annotations-layer.layer-back {
+    z-index: 2;
+}
+
+.canvas-annotations-layer.layer-front {
+    z-index: 20;
+}
+
+#ad-nodes-layer, #sd-nodes-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.ad-node, .sd-node {
+    pointer-events: all;
+}
+
+#ad-connections-layer, #sd-connections-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 6;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.canvas-annotation-item {
+    position: absolute;
+    cursor: move;
+    user-select: none;
+    box-sizing: border-box;
+    pointer-events: all;
+}
+
+.canvas-annotation-item.selected {
+    outline: 2px dashed #ff9800;
+    outline-offset: 2px;
+}
+
+.canvas-annotation-text {
+    background: transparent;
+    border: none;
+    outline: none;
+    word-break: break-word;
+    white-space: pre-wrap;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+}
+
+.canvas-annotation-text-input {
+    background: rgba(18, 18, 18, 0.95);
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    font-style: inherit;
+    text-decoration: inherit;
+    border: 1.5px solid #ff9800;
+    border-radius: 4px;
+    outline: none;
+    resize: none;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+}
+
+/* Resize Handles */
+.annotation-resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #ffffff;
+    border: 2px solid #ff9800;
+    border-radius: 2px;
+    z-index: 30;
+    box-sizing: border-box;
+}
+
+.annotation-resize-handle.handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.annotation-resize-handle.handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.annotation-resize-handle.handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.annotation-resize-handle.handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+
+/* Line Endpoints Handles */
+.annotation-line-handle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: #ff9800;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    cursor: crosshair;
+    z-index: 30;
+    box-sizing: border-box;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 6px rgba(0,0,0,0.8);
+}
+
+.annotation-line-handle:hover {
+    transform: translate(-50%, -50%) scale(1.3);
+    background: #00e676;
+}

@@ -30,6 +30,33 @@ const ShotDesigner = {
     boxStart: { x: 0, y: 0 },
     boxCurrent: { x: 0, y: 0 },
 
+    // Auto Arrange Gaps (px)
+    arrangeGapX: 50,
+    arrangeGapY: 30,
+
+    // Annotation / Cosmetics State
+    selectedAnnotationId: null,
+    isDraggingAnnotation: false,
+    dragAnnotation: null,
+    dragAnnotationLastPos: { x: 0, y: 0 },
+    editingAnnotationId: null,
+    isResizingAnnotation: false,
+    resizeHandleCorner: null,
+    resizeAnnotation: null,
+    resizeStart: null,
+    isDraggingLineHandle: false,
+    dragLineHandleType: null, // 'start' | 'end'
+    dragLineAnnotation: null,
+    _rafPending: false,
+
+    // Minimap State
+    isMinimapCollapsed: false,
+    isDraggingMinimap: false,
+    _mmBounds: null,
+    _mmScale: 1,
+    _mmOffsetX: 0,
+    _mmOffsetY: 0,
+
     // History (Undo / Redo) State
     history: [],
     historyIndex: -1,
@@ -142,6 +169,17 @@ const ShotDesigner = {
         }
 
         document.addEventListener('keydown', ShotDesigner.onKeyDown);
+
+        window.addEventListener('mouseup', () => {
+            if (ShotDesigner.isDraggingMinimap) {
+                ShotDesigner.isDraggingMinimap = false;
+            }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (ShotDesigner.isDraggingMinimap) {
+                ShotDesigner.onMinimapMouseMove(e);
+            }
+        });
 
         // Hook up Header Buttons
         document.getElementById('sd-asset-selector').addEventListener('change', (e) => ShotDesigner.selectAsset(e.target.value));
@@ -463,22 +501,80 @@ const ShotDesigner = {
         }
     },
 
+    scheduleUpdateTransform: () => {
+        if (ShotDesigner._rafPending) return;
+        ShotDesigner._rafPending = true;
+        requestAnimationFrame(() => {
+            ShotDesigner._rafPending = false;
+            ShotDesigner.updateViewportTransform();
+        });
+    },
+
+    updateViewportTransform: () => {
+        const nodesLayer = document.getElementById('sd-nodes-layer');
+        const connectionsLayer = document.getElementById('sd-connections-layer');
+        const annLayerBack = document.getElementById('sd-annotations-layer-back');
+        const annLayerFront = document.getElementById('sd-annotations-layer-front');
+        const canvasArea = document.getElementById('sd-canvas-area');
+        if (!nodesLayer || !connectionsLayer) return;
+        if (canvasArea && (canvasArea.scrollTop !== 0 || canvasArea.scrollLeft !== 0)) {
+            canvasArea.scrollTop = 0;
+            canvasArea.scrollLeft = 0;
+        }
+
+        const tX = ShotDesigner.panOffset.x;
+        const tY = ShotDesigner.panOffset.y;
+        const scale = ShotDesigner.zoomLevel;
+
+        const cssTransform = `translate3d(${tX}px, ${tY}px, 0px) scale(${scale})`;
+        const svgTransform = `translate(${tX}, ${tY}) scale(${scale})`;
+
+        nodesLayer.style.transform = cssTransform;
+        nodesLayer.style.transformOrigin = "0 0";
+
+        if (annLayerBack) {
+            annLayerBack.style.transform = cssTransform;
+            annLayerBack.style.transformOrigin = "0 0";
+        }
+        if (annLayerFront) {
+            annLayerFront.style.transform = cssTransform;
+            annLayerFront.style.transformOrigin = "0 0";
+        }
+
+        let svgGroup = connectionsLayer.querySelector('g.viewport');
+        if (svgGroup) {
+            svgGroup.setAttribute('transform', svgTransform);
+        }
+
+        ShotDesigner.updateMinimapViewport();
+    },
+
     renderCanvas: () => {
         const nodesLayer = document.getElementById('sd-nodes-layer');
         const connectionsLayer = document.getElementById('sd-connections-layer');
         if (!nodesLayer || !connectionsLayer) return;
 
         // Apply Transform
-        // CSS needs 'px' for translate usually, SVG attribute needs UNITLESS
         const tX = ShotDesigner.panOffset.x;
         const tY = ShotDesigner.panOffset.y;
         const scale = ShotDesigner.zoomLevel;
 
-        const cssTransform = `translate(${tX}px, ${tY}px) scale(${scale})`;
+        const cssTransform = `translate3d(${tX}px, ${tY}px, 0px) scale(${scale})`;
         const svgTransform = `translate(${tX}, ${tY}) scale(${scale})`;
 
         nodesLayer.style.transform = cssTransform;
         nodesLayer.style.transformOrigin = "0 0";
+
+        const annLayerBack = document.getElementById('sd-annotations-layer-back');
+        const annLayerFront = document.getElementById('sd-annotations-layer-front');
+        if (annLayerBack) {
+            annLayerBack.style.transform = cssTransform;
+            annLayerBack.style.transformOrigin = "0 0";
+        }
+        if (annLayerFront) {
+            annLayerFront.style.transform = cssTransform;
+            annLayerFront.style.transformOrigin = "0 0";
+        }
 
         let svgGroup = connectionsLayer.querySelector('g.viewport');
         if (!svgGroup) {
@@ -514,7 +610,7 @@ const ShotDesigner = {
         svgGroup.appendChild(createLabel("Proyecto", -10, "#2196F3"));
         svgGroup.appendChild(createLabel("Media", 20, "#4CAF50"));
 
-        // Selection Box
+        // Selection Box (Marquee)
         if (ShotDesigner.isBoxSelecting) {
             const box = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             const x = Math.min(ShotDesigner.boxStart.x, ShotDesigner.boxCurrent.x);
@@ -525,120 +621,83 @@ const ShotDesigner = {
             box.setAttribute("y", y);
             box.setAttribute("width", w);
             box.setAttribute("height", h);
-            box.setAttribute("fill", "rgba(33, 150, 243, 0.1)");
+            box.setAttribute("fill", "rgba(33, 150, 243, 0.15)");
             box.setAttribute("stroke", "#2196F3");
-            box.setAttribute("stroke-width", 1 / ShotDesigner.zoomLevel);
+            box.setAttribute("stroke-dasharray", `${4 / ShotDesigner.zoomLevel},${4 / ShotDesigner.zoomLevel}`);
+            box.setAttribute("stroke-width", 1.5 / ShotDesigner.zoomLevel);
+            box.setAttribute("style", "pointer-events: none;");
             svgGroup.appendChild(box);
         }
 
         if (!ShotDesigner.currentAsset) return;
 
-        // Draw Connections First (Background)
-        // 1. Draw Hierarchical Connections (Classic)
+        // Draw Connections
         ShotDesigner.currentAsset.nodes.forEach(node => {
             if (node.parent) {
                 const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === node.parent);
-                if (parent) ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in');
+                if (parent) {
+                    ShotDesigner.drawConnection(parent, node, svgGroup, 'local');
+                }
             }
             if (node.parentOnline && node.isSyncPoint) {
                 const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === node.parentOnline);
-                if (parent) ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in-online');
+                if (parent) {
+                    ShotDesigner.drawConnection(parent, node, svgGroup, 'online');
+                }
             }
-            // Multi-parent items
-            if (node.isItem && node.itemConfig?.additionalParents) {
-                node.itemConfig.additionalParents.forEach(pId => {
-                    const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === pId);
-                    if (parent) ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in-multi-item');
-                });
+            if (node.mirrorOf) {
+                const sourceNode = ShotDesigner.currentAsset.nodes.find(n => n.id === node.mirrorOf);
+                if (sourceNode) {
+                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'mirror');
+                }
             }
-            // Multi-parent processes
-            if (node.isProcess && node.processConfig?.additionalParents) {
+            if (node.renderSourceNodeId) {
+                const sourceNode = ShotDesigner.currentAsset.nodes.find(n => n.id === node.renderSourceNodeId);
+                if (sourceNode) {
+                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'render');
+                }
+            }
+            if (node.isProcess && node.processConfig && node.processConfig.parentItem && node.processConfig.additionalParents) {
                 node.processConfig.additionalParents.forEach(pId => {
                     const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === pId);
-                    if (parent) ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in-multi-process');
+                    if (parent) {
+                        ShotDesigner.drawConnection(parent, node, svgGroup, 'local');
+                    }
                 });
             }
         });
 
-        // 2. Draw Supplemental Connections (Mirror, etc.)
-        if (ShotDesigner.currentAsset.connections) {
-            ShotDesigner.currentAsset.connections.forEach(conn => {
-                const fromNode = ShotDesigner.currentAsset.nodes.find(n => n.id === conn.from);
-                const toNode = ShotDesigner.currentAsset.nodes.find(n => n.id === conn.to);
-                if (fromNode && toNode) {
-                    const isMirror = conn.fromPort === 'mirror' || conn.toPort === 'mirror';
-                    ShotDesigner.drawConnection(fromNode, toNode, svgGroup, conn.fromPort, conn.toPort, isMirror);
-                }
-            });
-        }
-
-        // Draw Draft Connection
+        // Draft Connection
         if (ShotDesigner.isConnecting && ShotDesigner.connectionStartNode) {
-            ShotDesigner.drawDraftConnection(ShotDesigner.connectionStartNode, ShotDesigner.connectionCurrentPos, svgGroup, ShotDesigner.connectionStartPoint);
+            ShotDesigner.drawDraftConnection(ShotDesigner.connectionStartNode, ShotDesigner.connectionCurrentPos, svgGroup);
         }
 
+        // Draw Nodes
         ShotDesigner.currentAsset.nodes.forEach(node => {
+            const isSelected = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.includes(node.id)) || ShotDesigner.selectedNodeId === node.id;
             const el = document.createElement('div');
-            const isSelected = ShotDesigner.selectedNodeIds.includes(node.id);
-            const zoneClass = node.y >= 0 ? 'zone-media' : 'zone-proyecto';
-            el.className = `sd-node ${node.type} ${isSelected ? 'selected' : ''} ${zoneClass}`;
+            el.className = `sd-node ${node.type} ${isSelected ? 'selected' : ''}`;
             el.style.left = `${node.x}px`;
             el.style.top = `${node.y}px`;
             el.setAttribute('data-id', node.id);
-            // Removed inline onmousedown to rely on centralized onCanvasMouseDown handler
+            el.setAttribute('onmousedown', `event.stopPropagation(); ShotDesigner.startDragNode(event, ShotDesigner.currentAsset.nodes.find(n => n.id === '${node.id}'))`);
 
-            // Dots HTML
             let dotsHtml = '';
-
-            // INPUT DOTS
             if (node.isSyncPoint) {
-                // Dual Inputs
-                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-online" title="Input Online" data-node-id="${node.id}" data-type="in-online"></div>`;
-                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-local" title="Input Local" data-node-id="${node.id}" data-type="in-local"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-online" title="Input Online" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'online')"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-local" title="Input Local" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
             } else {
-                // Std Input
-                // Check if Multi-Parent Item OR Process Parent Item
-                const isItemMulti = node.isItem && node.itemConfig && node.itemConfig.allowMultiParent;
-                const isProcessMulti = node.isProcess && node.processConfig && node.processConfig.parentItem;
-
-                let dotClass = 'sd-dot sd-dot-in';
-                let title = 'Input (Child)';
-                let dataType = 'in';
-
-                if (isItemMulti) {
-                    dotClass = 'sd-dot sd-dot-in multi-parent'; // Pink
-                    title = 'Input (Multi-Parent Item)';
-                    dataType = 'in-multi-item';
-                } else if (isProcessMulti) {
-                    dotClass = 'sd-dot sd-dot-in multi-process'; // Chroma Green need CSS
-                    title = 'Input (Process Parent Item)';
-                    dataType = 'in-multi-process';
-                }
-
-                dotsHtml += `<div class="${dotClass}" title="${title}" data-node-id="${node.id}" data-type="${dataType}"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in" title="Input" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
             }
 
-            // OUTPUT DOTS
-            // Folders and Units can have children
             if (node.type === 'folder' || node.type === 'unit') {
-                dotsHtml += `<div class="sd-dot sd-dot-out" title="Output (Parent)" data-node-id="${node.id}" data-type="out"></div>`;
-            }
-
-            // Scene output (for renders)
-            if (node.type === 'file' && node.isScene) {
-                dotsHtml += `<div class="sd-dot sd-dot-out-render" title="Render Output (to RenderFolder)" data-node-id="${node.id}" data-type="out-render"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-out" title="Output" onmousedown="event.stopPropagation(); ShotDesigner.onDotOutDown('${node.id}', event)"></div>`;
             }
 
             let icon = '';
-            if (node.type === 'folder') {
-                icon = '📂';
-                if (node.isRenderFolder) icon = '📥';
-            }
+            if (node.type === 'folder') icon = '📁';
             else if (node.type === 'unit') icon = '💽';
-            else if (node.type === 'file') {
-                icon = '📄';
-                if (node.isRenderFile) icon = '🎞️';
-            }
+            else if (node.type === 'file') icon = '📄';
 
             // Badges HTML
             let badgesHtml = '<div class="sd-badges">';
@@ -677,7 +736,6 @@ const ShotDesigner = {
                 ${contentHtml}
             `;
 
-
             // Mirror Dot (Vertical)
             if (node.isMirrorOn) {
                 const mirrorDot = document.createElement('div');
@@ -686,16 +744,6 @@ const ShotDesigner = {
                 mirrorDot.setAttribute('data-node-id', node.id);
                 mirrorDot.setAttribute('data-type', 'mirror');
                 el.appendChild(mirrorDot);
-            }
-
-            // Render Input Dot (Top/Bottom)
-            if ((node.type === 'folder' && node.isRenderFolder) || (node.type === 'file' && node.isRenderFile)) {
-                const renderDot = document.createElement('div');
-                const isMedia = node.y >= 0;
-                renderDot.className = `sd-dot sd-dot-in-render ${isMedia ? 'top' : 'bottom'}`;
-                renderDot.setAttribute('data-node-id', node.id);
-                renderDot.setAttribute('data-type', 'in-render');
-                el.appendChild(renderDot);
             }
 
             el.ondblclick = (e) => {
@@ -707,8 +755,514 @@ const ShotDesigner = {
             nodesLayer.appendChild(el);
         });
 
+        ShotDesigner.renderAnnotations();
+        ShotDesigner.renderMinimap();
         ShotDesigner.updatePreview();
         ShotDesigner.updateBackground();
+    },
+
+    renderAnnotations: () => {
+        const annLayerBack = document.getElementById('sd-annotations-layer-back');
+        const annLayerFront = document.getElementById('sd-annotations-layer-front');
+        if (annLayerBack) annLayerBack.innerHTML = '';
+        if (annLayerFront) annLayerFront.innerHTML = '';
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.annotations) return;
+
+        const hexToRgba = (hex, op) => {
+            let c = (hex || '#ff9800').replace('#', '');
+            if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+            const num = parseInt(c, 16);
+            return `rgba(${(num>>16)&255}, ${(num>>8)&255}, ${num&255}, ${op !== undefined ? op : 0.2})`;
+        };
+
+        const getBorderCss = (strokeWidth, strokeStyle, strokeColor) => {
+            if (!strokeWidth || strokeWidth === 0) return 'none';
+            let style = strokeStyle || 'solid';
+            if (style === 'dashdot') style = 'dashed';
+            return `${strokeWidth}px ${style} ${strokeColor || '#ff9800'}`;
+        };
+
+        ShotDesigner.currentAsset.annotations.forEach(a => {
+            const isSel = ShotDesigner.selectedAnnotationId === a.id;
+            const itemEl = document.createElement('div');
+            itemEl.className = `canvas-annotation-item ${isSel ? 'selected' : ''}`;
+            itemEl.setAttribute('data-id', a.id);
+
+            const isFront = a.layerOrder === 'front';
+            const targetContainer = isFront ? (annLayerFront || annLayerBack) : (annLayerBack || annLayerFront);
+            if (!targetContainer) return;
+
+            if (a.type === 'text') {
+                const w = a.width || 180;
+                const h = a.height || 45;
+                itemEl.style.left = `${a.x}px`;
+                itemEl.style.top = `${a.y}px`;
+                itemEl.style.width = `${w}px`;
+                itemEl.style.height = `${h}px`;
+                itemEl.style.color = a.color || '#ffca28';
+                itemEl.style.fontSize = `${a.fontSize || 18}px`;
+                itemEl.style.fontFamily = a.fontFamily || 'sans-serif';
+                itemEl.style.fontWeight = a.isBold ? 'bold' : 'normal';
+                itemEl.style.fontStyle = a.isItalic ? 'italic' : 'normal';
+                itemEl.style.textDecoration = a.isUnderline ? 'underline' : 'none';
+                itemEl.style.padding = `${a.padding !== undefined ? a.padding : 6}px`;
+
+                const border = (a.mode === 'fill' || !a.strokeWidth || a.strokeWidth === 0) ? 'none' : getBorderCss(a.strokeWidth, a.strokeStyle, a.strokeColor || '#ff9800');
+                const bg = (a.mode === 'stroke') ? 'transparent' : (a.fillOpacity > 0 || a.fillColor ? hexToRgba(a.fillColor || '#222222', a.fillOpacity !== undefined ? a.fillOpacity : 0.8) : 'transparent');
+
+                itemEl.style.border = border;
+                itemEl.style.backgroundColor = bg;
+                itemEl.style.borderRadius = `${a.borderRadius !== undefined ? a.borderRadius : 4}px`;
+
+                if (ShotDesigner.editingAnnotationId === a.id) {
+                    itemEl.innerHTML = `<textarea class="canvas-annotation-text-input" 
+                        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); ShotDesigner.finishEditingAnnotation('${a.id}', this.value); } if(event.key==='Escape'){ event.preventDefault(); ShotDesigner.cancelEditingAnnotation(); } event.stopPropagation();"
+                        onblur="ShotDesigner.finishEditingAnnotation('${a.id}', this.value);"
+                        onclick="event.stopPropagation()">${a.text}</textarea>`;
+                    setTimeout(() => {
+                        const ta = itemEl.querySelector('textarea');
+                        if (ta) { ta.focus(); ta.select(); }
+                    }, 10);
+                } else {
+                    itemEl.innerHTML = `<div class="canvas-annotation-text">${a.text}</div>`;
+                    itemEl.ondblclick = (e) => {
+                        e.stopPropagation();
+                        ShotDesigner.editingAnnotationId = a.id;
+                        ShotDesigner.renderCanvas();
+                    };
+                }
+
+                // Add 4 Resize Handles if Selected
+                if (isSel) {
+                    ['nw', 'ne', 'se', 'sw'].forEach(corner => {
+                        const hEl = document.createElement('div');
+                        hEl.className = `annotation-resize-handle handle-${corner}`;
+                        hEl.onmousedown = (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            ShotDesigner.startResizeAnnotation(e, a, corner);
+                        };
+                        itemEl.appendChild(hEl);
+                    });
+                }
+            } else if (a.type === 'shape') {
+                const w = a.width || 200;
+                const h = a.height || 120;
+                itemEl.style.left = `${a.x}px`;
+                itemEl.style.top = `${a.y}px`;
+                itemEl.style.width = `${w}px`;
+                itemEl.style.height = `${h}px`;
+
+                const border = (a.mode === 'fill' || a.strokeWidth === 0) ? 'none' : getBorderCss(a.strokeWidth, a.strokeStyle, a.strokeColor || '#ff9800');
+                const bg = (a.mode === 'stroke') ? 'transparent' : hexToRgba(a.fillColor || '#ff9800', a.fillOpacity !== undefined ? a.fillOpacity : 0.15);
+
+                itemEl.style.border = border;
+                itemEl.style.backgroundColor = bg;
+                if (a.shapeType === 'circle' || a.shapeType === 'oval') {
+                    itemEl.style.borderRadius = '50%';
+                } else {
+                    itemEl.style.borderRadius = `${a.borderRadius !== undefined ? a.borderRadius : 6}px`;
+                }
+
+                // Add 4 Resize Handles if Selected
+                if (isSel) {
+                    ['nw', 'ne', 'se', 'sw'].forEach(corner => {
+                        const hEl = document.createElement('div');
+                        hEl.className = `annotation-resize-handle handle-${corner}`;
+                        hEl.onmousedown = (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            ShotDesigner.startResizeAnnotation(e, a, corner);
+                        };
+                        itemEl.appendChild(hEl);
+                    });
+                }
+            } else if (a.type === 'line') {
+                const minX = Math.min(a.x1, a.x2) - 20;
+                const minY = Math.min(a.y1, a.y2) - 20;
+                const maxX = Math.max(a.x1, a.x2) + 20;
+                const maxY = Math.max(a.y1, a.y2) + 20;
+                const w = Math.max(40, maxX - minX);
+                const h = Math.max(40, maxY - minY);
+
+                itemEl.style.left = `${minX}px`;
+                itemEl.style.top = `${minY}px`;
+                itemEl.style.width = `${w}px`;
+                itemEl.style.height = `${h}px`;
+
+                const lx1 = a.x1 - minX;
+                const ly1 = a.y1 - minY;
+                const lx2 = a.x2 - minX;
+                const ly2 = a.y2 - minY;
+
+                const markerId = `sd_arrow_${a.id}`;
+                const circleId = `sd_dot_${a.id}`;
+                let dasharray = '';
+                if (a.strokeStyle === 'dashed') dasharray = '8,6';
+                else if (a.strokeStyle === 'dotted') dasharray = '3,4';
+                else if (a.strokeStyle === 'dashdot') dasharray = '10,4,2,4';
+
+                let handlesHtml = '';
+                if (isSel) {
+                    handlesHtml = `
+                        <div class="annotation-line-handle" style="left:${lx1}px; top:${ly1}px;" title="Arrastrar Inicio de Línea" onmousedown="event.stopPropagation(); ShotDesigner.startDragLineHandle(event, ShotDesigner.currentAsset.annotations.find(x => x.id === '${a.id}'), 'start');"></div>
+                        <div class="annotation-line-handle" style="left:${lx2}px; top:${ly2}px;" title="Arrastrar Fin de Línea" onmousedown="event.stopPropagation(); ShotDesigner.startDragLineHandle(event, ShotDesigner.currentAsset.annotations.find(x => x.id === '${a.id}'), 'end');"></div>
+                    `;
+                }
+
+                itemEl.innerHTML = `
+                    <svg style="width:100%; height:100%; overflow:visible; pointer-events:none;">
+                        <defs>
+                            <marker id="${markerId}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <path d="M0,0 L0,6 L7,3 z" fill="${a.color || '#4fc3f7'}" />
+                            </marker>
+                            <marker id="${circleId}" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <circle cx="3" cy="3" r="3" fill="${a.color || '#4fc3f7'}" />
+                            </marker>
+                        </defs>
+                        <line x1="${lx1}" y1="${ly1}" x2="${lx2}" y2="${ly2}" 
+                              stroke="${a.color || '#4fc3f7'}" 
+                              stroke-width="${a.strokeWidth || 3}" 
+                              stroke-dasharray="${dasharray}"
+                              marker-end="${a.endCap === 'arrow' ? `url(#${markerId})` : (a.endCap === 'circle' ? `url(#${circleId})` : 'none')}"
+                              style="pointer-events:stroke; cursor:pointer;" />
+                    </svg>
+                    ${handlesHtml}
+                `;
+            }
+
+            itemEl.onmousedown = (e) => {
+                e.stopPropagation();
+                ShotDesigner.selectAnnotation(a.id);
+                if (!e.altKey && !ShotDesigner.isResizingAnnotation && !ShotDesigner.isDraggingLineHandle) {
+                    ShotDesigner.isDraggingAnnotation = true;
+                    ShotDesigner.dragAnnotation = a;
+                    ShotDesigner.dragAnnotationLastPos = { x: e.clientX, y: e.clientY };
+                }
+            };
+
+            targetContainer.appendChild(itemEl);
+        });
+    },
+
+    // --- INTERACTIVE ANNOTATION HANDLERS ---
+    startResizeAnnotation: (e, ann, corner) => {
+        ShotDesigner.isResizingAnnotation = true;
+        ShotDesigner.resizeAnnotation = ann;
+        ShotDesigner.resizeHandleCorner = corner;
+        ShotDesigner.resizeStart = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            x: ann.x,
+            y: ann.y,
+            width: ann.width || 180,
+            height: ann.height || 45
+        };
+    },
+
+    startDragLineHandle: (e, ann, handleType) => {
+        ShotDesigner.isDraggingLineHandle = true;
+        ShotDesigner.dragLineAnnotation = ann;
+        ShotDesigner.dragLineHandleType = handleType;
+    },
+
+    finishEditingAnnotation: (id, text) => {
+        ShotDesigner.editingAnnotationId = null;
+        ShotDesigner.updateAnnotationProp(id, 'text', text);
+    },
+
+    cancelEditingAnnotation: () => {
+        ShotDesigner.editingAnnotationId = null;
+        ShotDesigner.renderCanvas();
+    },
+
+    // --- MINIMAP LOGIC ---
+    toggleMinimap: () => {
+        ShotDesigner.isMinimapCollapsed = !ShotDesigner.isMinimapCollapsed;
+        const container = document.getElementById('sd-minimap-container');
+        const toggleBtn = container ? container.querySelector('.canvas-minimap-toggle') : null;
+        if (container) {
+            container.classList.toggle('collapsed', ShotDesigner.isMinimapCollapsed);
+        }
+        if (toggleBtn) {
+            toggleBtn.textContent = ShotDesigner.isMinimapCollapsed ? '◻' : '−';
+        }
+        if (!ShotDesigner.isMinimapCollapsed) {
+            ShotDesigner.renderMinimap();
+        }
+    },
+
+    getCanvasBounds: () => {
+        let minX = -200, minY = -200, maxX = 1200, maxY = 800;
+        if (ShotDesigner.currentAsset && ShotDesigner.currentAsset.nodes) {
+            ShotDesigner.currentAsset.nodes.forEach(n => {
+                if (n.x < minX) minX = n.x - 100;
+                if (n.y < minY) minY = n.y - 100;
+                if (n.x + 200 > maxX) maxX = n.x + 200;
+                if (n.y + 100 > maxY) maxY = n.y + 100;
+            });
+        }
+        if (ShotDesigner.currentAsset && ShotDesigner.currentAsset.annotations) {
+            ShotDesigner.currentAsset.annotations.forEach(a => {
+                const ax = a.x !== undefined ? a.x : (a.x1 || 0);
+                const ay = a.y !== undefined ? a.y : (a.y1 || 0);
+                const aw = a.width || (Math.abs((a.x2||0) - (a.x1||0)) || 100);
+                const ah = a.height || (Math.abs((a.y2||0) - (a.y1||0)) || 50);
+                if (ax < minX) minX = ax - 100;
+                if (ay < minY) minY = ay - 100;
+                if (ax + aw > maxX) maxX = ax + aw + 100;
+                if (ay + ah > maxY) maxY = ay + ah + 100;
+            });
+        }
+        return { minX, minY, maxX, maxY, width: Math.max(800, maxX - minX), height: Math.max(600, maxY - minY) };
+    },
+
+    renderMinimap: () => {
+        const svg = document.getElementById('sd-minimap-svg');
+        if (!svg || ShotDesigner.isMinimapCollapsed || !ShotDesigner.currentAsset) return;
+
+        const bounds = ShotDesigner.getCanvasBounds();
+        const mmW = 200;
+        const mmH = 130;
+
+        const scaleX = mmW / bounds.width;
+        const scaleY = mmH / bounds.height;
+        const scale = Math.min(scaleX, scaleY);
+
+        ShotDesigner._mmScale = scale;
+        ShotDesigner._mmBounds = bounds;
+        ShotDesigner._mmOffsetX = (mmW - bounds.width * scale) / 2;
+        ShotDesigner._mmOffsetY = (mmH - bounds.height * scale) / 2;
+
+        let content = '';
+
+        // Draw Split line preview at y=0
+        if (bounds.minY <= 0 && bounds.maxY >= 0) {
+            const splitY = ShotDesigner._mmOffsetY + (0 - bounds.minY) * scale;
+            content += `<line x1="0" y1="${splitY}" x2="${mmW}" y2="${splitY}" stroke="#555" stroke-dasharray="2,2" stroke-width="0.5"/>`;
+        }
+
+        // Draw Annotations / Shapes preview
+        if (ShotDesigner.currentAsset.annotations) {
+            ShotDesigner.currentAsset.annotations.forEach(a => {
+                if (a.type === 'shape' || a.type === 'text') {
+                    const sx = ShotDesigner._mmOffsetX + (a.x - bounds.minX) * scale;
+                    const sy = ShotDesigner._mmOffsetY + (a.y - bounds.minY) * scale;
+                    const sw = (a.width || 100) * scale;
+                    const sh = (a.height || 40) * scale;
+                    content += `<rect x="${sx}" y="${sy}" width="${sw}" height="${sh}" fill="rgba(255,255,255,0.08)" stroke="#555" stroke-width="0.5" rx="${a.type==='shape'&&(a.shapeType==='circle'||a.shapeType==='oval')?sw/2:1}"/>`;
+                } else if (a.type === 'line') {
+                    const x1 = ShotDesigner._mmOffsetX + (a.x1 - bounds.minX) * scale;
+                    const y1 = ShotDesigner._mmOffsetY + (a.y1 - bounds.minY) * scale;
+                    const x2 = ShotDesigner._mmOffsetX + (a.x2 - bounds.minX) * scale;
+                    const y2 = ShotDesigner._mmOffsetY + (a.y2 - bounds.minY) * scale;
+                    content += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${a.color || '#4fc3f7'}" stroke-width="1"/>`;
+                }
+            });
+        }
+
+        // Draw Nodes preview
+        ShotDesigner.currentAsset.nodes.forEach(n => {
+            const sx = ShotDesigner._mmOffsetX + (n.x - bounds.minX) * scale;
+            const sy = ShotDesigner._mmOffsetY + (n.y - bounds.minY) * scale;
+            const sw = 150 * scale;
+            const sh = 60 * scale;
+            let col = '#424242';
+            if (n.isProcess) col = '#9c27b0';
+            else if (n.isEpisode || n.isScene) col = '#f57c00';
+            else if (n.isShot) col = '#2196f3';
+            else if (n.type === 'file') col = '#4caf50';
+            content += `<rect x="${sx}" y="${sy}" width="${sw}" height="${sh}" fill="${col}" rx="1"/>`;
+        });
+
+        svg.innerHTML = content;
+        ShotDesigner.updateMinimapViewport();
+    },
+
+    updateMinimapViewport: () => {
+        const vp = document.getElementById('sd-minimap-viewport');
+        const canvasArea = document.getElementById('sd-canvas-area');
+        if (!vp || !canvasArea || !ShotDesigner._mmBounds || !ShotDesigner._mmScale || ShotDesigner.isMinimapCollapsed) return;
+
+        const bounds = ShotDesigner._mmBounds;
+        const scale = ShotDesigner._mmScale;
+        const offX = ShotDesigner._mmOffsetX || 0;
+        const offY = ShotDesigner._mmOffsetY || 0;
+
+        const cW = canvasArea.clientWidth;
+        const cH = canvasArea.clientHeight;
+        const zoom = ShotDesigner.zoomLevel;
+        const panX = ShotDesigner.panOffset.x;
+        const panY = ShotDesigner.panOffset.y;
+
+        const worldLeft = -panX / zoom;
+        const worldTop = -panY / zoom;
+        const worldW = cW / zoom;
+        const worldH = cH / zoom;
+
+        const vx = offX + (worldLeft - bounds.minX) * scale;
+        const vy = offY + (worldTop - bounds.minY) * scale;
+        const vw = worldW * scale;
+        const vh = worldH * scale;
+
+        vp.style.left = `${Math.max(0, Math.min(200 - 4, vx))}px`;
+        vp.style.top = `${Math.max(0, Math.min(130 - 4, vy))}px`;
+        vp.style.width = `${Math.max(6, Math.min(200, vw))}px`;
+        vp.style.height = `${Math.max(6, Math.min(130, vh))}px`;
+    },
+
+    onMinimapMouseDown: (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        ShotDesigner.isDraggingMinimap = true;
+        ShotDesigner.panToMinimapPos(e);
+    },
+
+    onMinimapMouseMove: (e) => {
+        if (!ShotDesigner.isDraggingMinimap) return;
+        ShotDesigner.panToMinimapPos(e);
+    },
+
+    panToMinimapPos: (e) => {
+        const bodyEl = document.getElementById('sd-minimap-body');
+        const canvasArea = document.getElementById('sd-canvas-area');
+        if (!bodyEl || !canvasArea || !ShotDesigner._mmBounds || !ShotDesigner._mmScale) return;
+
+        const rect = bodyEl.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const offX = ShotDesigner._mmOffsetX || 0;
+        const offY = ShotDesigner._mmOffsetY || 0;
+        const scale = ShotDesigner._mmScale;
+        const bounds = ShotDesigner._mmBounds;
+
+        const worldX = bounds.minX + (mx - offX) / scale;
+        const worldY = bounds.minY + (my - offY) / scale;
+
+        const cW = canvasArea.clientWidth;
+        const cH = canvasArea.clientHeight;
+        const zoom = ShotDesigner.zoomLevel;
+
+        ShotDesigner.panOffset.x = cW / 2 - worldX * zoom;
+        ShotDesigner.panOffset.y = cH / 2 - worldY * zoom;
+
+        ShotDesigner.updateViewportTransform();
+    },
+
+    // --- COSMETIC ANNOTATIONS METHODS ---
+    addAnnotation: (type, subType = 'rectangle') => {
+        if (!ShotDesigner.currentAsset) return;
+        if (!ShotDesigner.currentAsset.annotations) ShotDesigner.currentAsset.annotations = [];
+
+        const canvasArea = document.getElementById('sd-canvas-area');
+        const cW = canvasArea ? canvasArea.clientWidth : 800;
+        const cH = canvasArea ? canvasArea.clientHeight : 600;
+        const zoom = ShotDesigner.zoomLevel || 1;
+        const cx = (-ShotDesigner.panOffset.x + cW / 2) / zoom;
+        const cy = (-ShotDesigner.panOffset.y + cH / 2) / zoom;
+
+        const newId = 'ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        let newAnn = null;
+
+        if (type === 'text') {
+            newAnn = {
+                id: newId,
+                type: 'text',
+                text: 'Texto o Nota...',
+                x: Math.round(cx - 90),
+                y: Math.round(cy - 25),
+                width: 200,
+                height: 60,
+                fontSize: 18,
+                fontFamily: 'sans-serif',
+                color: '#ffca28',
+                isBold: true,
+                isItalic: false,
+                isUnderline: false,
+                mode: 'none',
+                strokeColor: '#ff9800',
+                strokeWidth: 0,
+                strokeStyle: 'solid',
+                fillColor: '#1e293b',
+                fillOpacity: 0.8,
+                borderRadius: 4,
+                padding: 6,
+                layerOrder: 'front'
+            };
+        } else if (type === 'line') {
+            newAnn = {
+                id: newId,
+                type: 'line',
+                x1: Math.round(cx - 100),
+                y1: Math.round(cy),
+                x2: Math.round(cx + 100),
+                y2: Math.round(cy),
+                color: '#4fc3f7',
+                strokeWidth: 3,
+                strokeStyle: 'solid',
+                endCap: 'arrow',
+                layerOrder: 'front'
+            };
+        } else if (type === 'shape') {
+            newAnn = {
+                id: newId,
+                type: 'shape',
+                shapeType: subType || 'rectangle',
+                x: Math.round(cx - 120),
+                y: Math.round(cy - 70),
+                width: subType === 'square' || subType === 'circle' ? 160 : 240,
+                height: subType === 'square' || subType === 'circle' ? 160 : 140,
+                mode: 'both',
+                strokeColor: '#2196f3',
+                strokeWidth: 2,
+                strokeStyle: 'solid',
+                fillColor: '#2196f3',
+                fillOpacity: 0.15,
+                borderRadius: 8,
+                layerOrder: 'back'
+            };
+        }
+
+        if (newAnn) {
+            ShotDesigner.currentAsset.annotations.push(newAnn);
+            ShotDesigner.selectAnnotation(newAnn.id);
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
+        }
+    },
+
+    selectAnnotation: (id) => {
+        ShotDesigner.selectedAnnotationId = id;
+        ShotDesigner.selectedNodeId = null;
+        ShotDesigner.selectedNodeIds = [];
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+    },
+
+    updateAnnotationProp: (id, prop, value) => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.annotations) return;
+        const ann = ShotDesigner.currentAsset.annotations.find(a => a.id === id);
+        if (!ann) return;
+
+        ann[prop] = value;
+        ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+    },
+
+    deleteAnnotation: (id) => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.annotations) return;
+        ShotDesigner.currentAsset.annotations = ShotDesigner.currentAsset.annotations.filter(a => a.id !== id);
+        if (ShotDesigner.selectedAnnotationId === id) {
+            ShotDesigner.selectedAnnotationId = null;
+        }
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
     },
 
     updateBackground: () => {
@@ -914,9 +1468,9 @@ const ShotDesigner = {
     // The logic for starting a connection is now handled by onCanvasMouseDown if it hits a dot.
 
     onCanvasMouseDown: (e) => {
-        const isShift = e.shiftKey;
+        const isShift = e.shiftKey || e.ctrlKey;
 
-        // ALT + Drag = PAN
+        // ALT + Drag = PAN or Middle Click
         if (e.altKey || e.button === 1) {
             ShotDesigner.isPanning = true;
             ShotDesigner.panStart = { x: e.clientX, y: e.clientY };
@@ -946,10 +1500,14 @@ const ShotDesigner = {
             };
             document.body.style.cursor = 'crosshair';
             e.stopPropagation();
+        } else if (e.target.closest('.canvas-annotation-item')) {
+            // Handled by annotation item
+            return;
         } else if (e.target.closest('.sd-node')) {
             const nodeEl = e.target.closest('.sd-node');
             const nodeId = nodeEl.getAttribute('data-id');
             const node = ShotDesigner.currentAsset.nodes.find(n => n.id === nodeId);
+            ShotDesigner.selectedAnnotationId = null;
 
             if (isShift) {
                 ShotDesigner.selectNode(nodeId, true);
@@ -970,7 +1528,11 @@ const ShotDesigner = {
             e.stopPropagation();
         } else {
             // Clicked on empty space
-            if (!isShift) ShotDesigner.selectNode(null);
+            if (!isShift) {
+                ShotDesigner.selectNode(null);
+                ShotDesigner.selectedAnnotationId = null;
+                ShotDesigner.updateSidebar();
+            }
 
             // Start Box Selection
             ShotDesigner.isBoxSelecting = true;
@@ -988,16 +1550,90 @@ const ShotDesigner = {
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
+        // PANNING (HIGH PERFORMANCE HARDWARE TRANSFORM)
         if (ShotDesigner.isPanning) {
             ShotDesigner.panOffset.x += (e.clientX - ShotDesigner.panStart.x);
             ShotDesigner.panOffset.y += (e.clientY - ShotDesigner.panStart.y);
             ShotDesigner.panStart = { x: e.clientX, y: e.clientY };
+            ShotDesigner.scheduleUpdateTransform();
+            return;
+        }
+        // RESIZING ANNOTATION
+        else if (ShotDesigner.isResizingAnnotation && ShotDesigner.resizeAnnotation && ShotDesigner.resizeStart) {
+            const dx = (e.clientX - ShotDesigner.resizeStart.clientX) / ShotDesigner.zoomLevel;
+            const dy = (e.clientY - ShotDesigner.resizeStart.clientY) / ShotDesigner.zoomLevel;
+            const ann = ShotDesigner.resizeAnnotation;
+            const corner = ShotDesigner.resizeHandleCorner;
+            const s = ShotDesigner.resizeStart;
+
+            let newW = s.width;
+            let newH = s.height;
+            let newX = s.x;
+            let newY = s.y;
+
+            if (corner === 'se') {
+                newW = Math.max(30, s.width + dx);
+                newH = Math.max(20, s.height + dy);
+            } else if (corner === 'ne') {
+                newW = Math.max(30, s.width + dx);
+                newH = Math.max(20, s.height - dy);
+                newY = s.y + (s.height - newH);
+            } else if (corner === 'sw') {
+                newW = Math.max(30, s.width - dx);
+                newH = Math.max(20, s.height + dy);
+                newX = s.x + (s.width - newW);
+            } else if (corner === 'nw') {
+                newW = Math.max(30, s.width - dx);
+                newH = Math.max(20, s.height - dy);
+                newX = s.x + (s.width - newW);
+                newY = s.y + (s.height - newH);
+            }
+
+            ann.width = Math.round(newW);
+            ann.height = Math.round(newH);
+            ann.x = Math.round(newX);
+            ann.y = Math.round(newY);
+
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+        }
+        // DRAGGING LINE ENDPOINT HANDLE
+        else if (ShotDesigner.isDraggingLineHandle && ShotDesigner.dragLineAnnotation) {
+            const canvasX = Math.round((mouseX - ShotDesigner.panOffset.x) / ShotDesigner.zoomLevel);
+            const canvasY = Math.round((mouseY - ShotDesigner.panOffset.y) / ShotDesigner.zoomLevel);
+            const ann = ShotDesigner.dragLineAnnotation;
+
+            if (ShotDesigner.dragLineHandleType === 'start') {
+                ann.x1 = canvasX;
+                ann.y1 = canvasY;
+            } else if (ShotDesigner.dragLineHandleType === 'end') {
+                ann.x2 = canvasX;
+                ann.y2 = canvasY;
+            }
+
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+        }
+        // DRAGGING ANNOTATION
+        else if (ShotDesigner.isDraggingAnnotation && ShotDesigner.dragAnnotation) {
+            const dx = (e.clientX - ShotDesigner.dragAnnotationLastPos.x) / ShotDesigner.zoomLevel;
+            const dy = (e.clientY - ShotDesigner.dragAnnotationLastPos.y) / ShotDesigner.zoomLevel;
+            const a = ShotDesigner.dragAnnotation;
+            if (a.type === 'line') {
+                a.x1 += dx;
+                a.y1 += dy;
+                a.x2 += dx;
+                a.y2 += dy;
+            } else {
+                a.x += dx;
+                a.y += dy;
+            }
+            ShotDesigner.dragAnnotationLastPos = { x: e.clientX, y: e.clientY };
             ShotDesigner.renderCanvas();
         } else if (ShotDesigner.isDraggingNode) {
             const dx = (e.clientX - ShotDesigner.dragLastPos.x) / ShotDesigner.zoomLevel;
             const dy = (e.clientY - ShotDesigner.dragLastPos.y) / ShotDesigner.zoomLevel;
 
-            // Move all selected nodes
             ShotDesigner.selectedNodeIds.forEach(id => {
                 const n = ShotDesigner.currentAsset.nodes.find(node => node.id === id);
                 if (n) {
@@ -1015,13 +1651,12 @@ const ShotDesigner = {
 
             // Proximity Highlight
             document.querySelectorAll('.sd-dot').forEach(d => d.classList.remove('active'));
-            const rect = document.getElementById('sd-canvas-area').getBoundingClientRect();
             const nearest = ShotDesigner.findNearestDot(e.clientX, e.clientY, 40);
             if (nearest) {
                 nearest.classList.add('active');
             }
 
-            ShotDesigner.renderCanvas(); // Redraw draft line
+            ShotDesigner.renderCanvas();
         } else if (ShotDesigner.isBoxSelecting) {
             ShotDesigner.boxCurrent = {
                 x: (e.clientX - rect.left - ShotDesigner.panOffset.x) / ShotDesigner.zoomLevel,
@@ -1033,25 +1668,34 @@ const ShotDesigner = {
 
     onCanvasMouseUp: (e) => {
         if (ShotDesigner.isBoxSelecting) {
-            const isShift = e.shiftKey;
+            const isShift = e.shiftKey || e.ctrlKey;
             const minX = Math.min(ShotDesigner.boxStart.x, ShotDesigner.boxCurrent.x);
             const maxX = Math.max(ShotDesigner.boxStart.x, ShotDesigner.boxCurrent.x);
             const minY = Math.min(ShotDesigner.boxStart.y, ShotDesigner.boxCurrent.y);
             const maxY = Math.max(ShotDesigner.boxStart.y, ShotDesigner.boxCurrent.y);
 
-            const nodesInBox = ShotDesigner.currentAsset.nodes.filter(n => {
-                return n.x >= minX - 150 && n.x <= maxX && n.y >= minY - 70 && n.y <= maxY;
-            });
+            const isClick = Math.abs(ShotDesigner.boxStart.x - ShotDesigner.boxCurrent.x) < 5 &&
+                            Math.abs(ShotDesigner.boxStart.y - ShotDesigner.boxCurrent.y) < 5;
 
-            if (!isShift) ShotDesigner.selectedNodeIds = [];
-            nodesInBox.forEach(n => {
-                if (!ShotDesigner.selectedNodeIds.includes(n.id)) {
-                    ShotDesigner.selectedNodeIds.push(n.id);
-                }
-            });
+            if (!isClick && ShotDesigner.currentAsset) {
+                const nodesInBox = ShotDesigner.currentAsset.nodes.filter(n => {
+                    const nodeMinX = n.x;
+                    const nodeMaxX = n.x + 150;
+                    const nodeMinY = n.y;
+                    const nodeMaxY = n.y + 60;
+                    return (nodeMinX <= maxX && nodeMaxX >= minX && nodeMinY <= maxY && nodeMaxY >= minY);
+                });
 
-            // Compatibility
-            ShotDesigner.selectedNodeId = ShotDesigner.selectedNodeIds.length === 1 ? ShotDesigner.selectedNodeIds[0] : null;
+                if (!isShift) ShotDesigner.selectedNodeIds = [];
+                nodesInBox.forEach(n => {
+                    if (!ShotDesigner.selectedNodeIds.includes(n.id)) {
+                        ShotDesigner.selectedNodeIds.push(n.id);
+                    }
+                });
+
+                ShotDesigner.selectedNodeId = ShotDesigner.selectedNodeIds.length === 1 ? ShotDesigner.selectedNodeIds[0] : null;
+            }
+
             ShotDesigner.isBoxSelecting = false;
             ShotDesigner.renderCanvas();
             ShotDesigner.updateSidebar();
@@ -1061,6 +1705,31 @@ const ShotDesigner = {
         if (ShotDesigner.isPanning) {
             ShotDesigner.isPanning = false;
             document.body.style.cursor = 'default';
+            ShotDesigner.updateBackground();
+        }
+
+        if (ShotDesigner.isResizingAnnotation) {
+            ShotDesigner.isResizingAnnotation = false;
+            ShotDesigner.resizeAnnotation = null;
+            ShotDesigner.resizeHandleCorner = null;
+            ShotDesigner.resizeStart = null;
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
+        }
+
+        if (ShotDesigner.isDraggingLineHandle) {
+            ShotDesigner.isDraggingLineHandle = false;
+            ShotDesigner.dragLineAnnotation = null;
+            ShotDesigner.dragLineHandleType = null;
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
+        }
+
+        if (ShotDesigner.isDraggingAnnotation) {
+            ShotDesigner.isDraggingAnnotation = false;
+            ShotDesigner.dragAnnotation = null;
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
         }
 
         if (ShotDesigner.isDraggingNode) {
@@ -1071,7 +1740,6 @@ const ShotDesigner = {
         }
 
         if (ShotDesigner.isConnecting) {
-            // Check for nearest dot (magnetic snap)
             const dot = ShotDesigner.findNearestDot(e.clientX, e.clientY, 40);
             document.querySelectorAll('.sd-dot').forEach(d => d.classList.remove('active'));
 
@@ -1111,13 +1779,26 @@ const ShotDesigner = {
 
     onCanvasWheel: (e) => {
         e.preventDefault();
-        const zoomSpeed = 0.1;
-        const delta = -Math.sign(e.deltaY) * zoomSpeed;
-        const newZoom = Math.min(Math.max(0.2, ShotDesigner.zoomLevel + delta), 3.0);
+        const canvasArea = document.getElementById('sd-canvas-area');
+        if (!canvasArea) return;
+        const rect = canvasArea.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-        // Simple zoom for now (Top-Left origin, shifts view)
+        const zoomSpeed = 0.08;
+        const delta = -Math.sign(e.deltaY) * zoomSpeed;
+        const oldZoom = ShotDesigner.zoomLevel;
+        const newZoom = Math.min(Math.max(0.15, oldZoom * (1 + delta)), 3.5);
+
+        // Zoom toward mouse pointer
+        const worldX = (mouseX - ShotDesigner.panOffset.x) / oldZoom;
+        const worldY = (mouseY - ShotDesigner.panOffset.y) / oldZoom;
+
         ShotDesigner.zoomLevel = newZoom;
-        ShotDesigner.renderCanvas();
+        ShotDesigner.panOffset.x = mouseX - worldX * newZoom;
+        ShotDesigner.panOffset.y = mouseY - worldY * newZoom;
+
+        ShotDesigner.scheduleUpdateTransform();
     },
 
     onKeyDown: (e) => {
@@ -1142,26 +1823,61 @@ const ShotDesigner = {
                 return;
             } else if (e.key === 'd' || e.key === 'D') {
                 e.preventDefault();
-                ShotDesigner.duplicateSelected();
+                if (ShotDesigner.selectedAnnotationId) {
+                    const ann = ShotDesigner.currentAsset.annotations.find(a => a.id === ShotDesigner.selectedAnnotationId);
+                    if (ann) {
+                        const copy = JSON.parse(JSON.stringify(ann));
+                        copy.id = 'ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+                        if (copy.type === 'line') {
+                            copy.x1 += 30; copy.y1 += 30; copy.x2 += 30; copy.y2 += 30;
+                        } else {
+                            copy.x += 30; copy.y += 30;
+                        }
+                        ShotDesigner.currentAsset.annotations.push(copy);
+                        ShotDesigner.selectAnnotation(copy.id);
+                        ShotDesigner.pushHistory();
+                        ShotDesigner.saveAsset();
+                    }
+                } else {
+                    ShotDesigner.duplicateSelected();
+                }
                 return;
             } else if (e.key === 'c' || e.key === 'C') {
                 e.preventDefault();
-                ShotDesigner.copySelected();
+                if (e.shiftKey) {
+                    ShotDesigner.copyNodeConfig();
+                } else {
+                    ShotDesigner.copySelected();
+                }
                 return;
             } else if (e.key === 'v' || e.key === 'V') {
                 e.preventDefault();
-                ShotDesigner.pasteSelected();
+                if (e.shiftKey) {
+                    ShotDesigner.pasteNodeConfig();
+                } else {
+                    ShotDesigner.pasteSelected();
+                }
                 return;
             }
             return;
         }
 
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            ShotDesigner.deleteSelected();
+            if (ShotDesigner.selectedAnnotationId) {
+                ShotDesigner.deleteAnnotation(ShotDesigner.selectedAnnotationId);
+            } else {
+                ShotDesigner.deleteSelected();
+            }
         }
 
         if (e.key === 'Enter') {
-            if (ShotDesigner.selectedNodeId) {
+            if (ShotDesigner.selectedAnnotationId) {
+                const ann = ShotDesigner.currentAsset.annotations.find(a => a.id === ShotDesigner.selectedAnnotationId);
+                if (ann && ann.type === 'text') {
+                    ShotDesigner.editingAnnotationId = ann.id;
+                    ShotDesigner.renderCanvas();
+                }
+            } else if (ShotDesigner.selectedNodeId) {
                 ShotDesigner.startRenaming(ShotDesigner.selectedNodeId);
             }
         }
@@ -1727,11 +2443,260 @@ const ShotDesigner = {
 
                 </div>
             `;
+        } else if (ShotDesigner.selectedAnnotationId && ShotDesigner.currentAsset && ShotDesigner.currentAsset.annotations) {
+            const ann = ShotDesigner.currentAsset.annotations.find(a => a.id === ShotDesigner.selectedAnnotationId);
+            if (ann) {
+                title.innerText = `Anotación Cosmética (${ann.type.toUpperCase()})`;
+                let fieldsHtml = '';
+
+                if (ann.type === 'text') {
+                    fieldsHtml = `
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Contenido de Texto (Doble clic o Enter en canvas para editar)</label>
+                                <textarea class="prop-input" style="width:100%; height:75px; resize:vertical; box-sizing:border-box; font-size:0.9rem;" 
+                                          oninput="ShotDesigner.updateAnnotationProp('${ann.id}', 'text', this.value)">${ann.text}</textarea>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Color Texto</label>
+                                    <input type="color" value="${ann.color || '#ffca28'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'color', this.value)">
+                                </div>
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Tamaño Fuente (px)</label>
+                                    <input type="number" class="prop-input" value="${ann.fontSize || 18}" min="10" max="96" step="2" style="width:100%; box-sizing:border-box;"
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'fontSize', parseInt(this.value)||18)">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Tipografía</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'fontFamily', this.value)">
+                                    <option value="sans-serif" ${ann.fontFamily==='sans-serif'?'selected':''}>Sans-Serif (Moderna)</option>
+                                    <option value="monospace" ${ann.fontFamily==='monospace'?'selected':''}>Monospace (Código)</option>
+                                    <option value="serif" ${ann.fontFamily==='serif'?'selected':''}>Serif (Clásica)</option>
+                                    <option value="cursive" ${ann.fontFamily==='cursive'?'selected':''}>Cursive (Manuscrita)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Estilo de Texto</label>
+                                <div style="display:flex; gap:6px;">
+                                    <button class="tool-btn ${ann.isBold?'active':''}" style="flex:1; font-weight:bold;" onclick="ShotDesigner.updateAnnotationProp('${ann.id}', 'isBold', !${!!ann.isBold}); ShotDesigner.updateSidebar();">B</button>
+                                    <button class="tool-btn ${ann.isItalic?'active':''}" style="flex:1; font-style:italic;" onclick="ShotDesigner.updateAnnotationProp('${ann.id}', 'isItalic', !${!!ann.isItalic}); ShotDesigner.updateSidebar();">I</button>
+                                    <button class="tool-btn ${ann.isUnderline?'active':''}" style="flex:1; text-decoration:underline;" onclick="ShotDesigner.updateAnnotationProp('${ann.id}', 'isUnderline', !${!!ann.isUnderline}); ShotDesigner.updateSidebar();">U</button>
+                                </div>
+                            </div>
+
+                            <div style="border-top:1px dashed #444; padding-top:10px;">
+                                <label class="prop-label" style="color:#ff9800; font-weight:bold; margin-bottom:6px; display:block;">Caja / Contenedor de Nota</label>
+                                
+                                <div style="margin-bottom:8px;">
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Modo Visual</label>
+                                    <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'mode', this.value); ShotDesigner.updateSidebar();">
+                                        <option value="none" ${ann.mode==='none'?'selected':''}>Solo Texto (Transparente)</option>
+                                        <option value="fill" ${ann.mode==='fill'?'selected':''}>Solo Relleno</option>
+                                        <option value="stroke" ${ann.mode==='stroke'?'selected':''}>Solo Borde</option>
+                                        <option value="both" ${ann.mode==='both'?'selected':''}>Borde y Relleno</option>
+                                    </select>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:8px;">
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Color Borde</label>
+                                        <input type="color" value="${ann.strokeColor || '#ff9800'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                               onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeColor', this.value)">
+                                    </div>
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Grosor Borde (px)</label>
+                                        <input type="number" class="prop-input" value="${ann.strokeWidth !== undefined ? ann.strokeWidth : (ann.mode==='none'||ann.mode==='fill'?0:2)}" min="0" max="20" step="1" style="width:100%; box-sizing:border-box;"
+                                               onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeWidth', parseInt(this.value)||0)">
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom:8px;">
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Trama / Estilo de Borde</label>
+                                    <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeStyle', this.value)">
+                                        <option value="solid" ${(!ann.strokeStyle || ann.strokeStyle==='solid')?'selected':''}>Sólida (Continua)</option>
+                                        <option value="dashed" ${ann.strokeStyle==='dashed'?'selected':''}>Discontinua (Dashed)</option>
+                                        <option value="dotted" ${ann.strokeStyle==='dotted'?'selected':''}>Punteada (Dotted)</option>
+                                        <option value="dashdot" ${ann.strokeStyle==='dashdot'?'selected':''}>Raya y Punto (Dash-Dot)</option>
+                                    </select>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:8px;">
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Color Relleno</label>
+                                        <input type="color" value="${ann.fillColor || '#1e293b'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                               onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'fillColor', this.value)">
+                                    </div>
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Opacidad Relleno</label>
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <input type="range" min="0" max="1" step="0.05" value="${ann.fillOpacity !== undefined ? ann.fillOpacity : (ann.mode==='none'?0:0.8)}" style="flex:1;"
+                                                   oninput="this.nextElementSibling.innerText = Math.round(this.value*100)+'%'; ShotDesigner.updateAnnotationProp('${ann.id}', 'fillOpacity', parseFloat(this.value))">
+                                            <span style="font-size:0.75rem; color:#aaa; width:36px; text-align:right;">${Math.round((ann.fillOpacity !== undefined ? ann.fillOpacity : (ann.mode==='none'?0:0.8))*100)}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:8px;">
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Ancho (px)</label>
+                                        <input type="number" class="prop-input" value="${ann.width || 200}" min="40" max="3000" step="10" style="width:100%; box-sizing:border-box;"
+                                               onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'width', parseInt(this.value)||200)">
+                                    </div>
+                                    <div>
+                                        <label class="prop-label" style="margin-bottom:4px; display:block;">Alto (px)</label>
+                                        <input type="number" class="prop-input" value="${ann.height || 60}" min="20" max="3000" step="5" style="width:100%; box-sizing:border-box;"
+                                               onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'height', parseInt(this.value)||60)">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Capa / Orden</label>
+                                    <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'layerOrder', this.value)">
+                                        <option value="front" ${ann.layerOrder!=='back'?'selected':''}>Delante de los nodos (Foreground)</option>
+                                        <option value="back" ${ann.layerOrder==='back'?'selected':''}>Detrás de los nodos (Backdrop)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (ann.type === 'shape') {
+                    fieldsHtml = `
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Tipo de Forma</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'shapeType', this.value)">
+                                    <option value="rectangle" ${ann.shapeType==='rectangle'?'selected':''}>Rectángulo</option>
+                                    <option value="square" ${ann.shapeType==='square'?'selected':''}>Cuadrado</option>
+                                    <option value="circle" ${ann.shapeType==='circle'?'selected':''}>Círculo</option>
+                                    <option value="oval" ${ann.shapeType==='oval'?'selected':''}>Óvalo</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Modo Visual</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'mode', this.value)">
+                                    <option value="both" ${ann.mode==='both'?'selected':''}>Línea de Borde + Relleno</option>
+                                    <option value="stroke" ${ann.mode==='stroke'?'selected':''}>Solo Línea de Borde</option>
+                                    <option value="fill" ${ann.mode==='fill'?'selected':''}>Solo Relleno</option>
+                                </select>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Color Borde</label>
+                                    <input type="color" value="${ann.strokeColor || '#2196f3'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeColor', this.value)">
+                                </div>
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Grosor Borde (px)</label>
+                                    <input type="number" class="prop-input" value="${ann.strokeWidth !== undefined ? ann.strokeWidth : 2}" min="0" max="20" step="1" style="width:100%; box-sizing:border-box;"
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeWidth', parseInt(this.value)||0)">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Trama / Estilo de Borde</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeStyle', this.value)">
+                                    <option value="solid" ${(!ann.strokeStyle || ann.strokeStyle==='solid')?'selected':''}>Sólida (Continua)</option>
+                                    <option value="dashed" ${ann.strokeStyle==='dashed'?'selected':''}>Discontinua (Dashed)</option>
+                                    <option value="dotted" ${ann.strokeStyle==='dotted'?'selected':''}>Punteada (Dotted)</option>
+                                    <option value="dashdot" ${ann.strokeStyle==='dashdot'?'selected':''}>Raya y Punto (Dash-Dot)</option>
+                                </select>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Color Relleno</label>
+                                    <input type="color" value="${ann.fillColor || '#2196f3'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'fillColor', this.value)">
+                                </div>
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Opacidad Relleno</label>
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <input type="range" min="0" max="1" step="0.05" value="${ann.fillOpacity !== undefined ? ann.fillOpacity : 0.15}" style="flex:1;"
+                                               oninput="this.nextElementSibling.innerText = Math.round(this.value*100)+'%'; ShotDesigner.updateAnnotationProp('${ann.id}', 'fillOpacity', parseFloat(this.value))">
+                                        <span style="font-size:0.75rem; color:#aaa; width:36px; text-align:right;">${Math.round((ann.fillOpacity !== undefined ? ann.fillOpacity : 0.15)*100)}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Ancho (px)</label>
+                                    <input type="number" class="prop-input" value="${ann.width || 200}" min="20" max="3000" step="10" style="width:100%; box-sizing:border-box;"
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'width', parseInt(this.value)||200)">
+                                </div>
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Alto (px)</label>
+                                    <input type="number" class="prop-input" value="${ann.height || 120}" min="20" max="3000" step="10" style="width:100%; box-sizing:border-box;"
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'height', parseInt(this.value)||120)">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Capa / Orden</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'layerOrder', this.value)">
+                                    <option value="back" ${ann.layerOrder!=='front'?'selected':''}>Detrás de los nodos (Backdrop)</option>
+                                    <option value="front" ${ann.layerOrder==='front'?'selected':''}>Delante de los nodos (Foreground)</option>
+                                </select>
+                            </div>
+                        </div>
+                    `;
+                } else if (ann.type === 'line') {
+                    fieldsHtml = `
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Color de Línea</label>
+                                    <input type="color" value="${ann.color || '#4fc3f7'}" style="width:100%; height:30px; background:#222; border:1px solid #444; border-radius:4px; cursor:pointer;" 
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'color', this.value)">
+                                </div>
+                                <div>
+                                    <label class="prop-label" style="margin-bottom:4px; display:block;">Grosor (px)</label>
+                                    <input type="number" class="prop-input" value="${ann.strokeWidth || 3}" min="1" max="20" step="1" style="width:100%; box-sizing:border-box;"
+                                           onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeWidth', parseInt(this.value)||3)">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Trama / Estilo de Trazo</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'strokeStyle', this.value)">
+                                    <option value="solid" ${(!ann.strokeStyle || ann.strokeStyle==='solid')?'selected':''}>Sólida (Continua)</option>
+                                    <option value="dashed" ${ann.strokeStyle==='dashed'?'selected':''}>Discontinua (Dashed)</option>
+                                    <option value="dotted" ${ann.strokeStyle==='dotted'?'selected':''}>Punteada (Dotted)</option>
+                                    <option value="dashdot" ${ann.strokeStyle==='dashdot'?'selected':''}>Raya y Punto (Dash-Dot)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Terminación (Extremo)</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'endCap', this.value)">
+                                    <option value="none" ${ann.endCap==='none'?'selected':''}>Recta (Sin terminación)</option>
+                                    <option value="arrow" ${ann.endCap==='arrow'?'selected':''}>Flecha (Direccional)</option>
+                                    <option value="circle" ${ann.endCap==='circle'?'selected':''}>Punto / Círculo</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="prop-label" style="margin-bottom:4px; display:block;">Capa / Orden</label>
+                                <select class="prop-input" style="width:100%; box-sizing:border-box;" onchange="ShotDesigner.updateAnnotationProp('${ann.id}', 'layerOrder', this.value)">
+                                    <option value="front" ${ann.layerOrder!=='back'?'selected':''}>Delante de los nodos (Foreground)</option>
+                                    <option value="back" ${ann.layerOrder==='back'?'selected':''}>Detrás de los nodos (Backdrop)</option>
+                                </select>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                content.innerHTML = `
+                    ${fieldsHtml}
+                    <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+                    <button class="tool-btn danger" style="width:100%; padding:8px; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;" onclick="ShotDesigner.deleteAnnotation('${ann.id}')">
+                        <img src="icons/delete.svg" class="btn-icon-svg">
+                        <span>Eliminar Anotación (Supr)</span>
+                    </button>
+                `;
+                return;
+            }
         } else {
             title.innerText = "Configuración Global";
             content.innerHTML = `
                 <div style="padding:10px; color:#666; font-size:0.8rem; text-align:center;">
-                    Selecciona un nodo para editar sus propiedades.
+                    Selecciona un nodo o anotación para editar sus propiedades.
                 </div>
                 <div class="prop-row">
                     <label class="prop-label">Nombre del Asset</label>
@@ -2051,6 +3016,282 @@ const ShotDesigner = {
         ShotDesigner.updatePreview();
         ShotDesigner.pushHistory();
         ShotDesigner.saveAsset();
+    },
+
+    copyNodeConfig: () => {
+        const targetId = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length > 0)
+            ? ShotDesigner.selectedNodeIds[0]
+            : ShotDesigner.selectedNodeId;
+        if (!targetId || !ShotDesigner.currentAsset) return;
+
+        const sourceNode = ShotDesigner.currentAsset.nodes.find(n => n.id === targetId);
+        if (!sourceNode) return;
+
+        // Clone node config
+        const configClone = JSON.parse(JSON.stringify(sourceNode));
+        
+        // Remove instance-specific identifiers
+        delete configClone.id;
+        delete configClone.name;
+        delete configClone.exampleValue;
+        delete configClone.x;
+        delete configClone.y;
+        delete configClone.parent;
+        delete configClone.parentOnline;
+
+        window.pipetaNodeConfigClipboard = configClone;
+        console.log(`[ShotDesigner] Configuración de nodo copiada (${sourceNode.name || 'node'}).`);
+    },
+
+    pasteNodeConfig: () => {
+        const clipboard = window.pipetaNodeConfigClipboard;
+        if (!clipboard || !ShotDesigner.currentAsset) return;
+
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length > 0)
+            ? ShotDesigner.selectedNodeIds
+            : (ShotDesigner.selectedNodeId ? [ShotDesigner.selectedNodeId] : []);
+        if (targetIds.length === 0) return;
+
+        targetIds.forEach(id => {
+            const targetNode = ShotDesigner.currentAsset.nodes.find(n => n.id === id);
+            if (!targetNode) return;
+
+            // Preserve target instance values (name, exampleValue, id, position, connections)
+            const preservedId = targetNode.id;
+            const preservedName = targetNode.name;
+            const preservedExample = targetNode.exampleValue;
+            const preservedX = targetNode.x;
+            const preservedY = targetNode.y;
+            const preservedParent = targetNode.parent;
+            const preservedParentOnline = targetNode.parentOnline;
+
+            // Clean previous specific configs from target
+            delete targetNode.isVariable;
+            delete targetNode.variableName;
+            delete targetNode.hasNickVar;
+            delete targetNode.nickVarName;
+            delete targetNode.nickExample;
+            delete targetNode.isEpisode;
+            delete targetNode.isScene;
+            delete targetNode.isShot;
+            delete targetNode.isCategory;
+            delete targetNode.isMainCategory;
+            delete targetNode.isItem;
+            delete targetNode.isProcess;
+            delete targetNode.isAssetFocus;
+            delete targetNode.isFileContainer;
+            delete targetNode.isSyncPoint;
+            delete targetNode.isProjectNode;
+            delete targetNode.isClientNode;
+            delete targetNode.isRenderFile;
+            delete targetNode.isRenderFolder;
+            delete targetNode.isFinalRender;
+            delete targetNode.isCompressionRender;
+            delete targetNode.isExternalTcl;
+            delete targetNode.nameConfig;
+            delete targetNode.categoryConfig;
+            delete targetNode.mainCategoryConfig;
+            delete targetNode.itemConfig;
+            delete targetNode.processConfig;
+            delete targetNode.renderConfig;
+            delete targetNode.mediaInConfig;
+            delete targetNode.exportIaConfig;
+            delete targetNode.fullResConfig;
+            delete targetNode.rawConfig;
+
+            // Apply all config properties from clipboard
+            const copied = JSON.parse(JSON.stringify(clipboard));
+            Object.assign(targetNode, copied);
+
+            // Restore preserved properties
+            targetNode.id = preservedId;
+            targetNode.name = preservedName;
+            targetNode.exampleValue = preservedExample;
+            targetNode.x = preservedX;
+            targetNode.y = preservedY;
+            targetNode.parent = preservedParent;
+            targetNode.parentOnline = preservedParentOnline;
+        });
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.updateSidebar();
+        ShotDesigner.updatePreview();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+        console.log(`[ShotDesigner] Configuración pegada en ${targetIds.length} nodo(s).`);
+    },
+
+    arrangeHorizontal: () => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.nodes) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length >= 2)
+            ? ShotDesigner.selectedNodeIds
+            : [];
+        if (targetIds.length < 2) return;
+
+        const nodes = ShotDesigner.currentAsset.nodes.filter(n => targetIds.includes(n.id));
+        if (nodes.length < 2) return;
+
+        // Sort left-to-right based on current x position
+        nodes.sort((a, b) => a.x - b.x);
+
+        const NODE_WIDTH = 150;
+        const gapX = (typeof ShotDesigner.arrangeGapX === 'number') ? ShotDesigner.arrangeGapX : 50;
+
+        const minX = Math.min(...nodes.map(n => n.x));
+        const anchorY = nodes[0].y; // align on same row
+
+        nodes.forEach((n, idx) => {
+            n.x = minX + idx * (NODE_WIDTH + gapX);
+            n.y = anchorY;
+        });
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+    },
+
+    arrangeVertical: () => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.nodes) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length >= 2)
+            ? ShotDesigner.selectedNodeIds
+            : [];
+        if (targetIds.length < 2) return;
+
+        const nodes = ShotDesigner.currentAsset.nodes.filter(n => targetIds.includes(n.id));
+        if (nodes.length < 2) return;
+
+        // Sort top-to-bottom based on current y position
+        nodes.sort((a, b) => a.y - b.y);
+
+        const NODE_HEIGHT = 60;
+        const gapY = (typeof ShotDesigner.arrangeGapY === 'number') ? ShotDesigner.arrangeGapY : 30;
+
+        const minY = Math.min(...nodes.map(n => n.y));
+        const anchorX = nodes[0].x; // align on same column
+
+        nodes.forEach((n, idx) => {
+            n.x = anchorX;
+            n.y = minY + idx * (NODE_HEIGHT + gapY);
+        });
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+    },
+
+    arrangeFull: () => {
+        if (!ShotDesigner.currentAsset || !ShotDesigner.currentAsset.nodes) return;
+        const targetIds = (ShotDesigner.selectedNodeIds && ShotDesigner.selectedNodeIds.length >= 2)
+            ? ShotDesigner.selectedNodeIds
+            : [];
+        if (targetIds.length < 2) return;
+
+        const selectedSet = new Set(targetIds);
+        const nodes = ShotDesigner.currentAsset.nodes.filter(n => selectedSet.has(n.id));
+        if (nodes.length < 2) return;
+
+        const NODE_WIDTH = 150;
+        const NODE_HEIGHT = 60;
+        const gapX = (typeof ShotDesigner.arrangeGapX === 'number') ? ShotDesigner.arrangeGapX : 50;
+        const gapY = (typeof ShotDesigner.arrangeGapY === 'number') ? ShotDesigner.arrangeGapY : 30;
+
+        const minX = Math.min(...nodes.map(n => n.x));
+        const minY = Math.min(...nodes.map(n => n.y));
+
+        // Helper to get all parent IDs for a node
+        const getParentIds = (node) => {
+            const p = [];
+            if (node.parent) p.push(node.parent);
+            if (node.parentOnline) p.push(node.parentOnline);
+            if (node.itemConfig?.additionalParents) p.push(...node.itemConfig.additionalParents);
+            if (node.processConfig?.additionalParents) p.push(...node.processConfig.additionalParents);
+            if (node.processConfig?.parentItem) p.push(node.processConfig.parentItem);
+            return p;
+        };
+
+        // Helper to check if a node has parents inside the selected set
+        const hasSelectedParent = (node) => {
+            const parents = getParentIds(node);
+            return parents.some(pId => selectedSet.has(pId));
+        };
+
+        // Find root nodes of the selected set (nodes whose parents are NOT in the selected set)
+        let roots = nodes.filter(n => !hasSelectedParent(n));
+        if (roots.length === 0) {
+            // In case of loops/cycles, take the left-most node
+            roots = [nodes.reduce((min, n) => n.x < min.x ? n : min, nodes[0])];
+        }
+
+        // Sort roots by visual top-to-bottom position
+        roots.sort((a, b) => a.y - b.y);
+
+        const visited = new Set();
+        let currentY = minY;
+
+        // Recursive tree layout
+        const layoutSubtree = (node, depth) => {
+            visited.add(node.id);
+            node.x = minX + depth * (NODE_WIDTH + gapX);
+
+            // Find children that are in the selected set and not yet placed in this subtree
+            const children = nodes.filter(n => {
+                if (visited.has(n.id)) return false;
+                const parents = getParentIds(n);
+                return parents.includes(node.id);
+            });
+
+            // Sort children top-to-bottom based on their current y position
+            children.sort((a, b) => a.y - b.y);
+
+            if (children.length === 0) {
+                node.y = currentY;
+                currentY += NODE_HEIGHT + gapY;
+                return { minY: node.y, maxY: node.y };
+            }
+
+            let childMinY = Infinity;
+            let childMaxY = -Infinity;
+
+            children.forEach(child => {
+                const bounds = layoutSubtree(child, depth + 1);
+                childMinY = Math.min(childMinY, bounds.minY);
+                childMaxY = Math.max(childMaxY, bounds.maxY);
+            });
+
+            // Center parent vertically relative to its direct children bounds
+            node.y = (childMinY + childMaxY) / 2;
+            return { minY: Math.min(node.y, childMinY), maxY: Math.max(node.y, childMaxY) };
+        };
+
+        // Layout all trees from roots
+        roots.forEach(root => {
+            if (!visited.has(root.id)) {
+                layoutSubtree(root, 0);
+            }
+        });
+
+        // If any unlinked selected nodes remain, place them in a neat column at the end
+        const unvisited = nodes.filter(n => !visited.has(n.id));
+        if (unvisited.length > 0) {
+            unvisited.sort((a, b) => a.y - b.y);
+            unvisited.forEach(n => {
+                n.x = minX;
+                n.y = currentY;
+                currentY += NODE_HEIGHT + gapY;
+            });
+        }
+
+        ShotDesigner.renderCanvas();
+        ShotDesigner.pushHistory();
+        ShotDesigner.saveAsset();
+    },
+
+    alignNodesHorizontal: () => {
+        ShotDesigner.arrangeHorizontal();
+    },
+
+    alignNodesVertical: () => {
+        ShotDesigner.arrangeVertical();
     },
 
     updatePreview: () => {
