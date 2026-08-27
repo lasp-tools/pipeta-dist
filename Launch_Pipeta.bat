@@ -1,27 +1,28 @@
 @echo off
+setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
 set "APP_VERSION=v0.9.75"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
+set "NETWORK_DIR=Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta"
+set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
+set "PIPETA_SUPERVISED=1"
 
 title %APP_NAME% %APP_VERSION% Manager
 
 :: 1. Detectar si estamos ejecutando desde el disco local C:
 if /i "%~dp0"=="%LOCAL_DIR%\" goto :RUN_LOCAL
 
-:: 2. Si no estamos en C:, somos el sincronizador (estamos en M: o similar)
+:: 2. Si no estamos en C:, somos el lanzador desde Red (Z:) -> Sincronizar y transferir ejecucion a C:
 echo ====================================================
-echo   %APP_NAME% - %APP_VERSION% (Sync Mode)
+echo   %APP_NAME% - %APP_VERSION% (Sincronizador)
 echo ====================================================
 echo [INFO] Sincronizando archivos a disco local...
 
-:: Creamos el directorio si no existe
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
-:: Copiamos todo EXCEPTO repositorios temporales .git/.gemini, presets y logs
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /NFL /NDL /NJH /NJS /R:0 /W:0
+robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
 
-:: Sincronizamos presets base (solo archivos faltantes, sin sobreescribir configuraciones locales)
 if exist "%~dp0presets" (
     if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
     robocopy "%~dp0presets" "%LOCAL_DIR%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
@@ -29,34 +30,31 @@ if exist "%~dp0presets" (
 
 echo [INFO] Sincronizacion completada.
 echo [INFO] Lanzando instancia local segura...
-ping 127.0.0.1 -n 2 >nul
+timeout /t 1 >nul
 
-:: Lanzamos el mismo archivo pero en su ubicación local
 start "" "%LOCAL_DIR%\Launch_Pipeta.bat"
 exit
 
 :RUN_LOCAL
-:: 3. Logica de ejecucion real (Solo ocurre en C:)
 title %APP_NAME% %APP_VERSION% (LOCAL RUNTIME)
 echo ====================================================
 echo   %APP_NAME% - %APP_VERSION% (Disco Local)
 echo ====================================================
 echo.
 
-echo [INFO] Cerrando instancias previas de Pipeta (Puerto 3002)...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do taskkill /F /PID %%a >nul 2>&1
-taskkill /F /IM node.exe >nul 2>&1
-echo.
+:START_SERVER
+echo [INFO] Verificando puerto 3002...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
 
 cd /d "%SERVER_DIR%"
 
-:: Verificar si node esta en PATH, o usar el binario portable
 set "NODE_BIN=node"
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     if exist "%LOCAL_DIR%\bin\node\node.exe" (
         set "NODE_BIN=%LOCAL_DIR%\bin\node\node.exe"
-        echo [INFO] Usando Node.js Portable desde bin\node\node.exe
     ) else (
         echo [ERROR] No se encontro Node.js en el sistema ni en bin\node\node.exe
         pause
@@ -66,12 +64,38 @@ if %errorlevel% neq 0 (
 
 echo [INFO] Iniciando Servidor en Puerto 3002...
 "%NODE_BIN%" server.js
+set "EXIT_CODE=%errorlevel%"
 
-if %errorlevel% neq 0 (
+:: Si hay flag de reinicio o codigo 42, reiniciamos limpiamente sin colgar
+if exist "%RESTART_FLAG%" (
     echo.
-    echo [ERROR] El servidor se cerro inesperadamente.
-    pause
+    echo [INFO] Reinicio solicitado por la aplicacion. Sincronizando y relanzando...
+    if exist "%NETWORK_DIR%" (
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+    )
+    timeout /t 1 >nul
+    goto :START_SERVER
 )
 
-:: Force Window Close on clean exit
-exit
+if %EXIT_CODE% equ 42 (
+    echo.
+    echo [INFO] Reinicio solicitado (codigo 42). Relanzando servidor...
+    if exist "%NETWORK_DIR%" (
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+    )
+    timeout /t 1 >nul
+    goto :START_SERVER
+)
+
+:: Salida limpia (cierre de aplicacion)
+if %EXIT_CODE% equ 0 (
+    echo [INFO] Servidor cerrado correctamente.
+    exit
+)
+
+:: En caso de terminacion forzosa o error no intencional, permitir relanzar presionando una tecla
+echo.
+echo [ERROR] El servidor se cerro (codigo %EXIT_CODE%).
+echo Presione una tecla para reintentar el inicio...
+pause >nul
+goto :START_SERVER

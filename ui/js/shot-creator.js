@@ -1026,10 +1026,6 @@ const ShotCreator = {
                                 <label for="sc-dest-media" style="margin-left:6px; color:#ddd; font-size:0.9rem;">Estructura Media</label>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; opacity:0.8;">
-                             <input type="checkbox" id="sc-inject-meta" checked style="accent-color:#4CAF50;">
-                             <label for="sc-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:6px; color:#888; font-size:0.75rem; cursor:pointer;">Inyectar vfx_control</label>
-                        </div>
                     </div>
                 </div>
             `;
@@ -1085,16 +1081,25 @@ const ShotCreator = {
                     <div style="flex:1; padding-left:10px; display:flex; flex-direction:column; gap:10px;">
                         ${rightColContentHTML}
                         
-                        <!-- File Options (Only for Shots) -->
-                        ${ShotCreator.creationLevel === 'shot' ? `
-                            <div style="flex:0 0 auto; background:#1a1a1a; padding:10px; border-radius:4px; border:1px solid #333; margin-top:10px;">
-                                 <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Opciones de Archivo</label>
-                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                     <input type="checkbox" id="chk-v0-files" onchange="ShotCreator.createVersionZero = this.checked" ${ShotCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent);">
-                                     <label for="chk-v0-files" style="margin-left:8px; font-size:0.9rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
-                                 </div>
-                            </div>
-                        ` : ''}
+                        <!-- File Options -->
+                        <div style="flex:0 0 auto; background:#181818; padding:10px; border-radius:4px; border:1px solid #333;">
+                             <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Opciones de Archivo</label>
+                             
+                             <div style="display:flex; align-items:center; margin-bottom:6px;">
+                                 <input type="checkbox" id="chk-v0-files" onchange="ShotCreator.createVersionZero = this.checked" ${ShotCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
+                                 <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
+                             </div>
+
+                             <div style="display:flex; align-items:center; margin-bottom:6px; opacity:0.5;">
+                                 <input type="checkbox" id="chk-template-v001-sc" disabled style="accent-color:var(--accent); cursor:not-allowed;">
+                                 <label for="chk-template-v001-sc" style="margin-left:8px; font-size:0.85rem; color:#888; cursor:not-allowed;">Crear v001 con Template <span style="font-size:0.7rem; color:#ff9800; margin-left:4px;">(Próximamente)</span></label>
+                             </div>
+
+                             <div style="display:flex; align-items:center;">
+                                 <input type="checkbox" id="sc-inject-meta" checked style="accent-color:#4CAF50; cursor:pointer;">
+                                 <label for="sc-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:8px; color:#888; font-size:0.8rem; cursor:pointer;">Inyectar vfx_control.json</label>
+                             </div>
+                        </div>
                     </div>
                 </div>
             `;

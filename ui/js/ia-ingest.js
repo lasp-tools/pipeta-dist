@@ -299,16 +299,7 @@ async function refreshIaHierarchy() {
     try {
         let epDir = workRoot + '/episodios';
         let dirData = await API.fetchDir(epDir);
-        if (dirData.error || !dirData.items || dirData.items.length === 0) {
-            epDir = workRoot + '/episodes';
-            dirData = await API.fetchDir(epDir);
-        }
-        if (dirData.error || !dirData.items || dirData.items.length === 0) {
-            epDir = workRoot;
-            dirData = await API.fetchDir(epDir);
-        }
-
-        if (dirData && dirData.items) {
+        if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
             iaHierarchy.episodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
         } else {
             iaHierarchy.episodes = [];
@@ -354,16 +345,7 @@ async function handleIaEpChange(ep) {
     try {
         let seqDir = `${workRoot}/episodios/${ep}/secuencias`;
         let dirData = await API.fetchDir(seqDir);
-        if (dirData.error || !dirData.items || dirData.items.length === 0) {
-            seqDir = `${workRoot}/episodios/${ep}/sequences`;
-            dirData = await API.fetchDir(seqDir);
-        }
-        if (dirData.error || !dirData.items || dirData.items.length === 0) {
-            seqDir = `${workRoot}/episodios/${ep}`;
-            dirData = await API.fetchDir(seqDir);
-        }
-
-        if (dirData && dirData.items) {
+        if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
             iaHierarchy.scenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
         } else {
             iaHierarchy.scenes = [];

@@ -92,11 +92,10 @@ app.get('/api/fs/list', (req, res) => {
 
         if (requestedPath) {
             let safeP = decodeURIComponent(requestedPath);
-            if (!fs.existsSync(safeP)) {
-                try { fs.mkdirSync(safeP, { recursive: true }); } catch(e){}
-            }
             if (fs.existsSync(safeP)) {
                 targetPath = safeP;
+            } else {
+                return res.json({ path: safeP, items: [], exists: false });
             }
         }
 
@@ -536,19 +535,8 @@ Write-Output "UPDATE_SUCCESS:$foundSource"
             res.json({ success: true, updatedFrom: netSource, localDest: localDest });
 
             setTimeout(() => {
-                const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
-                const batPath = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat' : path.join(__dirname, '../Launch_Pipeta.bat');
-                const { spawn } = require('child_process');
-                spawn('cmd.exe', ['/c', batPath], {
-                    detached: true,
-                    stdio: 'ignore',
-                    cwd: path.dirname(batPath)
-                }).unref();
-
-                setTimeout(() => {
-                    process.exit(0);
-                }, 300);
-            }, 600);
+                process.exit(42);
+            }, 500);
         });
     } catch(err) {
         try { await fs.remove(tmpPsFile); } catch(e) {}
@@ -1687,26 +1675,27 @@ app.post('/api/app/restart', (req, res) => {
 
     res.json({ status: 'restarting' });
 
-    let batPath = path.join(__dirname, '../Launch_Pipeta.bat');
-    if (!fs.existsSync(batPath)) {
-        batPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\Launch_Pipeta.bat';
-    }
-    if (!fs.existsSync(batPath)) {
-        batPath = 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat';
-    }
-
-    const subprocess = spawn('cmd.exe', ['/c', 'start', '""', `"${batPath}"`], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: false,
-        shell: true
-    });
-
-    subprocess.unref();
-
     setTimeout(() => {
-        process.exit(0);
-    }, 1000);
+        try {
+            if (global.serverInstance && global.serverInstance.close) {
+                global.serverInstance.close();
+            }
+        } catch (e) { }
+
+        if (process.env.PIPETA_SUPERVISED !== '1') {
+            try {
+                const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
+                const batPath = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat' : path.join(__dirname, '../Launch_Pipeta.bat');
+                const { spawn } = require('child_process');
+                spawn('cmd.exe', ['/c', 'start', '""', batPath], {
+                    detached: true,
+                    stdio: 'ignore'
+                }).unref();
+            } catch (e) { }
+        }
+
+        process.exit(42);
+    }, 400);
 });
 
 // --- IA PIPELINE ENDPOINTS ---
@@ -2045,19 +2034,38 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(uiPath, 'index.html'));
 });
 
-// Start Server
-app.listen(PORT, async () => {
-    console.log(`Pipeta Core running at http://localhost:${PORT}`);
-    console.log(`Version: ${VERSION}`);
+// Start Server with EADDRINUSE retry resilience
+function startListening(retries = 10) {
+    const server = app.listen(PORT, async () => {
+        console.log(`Pipeta Core running at http://localhost:${PORT}`);
+        console.log(`Version: ${VERSION}`);
 
-    const noBrowser = process.argv.includes('--no-browser');
-    if (shouldOpenBrowser && !noBrowser) {
-        try {
-            await open(`http://localhost:${PORT}`);
-        } catch (e) {
-            console.log("Failed to auto-open browser:", e);
+        const noBrowser = process.argv.includes('--no-browser');
+        if (shouldOpenBrowser && !noBrowser) {
+            try {
+                await open(`http://localhost:${PORT}`);
+            } catch (e) {
+                console.log("Failed to auto-open browser:", e);
+            }
+        } else {
+            console.log("[INFO] Browser launch skipped (Restart Recovery or --no-browser active).");
         }
-    } else {
-        console.log("[INFO] Browser launch skipped (Restart Recovery or --no-browser active).");
-    }
-});
+    });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE' && retries > 0) {
+            console.warn(`[SERVER] Puerto ${PORT} ocupado temporalmente. Reintentando en 400ms... (${retries} intentos restantes)`);
+            setTimeout(() => {
+                startListening(retries - 1);
+            }, 400);
+        } else {
+            console.error("[SERVER] Error fatal al iniciar servidor:", err);
+            process.exit(1);
+        }
+    });
+
+    global.serverInstance = server;
+    return server;
+}
+
+startListening();
