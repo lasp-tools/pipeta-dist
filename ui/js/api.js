@@ -114,7 +114,29 @@ const API = {
                 console.error("API Error: getInfo", e);
                 return { username: 'unknown' };
             }
-        }
+        },
+        pickFolder: async (initialPath) => fetch('/api/system/pickFolder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initialPath })
+        }).then(r => r.json()),
+        pickFile: async (initialPath, filter) => fetch('/api/system/pickFile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initialPath, filter })
+        }).then(r => r.json())
+    },
+    templates: {
+        upload: async ({ type, processName, filename, fileData }) => fetch('/api/templates/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, processName, filename, fileData })
+        }).then(r => r.json()),
+        findReference: async (refRoot, processName) => fetch('/api/templates/findReference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refRoot, processName })
+        }).then(r => r.json())
     },
     users: {
         get: async () => fetch('/api/users').then(r => r.json()),

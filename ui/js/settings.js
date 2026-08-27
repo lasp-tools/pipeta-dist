@@ -46,6 +46,24 @@ const CANONICAL_BASE_PRESETS = {
             { detected: "2560x1080", tag: "UW2K" },
             { detected: "1280x720", tag: "HD" }
         ]
+    },
+    templates: {
+        referenceShotRoot: "episodios/templates",
+        referenceAssetRoot: "assets2D/templates",
+        customTemplates: {
+            shots: {
+                compo: "",
+                clean: "",
+                ia_prep: "",
+                "3d": ""
+            },
+            assets: {
+                model: "",
+                texture: "",
+                rig: "",
+                concepts: ""
+            }
+        }
     }
 };
 
@@ -614,6 +632,94 @@ const settings = {
         obj[parts[parts.length - 1]] = value;
     },
 
+    updateCustomTemplate: (type, processName, pathValue) => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.templates) {
+            settings.currentProject.templates = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS.templates));
+        }
+        if (!settings.currentProject.templates.customTemplates) {
+            settings.currentProject.templates.customTemplates = { shots: {}, assets: {} };
+        }
+        const key = type === 'asset' ? 'assets' : 'shots';
+        if (!settings.currentProject.templates.customTemplates[key]) {
+            settings.currentProject.templates.customTemplates[key] = {};
+        }
+        settings.currentProject.templates.customTemplates[key][processName] = (pathValue || '').trim();
+    },
+
+    browseReferencePath: async (type) => {
+        const cp = settings.currentProject;
+        const workRoot = cp?.roots?.work || 'Z:/';
+        const defaultSub = type === 'asset' ? 'assets2D/templates' : 'episodios/templates';
+        const initial = `${workRoot}/${defaultSub}`.replace(/\//g, '\\');
+
+        const res = await API.system.pickFolder(initial);
+        if (res && res.success && res.path) {
+            let rel = res.path.replace(/\\/g, '/');
+            // Try to make it relative to workRoot if inside project
+            const normWork = (workRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            if (normWork && rel.toLowerCase().startsWith(normWork.toLowerCase() + '/')) {
+                rel = rel.substring(normWork.length + 1);
+            }
+            if (type === 'asset') {
+                settings.updateProjectProp('templates.referenceAssetRoot', rel);
+            } else {
+                settings.updateProjectProp('templates.referenceShotRoot', rel);
+            }
+            settings.render();
+            settings.showToast(`Ruta de referencia actualizada: ${rel}`, 'success', 3);
+        }
+    },
+
+    browseTemplateFile: async (type, proc) => {
+        const res = await API.system.pickFile('Z:\\', 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*');
+        if (res && res.success && res.path) {
+            settings.updateCustomTemplate(type, proc, res.path);
+            settings.render();
+            settings.showToast(`Template asignado para ${proc}: ${res.path.split('/').pop()}`, 'success', 3);
+        }
+    },
+
+    uploadTemplateFile: (type, proc) => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.nk,.blend,.hip,.psd,.aep,.prproj,.txt,.c4d,.mb,.ma';
+        fileInput.style.display = 'none';
+
+        fileInput.onchange = async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const base64Data = reader.result.split(',')[1];
+                settings.showToast(`Subiendo ${file.name}...`, 'warn', 2);
+                try {
+                    const res = await API.templates.upload({
+                        type: type,
+                        processName: proc,
+                        filename: file.name,
+                        fileData: base64Data
+                    });
+                    if (res && res.success) {
+                        settings.updateCustomTemplate(type, proc, res.path);
+                        settings.render();
+                        settings.showToast(`✅ Template ${file.name} subido y guardado en Pipeta.`, 'success', 4);
+                    } else {
+                        settings.showToast(`Error al subir: ${res?.error || 'Desconocido'}`, 'error', 4);
+                    }
+                } catch(err) {
+                    settings.showToast(`Error al subir template: ${err.message}`, 'error', 4);
+                }
+            };
+            reader.readAsDataURL(file);
+        };
+
+        document.body.appendChild(fileInput);
+        fileInput.click();
+        setTimeout(() => fileInput.remove(), 60000);
+    },
+
     isMaximized: false,
     toggleMaximize() {
         settings.isMaximized = !settings.isMaximized;
@@ -957,7 +1063,8 @@ const settings = {
                     { id: 'id_nombre', label: '🏷️ ID / Nombre' },
                     { id: 'rutas', label: '🗺️ Rutas' },
                     { id: 'presets_proyecto', label: '🎬 Presets Proyecto' },
-                    { id: 'presets_ia', label: '🤖 Presets IA' }
+                    { id: 'presets_ia', label: '🤖 Presets IA' },
+                    { id: 'templates', label: '📄 Templates (v001)' }
                 ];
 
                 const subTabsHtml = subTabs.map(t => `
@@ -1243,6 +1350,169 @@ const settings = {
                                         `).join('')}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    `;
+                } else if (activeSubTab === 'templates') {
+                    const isReadOnly = isBase ? !settings.devMode : !cp.overrideBasePresets;
+                    if (!cp.templates) {
+                        cp.templates = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS.templates));
+                    }
+                    if (!cp.templates.customTemplates) cp.templates.customTemplates = { shots: {}, assets: {} };
+                    if (!cp.templates.customTemplates.shots) cp.templates.customTemplates.shots = {};
+                    if (!cp.templates.customTemplates.assets) cp.templates.customTemplates.assets = {};
+
+                    const refShotRoot = cp.templates.referenceShotRoot || 'episodios/templates';
+                    const refAssetRoot = cp.templates.referenceAssetRoot || 'assets2D/templates';
+
+                    const defaultShotProcesses = ['compo', 'clean', 'ia_prep', '3d', 'matchmove', 'roto', 'grade'];
+                    const defaultAssetProcesses = ['model', 'texture', 'rig', 'lookdev', 'concepts', 'export'];
+
+                    detailContentHtml = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                            <div>
+                                <h4 style="margin:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem;">
+                                    ${isBase ? 'Configuración Maestra de Templates (v001)' : 'Templates y Referencias (v001) del Proyecto'}
+                                </h4>
+                                <span style="font-size:0.75rem; color:#888;">Define las fuentes de clonación para crear archivos de trabajo iniciales (v001) en Shot y Asset Creator</span>
+                            </div>
+                            ${isBase ? `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
+                                    <input type="checkbox" ${settings.devMode ? 'checked' : ''} onchange="settings.toggleDevMode(this.checked)">
+                                    <span>🛠️ Dev Mode</span>
+                                </label>
+                            ` : `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:#eee; cursor:pointer;">
+                                    <input type="checkbox" ${cp.overrideBasePresets ? 'checked' : ''} 
+                                           onchange="settings.updateProjectProp('overrideBasePresets', this.checked); settings.render();">
+                                    <span>Sobrescribir templates (Override Base)</span>
+                                </label>
+                            `}
+                        </div>
+
+                        ${isBase ? (
+                            settings.devMode ? `
+                                <div class="settings-inheritance-banner" style="border-color:#ff9800; background:rgba(255,152,0,0.1); color:#ffb74d;">
+                                    <div>🛠️ <b>Dev Mode ACTIVO:</b> Editando rutas y templates por defecto de la plantilla maestra.</div>
+                                </div>
+                            ` : `
+                                <div class="settings-inheritance-banner">
+                                    <div>🛡️ <b>Plantilla Maestra Protegida:</b> Valores por defecto para nuevos proyectos. Activa 'Dev Mode' para modificarlos.</div>
+                                </div>
+                            `
+                        ) : (!cp.overrideBasePresets ? `
+                            <div class="settings-inheritance-banner">
+                                <div>🔗 <b>Heredando del Proyecto Base:</b> Las rutas de templates de referencia y personalizados se toman de la plantilla maestra. Marca 'Sobrescribir' para personalizar este proyecto.</div>
+                            </div>
+                        ` : '')}
+
+                        <div style="${isReadOnly ? 'opacity:0.6; pointer-events:none;' : ''}">
+                            <!-- SECCIÓN 1: REFERENCE ROOTS -->
+                            <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                                <div style="font-weight:bold; color:var(--accent); font-size:0.92rem; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                                    <span>⭐ Rutas de Referencia ("Reference Roots")</span>
+                                </div>
+                                <p style="color:#aaa; font-size:0.8rem; margin-top:0; margin-bottom:14px; line-height:1.4;">
+                                    Pipeta inspeccionará estas ubicaciones dentro del proyecto y utilizará el archivo guardado con la <b>última versión</b> (o v001) para clonarlo automáticamente con la nomenclatura del nuevo plano o asset.
+                                </p>
+
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                                    <div class="config-group" style="margin-bottom:0;">
+                                        <label class="config-label">🎬 Shot Reference Episode / Root</label>
+                                        <div style="display:flex; gap:6px;">
+                                            <input type="text" class="config-input" value="${escapeHtml(refShotRoot)}" 
+                                                   placeholder="episodios/templates"
+                                                   onchange="settings.updateProjectProp('templates.referenceShotRoot', this.value)" style="flex:1; font-family:monospace; font-size:0.82rem;">
+                                            <button class="btn" onclick="settings.browseReferencePath('shot')" title="Examinar carpeta" style="background:#282828; border:1px solid #444; color:#fff; padding:4px 10px; cursor:pointer;">📁</button>
+                                        </div>
+                                        <span style="font-size:0.72rem; color:#777; margin-top:4px; display:block;">Ej: <code>episodios/templates</code></span>
+                                    </div>
+
+                                    <div class="config-group" style="margin-bottom:0;">
+                                        <label class="config-label">🎨 Asset Reference Root</label>
+                                        <div style="display:flex; gap:6px;">
+                                            <input type="text" class="config-input" value="${escapeHtml(refAssetRoot)}" 
+                                                   placeholder="assets2D/templates"
+                                                   onchange="settings.updateProjectProp('templates.referenceAssetRoot', this.value)" style="flex:1; font-family:monospace; font-size:0.82rem;">
+                                            <button class="btn" onclick="settings.browseReferencePath('asset')" title="Examinar carpeta" style="background:#282828; border:1px solid #444; color:#fff; padding:4px 10px; cursor:pointer;">📁</button>
+                                        </div>
+                                        <span style="font-size:0.72rem; color:#777; margin-top:4px; display:block;">Ej: <code>assets2D/templates</code> o <code>assets3D/templates</code></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SECCIÓN 2: CUSTOM TEMPLATES POR PROCESO (SHOTS) -->
+                            <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                                <div style="font-weight:bold; color:#4fc3f7; font-size:0.92rem; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                                    <span>🛠️ Custom Templates para Shots (por Proceso)</span>
+                                </div>
+                                <p style="color:#aaa; font-size:0.8rem; margin-top:0; margin-bottom:12px;">
+                                    Asigna un archivo template específico (<code>.nk</code>, <code>.blend</code>, <code>.hip</code>, <code>.psd</code>, etc.) a cada proceso de Shot:
+                                </p>
+
+                                <div style="display:flex; flex-direction:column; gap:8px;">
+                                    ${defaultShotProcesses.map(proc => {
+                                        const val = cp.templates?.customTemplates?.shots?.[proc] || '';
+                                        return `
+                                            <div style="display:flex; align-items:center; gap:10px; background:#181c24; border:1px solid #28303d; border-radius:6px; padding:6px 10px;">
+                                                <span style="font-weight:bold; color:var(--accent); width:100px; text-transform:uppercase; font-size:0.78rem; font-family:monospace;">${proc}</span>
+                                                <input type="text" class="config-input" value="${escapeHtml(val)}" 
+                                                       placeholder="Sin template asignado (vacío)"
+                                                       onchange="settings.updateCustomTemplate('shot', '${proc}', this.value)" 
+                                                       style="flex:1; font-family:monospace; font-size:0.8rem; padding:4px 8px; background:#12151c;">
+                                                <button class="btn" onclick="settings.browseTemplateFile('shot', '${proc}')" title="Examinar archivo en disco..." 
+                                                        style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 10px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                                    <span>📁 Examinar</span>
+                                                </button>
+                                                <button class="btn" onclick="settings.uploadTemplateFile('shot', '${proc}')" title="Subir archivo a presets de Pipeta..." 
+                                                        style="background:#1b5e20; border:1px solid #2e7d32; color:#fff; padding:4px 10px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                                    <span>⬆️ Subir</span>
+                                                </button>
+                                                ${val ? `
+                                                    <button class="btn" onclick="settings.updateCustomTemplate('shot', '${proc}', ''); settings.render();" title="Limpiar template" 
+                                                            style="background:#b71c1c; border:none; color:#fff; padding:4px 8px; font-size:0.78rem; cursor:pointer;">✕</button>
+                                                ` : ''}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+
+                            <!-- SECCIÓN 3: CUSTOM TEMPLATES POR PROCESO (ASSETS) -->
+                            <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; border:1px solid #333;">
+                                <div style="font-weight:bold; color:#ffb74d; font-size:0.92rem; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+                                    <span>🛠️ Custom Templates para Assets (por Proceso)</span>
+                                </div>
+                                <p style="color:#aaa; font-size:0.8rem; margin-top:0; margin-bottom:12px;">
+                                    Asigna un archivo template específico para cada proceso de Asset:
+                                </p>
+
+                                <div style="display:flex; flex-direction:column; gap:8px;">
+                                    ${defaultAssetProcesses.map(proc => {
+                                        const val = cp.templates?.customTemplates?.assets?.[proc] || '';
+                                        return `
+                                            <div style="display:flex; align-items:center; gap:10px; background:#181c24; border:1px solid #28303d; border-radius:6px; padding:6px 10px;">
+                                                <span style="font-weight:bold; color:#ff9800; width:100px; text-transform:uppercase; font-size:0.78rem; font-family:monospace;">${proc}</span>
+                                                <input type="text" class="config-input" value="${escapeHtml(val)}" 
+                                                       placeholder="Sin template asignado (vacío)"
+                                                       onchange="settings.updateCustomTemplate('asset', '${proc}', this.value)" 
+                                                       style="flex:1; font-family:monospace; font-size:0.8rem; padding:4px 8px; background:#12151c;">
+                                                <button class="btn" onclick="settings.browseTemplateFile('asset', '${proc}')" title="Examinar archivo en disco..." 
+                                                        style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 10px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                                    <span>📁 Examinar</span>
+                                                </button>
+                                                <button class="btn" onclick="settings.uploadTemplateFile('asset', '${proc}')" title="Subir archivo a presets de Pipeta..." 
+                                                        style="background:#1b5e20; border:1px solid #2e7d32; color:#fff; padding:4px 10px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                                    <span>⬆️ Subir</span>
+                                                </button>
+                                                ${val ? `
+                                                    <button class="btn" onclick="settings.updateCustomTemplate('asset', '${proc}', ''); settings.render();" title="Limpiar template" 
+                                                            style="background:#b71c1c; border:none; color:#fff; padding:4px 8px; font-size:0.78rem; cursor:pointer;">✕</button>
+                                                ` : ''}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
                             </div>
                         </div>
                     `;

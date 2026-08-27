@@ -14,7 +14,70 @@ const ShotCreator = {
     presetsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner",
     autoNamingEnabled: false,
     createVersionZero: true,
+    createTemplateV001: localStorage.getItem('pipeta_sc_create_template_v001') === 'true',
+    templateSource: localStorage.getItem('pipeta_sc_template_source') || 'reference',
+    manualTemplatePath: localStorage.getItem('pipeta_sc_manual_template_path') || '',
     systemInfo: { username: "unknown" },
+
+    toggleTemplateV001: (checked) => {
+        ShotCreator.createTemplateV001 = checked;
+        localStorage.setItem('pipeta_sc_create_template_v001', checked ? 'true' : 'false');
+        ShotCreator.render();
+    },
+
+    setTemplateSource: (source) => {
+        ShotCreator.templateSource = source;
+        localStorage.setItem('pipeta_sc_template_source', source);
+        ShotCreator.render();
+    },
+
+    browseManualTemplate: async () => {
+        const res = await API.system.pickFile('Z:\\', 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*');
+        if (res && res.success && res.path) {
+            ShotCreator.manualTemplatePath = res.path;
+            localStorage.setItem('pipeta_sc_manual_template_path', res.path);
+            ShotCreator.render();
+        }
+    },
+
+    getTemplateFileForProcess: async (processName, childNode) => {
+        const cleanProc = (processName || '').toLowerCase().trim();
+        const activeProjId = localStorage.getItem('pipeta_active_project_id');
+        let currentProj = (settings?.projects || []).find(p => p.id === activeProjId) || settings?.currentProject;
+
+        if (ShotCreator.templateSource === 'manual') {
+            if (ShotCreator.manualTemplatePath) {
+                const ext = '.' + ShotCreator.manualTemplatePath.split('.').pop();
+                return { sourcePath: ShotCreator.manualTemplatePath, ext: ext };
+            }
+            return null;
+        }
+
+        if (ShotCreator.templateSource === 'custom') {
+            const customMap = currentProj?.templates?.customTemplates?.shots || {};
+            const customPath = customMap[cleanProc] || customMap[processName];
+            if (customPath) {
+                const ext = '.' + customPath.split('.').pop();
+                return { sourcePath: customPath, ext: ext };
+            }
+            return null;
+        }
+
+        // Default: 'reference'
+        const workRoot = currentProj?.roots?.work || ShotCreator.getWorkRoot() || 'Z:/';
+        const refSub = currentProj?.templates?.referenceShotRoot || 'episodios/templates';
+        const fullRefRoot = refSub.startsWith('Z:') || refSub.startsWith('C:') || refSub.startsWith('/') ? refSub : `${workRoot}/${refSub}`.replace(/\\/g, '/');
+
+        try {
+            const res = await API.templates.findReference(fullRefRoot, cleanProc);
+            if (res && res.found && res.filePath) {
+                return { sourcePath: res.filePath, ext: res.ext || ('.' + res.fileName.split('.').pop()) };
+            }
+        } catch(e) {
+            console.error("Error looking up reference template in ShotCreator:", e);
+        }
+        return null;
+    },
 
     // Batch Mode State
     // Hierarchy State
@@ -1086,19 +1149,60 @@ const ShotCreator = {
                              <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Opciones de Archivo</label>
                              
                              <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                 <input type="checkbox" id="chk-v0-files" onchange="ShotCreator.createVersionZero = this.checked" ${ShotCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
-                                 <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
-                             </div>
+                                  <input type="checkbox" id="chk-v0-files" onchange="ShotCreator.createVersionZero = this.checked" ${ShotCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
+                                  <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
+                              </div>
 
-                             <div style="display:flex; align-items:center; margin-bottom:6px; opacity:0.5;">
-                                 <input type="checkbox" id="chk-template-v001-sc" disabled style="accent-color:var(--accent); cursor:not-allowed;">
-                                 <label for="chk-template-v001-sc" style="margin-left:8px; font-size:0.85rem; color:#888; cursor:not-allowed;">Crear v001 con Template <span style="font-size:0.7rem; color:#ff9800; margin-left:4px;">(Próximamente)</span></label>
-                             </div>
+                              <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                                  <div style="display:flex; align-items:center;">
+                                      <input type="checkbox" id="chk-template-v001-sc" onchange="ShotCreator.toggleTemplateV001(this.checked)" ${ShotCreator.createTemplateV001 ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
+                                      <label for="chk-template-v001-sc" style="margin-left:8px; font-size:0.85rem; color:#fff; font-weight:bold; cursor:pointer;">📄 Crear v001 con Template</label>
+                                  </div>
 
-                             <div style="display:flex; align-items:center;">
-                                 <input type="checkbox" id="sc-inject-meta" checked style="accent-color:#4CAF50; cursor:pointer;">
-                                 <label for="sc-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:8px; color:#888; font-size:0.8rem; cursor:pointer;">Inyectar vfx_control.json</label>
-                             </div>
+                                  ${ShotCreator.createTemplateV001 ? `
+                                      <div style="display:flex; flex-direction:column; gap:8px; padding:10px; background:#12151c; border:1px solid #28303d; border-radius:4px; margin-left:22px; font-size:0.8rem;">
+                                          <div>
+                                              <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Origen del Template:</label>
+                                              <select onchange="ShotCreator.setTemplateSource(this.value)" style="width:100%; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 8px; border-radius:3px; font-size:0.8rem;">
+                                                  <option value="reference" ${ShotCreator.templateSource === 'reference' ? 'selected' : ''}>⭐ Reference Episode / Root (Default Proyecto)</option>
+                                                  <option value="custom" ${ShotCreator.templateSource === 'custom' ? 'selected' : ''}>🛠️ Custom Template (Configurado por Proceso)</option>
+                                                  <option value="manual" ${ShotCreator.templateSource === 'manual' ? 'selected' : ''}>📁 Create From... (Elegir archivo a mano)</option>
+                                              </select>
+                                          </div>
+
+                                          ${ShotCreator.templateSource === 'reference' ? `
+                                              <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
+                                                  Ruta: <b style="color:var(--accent); font-family:monospace;">${settings?.currentProject?.templates?.referenceShotRoot || 'episodios/templates'}</b>
+                                                  <div style="color:#666; margin-top:2px;">Clona la última versión encontrada en esa carpeta.</div>
+                                              </div>
+                                          ` : ''}
+
+                                          ${ShotCreator.templateSource === 'custom' ? `
+                                              <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
+                                                  <span>Usa los templates específicos configurados por proceso en <b>Configuración > Proyectos > Templates</b>.</span>
+                                              </div>
+                                          ` : ''}
+
+                                          ${ShotCreator.templateSource === 'manual' ? `
+                                              <div style="display:flex; flex-direction:column; gap:4px;">
+                                                  <label style="color:#aaa; font-size:0.75rem;">Archivo Base a Clonar:</label>
+                                                  <div style="display:flex; gap:6px;">
+                                                      <input type="text" value="${escapeHtml(ShotCreator.manualTemplatePath || '')}" 
+                                                             placeholder="Seleccionar archivo .nk, .blend, .psd..." 
+                                                             onchange="ShotCreator.manualTemplatePath = this.value; localStorage.setItem('pipeta_sc_manual_template_path', this.value);"
+                                                             style="flex:1; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 6px; font-size:0.75rem; border-radius:3px; font-family:monospace;">
+                                                      <button class="btn" onclick="ShotCreator.browseManualTemplate()" style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 8px; font-size:0.75rem; cursor:pointer;">📁</button>
+                                                  </div>
+                                              </div>
+                                          ` : ''}
+                                      </div>
+                                  ` : ''}
+                              </div>
+
+                              <div style="display:flex; align-items:center;">
+                                  <input type="checkbox" id="sc-inject-meta" checked style="accent-color:#4CAF50; cursor:pointer;">
+                                  <label for="sc-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:8px; color:#888; font-size:0.8rem; cursor:pointer;">Inyectar vfx_control.json</label>
+                              </div>
                         </div>
                     </div>
                 </div>
@@ -1451,11 +1555,12 @@ const ShotCreator = {
             }
         }
 
-        // 3. Versioning (Default v000)
+        // 3. Versioning (Default v000 or custom like v001)
         if (res.match(/\[VER\]|\[version\]|\[SceneVersion\]/i)) {
             const pad = (node && node.nameConfig) ? node.nameConfig.versionPadding : 3;
             const prefix = (node && node.nameConfig && node.nameConfig.versionPrefix === false) ? '' : 'v';
-            const vStr = prefix + '0'.padStart(pad || 3, '0');
+            const verNum = (ctx.versionNumber !== undefined) ? ctx.versionNumber : 0;
+            const vStr = prefix + String(verNum).padStart(pad || 3, '0');
             res = res.replace(/\[VER\]/gi, vStr)
                 .replace(/\[version\]/gi, vStr)
                 .replace(/\[SceneVersion\]/gi, vStr);
@@ -1466,8 +1571,13 @@ const ShotCreator = {
             return '1'.padStart(hashes.length, '0'); // Start at 1, padded to hash count
         });
 
-        // 5. Clean up [ext]
-        res = res.replace(/\.?\[ext\]/gi, '');
+        // 5. Clean up / replace [ext]
+        if (ctx.extension) {
+            const cleanExt = ctx.extension.startsWith('.') ? ctx.extension : '.' + ctx.extension;
+            res = res.replace(/\.?\[ext\]/gi, cleanExt);
+        } else {
+            res = res.replace(/\.?\[ext\]/gi, '');
+        }
 
         if (node && node.nameConfig && node.nameConfig.forceUpper) {
             res = res.toUpperCase();
@@ -1640,7 +1750,38 @@ const ShotCreator = {
             }
 
             if (child.type === 'file') {
-                if (ShotCreator.createVersionZero) {
+                let templateCopied = false;
+                if (ShotCreator.createTemplateV001) {
+                    const tpl = await ShotCreator.getTemplateFileForProcess(ctx.proceso, child);
+                    if (tpl && tpl.sourcePath) {
+                        // Resolve canonical file name with v001 and real template extension
+                        let v001Ctx = { ...ctx, versionNumber: 1, extension: tpl.ext };
+                        let v001Name = child.name;
+                        if (child.nameConfig && child.nameConfig.enabled && child.nameConfig.pattern) {
+                            v001Name = ShotCreator.resolveNodePattern(child.nameConfig.pattern, v001Ctx, child);
+                        } else {
+                            v001Name = ShotCreator.resolveNodePattern(child.name, v001Ctx, child);
+                        }
+
+                        // Ensure proper extension
+                        const dotIdx = v001Name.lastIndexOf('.');
+                        if (dotIdx !== -1 && (v001Name.length - dotIdx) <= 6) {
+                            v001Name = v001Name.substring(0, dotIdx);
+                        }
+                        v001Name += tpl.ext;
+
+                        const destFilePath = parentPath + "/" + v001Name;
+                        try {
+                            await API.fs.copy(tpl.sourcePath, destFilePath);
+                            templateCopied = true;
+                            console.log("[ShotCreator] Template v001 created:", destFilePath, "from:", tpl.sourcePath);
+                        } catch(err) {
+                            console.error("[ShotCreator] Error copying template v001:", err);
+                        }
+                    }
+                }
+
+                if (!templateCopied && ShotCreator.createVersionZero) {
                     const fullFileName = finalName + ".txt";
                     const filePath = parentPath + "/" + fullFileName;
                     try { await API.fs.writeFile(filePath, ""); } catch (e) { }

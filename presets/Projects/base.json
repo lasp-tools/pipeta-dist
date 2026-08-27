@@ -87,6 +87,14 @@
         "detected": "1280x720",
         "tag": "HD"
       }
-    ]
+    ],
+    "templates": {
+      "referenceShotRoot": "episodios/templates",
+      "referenceAssetRoot": "assets2D/templates",
+      "customTemplates": {
+        "shots": {},
+        "assets": {}
+      }
+    }
   }
 }

@@ -20,8 +20,71 @@ const AssetCreator = {
     mode: 'create', // 'create' | 'batch'
     injectionScope: 'explorer',
     createVersionZero: false,
+    createTemplateV001: localStorage.getItem('pipeta_ac_create_template_v001') === 'true',
+    templateSource: localStorage.getItem('pipeta_ac_template_source') || 'reference',
+    manualTemplatePath: localStorage.getItem('pipeta_ac_manual_template_path') || '',
     foundAssets: [],
     selectedAssets: [],
+
+    toggleTemplateV001: (checked) => {
+        AssetCreator.createTemplateV001 = checked;
+        localStorage.setItem('pipeta_ac_create_template_v001', checked ? 'true' : 'false');
+        AssetCreator.render();
+    },
+
+    setTemplateSource: (source) => {
+        AssetCreator.templateSource = source;
+        localStorage.setItem('pipeta_ac_template_source', source);
+        AssetCreator.render();
+    },
+
+    browseManualTemplate: async () => {
+        const res = await API.system.pickFile('Z:\\', 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*');
+        if (res && res.success && res.path) {
+            AssetCreator.manualTemplatePath = res.path;
+            localStorage.setItem('pipeta_ac_manual_template_path', res.path);
+            AssetCreator.render();
+        }
+    },
+
+    getTemplateFileForProcess: async (processName, childNode) => {
+        const cleanProc = (processName || '').toLowerCase().trim();
+        const activeProjId = localStorage.getItem('pipeta_active_project_id');
+        let currentProj = (settings?.projects || []).find(p => p.id === activeProjId) || settings?.currentProject;
+
+        if (AssetCreator.templateSource === 'manual') {
+            if (AssetCreator.manualTemplatePath) {
+                const ext = '.' + AssetCreator.manualTemplatePath.split('.').pop();
+                return { sourcePath: AssetCreator.manualTemplatePath, ext: ext };
+            }
+            return null;
+        }
+
+        if (AssetCreator.templateSource === 'custom') {
+            const customMap = currentProj?.templates?.customTemplates?.assets || {};
+            const customPath = customMap[cleanProc] || customMap[processName];
+            if (customPath) {
+                const ext = '.' + customPath.split('.').pop();
+                return { sourcePath: customPath, ext: ext };
+            }
+            return null;
+        }
+
+        // Default: 'reference'
+        const workRoot = currentProj?.roots?.work || 'Z:/';
+        const refSub = currentProj?.templates?.referenceAssetRoot || 'assets2D/templates';
+        const fullRefRoot = refSub.startsWith('Z:') || refSub.startsWith('C:') || refSub.startsWith('/') ? refSub : `${workRoot}/${refSub}`.replace(/\\/g, '/');
+
+        try {
+            const res = await API.templates.findReference(fullRefRoot, cleanProc);
+            if (res && res.found && res.filePath) {
+                return { sourcePath: res.filePath, ext: res.ext || ('.' + res.fileName.split('.').pop()) };
+            }
+        } catch(e) {
+            console.error("Error looking up reference template in AssetCreator:", e);
+        }
+        return null;
+    },
 
     switchMode: (newMode) => {
         AssetCreator.mode = newMode;
@@ -714,9 +777,50 @@ const AssetCreator = {
                                  <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
                              </div>
 
-                             <div style="display:flex; align-items:center; margin-bottom:6px; opacity:0.5;">
-                                 <input type="checkbox" id="chk-template-v001-ac" disabled style="accent-color:var(--accent); cursor:not-allowed;">
-                                 <label for="chk-template-v001-ac" style="margin-left:8px; font-size:0.85rem; color:#888; cursor:not-allowed;">Crear v001 con Template <span style="font-size:0.7rem; color:#ff9800; margin-left:4px;">(Próximamente)</span></label>
+                             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                                 <div style="display:flex; align-items:center;">
+                                     <input type="checkbox" id="chk-template-v001-ac" onchange="AssetCreator.toggleTemplateV001(this.checked)" ${AssetCreator.createTemplateV001 ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
+                                     <label for="chk-template-v001-ac" style="margin-left:8px; font-size:0.85rem; color:#fff; font-weight:bold; cursor:pointer;">📄 Crear v001 con Template</label>
+                                 </div>
+
+                                 ${AssetCreator.createTemplateV001 ? `
+                                     <div style="display:flex; flex-direction:column; gap:8px; padding:10px; background:#12151c; border:1px solid #28303d; border-radius:4px; margin-left:22px; font-size:0.8rem;">
+                                         <div>
+                                             <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Origen del Template:</label>
+                                             <select onchange="AssetCreator.setTemplateSource(this.value)" style="width:100%; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 8px; border-radius:3px; font-size:0.8rem;">
+                                                 <option value="reference" ${AssetCreator.templateSource === 'reference' ? 'selected' : ''}>⭐ Reference Asset (Default Proyecto)</option>
+                                                 <option value="custom" ${AssetCreator.templateSource === 'custom' ? 'selected' : ''}>🛠️ Custom Template (Configurado por Proceso)</option>
+                                                 <option value="manual" ${AssetCreator.templateSource === 'manual' ? 'selected' : ''}>📁 Create From... (Elegir archivo a mano)</option>
+                                             </select>
+                                         </div>
+
+                                         ${AssetCreator.templateSource === 'reference' ? `
+                                             <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
+                                                 Ruta: <b style="color:var(--accent); font-family:monospace;">${settings?.currentProject?.templates?.referenceAssetRoot || 'assets2D/templates'}</b>
+                                                 <div style="color:#666; margin-top:2px;">Clona la última versión encontrada en esa carpeta.</div>
+                                             </div>
+                                         ` : ''}
+
+                                         ${AssetCreator.templateSource === 'custom' ? `
+                                             <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
+                                                 <span>Usa los templates específicos configurados por proceso en <b>Configuración > Proyectos > Templates</b>.</span>
+                                             </div>
+                                         ` : ''}
+
+                                         ${AssetCreator.templateSource === 'manual' ? `
+                                             <div style="display:flex; flex-direction:column; gap:4px;">
+                                                 <label style="color:#aaa; font-size:0.75rem;">Archivo Base a Clonar:</label>
+                                                 <div style="display:flex; gap:6px;">
+                                                     <input type="text" value="${escapeHtml(AssetCreator.manualTemplatePath || '')}" 
+                                                            placeholder="Seleccionar archivo .blend, .psd, .hip..." 
+                                                            onchange="AssetCreator.manualTemplatePath = this.value; localStorage.setItem('pipeta_ac_manual_template_path', this.value);"
+                                                            style="flex:1; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 6px; font-size:0.75rem; border-radius:3px; font-family:monospace;">
+                                                     <button class="btn" onclick="AssetCreator.browseManualTemplate()" style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 8px; font-size:0.75rem; cursor:pointer;">📁</button>
+                                                 </div>
+                                             </div>
+                                         ` : ''}
+                                     </div>
+                                 ` : ''}
                              </div>
 
                              <div style="display:flex; align-items:center;">
@@ -1030,7 +1134,65 @@ const AssetCreator = {
             }
 
             if (child.type === 'file') {
-                if (AssetCreator.createVersionZero) {
+                let procName = "Process";
+                let tempCurr = child;
+                while (tempCurr) {
+                    const p = allNodes.find(n => n.id === tempCurr.parent);
+                    if (p && p.isProcess) {
+                        procName = p.name;
+                        break;
+                    }
+                    tempCurr = p;
+                    if (!tempCurr) break;
+                }
+
+                let templateCopied = false;
+                if (AssetCreator.createTemplateV001) {
+                    const tpl = await AssetCreator.getTemplateFileForProcess(procName, child);
+                    if (tpl && tpl.sourcePath) {
+                        let fileName = child.name;
+                        if (child.nameConfig && child.nameConfig.enabled && child.nameConfig.pattern) {
+                            fileName = child.nameConfig.pattern;
+                        }
+
+                        if (assetName) {
+                            fileName = fileName.replace(/\[ASSET\]/gi, assetName)
+                                .replace(/{Asset}/gi, assetName)
+                                .replace(/{{Asset}}/gi, assetName);
+                        }
+
+                        fileName = fileName.replace(/\[PROC\]/gi, procName).replace(/\[PROCESO\]/gi, procName);
+
+                        if (fileName.match(/\[VER\]|\[version\]/i)) {
+                            const pad = child.nameConfig?.versionPadding || 3;
+                            const prefix = (child.nameConfig?.versionPrefix !== false) ? 'v' : '';
+                            const vStr = prefix + '1'.padStart(pad, '0');
+                            fileName = fileName.replace(/\[VER\]/gi, vStr).replace(/\[version\]/gi, vStr);
+                        }
+
+                        fileName = fileName.replace(/\.?\[ext\]/gi, '');
+                        const lastDot = fileName.lastIndexOf('.');
+                        if (lastDot !== -1 && lastDot > 0 && (fileName.length - lastDot) <= 5) {
+                            fileName = fileName.substring(0, lastDot);
+                        }
+                        fileName += tpl.ext;
+
+                        const ctx = AssetCreator.currentContext;
+                        if (ctx.client) fileName = fileName.replace(/\[Client\]/gi, ctx.client).replace(/{Client}/gi, ctx.client);
+                        if (ctx.project) fileName = fileName.replace(/\[Project\]/gi, ctx.project).replace(/{Project}/gi, ctx.project);
+
+                        const fullPath = (parentPath + "/" + fileName).replace(/\/+/g, '/');
+                        try {
+                            await API.fs.copy(tpl.sourcePath, fullPath);
+                            templateCopied = true;
+                            console.log("[AssetCreator] Template v001 created:", fullPath, "from:", tpl.sourcePath);
+                        } catch(err) {
+                            console.error("[AssetCreator] Error copying template v001:", err);
+                        }
+                    }
+                }
+
+                if (!templateCopied && AssetCreator.createVersionZero) {
                     let fileName = child.name;
                     if (child.nameConfig && child.nameConfig.enabled && child.nameConfig.pattern) {
                         fileName = child.nameConfig.pattern;
@@ -1043,20 +1205,7 @@ const AssetCreator = {
                             .replace(/{{Asset}}/gi, assetName);
                     }
 
-                    if (fileName.match(/\[PROC\]|\[PROCESO\]/i)) {
-                        let procName = "Process";
-                        let tempCurr = child;
-                        while (tempCurr) {
-                            const p = allNodes.find(n => n.id === tempCurr.parent);
-                            if (p && p.isProcess) {
-                                procName = p.name;
-                                break;
-                            }
-                            tempCurr = p;
-                            if (!tempCurr) break;
-                        }
-                        fileName = fileName.replace(/\[PROC\]/gi, procName).replace(/\[PROCESO\]/gi, procName);
-                    }
+                    fileName = fileName.replace(/\[PROC\]/gi, procName).replace(/\[PROCESO\]/gi, procName);
 
                     if (fileName.match(/\[VER\]|\[version\]/i)) {
                         const pad = child.nameConfig?.versionPadding || 3;

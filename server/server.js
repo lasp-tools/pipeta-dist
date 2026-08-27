@@ -322,6 +322,154 @@ app.post('/api/system/pickFolder', async (req, res) => {
     });
 });
 
+// --- FILE BROWSER DIALOG ---
+app.post('/api/system/pickFile', async (req, res) => {
+    let initialPath = req.body?.initialPath || 'Z:\\';
+    let filter = req.body?.filter || 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*';
+    initialPath = initialPath.replace(/\//g, '\\');
+    const { execFile } = require('child_process');
+    
+    const psScript = 'Add-Type -AssemblyName System.Windows.Forms\n' +
+        '$f = New-Object System.Windows.Forms.OpenFileDialog\n' +
+        '$f.Title = "Seleccionar Archivo Template"\n' +
+        '$f.Filter = "' + filter.replace(/"/g, '`"') + '"\n' +
+        'if (Test-Path "' + initialPath.replace(/"/g, '`"') + '") {\n' +
+        '    $f.InitialDirectory = "' + initialPath.replace(/"/g, '`"') + '"\n' +
+        '}\n' +
+        '$form = New-Object System.Windows.Forms.Form\n' +
+        '$form.TopMost = $true\n' +
+        '$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen\n' +
+        '$form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized\n' +
+        '$form.Show()\n' +
+        '$form.BringToFront()\n' +
+        '$res = $f.ShowDialog($form)\n' +
+        '$form.Dispose()\n' +
+        'if ($res -eq [System.Windows.Forms.DialogResult]::OK) {\n' +
+        '    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n' +
+        '    Write-Output $f.FileName\n' +
+        '}\n';
+
+    const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
+    execFile('powershell.exe', ['-NoProfile', '-STA', '-EncodedCommand', b64], { timeout: 60000 }, (err, stdout) => {
+        if (err && err.killed) {
+            return res.json({ canceled: true });
+        }
+        const selected = stdout ? stdout.trim() : '';
+        if (selected) {
+            return res.json({ success: true, path: selected.replace(/\\/g, '/') });
+        }
+        res.json({ canceled: true });
+    });
+});
+
+// --- TEMPLATES SYSTEM ENDPOINTS ---
+app.post('/api/templates/upload', async (req, res) => {
+    try {
+        const { type = 'shot', processName, filename, fileData } = req.body;
+        if (!filename || !fileData) {
+            return res.status(400).json({ error: 'Missing filename or fileData' });
+        }
+
+        const subDir = type === 'asset' ? 'AssetDesigner' : 'ShotDesigner';
+        const localTemplatesDir = path.join(__dirname, '../presets/templates', subDir);
+        await fs.ensureDir(localTemplatesDir);
+
+        const safeFilename = path.basename(filename);
+        const localDestPath = path.join(localTemplatesDir, safeFilename);
+
+        const buffer = Buffer.from(fileData, 'base64');
+        await fs.writeFile(localDestPath, buffer);
+
+        // Also copy to network presets if available
+        const zTemplatesDir = path.join('Z:/INTERNO/TOOLS/Mati/Propios/Scripts/Pipeta/presets/templates', subDir);
+        try {
+            await fs.ensureDir(zTemplatesDir);
+            await fs.writeFile(path.join(zTemplatesDir, safeFilename), buffer);
+        } catch(e){}
+
+        res.json({
+            success: true,
+            path: localDestPath.replace(/\\/g, '/'),
+            filename: safeFilename
+        });
+    } catch(err) {
+        console.error("Template upload error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/templates/findReference', async (req, res) => {
+    try {
+        const { refRoot, processName } = req.body;
+        if (!refRoot || !fs.existsSync(refRoot)) {
+            return res.json({ found: false, error: 'Reference root does not exist' });
+        }
+
+        const cleanProcess = (processName || '').toLowerCase().trim();
+
+        // Recursively scan up to 4 levels
+        async function getFilesRec(dir, depth = 0) {
+            if (depth > 4) return [];
+            let results = [];
+            try {
+                const list = await fs.readdir(dir, { withFileTypes: true });
+                for (const item of list) {
+                    const full = path.join(dir, item.name);
+                    if (item.isDirectory()) {
+                        if (!item.name.startsWith('.') && !item.name.startsWith('_')) {
+                            const sub = await getFilesRec(full, depth + 1);
+                            results = results.concat(sub);
+                        }
+                    } else if (item.isFile()) {
+                        if (!item.name.startsWith('.') && !item.name.startsWith('~')) {
+                            results.push({ name: item.name, fullPath: full.replace(/\\/g, '/') });
+                        }
+                    }
+                }
+            } catch(e){}
+            return results;
+        }
+
+        const allFiles = await getFilesRec(refRoot);
+
+        // Filter files matching process name or process folder
+        let candidates = allFiles.filter(f => {
+            const nameLower = f.name.toLowerCase();
+            const pathLower = f.fullPath.toLowerCase();
+            return nameLower.includes(cleanProcess) || pathLower.includes('/' + cleanProcess + '/');
+        });
+
+        // If no candidate by process name, take non-txt/non-json files from reference folder
+        if (candidates.length === 0) {
+            candidates = allFiles.filter(f => !f.name.endsWith('.txt') && !f.name.endsWith('.json') && !f.name.endsWith('.ini'));
+        }
+
+        if (candidates.length === 0) {
+            return res.json({ found: false });
+        }
+
+        // Sort to pick the highest version (e.g. v002 > v001)
+        candidates.sort((a, b) => {
+            const vA = (a.name.match(/_v(\d+)/i) || [])[1] || '0';
+            const vB = (b.name.match(/_v(\d+)/i) || [])[1] || '0';
+            return parseInt(vB, 10) - parseInt(vA, 10);
+        });
+
+        const best = candidates[0];
+        const ext = path.extname(best.name);
+
+        res.json({
+            found: true,
+            filePath: best.fullPath,
+            fileName: best.name,
+            ext: ext
+        });
+    } catch(err) {
+        console.error("Error finding reference template:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- PORTABLE PACKAGE EXPORTER (.ZIP + .BAT EXTRACTOR) ---
 app.post('/api/system/package-dist', async (req, res) => {
     let targetDir = req.body?.targetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts';

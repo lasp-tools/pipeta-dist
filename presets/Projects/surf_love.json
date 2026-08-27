@@ -10,5 +10,13 @@
     "onlineMedia": "G:\\Unidades compartidas\\surf_love_media"
   },
   "defaultShotPresetId": "master_shot",
-  "defaultAssetPresetId": "master_asset"
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  }
 }
