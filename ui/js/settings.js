@@ -335,16 +335,25 @@ const settings = {
     },
 
     restoreBaseProjectCanon: async () => {
-        if (!confirm("¿Restaurar el Proyecto Base a todos los valores canónicos oficiales de pipeline?")) return;
-        const baseProj = settings.projects.find(p => p.id === 'proj_base' || p.isBase);
-        if (baseProj) {
-            const restored = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS));
-            Object.assign(baseProj, restored);
-            settings.currentProject = baseProj;
-            await settings.saveProject();
-            settings.render();
-            alert("✓ Proyecto Base restaurado a los valores canónicos del pipeline.");
-        }
+        settings.showConfirmModal({
+            title: 'Restaurar Proyecto Base',
+            icon: '↺',
+            message: '¿Estás seguro de que deseas restaurar el <b>Proyecto Base</b> a todos los valores canónicos oficiales de pipeline?',
+            confirmText: 'Restaurar Valores',
+            confirmColor: '#ff9800',
+            confirmTextColor: '#000',
+            onConfirm: async () => {
+                const baseProj = settings.projects.find(p => p.id === 'proj_base' || p.isBase);
+                if (baseProj) {
+                    const restored = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS));
+                    Object.assign(baseProj, restored);
+                    settings.currentProject = baseProj;
+                    await settings.saveProject();
+                    settings.render();
+                    settings.showToast("Proyecto Base restaurado a los valores canónicos del pipeline.", "success", 4);
+                }
+            }
+        });
     },
 
     newProject: () => {
@@ -372,20 +381,34 @@ const settings = {
     deleteProject: async () => {
         if (!settings.currentProject) return;
         if (settings.currentProject.id === 'proj_base' || settings.currentProject.isBase) {
-            alert("⚠️ El Proyecto Base es la plantilla canónica maestra del sistema y no se puede eliminar.");
+            settings.showToast("El Proyecto Base es la plantilla canónica maestra del sistema y no se puede eliminar.", "warn", 4);
             return;
         }
-        if (!confirm(`¿Borrar proyecto "${settings.currentProject.name}"?`)) return;
 
-        const fileName = settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
-        const filePath = settings.projectsPath + "\\" + fileName;
+        settings.showConfirmModal({
+            title: 'Eliminar Proyecto',
+            icon: '🗑️',
+            message: `¿Estás seguro de que deseas eliminar el proyecto <b>"${settings.currentProject.name}"</b>? Esta acción no se puede deshacer.`,
+            confirmText: 'Eliminar Proyecto',
+            confirmColor: '#f44336',
+            confirmTextColor: '#fff',
+            onConfirm: async () => {
+                const fileName = settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+                const filePath = settings.projectsPath + "\\" + fileName;
 
-        try {
-            await API.fs.deleteFile(filePath);
-            settings.projects = settings.projects.filter(p => p.id !== settings.currentProject.id);
-            settings.currentProject = settings.projects.find(p => !p.isBase) || settings.projects[0];
-            settings.render();
-        } catch (e) { console.error(e); }
+                try {
+                    await API.fs.deleteFile(filePath);
+                    settings.projects = settings.projects.filter(p => p.id !== settings.currentProject.id);
+                    settings.currentProject = settings.projects[0] || null;
+                    localStorage.setItem('pipeta_active_project_id', settings.currentProject?.id || '');
+                    settings.render();
+                    settings.updateHeaderProjectSelector();
+                    settings.showToast("Proyecto eliminado con éxito.", "success", 3);
+                } catch (e) {
+                    settings.showToast("Error al eliminar proyecto: " + e.message, "error", 5);
+                }
+            }
+        });
     },
 
     duplicateProject: () => {
@@ -1711,7 +1734,7 @@ const settings = {
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; padding-bottom:15px; border-bottom:1px solid #333;">
                         <div id="expStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
-                        <button class="btn" onclick="settings.executeExportPresets()" 
+                        <button class="btn" onclick="settings.confirmExportPresets()" 
                             style="background:var(--accent); color:black; font-weight:bold; padding:10px 20px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px;">
                             <span>🚀 EXPORTAR / PUBLICAR PRESETS</span>
                         </button>
@@ -2105,11 +2128,65 @@ const settings = {
         }
     },
 
+    confirmExportPresets: () => {
+        const targetInput = document.getElementById('expTargetPath');
+        let targetRoot = (targetInput ? targetInput.value : '').trim();
+        if (!targetRoot) {
+            settings.showToast("Por favor especifica una ruta de destino válida.", "warn", 4);
+            return;
+        }
+        targetRoot = targetRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+
+        const doShot = document.getElementById('expOptShotDesigner')?.checked;
+        const doAsset = document.getElementById('expOptAssetDesigner')?.checked;
+        const doProj = document.getElementById('expOptProjects')?.checked;
+        const doUsers = document.getElementById('expOptUsers')?.checked;
+        const doStatuses = document.getElementById('expOptStatuses')?.checked;
+        const doIa = document.getElementById('expOptIaTokens')?.checked;
+        const doConfig = document.getElementById('expOptConfig')?.checked;
+
+        const itemsList = [];
+        if (doShot) itemsList.push('🎬 Presets de Shot Designer (ShotDesigner/*.json)');
+        if (doAsset) itemsList.push('🎨 Presets de Asset Designer (AssetDesigner/*.json)');
+        if (doProj) itemsList.push('📁 Proyectos Configurados (Projects/*.json)');
+        if (doUsers) itemsList.push('👥 Usuarios y Roles (users_config.json)');
+        if (doStatuses) itemsList.push('🏷️ Estados de Procesos y Planos (status_config.json)');
+        if (doIa) itemsList.push('🤖 Tokens IA Personalizados (ia_custom_tokens.json)');
+        if (doConfig) itemsList.push('⚙️ Configuración General (config.json, pipeline_config.json)');
+
+        if (itemsList.length === 0) {
+            settings.showToast("Por favor selecciona al menos un elemento para exportar.", "warn", 4);
+            return;
+        }
+
+        const detailsHTML = `
+            <div style="color:#aaa; margin-bottom:6px;">Ruta de Destino (Red):</div>
+            <div style="color:var(--accent); font-family:monospace; word-break:break-all; font-weight:bold; margin-bottom:10px;">${targetRoot}</div>
+            <div style="color:#aaa; margin-bottom:6px;">Elementos seleccionados (${itemsList.length}):</div>
+            <ul style="margin:0; padding-left:18px; color:#ddd; display:flex; flex-direction:column; gap:3px;">
+                ${itemsList.map(item => `<li>${item}</li>`).join('')}
+            </ul>
+        `;
+
+        settings.showConfirmModal({
+            title: 'Publicar / Exportar Presets',
+            icon: '📤',
+            message: '¿Confirmas la publicación y exportación de las configuraciones y presets seleccionados hacia la unidad de red compartida para el equipo?',
+            details: detailsHTML,
+            confirmText: 'CONFIRMAR Y PUBLICAR',
+            confirmColor: 'var(--accent)',
+            confirmTextColor: '#000',
+            onConfirm: async () => {
+                await settings.executeExportPresets();
+            }
+        });
+    },
+
     executeExportPresets: async () => {
         const targetInput = document.getElementById('expTargetPath');
         let targetRoot = (targetInput ? targetInput.value : '').trim();
         if (!targetRoot) {
-            alert("Por favor especifica una ruta de destino válida.");
+            settings.showToast("Por favor especifica una ruta de destino válida.", "warn", 4);
             return;
         }
         targetRoot = targetRoot.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -2178,17 +2255,18 @@ const settings = {
 
             if (errors.length > 0) {
                 if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">⚠️ ${exportedCount} archivos exportados con ${errors.length} errores.</span>`;
-                alert(`Exportación parcial:\n${exportedCount} archivos exportados.\nErrores:\n${errors.join('\n')}`);
+                settings.showToast(`Exportación con errores: ${exportedCount} exportados, ${errors.length} fallos.`, 'warn', 6, errors.slice(0, 2).join(' | '));
             } else if (exportedCount === 0) {
                 if (statusMsg) statusMsg.innerHTML = `<span style="color:#ffb74d;">ℹ️ No se encontraron archivos para exportar en las opciones seleccionadas.</span>`;
+                settings.showToast("No se encontraron archivos para exportar.", "warn", 4);
             } else {
                 if (statusMsg) statusMsg.innerHTML = `<span style="color:#4caf50;">✅ ¡${exportedCount} archivos exportados con éxito a ${targetRoot}!</span>`;
-                alert(`¡Exportación Exitosa!\nSe copiaron ${exportedCount} archivos y configuraciones a:\n${targetRoot}`);
+                settings.showToast(`¡${exportedCount} archivos y configuraciones exportados correctamente!`, 'success', 5, `Destino: ${targetRoot}`);
             }
         } catch(e) {
             console.error("Export error:", e);
             if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error en la exportación: ${e.message}</span>`;
-            alert("Error al exportar: " + e.message);
+            settings.showToast("Error al exportar: " + e.message, "error", 5);
         }
     },
 
@@ -2382,17 +2460,28 @@ const settings = {
     deleteUser: async (userId) => {
         const u = (settings.usersData?.users || []).find(x => x.id === userId || x.laspUser === userId || x.username === userId);
         if (u && (u.isSystem || u.username === 'admin' || u.username === 'user')) {
-            alert(`⚠️ El usuario "${u.username || u.laspUser}" es un usuario por defecto del sistema y no se puede borrar.`);
+            settings.showToast(`El usuario "${u.username || u.laspUser}" es un usuario por defecto del sistema y no se puede borrar.`, "warn", 4);
             return;
         }
-        if (!confirm(`¿Estás seguro de que deseas eliminar al usuario "${u?.username || userId}"?`)) return;
-        if (settings.usersData && settings.usersData.users) {
-            settings.usersData.users = settings.usersData.users.filter(x => x.id !== userId && x.laspUser !== userId && x.username !== userId);
-            await settings.saveUsersConfig();
-            settings.render();
-            if (typeof updateHeaderUserSelector === 'function') updateHeaderUserSelector();
-            if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
-        }
+
+        settings.showConfirmModal({
+            title: 'Eliminar Usuario',
+            icon: '👤',
+            message: `¿Estás seguro de que deseas eliminar al usuario <b>"${u?.username || userId}"</b>?`,
+            confirmText: 'Eliminar Usuario',
+            confirmColor: '#f44336',
+            confirmTextColor: '#fff',
+            onConfirm: async () => {
+                if (settings.usersData && settings.usersData.users) {
+                    settings.usersData.users = settings.usersData.users.filter(x => x.id !== userId && x.laspUser !== userId && x.username !== userId);
+                    await settings.saveUsersConfig();
+                    settings.render();
+                    if (typeof updateHeaderUserSelector === 'function') updateHeaderUserSelector();
+                    if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
+                    settings.showToast(`Usuario "${u?.username || userId}" eliminado.`, "success", 3);
+                }
+            }
+        });
     },
 
     openRoleModal: (roleId = null) => {
@@ -2569,16 +2658,27 @@ const settings = {
     deleteRole: async (roleId) => {
         const r = (settings.usersData?.roles || []).find(x => x.id === roleId);
         if (r && (r.isSystem || roleId === 'admin' || roleId === 'user')) {
-            alert(`⚠️ El rol "${r.name}" es un rol por defecto del sistema y no se puede borrar.`);
+            settings.showToast(`El rol "${r.name}" es un rol por defecto del sistema y no se puede borrar.`, "warn", 4);
             return;
         }
-        if (!confirm(`¿Estás seguro de que deseas eliminar el rol "${r?.name || roleId}"?`)) return;
-        if (settings.usersData && settings.usersData.roles) {
-            settings.usersData.roles = settings.usersData.roles.filter(x => x.id !== roleId);
-            await settings.saveUsersConfig();
-            settings.render();
-            if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
-        }
+
+        settings.showConfirmModal({
+            title: 'Eliminar Rol',
+            icon: '🛡️',
+            message: `¿Estás seguro de que deseas eliminar el rol <b>"${r?.name || roleId}"</b>?`,
+            confirmText: 'Eliminar Rol',
+            confirmColor: '#f44336',
+            confirmTextColor: '#fff',
+            onConfirm: async () => {
+                if (settings.usersData && settings.usersData.roles) {
+                    settings.usersData.roles = settings.usersData.roles.filter(x => x.id !== roleId);
+                    await settings.saveUsersConfig();
+                    settings.render();
+                    if (typeof applyRolePermissionsToUI === 'function') applyRolePermissionsToUI();
+                    settings.showToast(`Rol "${r?.name || roleId}" eliminado.`, "success", 3);
+                }
+            }
+        });
     },
 
     closeModalOverlay: () => {
@@ -2586,19 +2686,109 @@ const settings = {
         if (overlay) overlay.remove();
     },
 
+    showConfirmModal: ({ title, icon = '⚠️', message, details = null, confirmText = 'Confirmar', confirmColor = 'var(--accent)', confirmTextColor = '#000', onConfirm }) => {
+        settings.closeModalOverlay();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'pipeta-settings-modal-overlay';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(5,7,11,0.85); z-index:10000; display:flex; align-items:center; justify-content:center; transform:translateZ(0); will-change:opacity;';
+
+        overlay.innerHTML = `
+            <div style="background:#14171e; border:1px solid #28303d; border-radius:8px; width:480px; max-width:92vw; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.8); color:#eee;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #28303d; padding-bottom:12px; margin-bottom:16px;">
+                    <b style="font-size:1.05rem; color:${confirmColor}; display:flex; align-items:center; gap:8px;">
+                        <span>${icon}</span>
+                        <span>${title}</span>
+                    </b>
+                    <button class="icon-btn" onclick="settings.closeModalOverlay()" style="background:transparent; border:none; color:#888; font-size:1.2rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <div style="font-size:0.85rem; color:#ccc; margin-bottom:${details ? '12px' : '20px'}; line-height:1.5;">
+                    ${message}
+                </div>
+
+                ${details ? `
+                    <div style="background:#1c222d; border:1px solid #2e3846; border-radius:6px; padding:12px; margin-bottom:20px; font-size:0.8rem; color:#bbb;">
+                        ${details}
+                    </div>
+                ` : ''}
+
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button class="btn" onclick="settings.closeModalOverlay()" style="background:#222; color:#ccc; border:1px solid #444; border-radius:4px; padding:8px 18px; cursor:pointer;">Cancelar</button>
+                    <button id="modal-confirm-btn" class="btn" style="background:${confirmColor}; color:${confirmTextColor}; font-weight:bold; border:none; border-radius:4px; padding:8px 22px; cursor:pointer;">${confirmText}</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        const confirmBtn = document.getElementById('modal-confirm-btn');
+        if (confirmBtn) {
+            confirmBtn.onclick = async () => {
+                settings.closeModalOverlay();
+                if (typeof onConfirm === 'function') await onConfirm();
+            };
+        }
+    },
+
+    showToast: (message, type = 'success', durationSec = 5, subtext = null) => {
+        const existing = document.getElementById('settings-save-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'settings-save-toast';
+        const isSuccess = type === 'success';
+        const isError = type === 'error';
+        const isWarn = type === 'warn';
+
+        const bg = isSuccess ? '#1b5e20' : (isError ? '#b71c1c' : (isWarn ? '#e65100' : '#263238'));
+        const border = isSuccess ? '#4caf50' : (isError ? '#f44336' : (isWarn ? '#ff9800' : '#90a4ae'));
+        const icon = isSuccess ? '✅' : (isError ? '❌' : (isWarn ? '⚠️' : 'ℹ️'));
+        const timerColor = isSuccess ? '#a5d6a7' : (isError ? '#ef9a9a' : (isWarn ? '#ffe0b2' : '#cfd8dc'));
+
+        toast.style.cssText = `position:fixed; bottom:65px; right:20px; background:${bg}; border:1px solid ${border}; color:#fff; padding:12px 20px; border-radius:6px; font-size:0.85rem; display:flex; align-items:center; gap:12px; box-shadow:0 6px 24px rgba(0,0,0,0.7); z-index:99999; animation:fadeIn 0.2s ease; max-width:480px;`;
+
+        let secondsLeft = durationSec;
+        toast.innerHTML = `
+            <span style="font-size:1.3rem;">${icon}</span>
+            <div style="flex:1;">
+                <div style="font-weight:bold; font-size:0.88rem;">${message}</div>
+                ${subtext ? `<div style="font-size:0.75rem; color:#eee; margin-top:2px;">${subtext}</div>` : ''}
+                <div id="settings-toast-timer" style="font-size:0.72rem; color:${timerColor}; margin-top:3px;">Este cartel se cerrará en ${secondsLeft}s</div>
+            </div>
+            <button onclick="document.getElementById('settings-save-toast')?.remove()" 
+                    style="background:transparent; border:none; color:#fff; font-size:1.2rem; cursor:pointer; padding:0 4px; line-height:1; margin-left:8px;" 
+                    title="Cerrar aviso">&times;</button>
+        `;
+
+        document.body.appendChild(toast);
+
+        const timerInterval = setInterval(() => {
+            secondsLeft--;
+            const timerEl = document.getElementById('settings-toast-timer');
+            if (timerEl) {
+                timerEl.innerText = `Este cartel se cerrará en ${secondsLeft}s`;
+            }
+            if (secondsLeft <= 0) {
+                clearInterval(timerInterval);
+                const t = document.getElementById('settings-save-toast');
+                if (t) t.remove();
+            }
+        }, 1000);
+    },
+
     changeAdminPasswordModal: async () => {
         const newPass = prompt("Ingresa la nueva contraseña de Administrador:");
         if (!newPass) return;
         if (newPass.length < 4) {
-            alert("La contraseña debe tener al menos 4 caracteres.");
+            settings.showToast("La contraseña debe tener al menos 4 caracteres.", "warn", 4);
             return;
         }
 
         try {
             await API.users.save({ ...settings.usersData, adminPassword: newPass });
-            alert("✅ Contraseña de Administrador actualizada con éxito.");
+            settings.showToast("Contraseña de Administrador actualizada con éxito.", "success", 4);
         } catch(e) {
-            alert("Error al actualizar contraseña: " + e.message);
+            settings.showToast("Error al actualizar contraseña: " + e.message, "error", 5);
         }
     },
 
@@ -2641,52 +2831,30 @@ const settings = {
 
         await settings.saveStatusesConfig();
         settings.render();
-        alert(`✅ Estado "${name}" creado con éxito.`);
+        settings.showToast(`Estado "${name}" creado con éxito.`, "success", 3);
     },
 
     deleteStatus: async (statusId) => {
-        if (!confirm(`¿Eliminar el estado ${statusId}?`)) return;
-        if (settings.statusesData && settings.statusesData.statuses) {
-            settings.statusesData.statuses = settings.statusesData.statuses.filter(s => s.id !== statusId);
-            await settings.saveStatusesConfig();
-            settings.render();
-        }
+        settings.showConfirmModal({
+            title: 'Eliminar Estado',
+            icon: '🏷️',
+            message: `¿Estás seguro de que deseas eliminar el estado <b>"${statusId}"</b>?`,
+            confirmText: 'Eliminar Estado',
+            confirmColor: '#f44336',
+            confirmTextColor: '#fff',
+            onConfirm: async () => {
+                if (settings.statusesData && settings.statusesData.statuses) {
+                    settings.statusesData.statuses = settings.statusesData.statuses.filter(s => s.id !== statusId);
+                    await settings.saveStatusesConfig();
+                    settings.render();
+                    settings.showToast(`Estado "${statusId}" eliminado.`, "success", 3);
+                }
+            }
+        });
     },
 
     showSaveToast: () => {
-        const existing = document.getElementById('settings-save-toast');
-        if (existing) existing.remove();
-
-        const toast = document.createElement('div');
-        toast.id = 'settings-save-toast';
-        toast.style.cssText = 'position:absolute; bottom:65px; right:20px; background:#1b5e20; border:1px solid #4caf50; color:#fff; padding:10px 18px; border-radius:6px; font-size:0.85rem; display:flex; align-items:center; gap:12px; box-shadow:0 6px 20px rgba(0,0,0,0.6); z-index:9999; animation:fadeIn 0.2s ease;';
-        
-        let secondsLeft = 3;
-        toast.innerHTML = `
-            <span style="font-size:1.1rem;">✅</span>
-            <div>
-                <div style="font-weight:bold;">Configuraciones guardadas correctamente</div>
-                <div id="settings-toast-timer" style="font-size:0.75rem; color:#a5d6a7;">Este cartel se cerrará en ${secondsLeft}s</div>
-            </div>
-            <button onclick="document.getElementById('settings-save-toast')?.remove()" 
-                    style="background:transparent; border:none; color:#fff; font-size:1.2rem; cursor:pointer; padding:0 4px; line-height:1; margin-left:8px;" 
-                    title="Cerrar aviso">&times;</button>
-        `;
-
-        if (settings.container) settings.container.appendChild(toast);
-
-        const timerInterval = setInterval(() => {
-            secondsLeft--;
-            const timerEl = document.getElementById('settings-toast-timer');
-            if (timerEl) {
-                timerEl.innerText = `Este cartel se cerrará en ${secondsLeft}s`;
-            }
-            if (secondsLeft <= 0) {
-                clearInterval(timerInterval);
-                const t = document.getElementById('settings-save-toast');
-                if (t) t.remove();
-            }
-        }, 1000);
+        settings.showToast("Configuraciones guardadas correctamente", "success", 3);
     },
 
     saveAll: async () => {

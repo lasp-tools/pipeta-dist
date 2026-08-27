@@ -96,7 +96,12 @@ class SyncAnalyzer {
                     <button class="icon-btn-mini" style="color:#f44336;" onclick="window.syncAnalyzer.toggle()">✕</button>
                 </div>
             </div>
-            <div class="validator-body" style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
+            <div class="validator-body" style="display:flex; flex-direction:column; height:100%; overflow:hidden; position:relative;">
+                <!-- FLOATING OVERLAY MODAL -->
+                <div id="sync-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:100; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px; box-sizing:border-box;">
+                    <div id="sync-overlay-content" style="max-width:90%; width:440px; background:#181818; border:1px solid #333; border-radius:8px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.8); text-align:center;"></div>
+                </div>
+
                 <!-- INFO & SCOPES -->
                 <div style="padding:8px; background:#1a1a1a; border-bottom:1px solid #333; flex-shrink:0;">
                     <div style="font-size:0.75rem; color:#888; margin-bottom:6px;">
@@ -235,6 +240,24 @@ class SyncAnalyzer {
         this.container.style.height = isMin ? '600px' : 'auto';
         this.container.style.resize = isMin ? 'both' : 'none';
         btn.innerText = isMin ? '-' : '□';
+    }
+
+    showOverlay(content) {
+        const ov = document.getElementById('sync-overlay');
+        const cont = document.getElementById('sync-overlay-content');
+        if (ov && cont) {
+            if (this._overlayInterval) clearInterval(this._overlayInterval);
+            if (this._overlayTimeout) clearTimeout(this._overlayTimeout);
+            cont.innerHTML = content;
+            ov.style.display = 'flex';
+        }
+    }
+
+    hideOverlay() {
+        if (this._overlayInterval) clearInterval(this._overlayInterval);
+        if (this._overlayTimeout) clearTimeout(this._overlayTimeout);
+        const ov = document.getElementById('sync-overlay');
+        if (ov) ov.style.display = 'none';
     }
 
     // --- DRAG ---
@@ -904,32 +927,91 @@ class SyncAnalyzer {
     }
 
     // --- SYNC ACTIONS ---
-    async syncSelected(direction) {
+    syncSelected(direction) {
         const effectiveDiffs = this.onlyFolders
             ? this.differences.filter(d => d.isDirectory)
             : this.differences;
 
         const items = effectiveDiffs.filter(d => d.selected);
-        if (items.length === 0) return;
-
-        const dirLabel = direction === 'push' ? 'Online' : 'Local';
-        const actionVerb = this.onlyFolders ? 'Crear carpetas vacías en' : 'Transferir a';
+        const dirLabel = direction === 'push' ? 'Online (G:)' : 'Local (Z:)';
         const relevant = direction === 'push'
             ? items.filter(d => d.type === 'local-only')
             : items.filter(d => d.type === 'online-only');
 
         if (relevant.length === 0) {
-            alert(`No hay elementos seleccionados para ${dirLabel}.`);
+            this.showOverlay(`
+                <div style="font-size:2.4rem; margin-bottom:10px;">⚠️</div>
+                <div style="font-size:1.1rem; color:#fff; font-weight:bold; margin-bottom:10px;">Sin Elementos Seleccionados</div>
+                <div style="color:#aaa; font-size:0.85rem; margin-bottom:20px; line-height:1.4;">
+                    No hay elementos marcados para transferir hacia <b style="color:#fff;">${dirLabel}</b>.
+                </div>
+                <button onclick="syncAnalyzer.hideOverlay()" style="padding:8px 24px; background:#333; color:white; border:1px solid #444; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.85rem;">Entendido</button>
+            `);
             return;
         }
 
-        if (!confirm(`¿${actionVerb} ${dirLabel} (${relevant.length} elemento(s))?`)) return;
+        const isPush = direction === 'push';
+        const accentColor = isPush ? '#4fc3f7' : '#81c784';
+        const icon = isPush ? '⬆️' : '⬇️';
+        const actionTitle = isPush ? 'Confirmar Subida (Upload)' : 'Confirmar Descarga (Download)';
+        const modeText = this.onlyFolders ? '📁 Solo carpetas vacías' : '📦 Archivos y carpetas';
+
+        const previewItems = relevant.slice(0, 6);
+        const remainingCount = relevant.length - previewItems.length;
+        const previewListHTML = previewItems.map(d => `
+            <div style="display:flex; align-items:center; gap:8px; font-size:0.78rem; color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 0; border-bottom:1px solid #1e1e1e;">
+                <span>${d.isDirectory ? '📁' : '📄'}</span>
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#ddd;">${escapeHtml(d.relativePath)}</span>
+            </div>
+        `).join('');
+
+        this.showOverlay(`
+            <div style="text-align:left;">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; border-bottom:1px solid #333; padding-bottom:10px;">
+                    <span style="font-size:1.6rem;">${icon}</span>
+                    <div>
+                        <div style="font-size:1.15rem; color:#fff; font-weight:bold;">${actionTitle}</div>
+                        <div style="font-size:0.75rem; color:#888;">Destino: <b style="color:${accentColor};">${dirLabel}</b></div>
+                    </div>
+                </div>
+
+                <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px; margin-bottom:14px;">
+                    <div style="font-size:0.75rem; color:#888; margin-bottom:8px; display:flex; justify-content:space-between;">
+                        <span>Elementos a transferir: <b style="color:#fff;">${relevant.length}</b></span>
+                        <span style="color:#aaa;">${modeText}</span>
+                    </div>
+                    <div style="max-height:130px; overflow-y:auto; padding-right:4px;">
+                        ${previewListHTML}
+                        ${remainingCount > 0 ? `<div style="font-size:0.72rem; color:#888; margin-top:6px; font-style:italic;">... y ${remainingCount} elemento(s) más.</div>` : ''}
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+                    <button onclick="syncAnalyzer.hideOverlay()" style="padding:8px 18px; background:#2a2a2a; color:#ccc; border:1px solid #444; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">Cancelar</button>
+                    <button onclick="syncAnalyzer.proceedSync('${direction}')" style="padding:8px 26px; background:${accentColor}; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">CONFIRMAR</button>
+                </div>
+            </div>
+        `);
+    }
+
+    async proceedSync(direction) {
+        this.hideOverlay();
+
+        const effectiveDiffs = this.onlyFolders
+            ? this.differences.filter(d => d.isDirectory)
+            : this.differences;
+
+        const items = effectiveDiffs.filter(d => d.selected);
+        const dirLabel = direction === 'push' ? 'Online' : 'Local';
+        const relevant = direction === 'push'
+            ? items.filter(d => d.type === 'local-only')
+            : items.filter(d => d.type === 'online-only');
+
+        if (relevant.length === 0) return;
 
         this._setStatus(`⏳ Sincronizando ${relevant.length} elemento(s)...`, '#4fc3f7');
 
-        // Separate: empty dirs to create vs files/dirs to copy
         const itemsToCopy = [];
-
         for (const diff of relevant) {
             const src = direction === 'push' ? diff.localPath : diff.onlinePath;
             const dest = direction === 'push' ? diff.onlinePath : diff.localPath;
@@ -974,6 +1056,35 @@ class SyncAnalyzer {
             let buffer = '';
             let completeData = null;
 
+            // Variables para refresco dinámico y throttled del Explorer durante descargas
+            let lastRefreshTime = 0;
+            let refreshPendingTimeout = null;
+            let lastRefreshedItemIndex = 0;
+
+            const triggerExplorerRefresh = () => {
+                if (typeof refreshCurrentView === 'function') {
+                    refreshCurrentView();
+                }
+                lastRefreshTime = Date.now();
+                if (refreshPendingTimeout) {
+                    clearTimeout(refreshPendingTimeout);
+                    refreshPendingTimeout = null;
+                }
+            };
+
+            const scheduleThrottledExplorerRefresh = () => {
+                const now = Date.now();
+                const timeSinceLast = now - lastRefreshTime;
+                if (timeSinceLast >= 3000) {
+                    triggerExplorerRefresh();
+                } else if (!refreshPendingTimeout) {
+                    const delay = 3000 - timeSinceLast;
+                    refreshPendingTimeout = setTimeout(() => {
+                        triggerExplorerRefresh();
+                    }, delay);
+                }
+            };
+
             while (true) {
                 if (this.abortSync) {
                     try { await this.syncReader.cancel(); } catch(e){}
@@ -985,7 +1096,7 @@ class SyncAnalyzer {
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // keep remainder
+                buffer = lines.pop();
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
@@ -993,6 +1104,15 @@ class SyncAnalyzer {
                         const msg = JSON.parse(line);
                         if (msg.type === 'progress') {
                             this._updateProgressBar(msg);
+
+                            // Refresco dinámico durante descarga: si un archivo terminó, refrescar con throttle de 3s
+                            if (direction === 'pull') {
+                                const currentItem = msg.itemIndex || 0;
+                                if (currentItem > lastRefreshedItemIndex && (msg.filePercent === 100 || !msg.filePercent)) {
+                                    lastRefreshedItemIndex = currentItem;
+                                    scheduleThrottledExplorerRefresh();
+                                }
+                            }
                         } else if (msg.type === 'complete') {
                             completeData = msg;
                         }
@@ -1003,6 +1123,15 @@ class SyncAnalyzer {
             }
 
             this.syncReader = null;
+
+            // Cancelar timeout pendiente y forzar refresco final inmediato del Explorer
+            if (refreshPendingTimeout) {
+                clearTimeout(refreshPendingTimeout);
+                refreshPendingTimeout = null;
+            }
+            if (typeof refreshCurrentView === 'function') {
+                refreshCurrentView();
+            }
 
             if (this.abortSync) {
                 this._setStatus('⏹️ Transferencia detenida por el usuario.', '#ff9800');
@@ -1024,16 +1153,63 @@ class SyncAnalyzer {
             }
 
             this._hideProgressBar();
-            alert(msg);
+            this.showCompletionModal(data, relevant.length);
         } catch (e) {
             this.syncReader = null;
             this._hideProgressBar();
+            if (typeof refreshCurrentView === 'function') {
+                refreshCurrentView();
+            }
             this._setStatus(`❌ Error de conexión: ${e.message}`, '#f44336');
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', `Error en streaming de sincronización: ${e.message}`, 'error');
             }
-            alert(`Error: ${e.message}`);
+            this.showOverlay(`
+                <div style="padding:10px 5px;">
+                    <div style="font-size:2.5rem; margin-bottom:10px;">❌</div>
+                    <div style="font-size:1.15rem; color:#f44336; font-weight:bold; margin-bottom:8px;">Error de Conexión</div>
+                    <div style="font-size:0.85rem; color:#aaa; margin-bottom:18px;">${e.message}</div>
+                    <button onclick="syncAnalyzer.hideOverlay()" style="padding:8px 24px; background:#333; color:#fff; border:1px solid #444; border-radius:4px; font-weight:bold; cursor:pointer;">Cerrar</button>
+                </div>
+            `);
         }
+    }
+
+    showCompletionModal(data, totalCount) {
+        const isSuccess = !data.failed || data.failed === 0;
+        const icon = isSuccess ? '✅' : '⚠️';
+        const title = isSuccess ? 'Sincronización Completada' : 'Sincronización con Advertencias';
+        const countSuccess = data.succeeded !== undefined ? data.succeeded : totalCount;
+        const msg = isSuccess 
+            ? `${countSuccess} elemento(s) transferidos con éxito.`
+            : `${countSuccess} ok, ${data.failed} con error.`;
+
+        let secondsLeft = 5;
+        this.showOverlay(`
+            <div style="padding:10px 5px;">
+                <div style="font-size:2.8rem; margin-bottom:10px;">${icon}</div>
+                <div style="font-size:1.2rem; color:#fff; font-weight:bold; margin-bottom:8px;">${title}</div>
+                <div style="font-size:0.9rem; color:#ddd; margin-bottom:18px;">${msg}</div>
+                <div style="display:flex; justify-content:center; gap:10px;">
+                    <button onclick="syncAnalyzer.hideOverlay(); if (typeof refreshCurrentView === 'function') refreshCurrentView(); syncAnalyzer.runScan(syncAnalyzer.scanScope || 'selection');" style="padding:8px 28px; background:var(--accent); color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">Cerrar</button>
+                </div>
+                <div id="sync-auto-close-label" style="font-size:0.74rem; color:#777; margin-top:14px;">
+                    Cerrando automáticamente en <b id="sync-countdown" style="color:#aaa;">${secondsLeft}s</b>...
+                </div>
+            </div>
+        `);
+
+        this._overlayInterval = setInterval(() => {
+            secondsLeft--;
+            const countEl = document.getElementById('sync-countdown');
+            if (countEl) countEl.innerText = `${secondsLeft}s`;
+            if (secondsLeft <= 0) {
+                clearInterval(this._overlayInterval);
+                this.hideOverlay();
+                if (typeof refreshCurrentView === 'function') refreshCurrentView();
+                this.runScan(this.scanScope || 'selection');
+            }
+        }, 1000);
     }
 
     // --- PROGRESS BAR CONTROLS ---
