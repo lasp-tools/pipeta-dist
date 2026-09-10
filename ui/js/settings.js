@@ -2066,13 +2066,13 @@ const settings = {
                             🔄 Actualizador Directo & Accesos
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Sincroniza en caliente tu instalación local con la versión más reciente del servidor maestro en el recurso compartido exclusivo <code>\\\\LASP-VM\\Pipeta</code> y reinicia el sistema automáticamente.
+                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</code> o <code>\\LASP-VM\Pipeta</code>) y reinicia el sistema automáticamente.
                         </p>
 
                         <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; margin-bottom:15px; font-size:0.8rem;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                 <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
-                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">\\\\LASP-VM\\Pipeta</span>
+                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</span>
                             </div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                 <span style="color:#888;">Instalación Local:</span>
@@ -2080,7 +2080,7 @@ const settings = {
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.72'}</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.76'}</span>
                             </div>
                         </div>
 
@@ -2093,7 +2093,7 @@ const settings = {
                                 </button>
                                 <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
                                     style="background:var(--accent); color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
-                                    <span>🚀 ACTUALIZAR PIPETA (\\\\LASP-VM\\Pipeta)</span>
+                                    <span>🚀 ACTUALIZAR PIPETA DESDE RED</span>
                                 </button>
                             </div>
                         </div>
@@ -2107,7 +2107,13 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.72 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.76 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Actualizador Multi-Origen Red:</b> Detección automática de repositorio maestro tanto en unidad mapeada <code>Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</code> como en recurso compartido <code>\\LASP-VM\Pipeta</code>, evitando fallos en puestos cliente.</li>
+                                    <li><b>Preservación de Runtime Portátil:</b> Se eliminaron las exclusiones de <code>bin</code> en los scripts de despliegue y sincronización, garantizando que <code>node.exe</code> esté siempre presente en cualquier equipo.</li>
+                                    <li><b>Plantillas v001 en Shot & Asset Creator:</b> Creación automatizada de archivos v001 con resolución canónica de extensiones y templates configurables por proceso y proyecto.</li>
+                                </ul>
+                            </div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Exportación Completa de Presets & Configs:</b> Se integró el respaldo y publicación de <code>users_config.json</code> (Usuarios & Roles) y <code>status_config.json</code> (Diseñador de Estados) en la herramienta de exportación.</li>
                                     <li><b>Visualización Exhaustiva de Permisos:</b> Las tarjetas de rol en User Settings muestran directamente el desglose completo de las 5 categorías y 21 permisos sin necesidad de abrir el editor.</li>
@@ -2203,14 +2209,14 @@ const settings = {
             btn.style.opacity = '0.7';
         }
         if (statusMsg) {
-            statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Sincronizando con \\\\LASP-VM\\Pipeta y reiniciando sistema...</span>';
+            statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Buscando repositorio maestro y sincronizando...</span>';
         }
 
         try {
             const res = await fetch('/api/app/update-from-server', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sourcePath: '\\\\LASP-VM\\Pipeta' })
+                body: JSON.stringify({})
             });
             const data = await res.json();
             if (data && data.success) {

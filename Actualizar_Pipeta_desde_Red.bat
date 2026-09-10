@@ -8,11 +8,20 @@ echo ============================================================
 echo.
 
 set "DEST=C:\TOOLS\APPS\Pipeta"
-set "SRC=\\LASP-VM\Pipeta"
 
-if not exist "%SRC%\server\server.js" (
-    echo [ERROR] No se pudo acceder al servidor maestro en \\LASP-VM\Pipeta.
-    echo Verifica que la red este activa y tengas conexion con \\LASP-VM.
+set "SRC="
+if exist "Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta\server\server.js" (
+    set "SRC=Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta"
+) else if exist "\\LASP-VM\Pipeta\server\server.js" (
+    set "SRC=\\LASP-VM\Pipeta"
+)
+
+if "%SRC%"=="" (
+    echo [ERROR] No se pudo acceder al servidor maestro de Pipeta.
+    echo Se verificaron las siguientes rutas:
+    echo   - Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta
+    echo   - \\LASP-VM\Pipeta
+    echo Verifica que la red este activa o que la unidad Z: este conectada.
     echo.
     pause
     exit /b 1
@@ -26,10 +35,10 @@ echo [1/3] Cerrando instancias previas de Pipeta...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do taskkill /F /PID %%a >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
 
-echo [2/3] Sincronizando archivos con Robocopy desde \\LASP-VM\Pipeta...
+echo [2/3] Sincronizando archivos con Robocopy desde %SRC%...
 if not exist "%DEST%" mkdir "%DEST%"
 
-robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets bin /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 
 if exist "%SRC%\presets" (
     robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
@@ -40,7 +49,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v0.9.64 sincronizada con exito en %DEST%
+echo   OK: Pipeta v0.9.76 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 timeout /t 2 >nul

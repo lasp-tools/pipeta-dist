@@ -1,10 +1,15 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v0.9.75"
+set "APP_VERSION=v0.9.76"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
 set "NETWORK_DIR=Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta"
+if not exist "%NETWORK_DIR%\server\server.js" (
+    if exist "\\LASP-VM\Pipeta\server\server.js" (
+        set "NETWORK_DIR=\\LASP-VM\Pipeta"
+    )
+)
 set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 set "PIPETA_SUPERVISED=1"
 
@@ -21,7 +26,7 @@ echo [INFO] Sincronizando archivos a disco local...
 
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
 
 if exist "%~dp0presets" (
     if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
@@ -71,7 +76,7 @@ if exist "%RESTART_FLAG%" (
     echo.
     echo [INFO] Reinicio solicitado por la aplicacion. Sincronizando y relanzando...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER
@@ -81,7 +86,7 @@ if %EXIT_CODE% equ 42 (
     echo.
     echo [INFO] Reinicio solicitado (codigo 42). Relanzando servidor...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs bin /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER

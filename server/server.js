@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v0.9.75";
+const VERSION = "v0.9.76";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -636,23 +636,37 @@ exit
 
 // --- AUTO-UPDATE FROM NETWORK SOURCE ---
 app.post('/api/app/update-from-server', async (req, res) => {
-    const netSource = '\\\\LASP-VM\\Pipeta';
+    const customSource = req.body?.sourcePath || '';
     const localDest = 'C:\\TOOLS\\APPS\\Pipeta';
 
-    const psScript = `
-$foundSource = '\\\\LASP-VM\\Pipeta'
+    const candidateSources = [
+        customSource,
+        'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta',
+        '\\\\LASP-VM\\Pipeta'
+    ].filter(s => s && s.trim().length > 0);
 
-if (-not (Test-Path "$foundSource\\server\\server.js")) {
-    Write-Error "No se pudo acceder al servidor maestro en \\\\LASP-VM\\Pipeta. Verifica la conexion de red con \\\\LASP-VM."
+    const psScript = `
+$candidateSources = @(
+    ${candidateSources.map(s => `"${s.replace(/\\/g, '\\\\')}"`).join(',\n    ')}
+)
+$foundSource = $null
+foreach ($src in $candidateSources) {
+    if (Test-Path "$src\\server\\server.js") {
+        $foundSource = $src
+        break
+    }
+}
+
+if (-not $foundSource) {
+    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta y \\\\LASP-VM\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
     exit 1
 }
 
 $dest = 'C:\\TOOLS\\APPS\\Pipeta'
 if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
 
-# 1. Sincronizar archivos principales directamente y UNICAMENTE desde \\LASP-VM\Pipeta
-# Excluimos 'bin' para no intentar sobreescribir node.exe en ejecucion
-& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets bin node_modules\\.cache /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+# 1. Sincronizar archivos principales directamente desde el origen detectado
+& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
 
 # 2. Sincronizar presets base sin sobreescribir configuraciones locales
@@ -680,7 +694,7 @@ Write-Output "UPDATE_SUCCESS:$foundSource"
             
             try { fs.writeFileSync(RESTART_FLAG_FILE, 'restart'); } catch (e) { }
 
-            res.json({ success: true, updatedFrom: netSource, localDest: localDest });
+            res.json({ success: true, updatedFrom: stdout.trim(), localDest: localDest });
 
             setTimeout(() => {
                 process.exit(42);
@@ -735,22 +749,26 @@ Write-Output "SHORTCUT_CREATED"
 
 // --- VERSION INFO ---
 app.get('/api/app/version-info', async (req, res) => {
-    const netSource = '\\\\LASP-VM\\Pipeta';
+    const candidateSources = [
+        'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta',
+        '\\\\LASP-VM\\Pipeta'
+    ];
+    let netSource = candidateSources[0];
     let serverOnline = false;
     let serverVersion = null;
 
-    try {
-        if (fs.existsSync(netSource)) {
-            serverOnline = true;
-            const netServerJs = path.join(netSource, 'server', 'server.js');
+    for (const src of candidateSources) {
+        try {
+            const netServerJs = path.join(src, 'server', 'server.js');
             if (fs.existsSync(netServerJs)) {
+                netSource = src;
+                serverOnline = true;
                 const content = fs.readFileSync(netServerJs, 'utf8');
                 const m = content.match(/const VERSION = ["']([^"']+)["']/);
                 if (m) serverVersion = m[1];
+                break;
             }
-        }
-    } catch(e) {
-        serverOnline = false;
+        } catch(e) {}
     }
 
     res.json({
