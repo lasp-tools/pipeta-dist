@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v0.9.76";
+const VERSION = "v1.0.01";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -381,7 +381,7 @@ app.post('/api/templates/upload', async (req, res) => {
         await fs.writeFile(localDestPath, buffer);
 
         // Also copy to network presets if available
-        const zTemplatesDir = path.join('Z:/INTERNO/TOOLS/Mati/Propios/Scripts/Pipeta/presets/templates', subDir);
+        const zTemplatesDir = path.join('Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/Pipeta/presets/templates', subDir);
         try {
             await fs.ensureDir(zTemplatesDir);
             await fs.writeFile(path.join(zTemplatesDir, safeFilename), buffer);
@@ -641,7 +641,7 @@ app.post('/api/app/update-from-server', async (req, res) => {
 
     const candidateSources = [
         customSource,
-        'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta',
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
         '\\\\LASP-VM\\Pipeta'
     ].filter(s => s && s.trim().length > 0);
 
@@ -658,7 +658,7 @@ foreach ($src in $candidateSources) {
 }
 
 if (-not $foundSource) {
-    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta y \\\\LASP-VM\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
+    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta y \\\\LASP-VM\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
     exit 1
 }
 
@@ -750,7 +750,7 @@ Write-Output "SHORTCUT_CREATED"
 // --- VERSION INFO ---
 app.get('/api/app/version-info', async (req, res) => {
     const candidateSources = [
-        'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta',
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
         '\\\\LASP-VM\\Pipeta'
     ];
     let netSource = candidateSources[0];
@@ -2048,7 +2048,7 @@ app.post('/api/ia/save-custom-tokens', (req, res) => {
 
         fs.writeFileSync(CUSTOM_TOKENS_FILE, JSON.stringify(updated, null, 2), 'utf8');
 
-        const zPresetsDir = 'Z:/INTERNO/TOOLS/Mati/Propios/Scripts/Pipeta/presets';
+        const zPresetsDir = 'Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/Pipeta/presets';
         if (fs.existsSync(zPresetsDir)) {
             try { fs.writeFileSync(path.join(zPresetsDir, 'ia_custom_tokens.json'), JSON.stringify(updated, null, 2), 'utf8'); } catch(e){}
         }

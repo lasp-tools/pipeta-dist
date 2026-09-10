@@ -2066,13 +2066,13 @@ const settings = {
                             🔄 Actualizador Directo & Accesos
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</code> o <code>\\LASP-VM\Pipeta</code>) y reinicia el sistema automáticamente.
+                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta</code> o <code>\\LASP-VM\Pipeta</code>) y reinicia el sistema automáticamente.
                         </p>
 
                         <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; margin-bottom:15px; font-size:0.8rem;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                 <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
-                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</span>
+                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta</span>
                             </div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                                 <span style="color:#888;">Instalación Local:</span>
@@ -2080,7 +2080,7 @@ const settings = {
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v0.9.76'}</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v1.0.01'}</span>
                             </div>
                         </div>
 
@@ -2107,10 +2107,11 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v0.9.76 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.0.01 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
-                                    <li><b>Actualizador Multi-Origen Red:</b> Detección automática de repositorio maestro tanto en unidad mapeada <code>Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta</code> como en recurso compartido <code>\\LASP-VM\Pipeta</code>, evitando fallos en puestos cliente.</li>
-                                    <li><b>Preservación de Runtime Portátil:</b> Se eliminaron las exclusiones de <code>bin</code> en los scripts de despliegue y sincronización, garantizando que <code>node.exe</code> esté siempre presente en cualquier equipo.</li>
+                                    <li><b>Versión Oficial de Estudio:</b> Lanzamiento de Pipeta 1.0 para todo el equipo.</li>
+                                    <li><b>Migración & Publicación Automatizada:</b> Ubicación canónica en <code>APPS\Pipeta</code> y flujo de publicación directo a <code>S:</code> (el <code>Z:</code> real de los artistas).</li>
+                                    <li><b>Actualizador Multi-Origen:</b> Detección automática tanto en unidad mapeada como en recurso compartido <code>\\LASP-VM\Pipeta</code>.</li>
                                     <li><b>Plantillas v001 en Shot & Asset Creator:</b> Creación automatizada de archivos v001 con resolución canónica de extensiones y templates configurables por proceso y proyecto.</li>
                                 </ul>
                             </div>

@@ -10,8 +10,8 @@ echo.
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 set "SRC="
-if exist "Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta\server\server.js" (
-    set "SRC=Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta"
+if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+    set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 ) else if exist "\\LASP-VM\Pipeta\server\server.js" (
     set "SRC=\\LASP-VM\Pipeta"
 )
@@ -19,7 +19,7 @@ if exist "Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta\server\server.js" (
 if "%SRC%"=="" (
     echo [ERROR] No se pudo acceder al servidor maestro de Pipeta.
     echo Se verificaron las siguientes rutas:
-    echo   - Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta
+    echo   - Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
     echo   - \\LASP-VM\Pipeta
     echo Verifica que la red este activa o que la unidad Z: este conectada.
     echo.
@@ -49,7 +49,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v0.9.76 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.0.01 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 timeout /t 2 >nul

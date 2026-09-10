@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v0.9.76"
+set "APP_VERSION=v1.0.01"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
-set "NETWORK_DIR=Z:\INTERNO\TOOLS\Mati\Propios\Scripts\Pipeta"
+set "NETWORK_DIR=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 if not exist "%NETWORK_DIR%\server\server.js" (
     if exist "\\LASP-VM\Pipeta\server\server.js" (
         set "NETWORK_DIR=\\LASP-VM\Pipeta"
