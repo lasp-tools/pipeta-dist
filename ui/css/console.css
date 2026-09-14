@@ -122,3 +122,78 @@
     word-break: break-all;
     flex: 1;
 }
+
+.console-entry.is-error {
+    background: rgba(255, 82, 82, 0.08);
+}
+
+.console-entry.is-error:hover {
+    background: rgba(255, 82, 82, 0.16);
+}
+
+/* Category Filter Buttons */
+.console-filters {
+    display: flex;
+    gap: 4px;
+    margin-left: 12px;
+}
+
+.console-filter-btn {
+    background: #202020;
+    border: 1px solid #333;
+    color: #888;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.console-filter-btn:hover {
+    background: #2a2a2a;
+    color: #eee;
+    border-color: #444;
+}
+
+.console-filter-btn.active {
+    background: rgba(0, 168, 255, 0.2);
+    color: #00a8ff;
+    border-color: #00a8ff;
+    font-weight: bold;
+}
+
+/* Error badge on main header button */
+#btn-console-toggle {
+    position: relative;
+}
+
+#btn-console-toggle.has-new-errors {
+    animation: consoleErrorPulse 1.5s infinite alternate ease-in-out;
+    border-color: #ff5252 !important;
+}
+
+.console-error-pill {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    background: #ff5252;
+    color: white;
+    font-size: 0.6rem;
+    font-weight: bold;
+    padding: 0 4px;
+    border-radius: 8px;
+    line-height: 14px;
+    height: 14px;
+    min-width: 14px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+@keyframes consoleErrorPulse {
+    from {
+        box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4);
+    }
+    to {
+        box-shadow: 0 0 8px 3px rgba(255, 82, 82, 0.7);
+    }
+}

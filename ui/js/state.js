@@ -113,6 +113,16 @@ async function setSyncComparisonMode(mode) {
     window.syncComparisonMode = mode;
     localStorage.setItem('pipeta_sync_comparison_mode', mode);
 
+    const modeLabels = {
+        'drive': '☁️ GOOGLE DRIVE (Ver qué falta subir o bajar)',
+        'server': '🗄️ SERVIDOR CENTRAL (S:)',
+        'off': 'APAGADO'
+    };
+
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('sync', `Modo de comparación: ${modeLabels[mode] || mode.toUpperCase()}`, 'info');
+    }
+
     if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {
         await loadActiveProjectSyncCatalog();
     }
@@ -122,11 +132,17 @@ async function setSyncComparisonMode(mode) {
 }
 
 async function refreshSyncCatalogManual() {
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('sync', 'Solicitado refresco manual del catálogo de sincronización...', 'pending');
+    }
     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
         settings.showToast('Actualizando catálogo de sincronización...', 'info', 3);
     }
     if (typeof loadActiveProjectSyncCatalog === 'function') {
         await loadActiveProjectSyncCatalog(true);
+    }
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('sync', '✓ Catálogo de sincronización recargado con éxito.', 'ok');
     }
     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
         settings.showToast('Catálogo actualizado', 'success', 3);
@@ -137,6 +153,10 @@ async function refreshSyncCatalogManual() {
 async function switchViewLocation(mode) {
     window.viewLocationMode = mode;
     localStorage.setItem('pipeta_view_location_mode', mode);
+
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('system', `Ubicación de visualización cambiada a: ${mode === 'drive' ? '☁️ GOOGLE DRIVE' : 'DISCO LOCAL'}`, 'info');
+    }
 
     // Solo cargar catálogo si vamos a explorar DRIVE y no está en memoria
     if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {

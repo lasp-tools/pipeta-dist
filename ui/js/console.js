@@ -1,21 +1,20 @@
-// ================================================
-// PIPETA CONSOLE — Activity Log Panel
-// Bottom panel that shows all API operations.
-// Persists logs to disk as JSONL daily files.
-// ================================================
+// ================================================================
+// PIPETA CONSOLE — Activity Log & Diagnostics Panel
+// Persists logs to disk via Server API (/api/logs/append).
+// Automatically captures file operations, sync events, and errors.
+// ================================================================
 
 const PipetaConsole = {
     isVisible: false,
     entries: [],
-    maxEntries: 500,
+    maxEntries: 1000,
+    currentFilter: 'all', // 'all' | 'error' | 'sync' | 'fs' | 'system'
+    errorCount: 0,
     container: null,
     resizeHandle: null,
-    _height: 200,
-    _rawWriteFile: null,   // Original writeFile (before intercept) to avoid loop
-    _rawMkdir: null,       // Original mkdir
-    _logBuffer: [],        // Buffer for batching writes
+    _height: 220,
+    _logBuffer: [],
     _flushTimer: null,
-    _logDirCreated: false,
 
     init() {
         if (document.getElementById('pipeta-console')) return;
@@ -33,9 +32,21 @@ const PipetaConsole = {
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span style="color:var(--accent); font-weight:bold; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">⌨ Consola</span>
                     <span class="console-count" id="console-count">0 eventos</span>
+                    
+                    <!-- CATEGORY FILTERS -->
+                    <div class="console-filters">
+                        <button class="console-filter-btn active" data-filter="all" onclick="PipetaConsole.setFilter('all')">Todos</button>
+                        <button class="console-filter-btn" data-filter="error" onclick="PipetaConsole.setFilter('error')">❌ Errores</button>
+                        <button class="console-filter-btn" data-filter="sync" onclick="PipetaConsole.setFilter('sync')">🔄 Sync</button>
+                        <button class="console-filter-btn" data-filter="fs" onclick="PipetaConsole.setFilter('fs')">📁 Archivos</button>
+                        <button class="console-filter-btn" data-filter="system" onclick="PipetaConsole.setFilter('system')">⚙️ Sistema</button>
+                    </div>
                 </div>
-                <div style="display:flex; gap:4px;">
-                    <button class="console-action-btn" onclick="PipetaConsole.clear()" title="Limpiar">🗑</button>
+
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <button class="console-action-btn" onclick="PipetaConsole.openLogsFolder()" title="Abrir carpeta de logs en Windows Explorer">📁 Logs</button>
+                    <button class="console-action-btn" onclick="PipetaConsole.copyLogs()" title="Copiar registro al portapapeles">📋 Copiar</button>
+                    <button class="console-action-btn" onclick="PipetaConsole.clear()" title="Limpiar consola">🗑</button>
                     <button class="console-action-btn" onclick="PipetaConsole.scrollToBottom()" title="Ir al final">⬇</button>
                     <button class="console-action-btn" onclick="PipetaConsole.toggle()" title="Cerrar">✕</button>
                 </div>
@@ -49,8 +60,8 @@ const PipetaConsole = {
         // Setup resize drag
         this._setupResize();
 
-        // Log init
-        this.log('system', 'Consola inicializada', 'ok');
+        // Initial system event
+        this.log('system', 'Consola de diagnóstico inicializada y vinculada a disco.', 'ok');
     },
 
     toggle() {
@@ -66,108 +77,164 @@ const PipetaConsole = {
                 : 'calc(100vh - 60px)';
         }
 
-        // Update header button active state
+        // Update header button active state & clear error pulse when opened
         const btn = document.getElementById('btn-console-toggle');
         if (btn) {
             btn.classList.toggle('active', this.isVisible);
+            if (this.isVisible) {
+                btn.classList.remove('has-new-errors');
+                this.updateErrorBadge(true); // reset badge counter on open
+            }
+        }
+
+        if (this.isVisible) {
+            this._renderFiltered();
+            this.scrollToBottom();
         }
     },
 
-    log(type, message, status) {
+    setFilter(filter) {
+        this.currentFilter = filter;
+        document.querySelectorAll('.console-filter-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-filter') === filter);
+        });
+        this._renderFiltered();
+        this.scrollToBottom();
+    },
+
+    _entryMatchesFilter(entry) {
+        if (this.currentFilter === 'all') return true;
+        if (this.currentFilter === 'error') {
+            return entry.status === 'error' || entry.type === 'error';
+        }
+        if (this.currentFilter === 'sync') {
+            return entry.type === 'sync';
+        }
+        if (this.currentFilter === 'fs') {
+            return ['copy', 'rename', 'delete', 'mkdir', 'write', 'read'].includes(entry.type);
+        }
+        if (this.currentFilter === 'system') {
+            return ['system', 'info', 'audit'].includes(entry.type);
+        }
+        return true;
+    },
+
+    log(type, message, status = 'info') {
         const now = new Date();
         const time = now.toLocaleTimeString('es-AR', { hour12: false });
         const isoTime = now.toISOString();
 
-        const entry = { type, message, status, time, isoTime };
+        const entry = { type, message, status, time, isoTime, source: 'ui' };
         this.entries.push(entry);
 
-        // Trim if too many
+        // Trim if exceeds max entries
         if (this.entries.length > this.maxEntries) {
             this.entries.shift();
         }
 
-        // Render if visible
-        if (this.isVisible) {
+        // Track error counts & alert on header button
+        if (status === 'error' || type === 'error') {
+            this.errorCount++;
+            this.updateErrorBadge(false);
+        }
+
+        // Render if visible and matches current filter
+        if (this.isVisible && this._entryMatchesFilter(entry)) {
             this._appendEntry(entry);
         }
 
         // Update count badge
         const countEl = document.getElementById('console-count');
-        if (countEl) countEl.innerText = `${this.entries.length} eventos`;
+        if (countEl) {
+            countEl.innerText = `${this.entries.length} eventos`;
+        }
 
-        // Persist to disk (buffered)
+        // Buffer for server disk persistence
         this._persistEntry(entry);
     },
 
-    // --- DISK PERSISTENCE ---
-    _persistEntry(entry) {
-        // Check if logging is enabled
-        if (typeof settings !== 'undefined' && !settings.loggingEnabled) return;
+    updateErrorBadge(reset = false) {
+        if (reset) {
+            this.errorCount = 0;
+        }
+        const btn = document.getElementById('btn-console-toggle');
+        if (!btn) return;
 
-        // Buffer the entry
+        let badge = btn.querySelector('.console-error-pill');
+        if (this.errorCount > 0 && !this.isVisible) {
+            btn.classList.add('has-new-errors');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'console-error-pill';
+                btn.appendChild(badge);
+            }
+            badge.innerText = this.errorCount > 99 ? '99+' : this.errorCount;
+            badge.style.display = 'inline-block';
+        } else {
+            btn.classList.remove('has-new-errors');
+            if (badge) badge.style.display = 'none';
+        }
+    },
+
+    // --- DISK PERSISTENCE VIA SERVER API ---
+    _persistEntry(entry) {
         this._logBuffer.push(entry);
 
-        // Debounce flush (batch writes every 2 seconds)
+        // Flush in batches every 1.5 seconds
         if (this._flushTimer) clearTimeout(this._flushTimer);
-        this._flushTimer = setTimeout(() => this._flushToDisk(), 2000);
+        this._flushTimer = setTimeout(() => this._flushToDisk(), 1500);
     },
 
     async _flushToDisk() {
         if (this._logBuffer.length === 0) return;
-        if (!this._rawWriteFile) return; // Not ready yet
-
-        const logsPath = (typeof settings !== 'undefined' && settings.logsPath)
-            ? settings.logsPath
-            : 'C:\\TOOLS\\APPS\\Pipeta\\logs';
-
-        // Ensure log directory exists (once per session)
-        if (!this._logDirCreated && this._rawMkdir) {
-            try {
-                await this._rawMkdir(logsPath);
-                this._logDirCreated = true;
-            } catch (e) {
-                // Directory might already exist, that's fine
-                this._logDirCreated = true;
-            }
-        }
-
-        // Build daily filename
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const filePath = logsPath.replace(/\\/g, '/') + `/pipeta_${today}.jsonl`;
-
-        // Build JSONL content from buffer
-        const lines = this._logBuffer.map(entry => JSON.stringify({
-            time: entry.isoTime,
-            type: entry.type,
-            status: entry.status,
-            message: entry.message
-        }));
-
-        // Clear buffer before async write
         const batch = [...this._logBuffer];
         this._logBuffer = [];
 
         try {
-            // Read existing content first (append mode)
-            let existing = '';
-            try {
-                const res = await fetch(`/api/fs/readFile?path=${encodeURIComponent(filePath)}`);
-                const data = await res.json();
-                if (data && data.content) existing = data.content;
-            } catch (e) {
-                // File doesn't exist yet, start fresh
-            }
-
-            // Append new lines
-            const newContent = existing
-                ? existing.trimEnd() + '\n' + lines.join('\n') + '\n'
-                : lines.join('\n') + '\n';
-
-            await this._rawWriteFile(filePath, newContent);
+            await fetch('/api/logs/append', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entries: batch })
+            });
         } catch (e) {
-            console.warn('PipetaConsole: Error writing log to disk:', e);
-            // Re-queue failed entries
+            // Re-queue on network error
             this._logBuffer = [...batch, ...this._logBuffer];
+        }
+    },
+
+    async openLogsFolder() {
+        try {
+            const res = await fetch('/api/logs/open-folder', { method: 'POST' }).then(r => r.json());
+            if (res && res.success) {
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast('📁 Carpeta de logs abierta en Windows Explorer', 'success', 3);
+                }
+            } else {
+                alert('No se pudo abrir la carpeta de logs: ' + (res?.error || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error al abrir logs: ' + e.message);
+        }
+    },
+
+    async copyLogs() {
+        if (this.entries.length === 0) {
+            alert('La consola está vacía.');
+            return;
+        }
+
+        const lines = this.entries.map(e => `[${e.time}] [${e.type.toUpperCase()}/${e.status.toUpperCase()}] ${e.message}`);
+        const fullText = lines.join('\n');
+
+        try {
+            await navigator.clipboard.writeText(fullText);
+            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                settings.showToast(`📋 ${this.entries.length} registros copiados al portapapeles`, 'success', 3);
+            } else {
+                alert(`✅ ${this.entries.length} registros copiados al portapapeles.`);
+            }
+        } catch (e) {
+            alert('Error al copiar al portapapeles: ' + e.message);
         }
     },
 
@@ -176,7 +243,7 @@ const PipetaConsole = {
         if (!body) return;
 
         const row = document.createElement('div');
-        row.className = 'console-entry';
+        row.className = `console-entry ${entry.status === 'error' ? 'is-error' : ''}`;
 
         const typeIcons = {
             'system': '⚙️',
@@ -189,19 +256,19 @@ const PipetaConsole = {
             'sync': '🔄',
             'error': '❌',
             'info': 'ℹ️',
-            'inspector': '🔍'
+            'audit': '🪞'
         };
 
         const statusColors = {
             'ok': '#4CAF50',
-            'error': '#f44336',
+            'error': '#ff5252',
             'warn': '#FF9800',
             'pending': '#4fc3f7',
-            'info': '#888'
+            'info': '#a0a0a0'
         };
 
         const icon = typeIcons[entry.type] || 'ℹ️';
-        const color = statusColors[entry.status] || '#888';
+        const color = statusColors[entry.status] || '#a0a0a0';
 
         row.innerHTML = `
             <span class="console-time">${entry.time}</span>
@@ -210,18 +277,18 @@ const PipetaConsole = {
         `;
 
         body.appendChild(row);
-
-        // Auto-scroll to bottom
         body.scrollTop = body.scrollHeight;
     },
 
     clear() {
         this.entries = [];
+        this.errorCount = 0;
+        this.updateErrorBadge(true);
         const body = document.getElementById('console-body');
         if (body) body.innerHTML = '';
         const countEl = document.getElementById('console-count');
         if (countEl) countEl.innerText = '0 eventos';
-        this.log('system', 'Consola limpiada', 'info');
+        this.log('system', 'Consola limpiada.', 'info');
     },
 
     scrollToBottom() {
@@ -229,12 +296,12 @@ const PipetaConsole = {
         if (body) body.scrollTop = body.scrollHeight;
     },
 
-    // Re-render all entries (used when toggling visibility)
-    _renderAll() {
+    _renderFiltered() {
         const body = document.getElementById('console-body');
         if (!body) return;
         body.innerHTML = '';
-        this.entries.forEach(e => this._appendEntry(e));
+        const matching = this.entries.filter(e => this._entryMatchesFilter(e));
+        matching.forEach(e => this._appendEntry(e));
     },
 
     _setupResize() {
@@ -250,7 +317,7 @@ const PipetaConsole = {
 
             const onMove = (ev) => {
                 const delta = startY - ev.clientY;
-                const newH = Math.max(80, Math.min(window.innerHeight - 120, startH + delta));
+                const newH = Math.max(90, Math.min(window.innerHeight - 120, startH + delta));
                 this._height = newH;
                 this.container.style.height = newH + 'px';
 
@@ -271,31 +338,50 @@ const PipetaConsole = {
     }
 };
 
-// --- GLOBAL TOGGLE ---
+// --- GLOBAL EXPORTS & HELPERS ---
 window.PipetaConsole = PipetaConsole;
+
+// Alias canónico para cualquier llamada en el código
+window.logConsole = function(msg, status = 'info', type = 'sync') {
+    PipetaConsole.log(type, msg, status);
+};
 
 function toggleConsole() {
     if (!PipetaConsole.container) PipetaConsole.init();
-
-    // Re-render entries if opening and they were added while hidden
-    if (!PipetaConsole.isVisible) {
-        PipetaConsole.toggle();
-        PipetaConsole._renderAll();
-    } else {
-        PipetaConsole.toggle();
-    }
+    PipetaConsole.toggle();
 }
+window.toggleConsole = toggleConsole;
 
-// ================================================
-// API INTERCEPTOR — Auto-log all API.fs operations
-// ================================================
+// ================================================================
+// AUTOMATIC GLOBAL ERROR & WARNING CAPTURE
+// ================================================================
+window.addEventListener('error', (event) => {
+    const msg = event.message || 'Error no controlado';
+    const loc = event.filename ? ` (${event.filename.split(/[\\/]/).pop()}:${event.lineno})` : '';
+    PipetaConsole.log('error', `[JS ERROR] ${msg}${loc}`, 'error');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason ? (event.reason.message || event.reason) : 'Promesa no manejada';
+    PipetaConsole.log('error', `[PROMISE ERROR] ${reason}`, 'error');
+});
+
+// Mirror console.error to PipetaConsole
+const _nativeConsoleError = window.console.error;
+window.console.error = function(...args) {
+    _nativeConsoleError.apply(window.console, args);
+    try {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        PipetaConsole.log('error', msg, 'error');
+    } catch(e) {}
+};
+
+// ================================================================
+// API INTERCEPTOR — Auto-log all API.fs file operations
+// ================================================================
 function _wrapAPIforConsole() {
     if (!window.API || !window.API.fs) return;
     const fs = window.API.fs;
-
-    // Save raw references BEFORE wrapping (for log persistence, avoids infinite loop)
-    PipetaConsole._rawWriteFile = fs.writeFile.bind(fs);
-    PipetaConsole._rawMkdir = fs.mkdir.bind(fs);
 
     // --- writeFile ---
     const origWrite = fs.writeFile;
@@ -303,7 +389,7 @@ function _wrapAPIforConsole() {
         PipetaConsole.log('write', `Escribiendo: ${path}`, 'pending');
         const res = await origWrite(path, content);
         if (res && res.error) {
-            PipetaConsole.log('write', `Error escribiendo: ${path} — ${res.error}`, 'error');
+            PipetaConsole.log('write', `❌ Error escribiendo: ${path} — ${res.error}`, 'error');
         } else {
             PipetaConsole.log('write', `✓ Escrito: ${path}`, 'ok');
         }
@@ -316,7 +402,7 @@ function _wrapAPIforConsole() {
         PipetaConsole.log('delete', `Eliminando archivo: ${path}`, 'pending');
         const res = await origDelete(path);
         if (res && !res.success) {
-            PipetaConsole.log('delete', `Error eliminando: ${path}`, 'error');
+            PipetaConsole.log('delete', `❌ Error eliminando: ${path}`, 'error');
         } else {
             PipetaConsole.log('delete', `✓ Eliminado: ${path}`, 'ok');
         }
@@ -329,7 +415,7 @@ function _wrapAPIforConsole() {
         PipetaConsole.log('mkdir', `Creando carpeta: ${path}`, 'pending');
         const res = await origMkdir(path);
         if (res && res.error) {
-            PipetaConsole.log('mkdir', `Error creando carpeta: ${path} — ${res.error}`, 'error');
+            PipetaConsole.log('mkdir', `❌ Error creando carpeta: ${path} — ${res.error}`, 'error');
         } else {
             PipetaConsole.log('mkdir', `✓ Carpeta creada: ${path}`, 'ok');
         }
@@ -342,7 +428,7 @@ function _wrapAPIforConsole() {
         PipetaConsole.log('rename', `Renombrando: ${oldPath} → ${newPath}`, 'pending');
         const res = await origRename(oldPath, newPath);
         if (res && res.error) {
-            PipetaConsole.log('rename', `Error renombrando: ${oldPath} — ${res.error}`, 'error');
+            PipetaConsole.log('rename', `❌ Error renombrando: ${oldPath} — ${res.error}`, 'error');
         } else {
             PipetaConsole.log('rename', `✓ Renombrado: ${oldPath} → ${newPath}`, 'ok');
         }
@@ -355,7 +441,7 @@ function _wrapAPIforConsole() {
         PipetaConsole.log('copy', `Copiando: ${src} → ${dest}`, 'pending');
         const res = await origCopy(src, dest);
         if (res && res.error) {
-            PipetaConsole.log('copy', `Error copiando: ${src} — ${res.error}`, 'error');
+            PipetaConsole.log('copy', `❌ Error copiando: ${src} — ${res.error}`, 'error');
         } else {
             PipetaConsole.log('copy', `✓ Copiado: ${src} → ${dest}`, 'ok');
         }
@@ -365,19 +451,27 @@ function _wrapAPIforConsole() {
     // --- delete (folder) ---
     const origDel = fs.delete;
     fs.delete = async (path) => {
-        PipetaConsole.log('delete', `Eliminando: ${path}`, 'pending');
+        PipetaConsole.log('delete', `Eliminando carpeta: ${path}`, 'pending');
         const res = await origDel(path);
         if (res && res.error) {
-            PipetaConsole.log('delete', `Error eliminando: ${path} — ${res.error}`, 'error');
+            PipetaConsole.log('delete', `❌ Error eliminando: ${path} — ${res.error}`, 'error');
         } else {
             PipetaConsole.log('delete', `✓ Eliminado: ${path}`, 'ok');
         }
         return res;
     };
 
-    PipetaConsole.log('system', 'API interceptada — todas las operaciones se registrarán aquí.', 'ok');
+    // --- open in explorer ---
+    const origOpen = fs.open;
+    if (origOpen) {
+        fs.open = async (path) => {
+            PipetaConsole.log('system', `📂 Abriendo en Explorador: ${path}`, 'info');
+            return origOpen(path);
+        };
+    }
 }
 
 // Init on load
 PipetaConsole.init();
 _wrapAPIforConsole();
+

@@ -1,4 +1,4 @@
-﻿// ================================================================
+// ================================================================
 // PIPETA SYNC QUEUE UI — Monitor de Transferencias en Vivo
 // Muestra el estado del Worker de la VM 105 y las órdenes activas.
 // ================================================================
@@ -10,6 +10,8 @@ class SyncQueueUI {
         this.orders = [];
         this.workerStatus = null;
         this.pollingInterval = null;
+        this.prevOrderStates = new Map();
+        this.prevWorkerAlive = null;
 
         window.syncQueueUI = this;
         this.init();
@@ -39,6 +41,38 @@ class SyncQueueUI {
             const resOrders = await fetch('/api/sync/orders').then(r => r.json()).catch(() => null);
             if (resOrders && resOrders.success) {
                 this.orders = resOrders.orders || [];
+            }
+
+            // Detect & log worker state transitions
+            const isAlive = !!(this.workerStatus && this.workerStatus.isAlive);
+            if (this.prevWorkerAlive !== null && this.prevWorkerAlive !== isAlive) {
+                if (typeof PipetaConsole !== 'undefined') {
+                    if (isAlive) {
+                        PipetaConsole.log('system', `✓ Sync Worker en línea (${this.workerStatus?.hostname || 'OK'})`, 'ok');
+                    } else {
+                        PipetaConsole.log('system', '⚠️ Sync Worker (VM 105) no responde o desconectado', 'warn');
+                    }
+                }
+            }
+            this.prevWorkerAlive = isAlive;
+
+            // Detect & log order transitions
+            for (const order of this.orders) {
+                const prev = this.prevOrderStates.get(order.id);
+                if (prev && prev !== order.status) {
+                    if (typeof PipetaConsole !== 'undefined') {
+                        const shortId = order.id.slice(-6);
+                        const itemsCount = Array.isArray(order.items) ? order.items.length : 1;
+                        if (order.status === 'processing') {
+                            PipetaConsole.log('sync', `Worker inició transferencia #${shortId} [${(order.type || '').toUpperCase()}] (${itemsCount} items)`, 'pending');
+                        } else if (order.status === 'completed') {
+                            PipetaConsole.log('sync', `✓ Orden #${shortId} completada exitosamente (${itemsCount} items en ${order.durationSeconds || 0}s)`, 'ok');
+                        } else if (order.status === 'failed') {
+                            PipetaConsole.log('sync', `❌ Orden #${shortId} falló: ${order.error || 'Error en transferencia'}`, 'error');
+                        }
+                    }
+                }
+                this.prevOrderStates.set(order.id, order.status);
             }
 
             this.updateHeaderBadge();

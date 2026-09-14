@@ -131,6 +131,10 @@ class ContextMenu {
         const compMode = window.syncComparisonMode || 'off';
         const projName = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
 
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `Refrescando carpeta: '${folderName}' (Modo: ${compMode.toUpperCase()})`, 'pending');
+        }
+
         if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
             settings.showToast(`Refrescando "${folderName}"...`, 'info', 4);
         }
@@ -148,20 +152,32 @@ class ContextMenu {
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('sync', `✓ Carpeta '${folderName}' actualizada (${res.itemsCount || 0} items en Drive)`, 'ok');
+                    }
                     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                         settings.showToast(`✅ "${folderName}" actualizada (${res.itemsCount || 0} items en Drive)`, 'success', 3);
                     }
                 } else {
                     console.warn("[REFRESH FOLDER] Fallback drive:", res?.error);
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en Drive: ${res?.error || 'Error desconocido'}`, 'error');
+                    }
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
                 }
             } else if (compMode === 'server') {
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `✓ Carpeta '${folderName}' comparada y sincronizada con Servidor`, 'ok');
+                }
                 if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(`✅ "${folderName}" sincronizada con Servidor`, 'success', 3);
                 }
             } else {
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `✓ Carpeta '${folderName}' refrescada en disco local`, 'ok');
+                }
                 if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(`✅ "${folderName}" refrescada`, 'success', 2);
                 }
@@ -172,6 +188,9 @@ class ContextMenu {
             }
         } catch(err) {
             console.error("Error refreshing folder:", err);
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error refrescando carpeta '${folderName}': ${err.message}`, 'error');
+            }
             if (typeof refreshCurrentView === 'function') {
                 refreshCurrentView();
             }

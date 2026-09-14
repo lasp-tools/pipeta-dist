@@ -51,10 +51,16 @@ async function loadActiveProjectSyncCatalog(force = false) {
             window.pipetaSyncCatalog = res.catalog;
             indexSyncCatalog(res.catalog);
             console.log(`[SYNC LAYER] Catálogo cargado para ${projName}: ${res.catalog.stats.totalFiles} archivos indexados.`);
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `Catálogo Drive cargado para '${projName}': ${res.catalog.stats.totalFiles} archivos indexados`, 'ok');
+            }
             return res.catalog;
         }
     } catch (e) {
         console.warn("[SYNC LAYER] Error cargando catálogo:", e);
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `❌ Error cargando catálogo para '${projName}': ${e.message}`, 'error');
+        }
     }
     return null;
 }
@@ -136,14 +142,23 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
             });
             const data = await res.json();
             if (data.success) {
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `✓ Copiado directo desde Server Central LAN: ${item.name} -> ${dest}`, 'ok');
+                }
                 if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(`✅ Descargado desde Server: ${item.name}`, 'success', 4, `Guardado en ${dest}`);
                 }
                 if (typeof refreshCurrentView === 'function') refreshCurrentView();
             } else {
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `❌ Error copiando ${item.name} desde server: ${data.error}`, 'error');
+                }
                 alert(`❌ Error al copiar desde server: ${data.error}`);
             }
         } catch(err) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error de red con server LAN: ${err.message}`, 'error');
+            }
             alert(`❌ Error de conexión: ${err.message}`);
         }
         return;
@@ -195,13 +210,19 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
                 window.syncQueueUI.fetchStatus();
                 window.syncQueueUI.open();
             }
-            if (typeof logConsole === 'function') {
-                logConsole(`[SYNC DOWNLOAD] Orden #${data.orderId} encolada hacia ${dest}`, 'info');
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `[DESCARGA DRIVE] Orden #${data.orderId.slice(-6)} encolada para Worker: ${item.name} (${typeLabel}) -> ${dest}`, 'pending');
             }
         } else {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error al encolar descarga de ${item.name}: ${data.error}`, 'error');
+            }
             alert(`❌ Error al encolar descarga: ${data.error}`);
         }
     } catch(err) {
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `❌ Fallo de conexión al solicitar descarga: ${err.message}`, 'error');
+        }
         alert(`❌ Error de conexión: ${err.message}`);
     }
 }
@@ -301,13 +322,19 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
                 window.syncQueueUI.fetchStatus();
                 window.syncQueueUI.open();
             }
-            if (typeof logConsole === 'function') {
-                logConsole(`[SYNC UPLOAD] Orden #${data.orderId} encolada desde ${item.path}`, 'info');
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `[SUBIDA DRIVE] Orden #${data.orderId.slice(-6)} encolada para Worker: ${item.name} desde ${item.path}`, 'pending');
             }
         } else {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error al encolar subida de ${item.name}: ${data.error}`, 'error');
+            }
             alert(`❌ Error al encolar subida: ${data.error}`);
         }
     } catch(err) {
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `❌ Fallo de conexión al solicitar subida: ${err.message}`, 'error');
+        }
         alert(`❌ Error de conexión: ${err.message}`);
     }
 }

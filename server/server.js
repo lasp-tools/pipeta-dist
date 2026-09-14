@@ -49,6 +49,118 @@ app.use(express.urlencoded({ limit: '500mb', extended: true }));
 const uiPath = path.join(__dirname, '../ui');
 app.use(express.static(uiPath));
 
+// ================================================================
+// PIPETA SYSTEM LOGGER (Backend & Disk Persistence)
+// ================================================================
+const LOGS_DIR = path.join(__dirname, '../logs');
+fs.ensureDirSync(LOGS_DIR);
+
+function getTodayLogPath() {
+    const today = new Date().toISOString().split('T')[0];
+    return path.join(LOGS_DIR, `pipeta_${today}.log`);
+}
+
+function writeServerLog(source, type, message, status = 'info') {
+    try {
+        const now = new Date();
+        const timeStr = now.toISOString().replace('T', ' ').substring(0, 23);
+        const logLine = `[${timeStr}] [${source.toUpperCase()}] [${type.toUpperCase()}/${status.toUpperCase()}] ${message}\n`;
+        fs.appendFileSync(getTodayLogPath(), logLine, 'utf8');
+    } catch (e) {}
+}
+
+// Hook Node console.log / console.error / console.warn to disk log
+const origConsoleLog = console.log;
+const origConsoleError = console.error;
+const origConsoleWarn = console.warn;
+
+console.log = function(...args) {
+    origConsoleLog.apply(console, args);
+    try {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        writeServerLog('server', 'info', msg, 'info');
+    } catch(e) {}
+};
+
+console.error = function(...args) {
+    origConsoleError.apply(console, args);
+    try {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        writeServerLog('server', 'error', msg, 'error');
+    } catch(e) {}
+};
+
+console.warn = function(...args) {
+    origConsoleWarn.apply(console, args);
+    try {
+        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        writeServerLog('server', 'warn', msg, 'warn');
+    } catch(e) {}
+};
+
+// --- LOGS API ---
+app.post('/api/logs/append', (req, res) => {
+    try {
+        const { entries } = req.body;
+        if (Array.isArray(entries) && entries.length > 0) {
+            const todayLog = getTodayLogPath();
+            let chunk = '';
+            for (const entry of entries) {
+                const timeStr = entry.isoTime ? entry.isoTime.replace('T', ' ').substring(0, 23) : new Date().toISOString().replace('T', ' ').substring(0, 23);
+                const source = (entry.source || 'ui').toUpperCase();
+                const type = (entry.type || 'log').toUpperCase();
+                const status = (entry.status || 'info').toUpperCase();
+                chunk += `[${timeStr}] [${source}] [${type}/${status}] ${entry.message}\n`;
+            }
+            fs.appendFileSync(todayLog, chunk, 'utf8');
+        }
+        res.json({ success: true });
+    } catch (err) {
+        origConsoleError("[LOGS] Error appending logs:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/logs/open-folder', (req, res) => {
+    try {
+        fs.ensureDirSync(LOGS_DIR);
+        const { exec } = require('child_process');
+        exec(`explorer.exe "${LOGS_DIR.replace(/\//g, '\\')}"`);
+        res.json({ success: true, path: LOGS_DIR });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/logs/export', (req, res) => {
+    try {
+        const todayLog = getTodayLogPath();
+        if (fs.existsSync(todayLog)) {
+            const content = fs.readFileSync(todayLog, 'utf8');
+            res.json({ success: true, content, filename: path.basename(todayLog) });
+        } else {
+            res.json({ success: true, content: '', filename: path.basename(todayLog) });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/logs/recent', (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 100;
+        const todayLog = getTodayLogPath();
+        if (!fs.existsSync(todayLog)) {
+            return res.json({ success: true, entries: [] });
+        }
+        const lines = fs.readFileSync(todayLog, 'utf8').split('\n').filter(l => l.trim().length > 0);
+        const tail = lines.slice(-limit);
+        res.json({ success: true, entries: tail });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // --- API ENDPOINTS ---
 
 app.get('/api/version', (req, res) => {

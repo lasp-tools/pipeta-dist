@@ -464,6 +464,9 @@ const settings = {
         const proj = settings.projects.find(p => p.id === id);
         if (proj) {
             settings.currentProject = proj;
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('system', `Proyecto activo: ${proj.name || proj.id} (Cliente: ${proj.client || '-'})`, 'info');
+            }
             settings.render();
             settings.updateHeaderProjectSelector();
         }
@@ -894,6 +897,9 @@ const settings = {
             return;
         }
         settings.isGeneratingCatalog = true;
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `Iniciando escaneo de Google Drive para '${projectName}' (~30s)...`, 'pending');
+        }
         settings.showToast(`Escaneando Google Drive para "${projectName}"... Puede tardar unos 25-35s.`, 'info', 45, 'Indexando unidades compartidas');
         settings.render();
 
@@ -914,12 +920,21 @@ const settings = {
                     refreshCurrentView();
                 }
                 const count = data.stats?.totalFiles || data.summary?.totalFiles || 0;
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `✓ Catálogo de Google Drive para '${projectName}' indexado con éxito (${count} archivos)`, 'ok');
+                }
                 settings.showToast(`✅ Catálogo para "${projectName}" actualizado con éxito.`, 'success', 6, `${count} archivos indexados`);
                 await settings.loadSyncEnvironment();
             } else {
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `❌ Error indexando catálogo de '${projectName}': ${data.error}`, 'error');
+                }
                 settings.showToast(`❌ Error al indexar catálogo: ${data.error}`, 'error', 6);
             }
         } catch(e) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Fallo de conexión indexando catálogo: ${e.message}`, 'error');
+            }
             settings.showToast(`❌ Error de conexión: ${e.message}`, 'error', 6);
         } finally {
             settings.isGeneratingCatalog = false;
