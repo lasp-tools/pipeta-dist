@@ -288,7 +288,8 @@ async function processQueue() {
 
     // Petición de refresco quirúrgico de subcarpeta específica
     if (orderData.type === 'refresh_folder') {
-        log(`🔄 Petición de refresco de carpeta recibida: [${orderData.project}] '${orderData.path}' (Usuario: ${orderData.user})`);
+        const targetType = orderData.targetType || (orderData.path?.toLowerCase().startsWith('s:') ? 'server' : 'drive');
+        log(`🔄 Petición de refresco de carpeta recibida: [${orderData.project}] '${orderData.path}' (${targetType.toUpperCase()}) (Usuario: ${orderData.user})`);
         orderData.status = 'processing';
         orderData.worker = WORKER_ID;
         orderData.startedAt = new Date().toISOString();
@@ -297,14 +298,19 @@ async function processQueue() {
         updateHeartbeat('refreshing_folder', { project: orderData.project, path: orderData.path });
 
         try {
-            const res = await catalogGenerator.refreshCatalogSubfolder(orderData.project, orderData.path);
+            let res;
+            if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+                res = await catalogGenerator.refreshSubCatalog(orderData.project, orderData.path, targetType);
+            } else {
+                res = await catalogGenerator.refreshCatalogSubfolder(orderData.project, orderData.path);
+            }
             orderData.result = res;
-            orderData.status = res.success ? 'completed' : 'failed';
+            orderData.status = (res && res.success) ? 'completed' : 'failed';
             orderData.completedAt = new Date().toISOString();
             orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
             orderData.processedBy = WORKER_ID;
             fs.writeJsonSync(pendingOrderFile, orderData, { spaces: 2 });
-            log(`✅ Refresco de carpeta '${orderData.path}' completado por Worker (${res.itemsCount || 0} items en Drive)`);
+            log(`✅ Refresco de carpeta '${orderData.path}' (${targetType.toUpperCase()}) completado por Worker (${res.itemsCount || 0} items)`);
         } catch (err) {
             log(`❌ Error al refrescar carpeta '${orderData.path}': ${err.message}`);
             orderData.status = 'failed';
@@ -408,7 +414,10 @@ async function checkCatalogTriggers() {
 
             updateHeartbeat('refreshing_catalog', { project });
             await catalogGenerator.generateProjectCatalog(project, { mode: 'auto' });
-            log(`✅ Catálogo de ${project} actualizado exitosamente por trigger`);
+            if (typeof catalogGenerator.generateServerCatalog === 'function') {
+                await catalogGenerator.generateServerCatalog(project);
+            }
+            log(`✅ Catálogos (Drive y Server) de ${project} actualizados exitosamente por trigger`);
             updateHeartbeat('idle', null);
         } catch (e) {
             log(`❌ Error procesando trigger de catálogo: ${e.message}`);
@@ -475,24 +484,44 @@ async function startupCheck() {
         log(`✓ Catálogo offline de 'surf_love' disponible en cache.`);
     }
 
+    // Verificar si existe el catálogo del servidor (server_surf_love); si no, generarlo
+    const surfLoveServerCatalog = path.join(CACHE_ROOT, 'server_surf_love.json');
+    if (!fs.existsSync(surfLoveServerCatalog)) {
+        log(`ℹ️ No se detectó catálogo del servidor de 'surf_love'. Generándolo por primera vez...`);
+        try {
+            updateHeartbeat('initializing_server_catalog', { project: 'surf_love' });
+            if (typeof catalogGenerator.generateServerCatalog === 'function') {
+                await catalogGenerator.generateServerCatalog('surf_love');
+            }
+            log(`✅ Catálogo de servidor de 'surf_love' generado exitosamente.`);
+        } catch (e) {
+            log(`⚠️ No se pudo generar catálogo inicial de servidor: ${e.message}`);
+        }
+    } else {
+        log(`✓ Catálogo de servidor de 'surf_love' disponible en cache.`);
+    }
+
     updateHeartbeat('idle', null);
     log(`🚀 Worker en línea y escuchando órdenes de transferencia...\n`);
 
     // Bucle de sondeo: cada 1 segundo para respuesta rápida a órdenes y refrescos
     setInterval(runLoop, 1000);
 
-    // Bucle de refresco de catálogos periódicos: cada 30 minutos
+    // Bucle de refresco de catálogos periódicos: cada 15 minutos
     setInterval(async () => {
         if (!isProcessing) {
             log(`⏰ Refresco periódico de catálogos activos iniciado...`);
             try {
                 await catalogGenerator.generateProjectCatalog('surf_love', { mode: 'auto' });
+                if (typeof catalogGenerator.generateServerCatalog === 'function') {
+                    await catalogGenerator.generateServerCatalog('surf_love');
+                }
                 log(`✅ Refresco periódico completado.`);
             } catch (e) {
                 log(`Advertencia en refresco periódico: ${e.message}`);
             }
         }
-    }, 30 * 60 * 1000);
+    }, 15 * 60 * 1000);
 }
 
 // Iniciar worker

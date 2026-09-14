@@ -28,34 +28,36 @@ async function loadActiveProjectSyncCatalog(force = false) {
     
     if (force) {
         window.pipetaSyncCatalog = null;
+        window.pipetaServerCatalog = null;
     } else if (window.pipetaSyncCatalog && window.pipetaSyncCatalog.project === projName) {
         return window.pipetaSyncCatalog;
     }
 
     try {
-        let res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
-        if (!res || !res.success || !res.catalog) {
-            console.log(`[SYNC LAYER] Catálogo para ${projName} no encontrado en Z:. Intentando auto-generación...`);
-            const genRes = await fetch('/api/sync/catalog/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ project: projName, mode: 'auto' })
-            }).then(r => r.json()).catch(() => null);
+        const mode = window.viewLocationMode || 'local';
+        const compMode = window.syncComparisonMode || 'off';
 
-            if (genRes && genRes.success) {
-                res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
+        // 1. Cargar catálogo de Google Drive (solo si estamos en modo drive o comparando con drive)
+        if (mode === 'drive' || compMode === 'drive') {
+            let res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
+            if (res && res.success && res.catalog) {
+                window.pipetaSyncCatalog = res.catalog;
+                indexSyncCatalog(res.catalog);
+                console.log(`[SYNC LAYER] Catálogo Drive cargado para ${projName}: ${res.catalog.stats?.totalFiles || 0} archivos indexados.`);
             }
         }
 
-        if (res && res.success && res.catalog) {
-            window.pipetaSyncCatalog = res.catalog;
-            indexSyncCatalog(res.catalog);
-            console.log(`[SYNC LAYER] Catálogo cargado para ${projName}: ${res.catalog.stats.totalFiles} archivos indexados.`);
-            if (typeof PipetaConsole !== 'undefined') {
-                PipetaConsole.log('sync', `Catálogo Drive cargado para '${projName}': ${res.catalog.stats.totalFiles} archivos indexados`, 'ok');
+        // 2. Cargar catálogo de Servidor Central (modo server o comparación server)
+        if (mode === 'server' || compMode === 'server' || (!window.pipetaServerCatalog && mode !== 'drive')) {
+            let sRes = await fetch(`/api/sync/server-catalog/${projName}`).then(r => r.json()).catch(() => null);
+            if (sRes && sRes.success && sRes.catalog) {
+                window.pipetaServerCatalog = sRes.catalog;
+                indexServerCatalog(sRes.catalog);
+                console.log(`[SYNC LAYER] Catálogo Servidor cargado para ${projName}: ${sRes.catalog.stats?.totalFiles || 0} archivos indexados.`);
             }
-            return res.catalog;
         }
+
+        return window.pipetaServerCatalog || window.pipetaSyncCatalog;
     } catch (e) {
         console.warn("[SYNC LAYER] Error cargando catálogo:", e);
         if (typeof PipetaConsole !== 'undefined') {
@@ -85,6 +87,37 @@ function indexSyncCatalog(catalog) {
     window.pipetaSyncCatalogLookup = {
         byLocalPath: byLocal,
         byParentLocalPath: byParent
+    };
+}
+
+function indexServerCatalog(catalog) {
+    const byLocal = new Map();
+    const byServer = new Map();
+    const byParent = new Map();
+
+    if (catalog && catalog.flatList) {
+        for (const item of catalog.flatList) {
+            if (item.targetLocalPath) {
+                const normLocal = normalizeSyncPath(item.targetLocalPath);
+                byLocal.set(normLocal, item);
+            }
+            if (item.serverPath) {
+                const normServer = normalizeSyncPath(item.serverPath);
+                byServer.set(normServer, item);
+
+                const parent = normServer.substring(0, normServer.lastIndexOf('/'));
+                if (!byParent.has(parent)) {
+                    byParent.set(parent, []);
+                }
+                byParent.get(parent).push(item);
+            }
+        }
+    }
+
+    window.pipetaServerCatalogLookup = {
+        byLocalPath: byLocal,
+        byServerPath: byServer,
+        byParentServerPath: byParent
     };
 }
 
@@ -471,20 +504,35 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
                 ? settings.centralServerPath.replace(/\/+$/, '') 
                 : 'S:';
             const serverFolder = parentPath.replace(/^Z:/i, serverPrefix);
-            try {
-                const sData = await fetchDir(serverFolder);
-                if (sData && sData.items) {
-                    remoteChildren = sData.items.map(s => ({
-                        name: s.name,
-                        isDir: s.isDirectory,
-                        onlinePath: s.path,
-                        serverPath: s.path,
-                        targetLocalPath: parentPath.replace(/\/+$/, '') + '/' + s.name,
-                        size: s.size || 0
-                    }));
+            const normServerFolder = normalizeSyncPath(serverFolder);
+
+            // Primero intentar desde el catálogo de servidor ya indexado en memoria (0 ms)
+            const memServerItems = window.pipetaServerCatalogLookup?.byParentServerPath?.get(normServerFolder);
+            if (memServerItems && memServerItems.length > 0) {
+                remoteChildren = memServerItems.map(s => ({
+                    name: s.name,
+                    isDir: !!s.isDir,
+                    onlinePath: s.serverPath,
+                    serverPath: s.serverPath,
+                    targetLocalPath: parentPath.replace(/\/+$/, '') + '/' + s.name,
+                    size: s.size || 0
+                }));
+            } else {
+                try {
+                    const sData = await fetchDir(serverFolder);
+                    if (sData && sData.items) {
+                        remoteChildren = sData.items.map(s => ({
+                            name: s.name,
+                            isDir: s.isDirectory,
+                            onlinePath: s.path,
+                            serverPath: s.path,
+                            targetLocalPath: parentPath.replace(/\/+$/, '') + '/' + s.name,
+                            size: s.size || 0
+                        }));
+                    }
+                } catch(e) {
+                    console.warn("[SYNC SERVER] Error leyendo server folder:", e);
                 }
-            } catch(e) {
-                console.warn("[SYNC SERVER] Error leyendo server folder:", e);
             }
         }
 
@@ -493,16 +541,19 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
         }
     }
 
+    const finalItems = (typeof collapseImageSequences === 'function') ? collapseImageSequences(items) : items;
+    const finalRemoteChildren = (typeof collapseImageSequences === 'function') ? collapseImageSequences(remoteChildren) : remoteChildren;
+
     const renderedNames = new Set();
 
     // 1. Items locales existentes
-    items.forEach(item => {
+    finalItems.forEach(item => {
         renderedNames.add(item.name.toLowerCase());
         const block = document.createElement('div');
         block.className = 'pipeta-block';
 
         const nameSpan = document.createElement('span');
-        nameSpan.innerText = item.name;
+        nameSpan.innerText = (item.isSequence ? '🎞️ ' : '') + item.name;
         nameSpan.style.overflow = 'hidden';
         nameSpan.style.textOverflow = 'ellipsis';
         nameSpan.style.whiteSpace = 'nowrap';
@@ -597,8 +648,8 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
     });
 
     // 2. Elementos Fantasma (Están en catálogo/server pero FALTAN en local)
-    if (syncActive && remoteChildren.length > 0) {
-        remoteChildren.forEach(catItem => {
+    if (syncActive && finalRemoteChildren.length > 0) {
+        finalRemoteChildren.forEach(catItem => {
             if (!renderedNames.has(catItem.name.toLowerCase())) {
                 const ghostBlock = document.createElement('div');
                 ghostBlock.className = 'pipeta-block sync-ghost';
@@ -608,7 +659,7 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
                 ghostBlock.title = `Disponible en ${sourceLabel}: ${catItem.onlinePath}\nDestino Local: ${catItem.targetLocalPath}`;
 
                 const ghostNameSpan = document.createElement('span');
-                ghostNameSpan.innerText = (catItem.isDir ? '📁 ' : '📄 ') + catItem.name;
+                ghostNameSpan.innerText = (catItem.isDir ? '📁 ' : (catItem.isSequence ? '🎞️ ' : '📄 ')) + catItem.name;
                 ghostNameSpan.style.overflow = 'hidden';
                 ghostNameSpan.style.textOverflow = 'ellipsis';
                 ghostNameSpan.style.whiteSpace = 'nowrap';

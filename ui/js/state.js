@@ -53,6 +53,9 @@ function switchBrowserMode(mode) {
 }
 
 function refreshCurrentView() {
+    // Invalida caché en memoria del backend de directorios de red
+    fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+
     // Visual feedback
     const btn = document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
     if (btn) {
@@ -109,6 +112,12 @@ function getZEnvStatusLabel() {
     return `Z: Disco Local (${z.type})`;
 }
 
+function toggleSyncComparisonMode(targetMode) {
+    const nextMode = (window.syncComparisonMode === targetMode) ? 'off' : targetMode;
+    setSyncComparisonMode(nextMode);
+}
+window.toggleSyncComparisonMode = toggleSyncComparisonMode;
+
 async function setSyncComparisonMode(mode) {
     window.syncComparisonMode = mode;
     localStorage.setItem('pipeta_sync_comparison_mode', mode);
@@ -133,19 +142,20 @@ async function setSyncComparisonMode(mode) {
 
 async function refreshSyncCatalogManual() {
     if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', 'Solicitado refresco manual del catálogo de sincronización...', 'pending');
+        PipetaConsole.log('sync', 'Solicitado refresco manual de catálogos (Drive & Servidor)...', 'pending');
     }
     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-        settings.showToast('Actualizando catálogo de sincronización...', 'info', 3);
+        settings.showToast('Actualizando catálogos...', 'info', 3);
     }
+    fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
     if (typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog(true);
+        await loadActiveProjectSyncCatalog(false);
     }
     if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', '✓ Catálogo de sincronización recargado con éxito.', 'ok');
+        PipetaConsole.log('sync', '✓ Catálogos recargados con éxito.', 'ok');
     }
     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-        settings.showToast('Catálogo actualizado', 'success', 3);
+        settings.showToast('Catálogos actualizados', 'success', 3);
     }
     refreshCurrentView();
 }
@@ -154,12 +164,18 @@ async function switchViewLocation(mode) {
     window.viewLocationMode = mode;
     localStorage.setItem('pipeta_view_location_mode', mode);
 
+    const modeLabels = {
+        local: 'DISCO LOCAL (Z:)',
+        drive: '☁️ GOOGLE DRIVE (G:)',
+        server: '🗄️ SERVIDOR CENTRAL (S:)'
+    };
+
     if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('system', `Ubicación de visualización cambiada a: ${mode === 'drive' ? '☁️ GOOGLE DRIVE' : 'DISCO LOCAL'}`, 'info');
+        PipetaConsole.log('system', `Ubicación de visualización cambiada a: ${modeLabels[mode] || mode}`, 'info');
     }
 
-    // Solo cargar catálogo si vamos a explorar DRIVE y no está en memoria
-    if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {
+    // Cargar catálogo si vamos a explorar DRIVE o SERVER y no está en memoria
+    if ((mode === 'drive' || mode === 'server') && typeof loadActiveProjectSyncCatalog === 'function') {
         await loadActiveProjectSyncCatalog();
     }
 
@@ -239,3 +255,95 @@ function initSplitDivider() {
 document.addEventListener('DOMContentLoaded', () => {
     initSplitDivider();
 });
+
+// --- IMAGE SEQUENCE COLLAPSING (VFX PIPELINE) ---
+window.IMAGE_SEQUENCE_EXTENSIONS = new Set([
+    '.exr', '.dpx', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.tga', '.cin', '.ari'
+]);
+
+window.collapseImageSequences = function(items) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+
+    const seqRegex = /^(.*?[._\-]|\D+)(\d+)(\.[a-zA-Z0-9]+)$/;
+    const nonSequences = [];
+    const seqMap = new Map();
+
+    for (const item of items) {
+        if (item.isDirectory || item.isDir) {
+            nonSequences.push(item);
+            continue;
+        }
+
+        const name = item.name || '';
+        const m = name.match(seqRegex);
+        if (m) {
+            const ext = m[3].toLowerCase();
+            if (window.IMAGE_SEQUENCE_EXTENSIONS.has(ext)) {
+                const prefix = m[1];
+                const frameStr = m[2];
+                const key = (prefix + ext).toLowerCase();
+
+                if (!seqMap.has(key)) {
+                    seqMap.set(key, { prefix, ext, frames: [] });
+                }
+                seqMap.get(key).frames.push({
+                    frameNum: parseInt(frameStr, 10),
+                    padLength: frameStr.length,
+                    item: item
+                });
+                continue;
+            }
+        }
+        nonSequences.push(item);
+    }
+
+    const result = [...nonSequences];
+
+    for (const [key, seqData] of seqMap.entries()) {
+        const frames = seqData.frames;
+        if (frames.length < 3) {
+            for (const f of frames) {
+                result.push(f.item);
+            }
+            continue;
+        }
+
+        frames.sort((a, b) => a.frameNum - b.frameNum);
+        const first = frames[0];
+        const last = frames[frames.length - 1];
+        const totalSize = frames.reduce((acc, f) => acc + (f.item.size || 0), 0);
+        const pad = Math.max(first.padLength, 4);
+
+        const startStr = String(first.frameNum).padStart(pad, '0');
+        const endStr = String(last.frameNum).padStart(pad, '0');
+        const seqDisplayName = `${seqData.prefix}[${startStr}-${endStr}]${seqData.ext} (${frames.length} frames)`;
+
+        const sample = first.item;
+        result.push({
+            ...sample,
+            name: seqDisplayName,
+            isDirectory: false,
+            isDir: false,
+            isSequence: true,
+            frameCount: frames.length,
+            startFrame: first.frameNum,
+            endFrame: last.frameNum,
+            size: totalSize,
+            path: sample.path,
+            serverPath: sample.serverPath,
+            onlinePath: sample.onlinePath,
+            targetLocalPath: sample.targetLocalPath,
+            syncStatus: sample.syncStatus,
+            items: frames.map(f => f.item)
+        });
+    }
+
+    result.sort((a, b) => {
+        const aIsDir = a.isDirectory || a.isDir;
+        const bIsDir = b.isDirectory || b.isDir;
+        if (aIsDir === bIsDir) return a.name.localeCompare(b.name);
+        return aIsDir ? -1 : 1;
+    });
+
+    return result;
+};

@@ -5,8 +5,7 @@ const tabs = {
     'Shot Navigator': 'view-shot-navigator',
     'Asset Designer': 'view-asset-designer',
     'Shot Designer': 'view-shot-designer',
-    'IA Ingest': 'view-ia-ingest',
-    'Check In/Out': 'view-check'
+    'IA Ingest': 'view-ia-ingest'
 };
 
 // --- DYNAMIC HEADER TOOLS ---
@@ -83,12 +82,20 @@ const headerToolsTemplates = {
         <div class="toolbar-section-group" title="Opciones de Visualización">
             <span class="toolbar-section-label">View Options</span>
             <div class="toolbar-section-content">
-                <button class="tool-btn ${currentBrowserMode === 'split' ? 'active' : ''}" onclick="switchBrowserMode('split')" title="Vista Clásica (Árbol)">
-                    <img src="icons/view_classic.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="switchBrowserMode('pipeta')" title="Vista Miller (Columnas)">
-                    <img src="icons/view_miller.svg" class="btn-icon-svg">
-                </button>
+                <div class="toolbar-dropdown" id="browserModeDropdown">
+                    <button type="button" class="tool-btn" id="browserModeBtn" onclick="toggleBrowserModeDropdown(event)" title="${currentBrowserMode === 'pipeta' ? 'Vista Miller (Columnas)' : 'Vista Clásica (Split View)'}" style="display:inline-flex; align-items:center; gap:2px; padding:2px 5px; cursor:pointer;">
+                        <img src="icons/${currentBrowserMode === 'pipeta' ? 'view_miller.svg' : 'view_classic.svg'}" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
+                        <span style="font-size:0.55rem; color:#888; margin-left:1px; line-height:1; pointer-events:none;">▾</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="browserModeDropdownMenu">
+                        <button type="button" class="toolbar-dropdown-item ${(!currentBrowserMode || currentBrowserMode === 'split') ? 'active' : ''}" onclick="selectBrowserMode('split', event)" title="Vista Clásica (Split View)">
+                            <img src="icons/view_classic.svg" class="btn-icon-svg" style="width:18px; height:18px; pointer-events:none;">
+                        </button>
+                        <button type="button" class="toolbar-dropdown-item ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="selectBrowserMode('pipeta', event)" title="Vista Miller (Columnas)">
+                            <img src="icons/view_miller.svg" class="btn-icon-svg" style="width:18px; height:18px; pointer-events:none;">
+                        </button>
+                    </div>
+                </div>
                 <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
                         onclick="togglePipetaFilter()" 
                         oncontextmenu="handleFilterContextMenu(event)"
@@ -114,36 +121,37 @@ const headerToolsTemplates = {
                             onclick="switchViewLocation('server')" title="Server Central Real del Estudio (S:)">SERVER</button>
                 </div>
 
-                <!-- Comparador a demanda (solo en vista LOCAL) -->
-                ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
-                <div style="display:flex; align-items:center; background:#12171f; border-radius:4px; padding:2px 4px; border:1px solid #1f2d3d; margin-left:4px;" title="Comparar archivos locales contra catálogo o servidor">
-                    <span style="font-size:0.65rem; color:#7e92a8; margin-right:3px; font-weight:bold;">COMPARAR:</span>
-                    <button class="tool-btn ${(!window.syncComparisonMode || window.syncComparisonMode === 'off') ? 'active' : ''}" 
-                            style="padding: 2px 6px; font-size: 0.70rem; height: auto;"
-                            onclick="setSyncComparisonMode('off')" title="Apagado (Explorador instantáneo sin catálogo)">OFF</button>
-                    <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
-                            style="padding: 2px 6px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
-                            onclick="setSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">☁️ DRIVE</button>
-                    ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
-                    <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
-                            style="padding: 2px 6px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
-                            onclick="setSyncComparisonMode('server')" title="Comparar contra Servidor Central Real (S:)">🗄️ SERVER</button>
-                    ` : ''}
-                    ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
-                    <button class="tool-btn" 
-                            style="padding: 2px 5px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
-                            onclick="refreshSyncCatalogManual()" title="Refrescar catálogo">🔄</button>
-                    ` : ''}
-                </div>
-                ` : ''}
-
-                <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpeta">
+                <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpetas Locales (Instantáneo - Relee disco)">
                     <img src="icons/refresh.svg" class="btn-icon-svg">
                 </button>
             </div>
         </div>
 
         <div class="tool-space-small"></div>
+
+        <!-- Block 1.5: Comparación y Auditoría Cloud / Server -->
+        ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
+        <div class="toolbar-section-group" title="Comparar archivos locales contra catálogo Drive o Servidor central">
+            <span class="toolbar-section-label">Comparar</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
+                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
+                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Clic para activar/desactivar)">☁️ DRIVE</button>
+                ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
+                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
+                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central Real S: (Clic para activar/desactivar)">🗄️ SERVER</button>
+                ` : ''}
+                ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
+                <button class="tool-btn" 
+                        style="padding: 2px 6px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
+                        onclick="refreshSyncCatalogManual()" title="Refrescar catálogo en caché de Google Drive (Rclone)">🔄</button>
+                ` : ''}
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+        ` : ''}
 
         <!-- Block 2: Acciones de Archivos y Carpetas (Centro) -->
         <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
@@ -172,30 +180,6 @@ const headerToolsTemplates = {
                 </button>
                 <button class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
                     <img src="icons/open_explorer.svg" class="btn-icon-svg">
-                </button>
-            </div>
-        </div>
-
-        <div class="tool-space-small"></div>
-
-        <!-- Block 3: Custom Tools / Pipeline (Derecha) -->
-        <div class="toolbar-section-group" title="Herramientas del Pipeline">
-            <span class="toolbar-section-label">Tools</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn" data-perm-tool="access_tool_naming_validator" onclick="if(window.checkUserPermission('access_tool_naming_validator')) window.toggleValidator(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Naming Validator.');" title="Naming Validator">
-                    <img src="icons/scanning-scan-svgrepo-com.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn" data-perm-tool="access_tool_sync_analyze" onclick="if(window.checkUserPermission('access_tool_sync_analyze')) toggleSyncAnalyzer(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Sync Analyzer.');" title="Sync Analyzer (Local ↔ Online)">
-                    <img src="icons/sync-analyzer.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn" data-perm-tool="access_tool_file_auditor" onclick="if(window.checkUserPermission('access_tool_file_auditor')) toggleFileAuditor(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para File Auditor.');" title="File Auditor (Mirror & Render Status)" id="btnFileAuditorTool">
-                    <img src="icons/file-auditor.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn" data-perm-tool="access_tool_asset_creator" onclick="if(window.checkUserPermission('access_tool_asset_creator')) AssetCreator.open(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Asset Creator.');" title="Asset Creator">
-                    <img src="icons/asset_creator.svg" class="btn-icon-svg btn-icon-orange">
-                </button>
-                <button class="tool-btn" data-perm-tool="access_tool_shot_creator" onclick="if(window.checkUserPermission('access_tool_shot_creator')) ShotCreator.open(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Shot Creator.');" title="Shot Creator">
-                    <img src="icons/asset_creator.svg" class="btn-icon-svg">
                 </button>
             </div>
         </div>
@@ -371,14 +355,6 @@ const headerToolsTemplates = {
                 <button class="tool-btn danger" onclick="ShotDesigner.deleteSelected()" title="Borrar Selección">
                     <img src="icons/delete.svg" class="btn-icon-svg">
                 </button>
-            </div>
-        </div>
-    `,
-    'view-check': () => `
-        <div class="toolbar-section-group" title="Control de Versiones">
-            <span class="toolbar-section-label">Version Control</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn" title="Sync">🔄 Sync</button>
             </div>
         </div>
     `,
@@ -613,14 +589,27 @@ window.applyRolePermissionsToUI = async () => {
             'Shot Navigator': 'access_shot_navigator',
             'Asset Designer': 'access_asset_designer',
             'Shot Designer': 'access_shot_designer',
-            'IA Ingest': 'access_ia_ingest'
+            'IA Ingest': 'access_ia_ingest',
+            'Naming Validator': 'access_tool_naming_validator',
+            'Sync Analyzer': 'access_tool_sync_analyze',
+            'File Auditor': 'access_tool_file_auditor',
+            'Creator': 'access_tool_creator'
         };
 
-        document.querySelectorAll('.sidebar-top .mode-btn').forEach(btn => {
+        document.querySelectorAll('.mode-sidebar .mode-btn').forEach(btn => {
             const title = btn.getAttribute('title');
             const reqPerm = sidebarMap[title];
             if (reqPerm) {
-                const allowed = isAdmin || (role?.permissions ? role.permissions[reqPerm] !== false : true);
+                let allowed = isAdmin;
+                if (!allowed && role?.permissions) {
+                    if (reqPerm === 'access_tool_creator') {
+                        allowed = (role.permissions.access_tool_asset_creator !== false || role.permissions.access_tool_shot_creator !== false);
+                    } else {
+                        allowed = role.permissions[reqPerm] !== false;
+                    }
+                } else if (!allowed) {
+                    allowed = true;
+                }
                 if (allowed) {
                     btn.style.opacity = '1';
                     btn.style.filter = 'none';
@@ -775,16 +764,6 @@ async function checkRcloneStatus() {
         const res = await fetch('/api/rclone/status');
         const data = await res.json();
         window.rcloneStatus = data; // Store globally for settings UI
-
-        const monitorEl = document.getElementById('disk-monitor');
-        if (monitorEl && data.available) {
-            const badge = document.createElement('span');
-            badge.className = 'rclone-badge';
-            badge.title = `Rclone ${data.version} disponible — Sync acelerado activo`;
-            badge.innerText = '⚡';
-            // Insert after the bars (flex row handles positioning)
-            monitorEl.appendChild(badge);
-        }
     } catch (e) { /* silent */ }
 }
 
@@ -897,6 +876,59 @@ function toggleFileAuditor() {
 function toggleMirrorAuditor() {
     toggleFileAuditor();
 }
+
+function toggleBrowserModeDropdown(e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    const menu = document.getElementById('browserModeDropdownMenu');
+    const btn = document.getElementById('browserModeBtn') || (e && e.currentTarget);
+    if (!menu || !btn) return;
+
+    const isOpen = menu.classList.contains('show');
+    closeAllToolbarDropdowns();
+
+    if (!isOpen) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.top = (rect.bottom + 4) + 'px';
+        menu.style.left = rect.left + 'px';
+        menu.style.zIndex = '999999';
+        menu.classList.add('show');
+    }
+}
+
+function selectBrowserMode(mode, e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    closeAllToolbarDropdowns();
+    if (typeof switchBrowserMode === 'function') {
+        switchBrowserMode(mode);
+    }
+}
+
+function closeAllToolbarDropdowns() {
+    const menus = document.querySelectorAll('.toolbar-dropdown-menu');
+    menus.forEach(m => m.classList.remove('show'));
+    const dds = document.querySelectorAll('.toolbar-dropdown');
+    dds.forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#browserModeDropdown') && !e.target.closest('#browserModeDropdownMenu')) {
+        closeAllToolbarDropdowns();
+    }
+});
+
+window.addEventListener('resize', closeAllToolbarDropdowns);
+window.addEventListener('scroll', closeAllToolbarDropdowns, true);
+
+window.toggleBrowserModeDropdown = toggleBrowserModeDropdown;
+window.selectBrowserMode = selectBrowserMode;
+window.closeAllToolbarDropdowns = closeAllToolbarDropdowns;
 
 // Start
 document.addEventListener('DOMContentLoaded', () => initApp());

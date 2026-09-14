@@ -33,11 +33,18 @@
 
         <div class="zone-divider"></div>
 
-        <!-- ZONE 2: CONFIG -->
+        <!-- ZONE 2: CONFIG (Project + User) -->
         <div class="header-zone-config">
             <div class="project-selector">
-                <select id="headerProjectSelect" onchange="settings.selectHeaderProject(this.value)">
+                <select id="headerProjectSelect" onchange="settings.selectHeaderProject(this.value)" title="Proyecto Activo">
                     <option>Cargando Proyectos...</option>
+                </select>
+            </div>
+            <div class="header-config-divider"></div>
+            <div id="headerUserSelectorContainer" title="Cambiar Operador Activo">
+                <div id="headerUserAvatar"></div>
+                <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)">
+                    <option>Cargando...</option>
                 </select>
             </div>
         </div>
@@ -88,20 +95,6 @@
                 </button>
             </div>
 
-            <!-- USER SWITCHER SELECTOR -->
-            <div id="headerUserSelectorContainer" style="display:flex; align-items:center; gap:6px; background:#161c24; border:1px solid #2e3846; border-radius:4px; padding:3px 8px;" title="Cambiar Operador Activo">
-                <div id="headerUserAvatar" style="width:9px; height:9px; border-radius:50%; background:#ff9800;"></div>
-                <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)" style="background:#161c24; color:#ffffff; font-size:0.78rem; font-weight:bold; border:none; outline:none; cursor:pointer; max-width:130px;">
-                    <option style="background:#161c24; color:#ffffff;">Cargando...</option>
-                </select>
-            </div>
-
-            <!-- SYNC QUEUE MONITOR (Worker VM 105) -->
-            <button id="headerTransferQueueBtn" class="control-btn" title="Cola de Transferencias & Estado Worker VM 105" onclick="if (window.syncQueueUI) window.syncQueueUI.toggle();" style="width:auto; min-width:34px; padding:0 8px; gap:6px; position:relative;">
-                <span id="headerSyncWorkerDot" style="width:7px; height:7px; border-radius:50%; background:#888; flex-shrink:0;" title="Estado del Worker"></span>
-                <span style="font-size:0.95rem;">⚡</span>
-                <span id="headerTransferCountBadge" style="display:none; background:#ff9800; color:#000; font-size:0.7rem; font-weight:bold; border-radius:10px; padding:1px 6px; line-height:1.2;">0</span>
-            </button>
 
             <button class="control-btn" title="Maximizar Canvas / Modo Pantalla Completa" onclick="toggleCanvasFullscreen()">
                 <span style="font-size:0.9rem;">🔲</span>
@@ -116,7 +109,7 @@
     </header>
 
     <div class="main-container">
-        <!-- Sidebar -->
+        <!-- Barra Lateral de Modos (Icons Izquierda) -->
         <aside class="mode-sidebar">
             <div class="sidebar-top">
                 <div class="mode-btn" title="Inicio">
@@ -128,21 +121,42 @@
                 <div class="mode-btn" title="Shot Navigator">
                     <img src="icons/video_camera_back.svg" class="btn-icon-svg" style="filter: hue-rotate(45deg);">
                 </div>
+                <div class="mode-btn" title="IA Ingest">
+                    <img src="icons/chip-ai.svg" class="btn-icon-svg">
+                </div>
+
+                <!-- SEPARADOR MODULOS / TOOLS -->
+                <div class="sidebar-divider"></div>
+
+                <!-- COLA DE TRANSFERENCIAS & SYNC WORKER -->
+                <div class="mode-btn" id="sidebarTransferQueueBtn" title="Cola de Transferencias & Sync Worker" onclick="if (window.syncQueueUI) window.syncQueueUI.toggle();" style="position:relative; cursor:pointer;">
+                    <span id="headerSyncWorkerDot" style="position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%; background:#888; border:1px solid #111;" title="Estado del Worker"></span>
+                    <span style="font-size:1.15rem; color:#ff9800;">⚡</span>
+                    <span id="headerTransferCountBadge" style="display:none; position:absolute; bottom:5px; right:5px; background:#ff9800; color:#000; font-size:0.62rem; font-weight:bold; border-radius:10px; padding:0 4px; line-height:13px; height:13px; min-width:13px; text-align:center;">0</span>
+                </div>
+
+                <!-- PIPELINE TOOLS -->
+                <div class="mode-btn" title="Naming Validator" data-perm-tool="access_tool_naming_validator" onclick="if(window.checkUserPermission('access_tool_naming_validator')) window.toggleValidator(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Naming Validator.');">
+                    <img src="icons/scanning-scan-svgrepo-com.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" title="Sync Analyzer" data-perm-tool="access_tool_sync_analyze" onclick="if(window.checkUserPermission('access_tool_sync_analyze')) toggleSyncAnalyzer(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Sync Analyzer.');">
+                    <img src="icons/sync-analyzer.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" id="btnFileAuditorTool" title="File Auditor" data-perm-tool="access_tool_file_auditor" onclick="if(window.checkUserPermission('access_tool_file_auditor')) toggleFileAuditor(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para File Auditor.');">
+                    <img src="icons/file-auditor.svg" class="btn-icon-svg">
+                </div>
+                <div class="mode-btn" id="sidebarCreatorBtn" title="Creator" data-perm-tool="access_tool_creator" onclick="if(window.checkUserPermission('access_tool_asset_creator') || window.checkUserPermission('access_tool_shot_creator')) window.CreatorWindow.toggle(); else alert('🔒 Acceso restringido: Tu rol no tiene permiso para Creator.');">
+                    <img src="icons/asset_creator.svg" class="btn-icon-svg">
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
                 <div class="mode-btn" title="Asset Designer">
                     <img src="icons/design_shots.svg" class="btn-icon-svg">
                 </div>
                 <div class="mode-btn" title="Shot Designer">
                     <img src="icons/video_camera_back.svg" class="btn-icon-svg">
                 </div>
-                <div class="mode-btn" title="IA Ingest">
-                    <img src="icons/chip-ai.svg" class="btn-icon-svg">
-                </div>
-                <div class="mode-btn" title="Check In/Out">
-                    <img src="icons/check.svg" class="btn-icon-svg">
-                </div>
-            </div>
-
-            <div class="sidebar-bottom">
                 <button class="mode-btn" id="btn-settings-toggle" title="Configuración Global" onclick="settings.toggleOpen()"
                     style="background:transparent; border:none; padding:0;">
                     <img src="icons/settings.svg" class="btn-icon-svg">
@@ -688,11 +702,6 @@
 
             </div>
 
-            <div id="view-check" class="view-section" style="padding:20px; color:#666;">
-                <h2>Check In / Out (Prototipo)</h2>
-                <p>Funcionalidad pendiente de conexión con M:</p>
-            </div>
-
         </div>
     </div>
 
@@ -706,9 +715,9 @@
     <!-- WINDOWS & MODALS -->
     <div id="settings-window" class="settings-window" style="display:none;"></div>
     <div id="asset-creator-window" class="validator-window"
-        style="display:none; top: 10vh; left: 15vw; width: 800px; height: 650px;"></div>
+        style="display:none; top: 10vh; left: 15vw; width: 920px; height: 740px;"></div>
     <div id="shot-creator-window" class="validator-window"
-        style="display:none; top: 10vh; left: 15vw; width: 920px; height: 750px;"></div>
+        style="display:none; top: 10vh; left: 15vw; width: 920px; height: 740px;"></div>
 
     <!-- SCRIPT MODULES -->
     <script src="js/config.js"></script>

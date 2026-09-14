@@ -1,4 +1,70 @@
 // ------------------------------------------
+// --- CREATOR WINDOW (UNIFIED TABS) ---
+// ------------------------------------------
+
+window.CreatorWindow = {
+    activeTab: localStorage.getItem('pipeta_creator_active_tab') || 'asset',
+
+    toggle: async (tab) => {
+        if ((typeof AssetCreator !== 'undefined' && AssetCreator.isVisible) || 
+            (typeof ShotCreator !== 'undefined' && ShotCreator.isVisible)) {
+            CreatorWindow.close();
+        } else {
+            await CreatorWindow.open(tab || CreatorWindow.activeTab);
+        }
+    },
+
+    open: async (tab) => {
+        if (tab) CreatorWindow.activeTab = tab;
+        localStorage.setItem('pipeta_creator_active_tab', CreatorWindow.activeTab);
+
+        const btn = document.getElementById('sidebarCreatorBtn');
+        if (btn) btn.classList.add('active');
+
+        if (CreatorWindow.activeTab === 'shot') {
+            if (typeof AssetCreator !== 'undefined') AssetCreator.close();
+            if (typeof ShotCreator !== 'undefined') await ShotCreator.open();
+        } else {
+            if (typeof ShotCreator !== 'undefined') ShotCreator.close();
+            if (typeof AssetCreator !== 'undefined') await AssetCreator.open();
+        }
+    },
+
+    close: () => {
+        if (typeof AssetCreator !== 'undefined') AssetCreator.close();
+        if (typeof ShotCreator !== 'undefined') ShotCreator.close();
+        const btn = document.getElementById('sidebarCreatorBtn');
+        if (btn) btn.classList.remove('active');
+    },
+
+    switchTo: async (tab) => {
+        if (tab === CreatorWindow.activeTab) return;
+        CreatorWindow.activeTab = tab;
+        localStorage.setItem('pipeta_creator_active_tab', tab);
+
+        const fromWin = tab === 'shot' ? AssetCreator?.container : ShotCreator?.container;
+        const toWin = tab === 'shot' ? ShotCreator?.container : AssetCreator?.container;
+
+        if (fromWin && toWin) {
+            if (fromWin.style.top) toWin.style.top = fromWin.style.top;
+            if (fromWin.style.left) toWin.style.left = fromWin.style.left;
+            toWin.style.transform = fromWin.style.transform || "none";
+        }
+
+        if (tab === 'shot') {
+            if (typeof AssetCreator !== 'undefined') AssetCreator.close();
+            if (typeof ShotCreator !== 'undefined') await ShotCreator.open();
+        } else {
+            if (typeof ShotCreator !== 'undefined') ShotCreator.close();
+            if (typeof AssetCreator !== 'undefined') await AssetCreator.open();
+        }
+
+        const btn = document.getElementById('sidebarCreatorBtn');
+        if (btn) btn.classList.add('active');
+    }
+};
+
+// ------------------------------------------
 // --- ASSET CREATOR MODULE ---
 // ------------------------------------------
 
@@ -301,6 +367,7 @@ const AssetCreator = {
         AssetCreator.resolveContext();
         AssetCreator.isVisible = true;
         AssetCreator.container.style.display = 'flex';
+        document.getElementById('sidebarCreatorBtn')?.classList.add('active');
         AssetCreator.render();
     },
 
@@ -308,6 +375,9 @@ const AssetCreator = {
         AssetCreator.isVisible = false;
         if (AssetCreator.container) {
             AssetCreator.container.style.display = 'none';
+        }
+        if (typeof ShotCreator === 'undefined' || !ShotCreator.isVisible) {
+            document.getElementById('sidebarCreatorBtn')?.classList.remove('active');
         }
     },
 
@@ -838,14 +908,22 @@ const AssetCreator = {
         }
 
         AssetCreator.container.innerHTML = `
-            <div class="validator-header">
-                <div style="display:flex; align-items:center; gap:10px;">
+            <div class="validator-header" style="display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 15px;">
+                <div style="display:flex; align-items:center; gap:8px;">
                     <img src="icons/asset_creator.svg" style="width:18px;">
-                    <span style="font-size:1rem; font-weight:bold;">Asset Creator</span>
+                    <span style="font-size:0.95rem; font-weight:bold; color:#fff; margin-right:4px;">Creator</span>
+                    <div style="display:flex; background:#181818; border-radius:4px; padding:2px; border:1px solid #333; gap:2px;">
+                        <button type="button" class="creator-tab-btn active" onclick="CreatorWindow.switchTo('asset')" style="background:#2b3a4a; color:#fff; font-weight:bold; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
+                            📦 Asset Creator
+                        </button>
+                        <button type="button" class="creator-tab-btn" onclick="CreatorWindow.switchTo('shot')" style="background:transparent; color:#888; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
+                            🎬 Shot Creator
+                        </button>
+                    </div>
                 </div>
                 <div style="flex:1; cursor:grab; height:100%;" id="asset-creator-drag"></div>
                 <div class="win-controls">
-                    <button onclick="AssetCreator.close()">×</button>
+                    <button onclick="CreatorWindow.close()">×</button>
                 </div>
             </div>
             

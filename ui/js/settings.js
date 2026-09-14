@@ -234,7 +234,7 @@ const settings = {
 
     updateSidebarButtonsState: () => {
         const btnSettings = document.getElementById('btn-settings-toggle');
-        const topButtons = document.querySelectorAll('.sidebar-top .mode-btn');
+        const topButtons = document.querySelectorAll('.mode-sidebar .mode-btn');
 
         if (settings.isVisible) {
             if (btnSettings) btnSettings.classList.add('active');

@@ -42,7 +42,7 @@ echo [INFO] Sincronizando archivos a disco local en %LOCAL_DIR%...
 
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
 
 if exist "%~dp0presets" (
     if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
@@ -94,7 +94,7 @@ if exist "%RESTART_FLAG%" (
     echo.
     echo [INFO] Reinicio solicitado por la aplicacion. Sincronizando y relanzando...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER
@@ -104,7 +104,7 @@ if %EXIT_CODE% equ 42 (
     echo.
     echo [INFO] Reinicio solicitado (codigo 42). Relanzando servidor...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER

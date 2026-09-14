@@ -499,6 +499,7 @@ const ShotCreator = {
 
         ShotCreator.isVisible = true;
         ShotCreator.container.style.display = 'flex';
+        document.getElementById('sidebarCreatorBtn')?.classList.add('active');
         ShotCreator.render();
     },
 
@@ -506,6 +507,9 @@ const ShotCreator = {
         ShotCreator.isVisible = false;
         if (ShotCreator.container) {
             ShotCreator.container.style.display = 'none';
+        }
+        if (typeof AssetCreator === 'undefined' || !AssetCreator.isVisible) {
+            document.getElementById('sidebarCreatorBtn')?.classList.remove('active');
         }
     },
 
@@ -1213,14 +1217,22 @@ const ShotCreator = {
         }
 
         ShotCreator.container.innerHTML = `
-            <div class="validator-header">
-                <div style="display:flex; align-items:center; gap:10px;">
+            <div class="validator-header" style="display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 15px;">
+                <div style="display:flex; align-items:center; gap:8px;">
                     <img src="icons/asset_creator.svg" style="width:18px;">
-                    <span style="font-size:1rem; font-weight:bold;">Shot Creator</span>
+                    <span style="font-size:0.95rem; font-weight:bold; color:#fff; margin-right:4px;">Creator</span>
+                    <div style="display:flex; background:#181818; border-radius:4px; padding:2px; border:1px solid #333; gap:2px;">
+                        <button type="button" class="creator-tab-btn" onclick="CreatorWindow.switchTo('asset')" style="background:transparent; color:#888; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
+                            📦 Asset Creator
+                        </button>
+                        <button type="button" class="creator-tab-btn active" onclick="CreatorWindow.switchTo('shot')" style="background:#2b3a4a; color:#fff; font-weight:bold; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
+                            🎬 Shot Creator
+                        </button>
+                    </div>
                 </div>
                 <div style="flex:1; cursor:grab; height:100%;" id="shot-creator-drag"></div>
                  <div class="win-controls">
-                    <button onclick="ShotCreator.close()">×</button>
+                    <button onclick="CreatorWindow.close()">×</button>
                 </div>
             </div>
             <div class="validator-body" style="padding: 20px; display:flex; flex-direction: column; background:#111; position:relative;">

@@ -140,39 +140,38 @@ class ContextMenu {
         }
 
         try {
-            if (compMode === 'drive') {
-                // Escaneo scoped ultra-rápido de sólo esta subcarpeta en Google Drive vía Rclone
+            const viewMode = window.viewLocationMode || 'local';
+            const isServer = (viewMode === 'server') || (compMode === 'server') || folderPath.toLowerCase().startsWith('s:');
+            const isDrive = (viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:');
+            const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
+
+            if (targetType) {
+                // Escaneo y actualización scoped ultra-rápida del sub-catálogo en Servidor o Google Drive
                 const res = await fetch('/api/sync/catalog/refresh-folder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project: projName, path: folderPath })
+                    body: JSON.stringify({ project: projName, path: folderPath, type: targetType })
                 }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
 
+                const targetLabel = targetType === 'server' ? 'Servidor' : 'Drive';
                 if (res && res.success) {
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
                     if (typeof PipetaConsole !== 'undefined') {
-                        PipetaConsole.log('sync', `✓ Carpeta '${folderName}' actualizada (${res.itemsCount || 0} items en Drive)`, 'ok');
+                        PipetaConsole.log('sync', `✓ Carpeta '${folderName}' actualizada (${res.itemsCount || 0} items en ${targetLabel})`, 'ok');
                     }
                     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                        settings.showToast(`✅ "${folderName}" actualizada (${res.itemsCount || 0} items en Drive)`, 'success', 3);
+                        settings.showToast(`✅ "${folderName}" actualizada (${res.itemsCount || 0} items en ${targetLabel})`, 'success', 3);
                     }
                 } else {
-                    console.warn("[REFRESH FOLDER] Fallback drive:", res?.error);
+                    console.warn(`[REFRESH FOLDER] Fallback ${targetLabel}:`, res?.error);
                     if (typeof PipetaConsole !== 'undefined') {
-                        PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en Drive: ${res?.error || 'Error desconocido'}`, 'error');
+                        PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en ${targetLabel}: ${res?.error || 'Error desconocido'}`, 'error');
                     }
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
-                }
-            } else if (compMode === 'server') {
-                if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('sync', `✓ Carpeta '${folderName}' comparada y sincronizada con Servidor`, 'ok');
-                }
-                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                    settings.showToast(`✅ "${folderName}" sincronizada con Servidor`, 'success', 3);
                 }
             } else {
                 if (typeof PipetaConsole !== 'undefined') {

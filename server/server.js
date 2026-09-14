@@ -288,13 +288,58 @@ app.get('/api/sync/catalog/:project', async (req, res) => {
     }
 });
 
+app.get('/api/sync/server-catalog/:project', async (req, res) => {
+    try {
+        const projectName = req.params.project;
+        if (typeof catalogGenerator.loadServerCatalog === 'function') {
+            const catalog = await catalogGenerator.loadServerCatalog(projectName);
+            if (catalog) {
+                return res.json({ success: true, catalog });
+            }
+        }
+        res.status(404).json({ success: false, error: `Catálogo de servidor no encontrado para ${projectName}` });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/catalog/clear-cache', (req, res) => {
+    try {
+        if (typeof serverDirCache !== 'undefined') {
+            serverDirCache.clear();
+        }
+        if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+            catalogGenerator.clearMemoryCaches();
+        }
+        res.json({ success: true, message: 'Caché de servidor y catálogos en memoria limpiada' });
+    } catch (e) {
+        res.json({ success: true });
+    }
+});
+
 app.post('/api/sync/catalog/generate', async (req, res) => {
     try {
-        const { project, mode } = req.body;
+        const { project, mode, type } = req.body;
         if (!project) {
             return res.status(400).json({ success: false, error: 'Parámetro project requerido' });
         }
-        const result = await catalogGenerator.generateProjectCatalog(project, { mode: mode || 'auto' });
+        if (typeof serverDirCache !== 'undefined') {
+            serverDirCache.clear();
+        }
+
+        let result = {};
+        if (type === 'server') {
+            result = await catalogGenerator.generateServerCatalog(project, { mode: mode || 'auto' });
+        } else if (type === 'drive') {
+            result = await catalogGenerator.generateProjectCatalog(project, { mode: mode || 'auto' });
+        } else {
+            const driveRes = await catalogGenerator.generateProjectCatalog(project, { mode: mode || 'auto' }).catch(e => ({ error: e.message }));
+            let serverRes = null;
+            if (typeof catalogGenerator.generateServerCatalog === 'function') {
+                serverRes = await catalogGenerator.generateServerCatalog(project, { mode: mode || 'auto' }).catch(e => ({ error: e.message }));
+            }
+            result = { success: true, drive: driveRes, server: serverRes };
+        }
         res.json(result);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -319,27 +364,52 @@ async function checkInternetQuickly() {
 
 app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
     try {
-        const { project, path: folderPath } = req.body;
+        const { project, path: folderPath, type: reqType } = req.body;
         if (!project || !folderPath) {
             return res.status(400).json({ success: false, error: 'Parámetros project y path requeridos' });
         }
 
-        const hasInternet = await checkInternetQuickly();
+        const safeP = folderPath.replace(/\\/g, '/');
+        const isServer = reqType === 'server' || safeP.toLowerCase().startsWith('s:');
+        const catType = isServer ? 'server' : 'drive';
 
-        // 1. Si la máquina local tiene internet, intentar ejecutar de forma local ultra-rápida (~1s)
-        if (hasInternet) {
+        // Invalidar caché en memoria del servidor
+        if (typeof serverDirCache !== 'undefined') {
+            serverDirCache.delete(safeP.toLowerCase());
+        }
+        if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+            catalogGenerator.clearMemoryCaches();
+        }
+
+        // 1. Ejecutar de forma local mediante el sistema modular (toma ~15-30ms)
+        if (typeof catalogGenerator.refreshSubCatalog === 'function') {
             try {
-                const result = await catalogGenerator.refreshCatalogSubfolder(project, folderPath);
-                if (result && result.success) {
-                    return res.json(result);
+                const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, catType);
+                if (modularRes && modularRes.success) {
+                    return res.json(modularRes);
                 }
-            } catch (localErr) {
-                console.warn("[CATALOG REFRESH FOLDER] Falló ejecución local, delegando a Worker:", localErr.message);
+            } catch (localModularErr) {
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (${catType}):`, localModularErr.message);
             }
         }
 
-        // 2. Si la máquina no tiene internet (o falló localmente), delegar al Worker central (VM 105)
-        console.log(`[CATALOG REFRESH FOLDER] Delegando consulta de '${folderPath}' al Worker central en servidor...`);
+        // 2. Si es Drive y tiene internet, intentar el método rclone clásico
+        if (catType === 'drive') {
+            const hasInternet = await checkInternetQuickly();
+            if (hasInternet) {
+                try {
+                    const result = await catalogGenerator.refreshCatalogSubfolder(project, folderPath);
+                    if (result && result.success) {
+                        return res.json(result);
+                    }
+                } catch (localErr) {
+                    console.warn("[CATALOG REFRESH FOLDER] Falló ejecución local rclone, delegando a Worker:", localErr.message);
+                }
+            }
+        }
+
+        // 3. Si la máquina no tiene internet o no tiene las unidades montadas, delegar al Worker central
+        console.log(`[CATALOG REFRESH FOLDER] Delegando consulta de '${folderPath}' (${catType}) al Worker central en servidor...`);
         if (!fs.existsSync(ORDERS_DIR)) {
             fs.mkdirSync(ORDERS_DIR, { recursive: true });
         }
@@ -352,6 +422,7 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             type: 'refresh_folder',
             project,
             path: folderPath,
+            targetType: catType,
             status: 'pending',
             user: os.userInfo ? os.userInfo().username : 'unknown',
             createdAt: new Date().toISOString()
@@ -487,23 +558,70 @@ app.get('/api/sync/worker-status', (req, res) => {
     }
 });
 
+// Caché en memoria para listados de directorios en red (SMB S:)
+const serverDirCache = new Map();
+const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
+
 app.get('/api/fs/list', (req, res) => {
     let requestedPath = req.query.path;
+    let forceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
 
     try {
         let targetPath = null;
 
         if (requestedPath) {
             let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
-            if (fs.existsSync(safeP)) {
-                targetPath = safeP;
-            } else if (safeP.toLowerCase().startsWith('g:/') || safeP.toLowerCase() === 'g:') {
-                // Fallback a catálogo offline en Z:/_SYNC_CACHE
-                const catalogItems = catalogGenerator.listFromCatalog(safeP);
-                if (catalogItems !== null) {
-                    return res.json({ path: safeP, items: catalogItems, exists: true, fromCatalog: true });
+            const lowerSafeP = safeP.toLowerCase();
+            const isServerPath = lowerSafeP.startsWith('s:/') || lowerSafeP === 's:' || lowerSafeP === 's';
+
+            // Comprobar si está en caché en memoria (para evitar re-consultar la red)
+            if (!forceRefresh && serverDirCache.has(lowerSafeP)) {
+                const cached = serverDirCache.get(lowerSafeP);
+                if (Date.now() - cached.time < SERVER_CACHE_TTL) {
+                    return res.json({ path: safeP, items: cached.items, exists: true, fromCache: true });
                 }
-                return res.json({ path: safeP, items: [], exists: false });
+            }
+
+            // 1. MODO SERVIDOR CENTRAL REAL: SIEMPRE desde catálogo del Worker (modular o monolítico)
+            // NUNCA consultar SMB física S: (los puestos de artistas no la tienen montada)
+            if (isServerPath) {
+                let serverCatalogItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
+                    ? catalogGenerator.listFromModularCatalog(safeP, 'server')
+                    : null;
+
+                if (serverCatalogItems === null && typeof catalogGenerator.listFromServerCatalog === 'function') {
+                    serverCatalogItems = catalogGenerator.listFromServerCatalog(safeP);
+                }
+
+                if (serverCatalogItems !== null) {
+                    serverDirCache.set(lowerSafeP, { time: Date.now(), items: serverCatalogItems });
+                    return res.json({ path: safeP, items: serverCatalogItems, exists: true, fromCatalog: true, isServer: true });
+                }
+                return res.json({ path: safeP, items: [], exists: false, isServer: true });
+            }
+
+            // 2. MODO GOOGLE DRIVE
+            if (lowerSafeP.startsWith('g:/') || lowerSafeP === 'g:') {
+                if (fs.existsSync(safeP)) {
+                    targetPath = safeP;
+                } else {
+                    let catalogItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
+                        ? catalogGenerator.listFromModularCatalog(safeP, 'drive')
+                        : null;
+
+                    if (catalogItems === null && typeof catalogGenerator.listFromCatalog === 'function') {
+                        catalogItems = catalogGenerator.listFromCatalog(safeP);
+                    }
+
+                    if (catalogItems !== null) {
+                        return res.json({ path: safeP, items: catalogItems, exists: true, fromCatalog: true });
+                    }
+                    return res.json({ path: safeP, items: [], exists: false });
+                }
+            } 
+            // 3. RUTAS LOCALES (Z:, C:, etc.)
+            else if (fs.existsSync(safeP)) {
+                targetPath = safeP;
             } else {
                 return res.json({ path: safeP, items: [], exists: false });
             }
@@ -534,12 +652,14 @@ app.get('/api/fs/list', (req, res) => {
             return res.json({ path: requestedPath || 'Z:/', items: [] });
         }
 
+        const isNetworkPath = targetPath.toLowerCase().startsWith('s:') || targetPath.startsWith('//') || targetPath.startsWith('\\\\');
         const items = fs.readdirSync(targetPath, { withFileTypes: true });
         const result = items.map(item => {
             const isDir = item.isDirectory();
             const fullItemPath = path.join(targetPath, item.name).replace(/\\/g, '/');
             let size = 0;
-            if (!isDir) {
+            // Solo calcular tamaño síncrono si es disco local rápido. En red SMB (S:), se omite para evitar freeze de 3-5s.
+            if (!isDir && !isNetworkPath) {
                 try {
                     const st = fs.statSync(fullItemPath);
                     size = st.size;
@@ -557,6 +677,11 @@ app.get('/api/fs/list', (req, res) => {
             if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
             return a.isDirectory ? -1 : 1;
         });
+
+        // Almacenar en caché en memoria si es ruta de red
+        if (isNetworkPath) {
+            serverDirCache.set(targetPath.toLowerCase(), { time: Date.now(), items: result });
+        }
 
         res.json({
             path: targetPath,
@@ -673,11 +798,18 @@ app.post('/api/fs/deleteFile', async (req, res) => {
 app.get('/api/fs/readFile', async (req, res) => {
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'Missing path' });
+    const norm = filePath.replace(/\\/g, '/').toLowerCase();
+    if (norm.startsWith('s:/') || norm.startsWith('s:') || norm.startsWith('g:/') || norm.startsWith('g:')) {
+        return res.json({ content: null });
+    }
     try {
+        if (!fs.existsSync(filePath)) {
+            return res.json({ content: null });
+        }
         const content = await fs.readFile(filePath, 'utf-8');
         res.json({ content });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json({ content: null, error: err.message });
     }
 });
 
@@ -1423,19 +1555,36 @@ app.get('/api/system/diskUsage', async (req, res) => {
 });
 
 // --- DIRECTORY SIZE ---
-app.get('/api/fs/dirSize', async (req, res) => {
+app.get('/api/fs/dirSize', (req, res) => {
     const dirPath = req.query.path;
     if (!dirPath) return res.status(400).json({ error: 'Missing path' });
 
+    // 1. Intentar resolver el tamaño instantáneamente desde el catálogo (0 ms)
     try {
-        const { execSync } = require('child_process');
-        const cmd = `powershell -NoProfile -Command "(Get-ChildItem -Path '${dirPath.replace(/'/g, "''")}' -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum"`;
-        const raw = execSync(cmd, { timeout: 30000 }).toString().trim();
-        const size = parseInt(raw) || 0;
-        res.json({ path: dirPath, size });
-    } catch (err) {
-        res.json({ path: dirPath, size: 0, error: err.message });
+        if (typeof catalogGenerator.getDirSizeFromCatalog === 'function') {
+            const catSize = catalogGenerator.getDirSizeFromCatalog(dirPath);
+            if (catSize !== null) {
+                return res.json({ path: dirPath, size: catSize, fromCatalog: true });
+            }
+        }
+    } catch (e) {}
+
+    // 2. Si es una ruta de red/servidor (S:, UNC, etc.) y no está en el catálogo, retornar 0 sin bloquear
+    const norm = (dirPath || '').replace(/\\/g, '/').toLowerCase();
+    if (norm.startsWith('s:') || norm.startsWith('//') || norm.startsWith('\\\\')) {
+        return res.json({ path: dirPath, size: 0, fromCatalog: false });
     }
+
+    // 3. Para carpetas locales, usar ejecución asíncrona NO BLOQUEANTE (nunca execSync)
+    const { exec } = require('child_process');
+    const cmd = `powershell -NoProfile -Command "(Get-ChildItem -Path '${dirPath.replace(/'/g, "''")}' -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum"`;
+    exec(cmd, { timeout: 10000 }, (err, stdout) => {
+        if (err) {
+            return res.json({ path: dirPath, size: 0, error: err.message });
+        }
+        const size = parseInt((stdout || '').trim()) || 0;
+        res.json({ path: dirPath, size });
+    });
 });
 
 // --- RCLONE INTEGRATION ---
@@ -2615,6 +2764,11 @@ function startListening(retries = 10) {
     const server = app.listen(PORT, async () => {
         console.log(`Pipeta Core running at http://localhost:${PORT}`);
         console.log(`Version: ${VERSION}`);
+
+        // Sincronizar catálogo desde la red al disco local SSD al iniciar
+        if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+            try { catalogGenerator.syncLocalCacheFromNetwork(); } catch(e) {}
+        }
 
         const noBrowser = process.argv.includes('--no-browser');
         if (shouldOpenBrowser && !noBrowser) {

@@ -87,7 +87,7 @@ class SyncQueueUI {
     updateHeaderBadge() {
         const dot = document.getElementById('headerSyncWorkerDot');
         const badge = document.getElementById('headerTransferCountBadge');
-        const btn = document.getElementById('headerTransferQueueBtn');
+        const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
 
         const isAlive = this.workerStatus && this.workerStatus.isAlive;
         if (dot) {
@@ -183,6 +183,8 @@ class SyncQueueUI {
         this.container.style.display = 'flex';
         this.container.style.flexDirection = 'column';
         this.isVisible = true;
+        const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
+        if (btn) btn.classList.add('active');
         this.fetchStatus();
     }
 
@@ -191,6 +193,8 @@ class SyncQueueUI {
             this.container.style.display = 'none';
         }
         this.isVisible = false;
+        const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
+        if (btn) btn.classList.remove('active');
     }
 
     selectTab(tab) {

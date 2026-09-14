@@ -169,7 +169,8 @@ async function getDecoratedTreeItems(dirPath, rawItems) {
 
             // Consultar si existe en local
             const normTarget = itemCopy.targetLocalPath.toLowerCase();
-            const inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget);
+            const inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget) ||
+                            window.pipetaServerCatalogLookup?.byLocalPath?.has(normTarget);
             itemCopy.syncStatus = inLocal ? 'matched_server' : 'ghost_server';
             decorated.push(itemCopy);
         }
@@ -192,8 +193,8 @@ async function loadRootTree(rootPath, containerId) {
     const mode = window.viewLocationMode || 'local';
     const compMode = window.syncComparisonMode || 'off';
 
-    // Cargar catálogo solo si explícitamente se requiere para Drive
-    if ((mode === 'drive' || (mode === 'local' && compMode === 'drive')) && !window.pipetaSyncCatalog) {
+    // Cargar catálogo si explícitamente se requiere para Drive o Server
+    if ((mode === 'drive' || mode === 'server' || compMode === 'drive' || compMode === 'server') && (!window.pipetaSyncCatalog || !window.pipetaServerCatalog)) {
         if (typeof loadActiveProjectSyncCatalog === 'function') {
             await loadActiveProjectSyncCatalog();
         }
@@ -214,21 +215,26 @@ async function loadRootTree(rootPath, containerId) {
         }
 
         const decoratedItems = await getDecoratedTreeItems(rootPath, itemsToRender);
+        const finalItems = (typeof collapseImageSequences === 'function') 
+            ? collapseImageSequences(decoratedItems) 
+            : decoratedItems;
 
-        if (decoratedItems.length === 0) {
+        if (finalItems.length === 0) {
             container.innerHTML = `<div style="padding:10px; color:#666; font-style:italic;">Carpeta vacía o sin elementos</div>`;
             return;
         }
 
-        for (const item of decoratedItems) {
+        const fragment = document.createDocumentFragment();
+        for (const item of finalItems) {
             const node = createTreeNode(item, 0);
-            container.appendChild(node);
+            fragment.appendChild(node);
 
             const normPath = item.path.replace(/\\/g, '/').toLowerCase();
             if (item.isDirectory && expandedPaths.has(normPath)) {
                 await toggleNode(node, item, 0, node.querySelector('.tree-node'));
             }
         }
+        container.appendChild(fragment);
     } else {
         container.innerHTML = `<div style="color:red; padding:10px;">Error: ${data.error}</div>`;
     }
@@ -251,7 +257,7 @@ function createTreeNode(item, level) {
         row.classList.add('selected');
     }
 
-    const icon = item.isDirectory ? '📁' : '📄';
+    const icon = item.isDirectory ? '📁' : (item.isSequence ? '🎞️' : '📄');
     const arrow = item.isDirectory ? `<span class="tree-arrow" style="font-size:0.7em; color:#666; margin-right:4px;">▶</span>` : '';
 
     // Insignias de Sincronización explícitas y transparentes
@@ -331,19 +337,24 @@ async function toggleNode(wrapper, item, level, rowElement) {
             container.innerHTML = "";
             const rawItems = (data && data.items) ? data.items : [];
             const decoratedItems = await getDecoratedTreeItems(item.path, rawItems);
+            const finalItems = (typeof collapseImageSequences === 'function')
+                ? collapseImageSequences(decoratedItems)
+                : decoratedItems;
 
-            if (decoratedItems.length === 0) {
+            if (finalItems.length === 0) {
                 container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
             } else {
-                for (const child of decoratedItems) {
+                const fragment = document.createDocumentFragment();
+                for (const child of finalItems) {
                     const node = createTreeNode(child, level + 1);
-                    container.appendChild(node);
+                    fragment.appendChild(node);
 
                     const normChildPath = child.path.replace(/\\/g, '/').toLowerCase();
                     if (child.isDirectory && expandedPaths.has(normChildPath)) {
                         await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
                     }
                 }
+                container.appendChild(fragment);
             }
             wrapper._loaded = true;
         }
@@ -366,6 +377,53 @@ async function updateDetailsPanel(item) {
     // Clear previous metadata section if exists
     const existingMeta = document.getElementById('prop-metadata-section');
     if (existingMeta) existingMeta.remove();
+
+    if (item.isSequence) {
+        const seqSection = document.createElement('div');
+        seqSection.id = 'prop-metadata-section';
+        seqSection.className = 'prop-section';
+        const sizeMb = item.size ? (item.size / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+        seqSection.innerHTML = `
+            <div class="prop-row" style="margin-top:10px;">
+                <span class="prop-label">Tipo:</span>
+                <span style="color:#88c0d0; font-weight:bold;">🎞️ Secuencia de Imágenes</span>
+            </div>
+            <div class="prop-row">
+                <span class="prop-label">Frames:</span>
+                <span style="color:#ebcb8b; font-weight:bold;">${item.frameCount} frames</span>
+            </div>
+            <div class="prop-row">
+                <span class="prop-label">Rango:</span>
+                <span style="font-family:monospace;">${item.startFrame} ➔ ${item.endFrame}</span>
+            </div>
+            <div class="prop-row">
+                <span class="prop-label">Tamaño Total:</span>
+                <span style="font-family:monospace;">${sizeMb}</span>
+            </div>
+        `;
+        panel.appendChild(seqSection);
+        return;
+    }
+
+    if (window.viewLocationMode === 'server' || item.isServer || (item.path && item.path.replace(/\\/g, '/').toLowerCase().startsWith('s:'))) {
+        const infoSection = document.createElement('div');
+        infoSection.id = 'prop-metadata-section';
+        infoSection.className = 'prop-section';
+        const sizeStr = item.size ? (typeof _formatSize === 'function' ? _formatSize(item.size) : item.size + ' B') : (item.isDirectory ? 'Carpeta' : '-');
+        infoSection.innerHTML = `
+            <div class="prop-row" style="margin-top:10px;">
+                <span class="prop-label">Origen:</span>
+                <span style="color:#a3be8c; font-weight:bold;">🗄️ Servidor Central (Catálogo)</span>
+            </div>
+            <div class="prop-row">
+                <span class="prop-label">Tipo:</span>
+                <span style="color:#d8dee9;">${item.isDirectory ? 'Carpeta remota' : 'Archivo remoto'}</span>
+            </div>
+            ${item.size ? `<div class="prop-row"><span class="prop-label">Tamaño:</span><span style="font-family:monospace;">${sizeStr}</span></div>` : ''}
+        `;
+        panel.appendChild(infoSection);
+        return;
+    }
 
     if (item.isDirectory) {
         try {
