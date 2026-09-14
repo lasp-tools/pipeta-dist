@@ -101,15 +101,41 @@ const headerToolsTemplates = {
                 
                 <div style="width:3px"></div>
                 
-                <!-- Local/Online Switcher -->
-                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
-                    <button class="tool-btn ${window.viewLocationMode === 'local' ? 'active' : ''}" 
+                <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
+                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
+                    <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
                             style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
-                            onclick="switchViewLocation('local')" title="Rutas Locales (Z:)">LOCAL</button>
-                    <button class="tool-btn ${window.viewLocationMode === 'online' ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
-                            onclick="switchViewLocation('online')" title="Rutas Online (G:)">ONLINE</button>
+                            onclick="switchViewLocation('local')" title="Disco Z Local (Copia Local / vsubst)">LOCAL</button>
+                    <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
+                            onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
+                    <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
+                            style="padding: 2px 8px; font-size: 0.72rem; height: auto; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
+                            onclick="switchViewLocation('server')" title="Server Central Real del Estudio (S:)">SERVER</button>
                 </div>
+
+                <!-- Comparador a demanda (solo en vista LOCAL) -->
+                ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
+                <div style="display:flex; align-items:center; background:#12171f; border-radius:4px; padding:2px 4px; border:1px solid #1f2d3d; margin-left:4px;" title="Comparar archivos locales contra catálogo o servidor">
+                    <span style="font-size:0.65rem; color:#7e92a8; margin-right:3px; font-weight:bold;">COMPARAR:</span>
+                    <button class="tool-btn ${(!window.syncComparisonMode || window.syncComparisonMode === 'off') ? 'active' : ''}" 
+                            style="padding: 2px 6px; font-size: 0.70rem; height: auto;"
+                            onclick="setSyncComparisonMode('off')" title="Apagado (Explorador instantáneo sin catálogo)">OFF</button>
+                    <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
+                            style="padding: 2px 6px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
+                            onclick="setSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">☁️ DRIVE</button>
+                    ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                    <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
+                            style="padding: 2px 6px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
+                            onclick="setSyncComparisonMode('server')" title="Comparar contra Servidor Central Real (S:)">🗄️ SERVER</button>
+                    ` : ''}
+                    ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
+                    <button class="tool-btn" 
+                            style="padding: 2px 5px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
+                            onclick="refreshSyncCatalogManual()" title="Refrescar catálogo">🔄</button>
+                    ` : ''}
+                </div>
+                ` : ''}
 
                 <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpeta">
                     <img src="icons/refresh.svg" class="btn-icon-svg">

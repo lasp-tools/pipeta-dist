@@ -143,6 +143,8 @@
     color: #ccc;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .tree-node:hover {
@@ -153,6 +155,17 @@
 .tree-node.selected {
     background: #333;
     color: var(--accent);
+}
+
+.tree-node.sync-ghost {
+    color: #88c0d0 !important;
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.tree-node.sync-ghost:hover {
+    opacity: 1;
+    background: rgba(136, 192, 208, 0.1);
 }
 
 .node-children {
@@ -340,4 +353,81 @@
     width: 2px;
     height: 45px;
     background: #444;
+}
+
+/* --- SYNC LAYER OVERLAY & GHOST ITEMS --- */
+.pipeta-block.sync-ghost {
+    font-style: italic;
+    color: #88c0d0 !important;
+    background: rgba(136, 192, 208, 0.05);
+    border-left: 3px dashed #88c0d0 !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.pipeta-block.sync-ghost:hover {
+    background: rgba(136, 192, 208, 0.12);
+    color: #eceff4 !important;
+}
+
+.pipeta-block.sync-pending-upload {
+    border-left: 3px solid #ebcb8b !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pipeta-block.sync-matched {
+    border-left: 3px solid #a3be8c !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sync-badge-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    font-weight: bold;
+    font-style: normal;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.15s;
+    white-space: nowrap;
+}
+
+.sync-badge-action:hover {
+    transform: scale(1.06);
+}
+
+.sync-badge-download {
+    background: rgba(136, 192, 208, 0.2);
+    border: 1px solid #88c0d0;
+    color: #88c0d0;
+}
+
+.sync-badge-download:hover {
+    background: #88c0d0;
+    color: #14161a;
+}
+
+.sync-badge-upload {
+    background: rgba(235, 203, 139, 0.2);
+    border: 1px solid #ebcb8b;
+    color: #ebcb8b;
+}
+
+.sync-badge-upload:hover {
+    background: #ebcb8b;
+    color: #14161a;
+}
+
+.sync-badge-ok {
+    color: #a3be8c;
+    font-size: 0.72rem;
+    padding: 0 4px;
 }

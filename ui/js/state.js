@@ -68,29 +68,113 @@ function refreshCurrentView() {
     }
 }
 
-function switchViewLocation(mode) {
+window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || 'local';
+window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'off'; // 'off' | 'drive' | 'server'
+window.pipetaSystemEnv = null;
+window.zEnvOverride = localStorage.getItem('pipeta_z_env_override') || 'auto'; // 'auto' | 'force_real' | 'force_fake'
+
+async function detectSystemEnvironment() {
+    try {
+        const res = await fetch('/api/sync/detect-env').then(r => r.json()).catch(() => null);
+        if (res && res.success) {
+            window.pipetaSystemEnv = res;
+            console.log('[ENV DETECT] Info de Unidades:', res.zInfo, res.sInfo);
+            if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
+            return res;
+        }
+    } catch (e) {
+        console.warn('[ENV DETECT] Error detectando entorno:', e);
+    }
+    return null;
+}
+
+// Ejecutar detección en segundo plano al cargar
+detectSystemEnvironment();
+
+function isZRealServer() {
+    const override = window.zEnvOverride || 'auto';
+    if (override === 'force_real') return true;
+    if (override === 'force_fake') return false;
+    return !!(window.pipetaSystemEnv && window.pipetaSystemEnv.zInfo && window.pipetaSystemEnv.zInfo.isRealServer);
+}
+
+function getZEnvStatusLabel() {
+    const override = window.zEnvOverride || 'auto';
+    if (override === 'force_real') return 'Forzado: Z Real (Servidor)';
+    if (override === 'force_fake') return 'Forzado: Z Local (Falso)';
+    if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return 'Detectando...';
+    const z = window.pipetaSystemEnv.zInfo;
+    if (z.isRealServer) return `Z: Servidor de Red (${z.target || 'LAN'})`;
+    if (z.type === 'subst') return `Z: Local Virtual (${z.target || 'vsubst'})`;
+    return `Z: Disco Local (${z.type})`;
+}
+
+async function setSyncComparisonMode(mode) {
+    window.syncComparisonMode = mode;
+    localStorage.setItem('pipeta_sync_comparison_mode', mode);
+
+    if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {
+        await loadActiveProjectSyncCatalog();
+    }
+
+    if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
+    refreshCurrentView();
+}
+
+async function refreshSyncCatalogManual() {
+    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+        settings.showToast('Actualizando catálogo de sincronización...', 'info', 3);
+    }
+    if (typeof loadActiveProjectSyncCatalog === 'function') {
+        await loadActiveProjectSyncCatalog(true);
+    }
+    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+        settings.showToast('Catálogo actualizado', 'success', 3);
+    }
+    refreshCurrentView();
+}
+
+async function switchViewLocation(mode) {
     window.viewLocationMode = mode;
-    updateHeaderTools('view-browser');
+    localStorage.setItem('pipeta_view_location_mode', mode);
+
+    // Solo cargar catálogo si vamos a explorar DRIVE y no está en memoria
+    if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {
+        await loadActiveProjectSyncCatalog();
+    }
+
+    if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
     refreshCurrentView();
 }
 
 function getCurrentRoots() {
-    // Priority: Settings project -> Fallback to ROOTS global
     const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
+    const mode = window.viewLocationMode || 'local';
+
     if (proj && proj.roots) {
-        if (window.viewLocationMode === 'online') {
+        if (mode === 'drive' || mode === 'online') {
             return {
-                work: proj.roots.onlineWork || proj.roots.work,
-                media: proj.roots.onlineMedia || proj.roots.media
+                work: proj.roots.onlineWork || `G:/Unidades compartidas/${proj.name || proj.projectCode}`,
+                media: proj.roots.onlineMedia || `G:/Unidades compartidas/${proj.name || proj.projectCode}_media`
             };
         }
+        if (mode === 'server') {
+            const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
+                ? settings.centralServerPath.replace(/\/+$/, '') 
+                : 'S:';
+            return {
+                work: (proj.roots.work || 'Z:').replace(/^Z:/i, serverPrefix),
+                media: (proj.roots.media || 'Z:').replace(/^Z:/i, serverPrefix)
+            };
+        }
+        // mode === 'local'
         return {
-            work: proj.roots.work,
-            media: proj.roots.media
+            work: proj.roots.work || 'Z:/',
+            media: proj.roots.media || 'Z:/'
         };
     }
     // Fallback if settings not loaded yet
-    return (typeof ROOTS !== 'undefined') ? ROOTS : { work: 'C:/', media: 'C:/' };
+    return (typeof ROOTS !== 'undefined') ? ROOTS : { work: 'Z:/', media: 'Z:/' };
 }
 
 // --- SPLIT DIVIDER DRAG ---

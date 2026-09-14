@@ -77,16 +77,24 @@ const settings = {
     // Persistence Logic
     projects: [],
     currentProject: null,
-    projectsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\Projects",
-    configPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\config.json",
+    projectsPath: (typeof window !== 'undefined' && (window.location.port === '3050' || window.location.port === '3005' || window.APP_VERSION?.includes('beta'))) ? "C:\\TOOLS\\APPS\\Pipeta_Beta\\presets\\Projects" : "C:\\TOOLS\\APPS\\Pipeta\\presets\\Projects",
+    configPath: (typeof window !== 'undefined' && (window.location.port === '3050' || window.location.port === '3005' || window.APP_VERSION?.includes('beta'))) ? "C:\\TOOLS\\APPS\\Pipeta_Beta\\presets\\config.json" : "C:\\TOOLS\\APPS\\Pipeta\\presets\\config.json",
 
     // Logging
     loggingEnabled: true,
-    logsPath: "C:\\TOOLS\\APPS\\Pipeta\\logs",
+    logsPath: (typeof window !== 'undefined' && (window.location.port === '3050' || window.location.port === '3005' || window.APP_VERSION?.includes('beta'))) ? "C:\\TOOLS\\APPS\\Pipeta_Beta\\logs" : "C:\\TOOLS\\APPS\\Pipeta\\logs",
 
     // Copy Engine (auto | native)
     copyEngine: 'auto',
     exportPresetsPath: "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets",
+
+    // Sync Configuration & State
+    syncMode: 'auto',
+    isFakeZ: false,
+    centralServerPath: 'S:/',
+    syncEnvData: null,
+    syncCatalogsData: [],
+    isLoadingSyncEnv: false,
 
     // --- PRESETS LOADING ---
     presetsList: [],
@@ -177,6 +185,12 @@ const settings = {
                     // Logging
                     if (typeof cfg.loggingEnabled !== 'undefined') settings.loggingEnabled = cfg.loggingEnabled;
                     if (cfg.logsPath) settings.logsPath = cfg.logsPath;
+
+                    // Sync & Storage Bridge
+                    if (cfg.syncMode) settings.syncMode = cfg.syncMode;
+                    if (typeof cfg.isFakeZ !== 'undefined') settings.isFakeZ = !!cfg.isFakeZ;
+                    if (cfg.centralServerPath) settings.centralServerPath = cfg.centralServerPath;
+                    if (cfg.copyEngine) settings.copyEngine = cfg.copyEngine;
                 }
             }
         } catch (e) {
@@ -185,12 +199,18 @@ const settings = {
     },
 
     saveConfig: async () => {
+        const isBeta = (typeof window !== 'undefined' && (window.location.port === '3050' || window.location.port === '3005' || window.APP_VERSION?.includes('beta')));
+        const defaultLogs = isBeta ? 'C:\\TOOLS\\APPS\\Pipeta_Beta\\logs' : 'C:\\TOOLS\\APPS\\Pipeta\\logs';
         const cfg = {
             defaultViewMode: settings.defaultViewMode || 'local',
             validationPresetAsset: settings.validationPresetAsset || null,
             validationPresetShot: settings.validationPresetShot || null,
             loggingEnabled: settings.loggingEnabled,
-            logsPath: settings.logsPath || 'C:\\TOOLS\\APPS\\Pipeta\\logs'
+            logsPath: settings.logsPath || defaultLogs,
+            syncMode: settings.syncMode || 'auto',
+            isFakeZ: !!settings.isFakeZ,
+            centralServerPath: settings.centralServerPath || 'S:/',
+            copyEngine: settings.copyEngine || 'auto'
         };
         try {
             if (window.API && API.fs && API.fs.writeFile) {
@@ -833,12 +853,78 @@ const settings = {
             settings.loadUsersConfig().then(() => settings.render());
         } else if (cat === 'statuses') {
             settings.loadStatusesConfig().then(() => settings.render());
+        } else if (cat === 'sincronizacion') {
+            settings.loadSyncEnvironment().then(() => settings.render());
         } else if (cat === 'proyecto' || cat === 'proyectos' || cat === 'avanzado') {
             settings.loadPresets().then(() => {
                 if (settings.currentCategory === cat) settings.render();
             });
         }
         settings.render();
+    },
+
+    loadSyncEnvironment: async () => {
+        settings.isLoadingSyncEnv = true;
+        try {
+            const resEnv = await fetch('/api/sync/detect-env');
+            if (resEnv.ok) {
+                settings.syncEnvData = await resEnv.json();
+            }
+            const resCat = await fetch('/api/sync/catalogs');
+            if (resCat.ok) {
+                const dataCat = await resCat.json();
+                settings.syncCatalogsData = dataCat.catalogs || [];
+            }
+            const resWorker = await fetch('/api/sync/worker-status');
+            if (resWorker.ok) {
+                const dataWorker = await resWorker.json();
+                settings.syncWorkerStatus = dataWorker.status || null;
+            }
+        } catch(e) {
+            console.error("Error loading sync environment:", e);
+        } finally {
+            settings.isLoadingSyncEnv = false;
+        }
+    },
+
+    generateProjectCatalogNow: async (projectName) => {
+        if (!projectName) return;
+        if (settings.isGeneratingCatalog) {
+            settings.showToast(`Ya se está escaneando el catálogo de "${projectName}". Por favor espera...`, 'warning', 4);
+            return;
+        }
+        settings.isGeneratingCatalog = true;
+        settings.showToast(`Escaneando Google Drive para "${projectName}"... Puede tardar unos 25-35s.`, 'info', 45, 'Indexando unidades compartidas');
+        settings.render();
+
+        try {
+            const res = await fetch('/api/sync/catalog/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project: projectName, mode: settings.syncMode || 'auto' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Invalidar caché del frontend completamente para que se reflejen los cambios al instante
+                window.pipetaSyncCatalog = null;
+                if (typeof loadActiveProjectSyncCatalog === 'function') {
+                    await loadActiveProjectSyncCatalog(true);
+                }
+                if (typeof refreshCurrentView === 'function') {
+                    refreshCurrentView();
+                }
+                const count = data.stats?.totalFiles || data.summary?.totalFiles || 0;
+                settings.showToast(`✅ Catálogo para "${projectName}" actualizado con éxito.`, 'success', 6, `${count} archivos indexados`);
+                await settings.loadSyncEnvironment();
+            } else {
+                settings.showToast(`❌ Error al indexar catálogo: ${data.error}`, 'error', 6);
+            }
+        } catch(e) {
+            settings.showToast(`❌ Error de conexión: ${e.message}`, 'error', 6);
+        } finally {
+            settings.isGeneratingCatalog = false;
+            settings.render();
+        }
     },
 
     updateGlobalProp(prop, value) {
@@ -963,62 +1049,242 @@ const settings = {
                 `;
             case 'sincronizacion':
                 const engine = settings.copyEngine || 'auto';
+                const syncMode = settings.syncMode || 'auto';
+                const isFakeZ = !!settings.isFakeZ;
+                const centralServer = settings.centralServerPath || 'S:/';
+                const env = settings.syncEnvData;
+                const catalogs = settings.syncCatalogsData || [];
+                const projects = settings.projects || [];
+                const worker = settings.syncWorkerStatus;
+
                 return `
-                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">Motor de Sincronización</h3>
-                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; font-size:0.85rem;">
-                        <span style="color:#888;">Estado:</span>
-                        <span style="color:${window.rcloneStatus?.available ? '#4CAF50' : '#f44336'}; font-weight:bold;">
-                            ${window.rcloneStatus?.available ? 'Conectado ⚡' : 'No Detectado ❌'}
-                        </span>
-                        ${window.rcloneStatus?.available ? `<span style="background:#333; padding:2px 6px; border-radius:4px; color:#4fc3f7;">v${window.rcloneStatus.version}</span>` : ''}
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
+                        <div>
+                            <h3 style="margin:0; color:#fff; display:flex; align-items:center; gap:8px;">
+                                <span>⚡ Sincronización & Entorno de Red</span>
+                                <span style="font-size:0.75rem; background:var(--accent); color:#000; padding:2px 7px; border-radius:4px; font-weight:bold;">Pipeta Sync v2</span>
+                            </h3>
+                            <p style="color:#888; margin:4px 0 0 0; font-size:0.85rem;">
+                                Detección inteligente de conectividad, catálogos offline para puestos sin internet y sincronización con almacenamiento central.
+                            </p>
+                        </div>
+                        <button class="btn" onclick="settings.loadSyncEnvironment().then(() => settings.render())" style="background:#222; border:1px solid #444; color:#4fc3f7; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
+                            <span>🔄</span> <span>${settings.isLoadingSyncEnv ? 'Analizando...' : 'Re-detectar Entorno'}</span>
+                        </button>
                     </div>
-                    <p style="color:#888; margin-bottom:20px; font-size:0.9rem;">
-                        Configura cómo Pipeta gestiona las copias de archivos entre Local (Z:) y Online (G:).
-                    </p>
 
-                    <div style="display:flex; flex-direction:column; gap:15px; background:rgba(255,255,255,0.03); padding:20px; border-radius:8px; border:1px solid #333;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:10px;">Motor de Copia Preferido</div>
+                    <!-- 1. DIAGNOSTICO EN TIEMPO REAL -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.85rem; margin-bottom:10px; display:flex; justify-content:space-between;">
+                            <span>📡 ESTADO DEL ENTORNO LOCAL & CLOUD</span>
+                            ${env ? `<span style="color:#888; font-weight:normal; font-size:0.75rem;">Recomendación: <b style="color:#4caf50;">${env.recommendedMode === 'online_gdrive' ? 'Google Drive G:' : (env.recommendedMode === 'online_rclone' ? 'Rclone Cloud' : 'Catálogo Offline')}</b></span>` : ''}
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                            <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🌐 Acceso a Internet</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.hasInternet ? '#4caf50' : (env ? '#f44336' : '#888')};">
+                                    ${env?.hasInternet ? '● Online (Conectado)' : (env ? '● Offline (Aislado)' : 'Consultando...')}
+                                </div>
+                            </div>
+                            <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">☁️ Google Drive Desktop (G:)</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.hasDriveG ? '#4caf50' : '#888'};">
+                                    ${env?.hasDriveG ? '● Detectado (G:/)' : '○ No Mapeado'}
+                                </div>
+                            </div>
+                            <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🤖 Sync Worker Central</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${worker?.isAlive ? '#4caf50' : '#f44336'};">
+                                    ${worker?.isAlive ? `● En Línea (${worker.hostname || 'VM 105'})` : '○ Desconectado'}
+                                </div>
+                                <div style="font-size:0.7rem; color:#666; margin-top:2px;">
+                                    ${worker?.isAlive ? `Ping: hace ${worker.diffSeconds}s • ${worker.status}` : 'No detectado'}
+                                </div>
+                            </div>
+                            <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">💾 Disco Z: (Hardware)</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.zInfo?.isRealServer ? '#4caf50' : '#ff9800'};">
+                                    ${env?.zInfo?.isRealServer ? `● Servidor Real (${env.zInfo.target})` : (env?.zInfo?.type === 'subst' ? `● Virtual (${env.zInfo.target})` : (env?.zInfo ? `● Local (${env.zInfo.type})` : 'Consultando...'))}
+                                </div>
+                            </div>
+                            <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🗄️ Servidor Central (S:)</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.sInfo?.available ? '#4caf50' : '#888'};">
+                                    ${env?.sInfo?.available ? `● Conectado (${env.sInfo.remote || 'S:'})` : '○ No Conectado'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. MODO DE COMPARACION DEL ANALYZER -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; margin-bottom:12px;">Modo de Comparación & Navegación (Sync Analyzer & Explorer)</div>
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'auto' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="auto" ${syncMode === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'auto')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#eee; font-size:0.88rem;">🤖 Automático Inteligente (Recomendado)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
+                                        Si la máquina tiene internet y disco G: mapeado, usa Google Drive directamente.<br>
+                                        Si no hay disco G: pero hay internet, usa Rclone.<br>
+                                        Si la máquina no tiene acceso a internet (puestos VFX aislados), conmuta a los <b>Catálogos Offline</b> en <code>Z:\\_SYNC_CACHE</code>.
+                                    </div>
+                                </div>
+                            </label>
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'online_gdrive' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="online_gdrive" ${syncMode === 'online_gdrive' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_gdrive')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.88rem;">☁️ Forzar Google Drive Desktop (Disco G:)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
+                                        Lee y compara directamente contra <code>G:/Unidades compartidas/</code>.
+                                    </div>
+                                </div>
+                            </label>
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'online_rclone' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="online_rclone" ${syncMode === 'online_rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_rclone')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#9c27b0; font-size:0.88rem;">🚀 Forzar Rclone Cloud Directo</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
+                                        Usa conexión cloud directa mediante binario de Rclone.
+                                    </div>
+                                </div>
+                            </label>
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'offline_catalog' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="offline_catalog" ${syncMode === 'offline_catalog' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'offline_catalog')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#ff9800; font-size:0.88rem;">🗄️ Forzar Catálogo Offline (Z:\\_SYNC_CACHE)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
+                                        Usa exclusivamente los snapshots JSON guardados en el disco local o servidor central. Cero tráfico hacia internet.
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 3. DETECCION DE ENTORNO Z & OVERRIDE DE DESARROLLO -->
+                    ${(() => {
+                        const currentOverride = window.zEnvOverride || 'auto';
+                        const detectedLabel = typeof getZEnvStatusLabel === 'function' ? getZEnvStatusLabel() : 'Detectando...';
+                        return `
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#fff; font-size:0.9rem; display:flex; align-items:center; gap:8px;">
+                                        <span>🖥️ Entorno de Disco Z: (Detección & Override)</span>
+                                        <span style="font-size:0.75rem; background:#1c2430; color:#88c0d0; padding:2px 6px; border-radius:4px;">${detectedLabel}</span>
+                                    </div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:3px;">
+                                        Pipeta detecta automáticamente si tu Z: es el servidor real de red o un disco local/vsubst. Puedes forzar un modo manualmente para desarrollo o pruebas.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:12px;">
+                                <label style="display:flex; gap:10px; cursor:pointer; padding:10px; border-radius:6px; border:1px solid ${currentOverride === 'auto' ? 'var(--accent)' : '#282828'}; background:${currentOverride === 'auto' ? 'rgba(255,255,255,0.05)' : '#111'};">
+                                    <input type="radio" name="zEnvOverride" value="auto" ${currentOverride === 'auto' ? 'checked' : ''} 
+                                           onchange="window.zEnvOverride='auto'; localStorage.setItem('pipeta_z_env_override', 'auto'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
+                                    <div>
+                                        <div style="font-weight:bold; color:#eee; font-size:0.85rem;">🤖 Auto-detectar (Recomendado)</div>
+                                        <div style="font-size:0.76rem; color:#888; margin-top:2px;">Usa comandos nativos de Windows para identificar red vs vsubst.</div>
+                                    </div>
+                                </label>
+                                <label style="display:flex; gap:10px; cursor:pointer; padding:10px; border-radius:6px; border:1px solid ${currentOverride === 'force_real' ? '#4caf50' : '#282828'}; background:${currentOverride === 'force_real' ? 'rgba(76,175,80,0.1)' : '#111'};">
+                                    <input type="radio" name="zEnvOverride" value="force_real" ${currentOverride === 'force_real' ? 'checked' : ''} 
+                                           onchange="window.zEnvOverride='force_real'; localStorage.setItem('pipeta_z_env_override', 'force_real'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
+                                    <div>
+                                        <div style="font-weight:bold; color:#4caf50; font-size:0.85rem;">🏢 Forzar: Z es Servidor Real</div>
+                                        <div style="font-size:0.76rem; color:#888; margin-top:2px;">Trata a Z: como almacenamiento central del estudio.</div>
+                                    </div>
+                                </label>
+                                <label style="display:flex; gap:10px; cursor:pointer; padding:10px; border-radius:6px; border:1px solid ${currentOverride === 'force_fake' ? '#ff9800' : '#282828'}; background:${currentOverride === 'force_fake' ? 'rgba(255,152,0,0.1)' : '#111'};">
+                                    <input type="radio" name="zEnvOverride" value="force_fake" ${currentOverride === 'force_fake' ? 'checked' : ''} 
+                                           onchange="window.zEnvOverride='force_fake'; localStorage.setItem('pipeta_z_env_override', 'force_fake'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
+                                    <div>
+                                        <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">💻 Forzar: Z es Falso / Scratch Local</div>
+                                        <div style="font-size:0.76rem; color:#888; margin-top:2px;">Habilita comparación y copias contra Server Central (S:).</div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div style="margin-top:15px; padding-top:12px; border-top:1px solid #333;">
+                                <label style="display:block; font-size:0.82rem; color:#ccc; margin-bottom:6px; font-weight:bold;">
+                                    Ruta al Servidor Central Real (Z: Verdadero del Estudio):
+                                </label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" value="${escapeHtml(centralServer)}" 
+                                           oninput="settings.centralServerPath = this.value; settings.saveConfig();"
+                                           placeholder="S:/ o \\\\\\\\192.168.206.116\\\\Z"
+                                           style="flex:1; background:#111; border:1px solid #444; border-radius:4px; padding:7px 10px; color:#fff; font-family:monospace; font-size:0.85rem; outline:none;">
+                                </div>
+                                <div style="font-size:0.75rem; color:#888; margin-top:6px;">
+                                    ℹ️ En la vista LOCAL del Explorer, puedes activar <b>COMPARAR: [🗄️ SERVER]</b> para contrastar tu disco local contra esta ruta y copiar plates o renders.
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    })()}
+
+                    <!-- 4. CATALOGOS DE PROYECTO INDEXADOS -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <div>
+                                <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">📦 Catálogos Indexados de Proyecto (Z:\\_SYNC_CACHE)</div>
+                                <div style="font-size:0.8rem; color:#888; margin-top:2px;">Snapshots livianos en JSON de las unidades compartidas de Google Drive para consulta offline instantánea.</div>
+                            </div>
+                        </div>
                         
-                        <label style="display:flex; gap:15px; cursor:pointer; padding:10px; border-radius:4px; transition:background 0.2s; align-items:flex-start;">
-                            <input type="radio" name="copyEngine" value="auto" ${engine === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'auto')" style="margin-top:4px;">
-                            <div>
-                                <div style="font-weight:bold; color:#eee;">🤖 Automático (Recomendado)</div>
-                                <div style="font-size:0.85rem; color:#888; margin-top:4px;">
-                                    Usa <b>Rclone</b> si está disponible para máxima velocidad y confiabilidad.<br>
-                                    Si no se detecta, usa automáticamente la copia nativa de Windows.
-                                </div>
-                            </div>
-                        </label>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            ${projects.filter(p => !p.isBase && p.id !== 'proj_base').map(p => {
+                                const pName = p.name || p.projectCode || p.id;
+                                const cat = catalogs.find(c => c.project === pName);
+                                const sizeKb = cat ? (cat.size / 1024).toFixed(1) : 0;
+                                const mtime = cat ? new Date(cat.mtime).toLocaleString() : null;
 
-                        <div style="height:1px; background:#333; margin:5px 0;"></div>
-
-                        <label style="display:flex; gap:15px; cursor:pointer; padding:10px; border-radius:4px; transition:background 0.2s; align-items:flex-start;">
-                            <input type="radio" name="copyEngine" value="rclone" ${engine === 'rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'rclone')" style="margin-top:4px;">
-                            <div>
-                                <div style="font-weight:bold; color:#4fc3f7;">🚀 Forzar Rclone</div>
-                                <div style="font-size:0.85rem; color:#888; margin-top:4px;">
-                                    Intenta usar siempre Rclone. <span style="color:#f44336;">Fallará</span> si Rclone no está instalado o configurado correctamente.
-                                </div>
-                            </div>
-                        </label>
-
-                        <div style="height:1px; background:#333; margin:5px 0;"></div>
-
-                        <label style="display:flex; gap:15px; cursor:pointer; padding:10px; border-radius:4px; transition:background 0.2s; align-items:flex-start;">
-                            <input type="radio" name="copyEngine" value="native" ${engine === 'native' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'native')" style="margin-top:4px;">
-                            <div>
-                                <div style="font-weight:bold; color:#ff9800;">📁 Forzar Copia Nativa (Windows)</div>
-                                <div style="font-size:0.85rem; color:#888; margin-top:4px;">
-                                    Usa siempre el sistema de archivos de Windows. Más lento pero 100% compatible sin dependencias externas. Útil si Rclone da problemas.
-                                </div>
-                            </div>
-                        </label>
+                                return `
+                                    <div style="display:flex; justify-content:space-between; align-items:center; background:#111; border:1px solid #2a2a2a; border-radius:6px; padding:10px 14px;">
+                                        <div>
+                                            <div style="font-weight:bold; color:#eee; font-size:0.88rem; display:flex; align-items:center; gap:8px;">
+                                                <span>📁 ${escapeHtml(pName)}</span>
+                                                ${cat ? `<span style="font-size:0.72rem; background:#1b5e20; color:#a5d6a7; padding:2px 6px; border-radius:3px;">Indexado (${sizeKb} KB)</span>` : `<span style="font-size:0.72rem; background:#333; color:#aaa; padding:2px 6px; border-radius:3px;">Sin Catálogo</span>`}
+                                            </div>
+                                            <div style="font-size:0.75rem; color:#777; margin-top:3px; font-family:monospace;">
+                                                ${cat ? `Última actualización: ${mtime} | Archivo: Z:/_SYNC_CACHE/${escapeHtml(pName)}.json` : `Ruta Drive: ${escapeHtml(p.roots?.onlineWork || 'G:/Unidades compartidas/' + pName)}`}
+                                            </div>
+                                        </div>
+                                        <button class="btn" onclick="settings.generateProjectCatalogNow('${escapeHtml(pName)}')" style="background:#222; border:1px solid #444; color:var(--accent); padding:6px 12px; border-radius:4px; font-size:0.8rem; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                                            <span>⚡</span> <span>${cat ? 'Actualizar Catálogo' : 'Generar Catálogo'}</span>
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('') || '<div style="color:#777; font-size:0.82rem; font-style:italic;">No hay proyectos activos configurados.</div>'}
+                        </div>
                     </div>
 
-                    <div style="margin-top:20px; padding:15px; background:rgba(33,150,243,0.1); border-left:4px solid #2196F3; border-radius:4px;">
-                        <div style="font-weight:bold; color:#2196F3; margin-bottom:5px;">ℹ️ Nota</div>
-                        <div style="font-size:0.85rem; color:#ccc;">
-                            Esta configuración afecta tanto al Explorador de Archivos como al Sync Analyzer. Los cambios se aplican inmediatamente al guardar.
+                    <!-- 5. MOTOR DE TRANSFERENCIA EN BACKGROUND -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:10px; font-size:0.9rem;">Motor de Transferencia en Background</div>
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="auto" ${engine === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'auto')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#eee; font-size:0.85rem;">🤖 Automático (Recomendado)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa Rclone si está disponible para máxima velocidad; si no, copia nativa de Windows.</div>
+                                </div>
+                            </label>
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="rclone" ${engine === 'rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'rclone')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.85rem;">🚀 Forzar Rclone</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Intenta usar siempre Rclone.</div>
+                                </div>
+                            </label>
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="native" ${engine === 'native' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'native')" style="margin-top:3px;">
+                                <div>
+                                    <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">📁 Forzar Copia Nativa (Windows)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa siempre el sistema de archivos de Windows.</div>
+                                </div>
+                            </label>
                         </div>
                     </div>
                 `;
@@ -1165,6 +1431,22 @@ const settings = {
                                        onchange="settings.updateProjectProp('roots.onlineMedia', this.value)">
                             </div>
                         </div>
+
+                        ${!isBase ? `
+                            <div style="margin-top:20px; background:#12161f; border:1px solid #28303d; border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-weight:bold; color:#fff; font-size:0.85rem; display:flex; align-items:center; gap:6px;">
+                                        <span>⚡ Catálogo de Google Drive (Rclone)</span>
+                                    </div>
+                                    <div style="color:#888; font-size:0.75rem; margin-top:3px;">
+                                        Escanea en vivo las unidades compartidas de Google Drive asociadas a este proyecto y guarda el índice centralizado en el servidor.
+                                    </div>
+                                </div>
+                                <button type="button" class="btn" ${settings.isGeneratingCatalog ? 'disabled' : ''} onclick="settings.generateProjectCatalogNow('${escapeHtml(cp.name)}')" style="background:${settings.isGeneratingCatalog ? '#333' : 'var(--accent)'}; color:${settings.isGeneratingCatalog ? '#aaa' : '#000'}; font-weight:bold; font-size:0.8rem; padding:7px 16px; border:none; border-radius:4px; cursor:${settings.isGeneratingCatalog ? 'wait' : 'pointer'}; display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                                    ${settings.isGeneratingCatalog ? '<span class="spinner-mini" style="width:10px; height:10px;"></span> <span>Escaneando Drive (~30s)...</span>' : '<span>🔄 Actualizar Catálogo</span>'}
+                                </button>
+                            </div>
+                        ` : ''}
                     `;
                 } else if (activeSubTab === 'presets_proyecto') {
                     const isReadOnly = isBase ? !settings.devMode : !cp.overrideBasePresets;

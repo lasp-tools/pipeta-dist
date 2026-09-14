@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeta - Pipeline Manager v1.0.02</title>
+    <title>Pipeta Beta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/components.css">
@@ -26,8 +26,8 @@
         <div class="header-zone-brand">
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
-                <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.0.02</span>
+                <h1 class="app-title">PIPETA <span style="font-size: 0.6em; color: #ebcb8b; vertical-align: middle;">[BETA]</span></h1>
+                <span class="app-version" id="appVersion">v1.0.02-beta</span>
             </div>
         </div>
 
@@ -95,6 +95,13 @@
                     <option style="background:#161c24; color:#ffffff;">Cargando...</option>
                 </select>
             </div>
+
+            <!-- SYNC QUEUE MONITOR (Worker VM 105) -->
+            <button id="headerTransferQueueBtn" class="control-btn" title="Cola de Transferencias & Estado Worker VM 105" onclick="if (window.syncQueueUI) window.syncQueueUI.toggle();" style="width:auto; min-width:34px; padding:0 8px; gap:6px; position:relative;">
+                <span id="headerSyncWorkerDot" style="width:7px; height:7px; border-radius:50%; background:#888; flex-shrink:0;" title="Estado del Worker"></span>
+                <span style="font-size:0.95rem;">⚡</span>
+                <span id="headerTransferCountBadge" style="display:none; background:#ff9800; color:#000; font-size:0.7rem; font-weight:bold; border-radius:10px; padding:1px 6px; line-height:1.2;">0</span>
+            </button>
 
             <button class="control-btn" title="Maximizar Canvas / Modo Pantalla Completa" onclick="toggleCanvasFullscreen()">
                 <span style="font-size:0.9rem;">🔲</span>
@@ -723,6 +730,7 @@
     <script src="js/shot-creator.js"></script>
     <script src="js/tutorials.js"></script>
     <script src="js/sync-analyzer.js"></script>
+    <script src="js/sync-queue.js"></script>
     <script src="js/ia-ingest.js"></script>
     <script src="js/file-auditor.js"></script>
     <script src="js/shot-navigator.js"></script>

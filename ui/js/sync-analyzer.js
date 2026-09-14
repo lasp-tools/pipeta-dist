@@ -988,10 +988,82 @@ class SyncAnalyzer {
 
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
                     <button onclick="syncAnalyzer.hideOverlay()" style="padding:8px 18px; background:#2a2a2a; color:#ccc; border:1px solid #444; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">Cancelar</button>
-                    <button onclick="syncAnalyzer.proceedSync('${direction}')" style="padding:8px 26px; background:${accentColor}; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">CONFIRMAR</button>
+                    <button onclick="syncAnalyzer.enqueueWorkerSync('${direction}')" style="padding:8px 16px; background:#ff9800; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;" title="Enviar lote al Worker de la VM 105 para procesar en segundo plano">⚡ Encolar en Worker</button>
+                    <button onclick="syncAnalyzer.proceedSync('${direction}')" style="padding:8px 24px; background:${accentColor}; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">CONFIRMAR DIRECTO</button>
                 </div>
             </div>
         `);
+    }
+
+    async enqueueWorkerSync(direction) {
+        this.hideOverlay();
+        const effectiveDiffs = this.onlyFolders
+            ? this.differences.filter(d => d.isDirectory)
+            : this.differences;
+
+        const items = effectiveDiffs.filter(d => d.selected);
+        const relevant = direction === 'push'
+            ? items.filter(d => d.type === 'local-only')
+            : items.filter(d => d.type === 'online-only');
+
+        if (relevant.length === 0) return;
+
+        const proj = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'proyecto';
+        const user = (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista';
+
+        const orderItems = relevant.map(d => {
+            const fileName = d.name || d.relativePath.split('/').pop();
+            if (direction === 'push') {
+                return {
+                    name: fileName,
+                    isDir: !!d.isDirectory,
+                    localPath: d.localPath,
+                    onlinePath: d.onlinePath,
+                    relativePath: d.relativePath,
+                    size: d.size || 0
+                };
+            } else {
+                return {
+                    name: fileName,
+                    isDir: !!d.isDirectory,
+                    onlinePath: d.onlinePath,
+                    targetLocalPath: d.localPath,
+                    relativePath: d.relativePath,
+                    size: d.size || 0
+                };
+            }
+        });
+
+        const endpoint = direction === 'push' ? '/api/sync/request-upload' : '/api/sync/request-download';
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project: proj,
+                    user: user,
+                    items: orderItems
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const label = direction === 'push' ? 'subida' : 'descarga';
+                const toastMsg = `Orden de ${label} #${data.orderId.slice(-6)} encolada en Worker (${orderItems.length} items)`;
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast(toastMsg, 'success', 5);
+                } else {
+                    alert(`✅ ${toastMsg}`);
+                }
+                if (window.syncQueueUI) {
+                    window.syncQueueUI.fetchStatus();
+                    window.syncQueueUI.open();
+                }
+            } else {
+                alert(`❌ Error al encolar en Worker: ${data.error}`);
+            }
+        } catch(err) {
+            alert(`❌ Error de conexión: ${err.message}`);
+        }
     }
 
     async proceedSync(direction) {

@@ -97,6 +97,7 @@ class ContextMenu {
 
         return [
             { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi) },
+            { label: 'Refrescar Carpeta', icon: '🔄', action: (p) => this.refreshFolder(p, isDir) },
             { separator: true },
             { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false) },
             { label: `Cortar${labelSuffix}`, icon: '✂️', action: (p) => this.copyToClipboard(true) },
@@ -112,6 +113,70 @@ class ContextMenu {
     }
 
     // --- ACTIONS ---
+
+    async refreshFolder(targetPath, isDir) {
+        let folderPath = targetPath;
+        if (!isDir && folderPath) {
+            const sep = folderPath.lastIndexOf('\\') > -1 ? '\\' : '/';
+            folderPath = folderPath.substring(0, folderPath.lastIndexOf(sep));
+        }
+        if (!folderPath) {
+            if (window.selectedPaths && window.selectedPaths.size > 0) {
+                folderPath = Array.from(window.selectedPaths)[0];
+            }
+        }
+        if (!folderPath) return;
+
+        const folderName = folderPath.split(/[\\/]/).pop() || folderPath;
+        const compMode = window.syncComparisonMode || 'off';
+        const projName = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
+
+        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            settings.showToast(`Refrescando "${folderName}"...`, 'info', 4);
+        }
+
+        try {
+            if (compMode === 'drive') {
+                // Escaneo scoped ultra-rápido de sólo esta subcarpeta en Google Drive vía Rclone
+                const res = await fetch('/api/sync/catalog/refresh-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project: projName, path: folderPath })
+                }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+
+                if (res && res.success) {
+                    if (typeof loadActiveProjectSyncCatalog === 'function') {
+                        await loadActiveProjectSyncCatalog(true);
+                    }
+                    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                        settings.showToast(`✅ "${folderName}" actualizada (${res.itemsCount || 0} items en Drive)`, 'success', 3);
+                    }
+                } else {
+                    console.warn("[REFRESH FOLDER] Fallback drive:", res?.error);
+                    if (typeof loadActiveProjectSyncCatalog === 'function') {
+                        await loadActiveProjectSyncCatalog(true);
+                    }
+                }
+            } else if (compMode === 'server') {
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast(`✅ "${folderName}" sincronizada con Servidor`, 'success', 3);
+                }
+            } else {
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast(`✅ "${folderName}" refrescada`, 'success', 2);
+                }
+            }
+
+            if (typeof refreshCurrentView === 'function') {
+                refreshCurrentView();
+            }
+        } catch(err) {
+            console.error("Error refreshing folder:", err);
+            if (typeof refreshCurrentView === 'function') {
+                refreshCurrentView();
+            }
+        }
+    }
 
     async openInExplorer(path, multi) {
         if (!path && typeof selectedContextPath !== 'undefined' && selectedContextPath) {

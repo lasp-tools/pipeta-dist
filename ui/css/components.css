@@ -604,3 +604,29 @@ body.canvas-fullscreen .settings-window.maximized {
     font-style: italic;
     opacity: 0.75;
 }
+
+/* SYNC QUEUE ANIMATIONS & STYLES */
+@keyframes pulseSyncGlow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        border-color: #4caf50;
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+        border-color: #81c784;
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+        border-color: #4caf50;
+    }
+}
+
+.pulse-sync {
+    animation: pulseSyncGlow 1.8s infinite !important;
+    border-color: #4caf50 !important;
+}
+
+#headerTransferQueueBtn:hover {
+    border-color: #555;
+    background: #2f2f2f;
+}

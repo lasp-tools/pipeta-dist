@@ -5,8 +5,8 @@ const open = require('open');
 const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
-const PORT = 3002;
-const VERSION = "v1.0.02";
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3050;
+const VERSION = "v1.0.02-beta";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -84,6 +84,297 @@ app.get('/api/config', (req, res) => {
     }
 });
 
+// --- SYNC CATALOG API ---
+const catalogGenerator = require('./sync_catalog_generator');
+
+app.get('/api/sync/detect-env', async (req, res) => {
+    try {
+        const dns = require('dns').promises;
+        let hasInternet = false;
+        try {
+            await Promise.race([
+                dns.lookup('google.com'),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+            ]);
+            hasInternet = true;
+        } catch (e) {
+            hasInternet = false;
+        }
+
+        const hasDriveG = fs.existsSync('G:/Unidades compartidas') || fs.existsSync('G:/');
+        const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE');
+
+        // Detección automática de Z: (Real vs Falso / Subst / Local)
+        let zInfo = { isRealServer: false, type: 'unknown', target: '' };
+        let sInfo = { available: false, remote: '' };
+
+        try {
+            const substOut = execSync('subst', { encoding: 'utf8', timeout: 1500 });
+            const match = substOut.match(/Z:\\: => ([^\r\n]+)/i);
+            if (match) {
+                zInfo = { isRealServer: false, type: 'subst', target: match[1].trim() };
+            }
+        } catch (e) {}
+
+        try {
+            const netOut = execSync('net use', { encoding: 'utf8', timeout: 1500 });
+            const zNet = netOut.match(/Z:\s+([^\s\r\n]+)/i);
+            if (zNet) {
+                zInfo = { isRealServer: true, type: 'network', target: zNet[1].trim() };
+            }
+            const sNet = netOut.match(/S:\s+([^\s\r\n]+)/i);
+            if (sNet) {
+                sInfo = { available: true, remote: sNet[1].trim() };
+            }
+        } catch (e) {}
+
+        // Fallback para Z si existe físicamente y no está en net use
+        if (zInfo.type === 'unknown' && fs.existsSync('Z:/')) {
+            zInfo = { isRealServer: false, type: 'local', target: 'Disco Local' };
+        }
+
+        let recommendedMode = 'offline_catalog';
+        if (hasInternet) {
+            recommendedMode = hasDriveG ? 'online_gdrive' : 'online_rclone';
+        }
+
+        res.json({
+            success: true,
+            hasInternet,
+            hasDriveG,
+            hasSyncCache,
+            recommendedMode,
+            zInfo,
+            sInfo,
+            rcloneAvailable: rcloneAvailable,
+            rcloneVersion: rcloneVersion
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/catalogs', async (req, res) => {
+    try {
+        const list = await catalogGenerator.listAvailableCatalogs();
+        res.json({ success: true, catalogs: list });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/catalog/:project', async (req, res) => {
+    try {
+        const projectName = req.params.project;
+        const catalog = await catalogGenerator.loadProjectCatalog(projectName);
+        if (!catalog) {
+            return res.status(404).json({ success: false, error: `Catálogo no encontrado para el proyecto ${projectName}` });
+        }
+        res.json({ success: true, catalog });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/catalog/generate', async (req, res) => {
+    try {
+        const { project, mode } = req.body;
+        if (!project) {
+            return res.status(400).json({ success: false, error: 'Parámetro project requerido' });
+        }
+        const result = await catalogGenerator.generateProjectCatalog(project, { mode: mode || 'auto' });
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// --- SYNC DOWNLOAD & UPLOAD REQUEST ORDERS ---
+const ORDERS_DIR = fs.existsSync('S:/_SYNC_CACHE/requests') ? 'S:/_SYNC_CACHE/requests' : 'Z:/_SYNC_CACHE/requests';
+
+async function checkInternetQuickly() {
+    try {
+        const dns = require('dns').promises;
+        await Promise.race([
+            dns.lookup('google.com'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1200))
+        ]);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
+    try {
+        const { project, path: folderPath } = req.body;
+        if (!project || !folderPath) {
+            return res.status(400).json({ success: false, error: 'Parámetros project y path requeridos' });
+        }
+
+        const hasInternet = await checkInternetQuickly();
+
+        // 1. Si la máquina local tiene internet, intentar ejecutar de forma local ultra-rápida (~1s)
+        if (hasInternet) {
+            try {
+                const result = await catalogGenerator.refreshCatalogSubfolder(project, folderPath);
+                if (result && result.success) {
+                    return res.json(result);
+                }
+            } catch (localErr) {
+                console.warn("[CATALOG REFRESH FOLDER] Falló ejecución local, delegando a Worker:", localErr.message);
+            }
+        }
+
+        // 2. Si la máquina no tiene internet (o falló localmente), delegar al Worker central (VM 105)
+        console.log(`[CATALOG REFRESH FOLDER] Delegando consulta de '${folderPath}' al Worker central en servidor...`);
+        if (!fs.existsSync(ORDERS_DIR)) {
+            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        }
+
+        const reqId = `rf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const reqFile = path.join(ORDERS_DIR, `${reqId}.json`);
+
+        fs.writeJsonSync(reqFile, {
+            id: reqId,
+            type: 'refresh_folder',
+            project,
+            path: folderPath,
+            status: 'pending',
+            user: os.userInfo ? os.userInfo().username : 'unknown',
+            createdAt: new Date().toISOString()
+        }, { spaces: 2 });
+
+        // Esperar respuesta del Worker (polling hasta 15 segundos)
+        const waitStart = Date.now();
+        while (Date.now() - waitStart < 15000) {
+            await new Promise(r => setTimeout(r, 400));
+            if (fs.existsSync(reqFile)) {
+                try {
+                    const data = fs.readJsonSync(reqFile);
+                    if (data.status === 'completed') {
+                        try { fs.removeSync(reqFile); } catch(e){}
+                        return res.json(data.result || { success: true, delegated: true });
+                    } else if (data.status === 'failed') {
+                        try { fs.removeSync(reqFile); } catch(e){}
+                        return res.status(500).json({ success: false, error: data.error || 'Worker no pudo refrescar la carpeta' });
+                    }
+                } catch(readErr) {}
+            }
+        }
+
+        return res.status(504).json({ success: false, error: 'Tiempo de espera agotado esperando al Worker de sincronización' });
+
+    } catch (err) {
+        console.error("[CATALOG REFRESH FOLDER] Error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/request-download', async (req, res) => {
+    try {
+        const { project, items, user } = req.body;
+        if (!project || !items || !items.length) {
+            return res.status(400).json({ success: false, error: 'Parámetros project e items son requeridos' });
+        }
+
+        if (!fs.existsSync(ORDERS_DIR)) {
+            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        }
+
+        const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const orderData = {
+            id: orderId,
+            type: 'download',
+            project,
+            user: user || (os.userInfo ? os.userInfo().username : 'unknown'),
+            createdAt: new Date().toISOString(),
+            status: 'pending',
+            items
+        };
+
+        const filePath = path.join(ORDERS_DIR, `${orderId}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+
+        console.log(`[SYNC ORDER] Orden de descarga creada: ${orderId} (${items.length} items) para ${project}`);
+        res.json({ success: true, orderId, count: items.length, status: 'pending' });
+    } catch (err) {
+        console.error("Sync request-download error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/request-upload', async (req, res) => {
+    try {
+        const { project, items, user } = req.body;
+        if (!project || !items || !items.length) {
+            return res.status(400).json({ success: false, error: 'Parámetros project e items son requeridos' });
+        }
+
+        if (!fs.existsSync(ORDERS_DIR)) {
+            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        }
+
+        const orderId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const orderData = {
+            id: orderId,
+            type: 'upload',
+            project,
+            user: user || (os.userInfo ? os.userInfo().username : 'unknown'),
+            createdAt: new Date().toISOString(),
+            status: 'pending',
+            items
+        };
+
+        const filePath = path.join(ORDERS_DIR, `${orderId}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+
+        console.log(`[SYNC ORDER] Orden de subida creada: ${orderId} (${items.length} items) para ${project}`);
+        res.json({ success: true, orderId, count: items.length, status: 'pending' });
+    } catch (err) {
+        console.error("Sync request-upload error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/orders', (req, res) => {
+    try {
+        if (!fs.existsSync(ORDERS_DIR)) {
+            return res.json({ success: true, orders: [] });
+        }
+        const files = fs.readdirSync(ORDERS_DIR).filter(f => f.endsWith('.json'));
+        const orders = [];
+        for (const f of files) {
+            try {
+                const content = JSON.parse(fs.readFileSync(path.join(ORDERS_DIR, f), 'utf8'));
+                orders.push(content);
+            } catch(e){}
+        }
+        orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        res.json({ success: true, orders: orders.slice(0, 50) });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/worker-status', (req, res) => {
+    try {
+        const statusFile = fs.existsSync('S:/_SYNC_CACHE/worker_status.json')
+            ? 'S:/_SYNC_CACHE/worker_status.json'
+            : 'Z:/_SYNC_CACHE/worker_status.json';
+        if (fs.existsSync(statusFile)) {
+            const status = fs.readJsonSync(statusFile);
+            const diffSeconds = (Date.now() - new Date(status.lastPing).getTime()) / 1000;
+            status.isAlive = diffSeconds < 20;
+            status.diffSeconds = Math.round(diffSeconds);
+            return res.json({ success: true, status });
+        }
+        res.json({ success: true, status: { isAlive: false, message: 'Worker no detectado' } });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/fs/list', (req, res) => {
     let requestedPath = req.query.path;
 
@@ -91,9 +382,16 @@ app.get('/api/fs/list', (req, res) => {
         let targetPath = null;
 
         if (requestedPath) {
-            let safeP = decodeURIComponent(requestedPath);
+            let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
             if (fs.existsSync(safeP)) {
                 targetPath = safeP;
+            } else if (safeP.toLowerCase().startsWith('g:/') || safeP.toLowerCase() === 'g:') {
+                // Fallback a catálogo offline en Z:/_SYNC_CACHE
+                const catalogItems = catalogGenerator.listFromCatalog(safeP);
+                if (catalogItems !== null) {
+                    return res.json({ path: safeP, items: catalogItems, exists: true, fromCatalog: true });
+                }
+                return res.json({ path: safeP, items: [], exists: false });
             } else {
                 return res.json({ path: safeP, items: [], exists: false });
             }
