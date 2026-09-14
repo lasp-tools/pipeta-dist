@@ -153,7 +153,7 @@
       "id": "node_media_unit",
       "type": "unit",
       "name": "Z",
-      "x": 51.666666666666664,
+      "x": 55.1612772360925,
       "y": 420,
       "parent": null,
       "isMirrorOn": true
@@ -162,7 +162,7 @@
       "id": "node_media_interno",
       "type": "folder",
       "name": "INTERNO",
-      "x": 251.66666666666666,
+      "x": 255.1612772360925,
       "y": 420,
       "parent": "node_media_unit"
     },
@@ -349,7 +349,7 @@
       "id": "n_1787324439017",
       "type": "unit",
       "name": "G",
-      "x": 37.69779187515453,
+      "x": 41.19240244458037,
       "y": 552.2587502978394,
       "parent": null,
       "isVariable": false

@@ -49,7 +49,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v1.0.01 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.0.02 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 timeout /t 2 >nul

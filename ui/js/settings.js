@@ -2028,7 +2028,7 @@ const settings = {
                             <label style="font-size:0.8rem; color:#888; display:block; margin-bottom:6px;">Carpeta de Salida para el archivo comprimido:</label>
                             <div style="display:flex; gap:8px;">
                                 <input type="text" id="pkgTargetDir" class="config-input" 
-                                    value="${settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts'}" 
+                                    value="${settings.pkgTargetDir || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS'}" 
                                     oninput="settings.pkgTargetDir = this.value"
                                     style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:#00bcd4;">
                                 <button id="pkgBrowseBtn" class="btn" onclick="settings.browsePackageDir()" 
@@ -2080,7 +2080,7 @@ const settings = {
                             </div>
                             <div style="display:flex; justify-content:space-between;">
                                 <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v1.0.01'}</span>
+                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v1.0.02'}</span>
                             </div>
                         </div>
 
@@ -2107,8 +2107,16 @@ const settings = {
 
                         <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.0.01 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.0.02 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Detección de Instancia en Acceso Directo:</b> Si Pipeta ya está en ejecución, el acceso directo abre directamente el navegador sin provocar bloqueos ni errores de puerto ocupado.</li>
+                                    <li><b>Ruta Default de Exportación de Paquetes:</b> Destino predeterminado de compresión y publicación establecido en <code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS</code>.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.0.01</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
                                     <li><b>Versión Oficial de Estudio:</b> Lanzamiento de Pipeta 1.0 para todo el equipo.</li>
                                     <li><b>Migración & Publicación Automatizada:</b> Ubicación canónica en <code>APPS\Pipeta</code> y flujo de publicación directo a <code>S:</code> (el <code>Z:</code> real de los artistas).</li>
                                     <li><b>Actualizador Multi-Origen:</b> Detección automática tanto en unidad mapeada como en recurso compartido <code>\\LASP-VM\Pipeta</code>.</li>
@@ -2192,7 +2200,7 @@ const settings = {
 
     openPackageTargetDir: async () => {
         const input = document.getElementById('pkgTargetDir');
-        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS').trim();
         try {
             await API.fs.openFolder(current.replace(/\\/g, '/'));
         } catch(e) {
@@ -2318,17 +2326,17 @@ const settings = {
     },
 
     setDefaultPackageDir: () => {
-        const defaultPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts';
+        const defaultPath = 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS';
         const input = document.getElementById('pkgTargetDir');
         if (input) input.value = defaultPath;
         settings.pkgTargetDir = defaultPath;
         const msg = document.getElementById('pkgStatusMsg');
-        if (msg) msg.innerHTML = '<span style="color:#aaa;">Ruta de salida restablecida a la carpeta Scripts de Z:</span>';
+        if (msg) msg.innerHTML = '<span style="color:#aaa;">Ruta de salida restablecida a Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS</span>';
     },
 
     browsePackageDir: async () => {
         const input = document.getElementById('pkgTargetDir');
-        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        const current = (input ? input.value : settings.pkgTargetDir || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS').trim();
         const btn = document.getElementById('pkgBrowseBtn');
         if (btn) btn.innerHTML = '<span>⏳ Abriendo...</span>';
         try {
@@ -2351,7 +2359,7 @@ const settings = {
 
     executePackageZip: async () => {
         const input = document.getElementById('pkgTargetDir');
-        const targetDir = (input ? input.value : settings.pkgTargetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts').trim();
+        const targetDir = (input ? input.value : settings.pkgTargetDir || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS').trim();
         if (!targetDir) {
             alert("Por favor especifica una carpeta de salida para el archivo .ZIP.");
             return;

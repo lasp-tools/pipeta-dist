@@ -1,0 +1,23 @@
+{
+  "id": "proj_1789061172555",
+  "name": "PRPR",
+  "client": "amazon",
+  "projectCode": "pride_and_prejudice",
+  "roots": {
+    "work": "Z:\\amazon\\pride_and_prejudice",
+    "media": "Z:\\INTERNO\\MEDIA\\amazon\\pride_and_prejudice",
+    "onlineWork": "G:\\Unidades compartidas\\pride_and_prejudice",
+    "onlineMedia": "G:\\Unidades compartidas\\pride_and_prejudice_media"
+  },
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  },
+  "isBase": false
+}

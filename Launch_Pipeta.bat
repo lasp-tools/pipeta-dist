@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.0.01"
+set "APP_VERSION=v1.0.02"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
 set "NETWORK_DIR=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
@@ -14,6 +14,21 @@ set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 set "PIPETA_SUPERVISED=1"
 
 title %APP_NAME% %APP_VERSION% Manager
+
+:: Si Pipeta ya esta corriendo en segundo plano, abrir directamente el navegador y salir
+if not exist "%RESTART_FLAG%" (
+    curl.exe -s -f -m 1 http://localhost:3002/api/version >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo ====================================================
+        echo   %APP_NAME% - %APP_VERSION%
+        echo ====================================================
+        echo [INFO] Pipeta ya se encuentra en ejecucion en segundo plano.
+        echo [INFO] Abriendo aplicacion en el navegador...
+        start "" "http://localhost:3002"
+        ping 127.0.0.1 -n 2 >nul
+        exit
+    )
+)
 
 :: 1. Detectar si estamos ejecutando desde el disco local C:
 if /i "%~dp0"=="%LOCAL_DIR%\" goto :RUN_LOCAL

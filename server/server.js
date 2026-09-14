@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = 3002;
-const VERSION = "v1.0.01";
+const VERSION = "v1.0.02";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -472,7 +472,7 @@ app.post('/api/templates/findReference', async (req, res) => {
 
 // --- PORTABLE PACKAGE EXPORTER (.ZIP + .BAT EXTRACTOR) ---
 app.post('/api/system/package-dist', async (req, res) => {
-    let targetDir = req.body?.targetDir || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts';
+    let targetDir = req.body?.targetDir || 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS';
     targetDir = targetDir.replace(/\//g, '\\');
 
     const pipetaRoot = path.resolve(__dirname, '..');
