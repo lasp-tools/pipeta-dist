@@ -12,6 +12,8 @@ class SyncQueueUI {
         this.pollingInterval = null;
         this.prevOrderStates = new Map();
         this.prevWorkerAlive = null;
+        this.isMaximized = false; // Por defecto siempre ventana flotante al abrir Pipeta
+        this.prevBounds = null;
 
         window.syncQueueUI = this;
         this.init();
@@ -129,14 +131,17 @@ class SyncQueueUI {
         this.container.style.zIndex = '9999';
 
         this.container.innerHTML = `
-            <div class="validator-header" id="sync-queue-header" onmousedown="window.syncQueueUI.startDrag(event)" style="display:flex; justify-content:space-between; align-items:center; cursor:move; user-select:none;">
+            <div class="validator-header" id="sync-queue-header" onmousedown="window.syncQueueUI.startDrag(event)" ondblclick="window.syncQueueUI.toggleMaximize()" style="display:flex; justify-content:space-between; align-items:center; cursor:move; user-select:none;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:1.1rem;">⚡</span>
-                    <b style="font-weight:bold; font-size:0.92rem; color:#fff;">Cola de Transferencias & Sync Worker</b>
+                    <span style="font-size:1.1rem; color:#ff9800;">⚡</span>
+                    <b style="font-weight:bold; font-size:0.92rem; color:#fff;">Sync Queue</b>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <button class="icon-btn-mini" onclick="window.syncQueueUI.fetchStatus()" title="Refrescar ahora" style="background:transparent; border:none; color:#4fc3f7; cursor:pointer; font-size:1rem;">🔄</button>
-                    <button class="icon-btn-mini" style="color:#f44336; background:transparent; border:none; cursor:pointer; font-size:1.1rem;" onclick="window.syncQueueUI.close()">✕</button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button class="icon-btn-mini" onclick="window.syncQueueUI.fetchStatus()" title="Refrescar ahora" style="background:transparent; border:none; color:#4fc3f7; cursor:pointer; font-size:1rem; padding:2px 6px;">🔄</button>
+                    <button id="sync-queue-max-btn" class="icon-btn-mini" onclick="window.syncQueueUI.toggleMaximize()" title="${this.isMaximized ? 'Restaurar a Ventana Flotante' : 'Maximizar a Canvas Completo'}" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-size:1.05rem; padding:2px 6px; line-height:1; display:flex; align-items:center;">
+                        ${this.isMaximized ? '🗗' : '🗖'}
+                    </button>
+                    <button class="icon-btn-mini" style="color:#f44336; background:transparent; border:none; cursor:pointer; font-size:1.1rem; padding:2px 6px; line-height:1;" onclick="window.syncQueueUI.close()">✕</button>
                 </div>
             </div>
 
@@ -168,6 +173,81 @@ class SyncQueueUI {
         `;
 
         document.body.appendChild(this.container);
+        if (this.isMaximized) {
+            this.applyMaximizedState();
+        }
+    }
+
+    toggleMaximize() {
+        this.isMaximized = !this.isMaximized;
+        this.applyMaximizedState();
+    }
+
+    applyMaximizedState() {
+        if (!this.container) return;
+        const maxBtn = document.getElementById('sync-queue-max-btn');
+        if (this.isMaximized) {
+            if (!this.container.classList.contains('maximized')) {
+                this.prevBounds = {
+                    width: this.container.style.width || '680px',
+                    height: this.container.style.height || '560px',
+                    top: this.container.style.top || '65px',
+                    left: this.container.style.left || 'auto',
+                    right: this.container.style.right || '20px'
+                };
+            }
+            this.container.classList.add('maximized');
+            if (maxBtn) {
+                maxBtn.innerHTML = '🗗';
+                maxBtn.title = 'Restaurar a Ventana Flotante';
+            }
+        } else {
+            this.container.classList.remove('maximized');
+            if (this.prevBounds) {
+                this.container.style.width = this.prevBounds.width;
+                this.container.style.height = this.prevBounds.height;
+                this.container.style.top = this.prevBounds.top;
+                this.container.style.left = this.prevBounds.left;
+                this.container.style.right = this.prevBounds.right;
+            }
+            if (maxBtn) {
+                maxBtn.innerHTML = '🗖';
+                maxBtn.title = 'Maximizar a Canvas Completo';
+            }
+        }
+        this.updateSidebarButtonsState();
+    }
+
+    updateSidebarButtonsState() {
+        const btnQueue = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
+        const modeButtons = document.querySelectorAll('.mode-sidebar .mode-btn');
+
+        if (this.isVisible && this.isMaximized) {
+            if (btnQueue) btnQueue.classList.add('active');
+            modeButtons.forEach(b => {
+                if (b !== btnQueue && b.id !== 'btn-settings-toggle' && b.id !== 'btn-console-toggle') {
+                    b.classList.remove('active');
+                }
+            });
+        } else if (this.isVisible) {
+            if (btnQueue) btnQueue.classList.add('active');
+        } else {
+            if (btnQueue) btnQueue.classList.remove('active');
+            // Restaurar clase active en el botón del módulo actualmente visible
+            if (typeof tabs !== 'undefined') {
+                const currentTabName = Object.keys(tabs).find(k => {
+                    const el = document.getElementById(tabs[k]);
+                    return el && el.style.display !== 'none';
+                });
+                if (currentTabName) {
+                    modeButtons.forEach(btn => {
+                        if (btn.getAttribute('title') === currentTabName) {
+                            btn.classList.add('active');
+                        }
+                    });
+                }
+            }
+        }
     }
 
     toggle() {
@@ -182,9 +262,9 @@ class SyncQueueUI {
         this.renderWindow();
         this.container.style.display = 'flex';
         this.container.style.flexDirection = 'column';
+        this.applyMaximizedState();
         this.isVisible = true;
-        const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
-        if (btn) btn.classList.add('active');
+        this.updateSidebarButtonsState();
         this.fetchStatus();
     }
 
@@ -193,8 +273,7 @@ class SyncQueueUI {
             this.container.style.display = 'none';
         }
         this.isVisible = false;
-        const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
-        if (btn) btn.classList.remove('active');
+        this.updateSidebarButtonsState();
     }
 
     selectTab(tab) {
@@ -377,6 +456,7 @@ class SyncQueueUI {
     }
 
     startDrag(e) {
+        if (this.isMaximized) return;
         if (e.target.closest('button')) return;
         const win = this.container;
         let shiftX = e.clientX - win.getBoundingClientRect().left;

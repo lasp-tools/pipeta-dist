@@ -57,11 +57,7 @@ class MirrorAuditor {
                         <button class="action-btn-small" style="flex:1;" onclick="mirrorAuditor.runAudit('all')">🌎 Auditar Proyecto Completo</button>
                         <button class="action-btn-small" style="flex:1;" onclick="mirrorAuditor.runAudit('selection')">📂 Auditar Selección</button>
                     </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">
-                            <input type="checkbox" id="mirror-omit-control" ${this.omitControlFiles ? 'checked' : ''} onchange="mirrorAuditor.toggleOmitControl(this.checked)">
-                            <span>Omitir archivos de control (<code>vfx_control.json</code>)</span>
-                        </label>
+                    <div style="display:flex; justify-content:flex-end; align-items:center;">
                         <span id="mirror-audit-roots-summary" style="font-size:0.7rem; color:#666;">-</span>
                     </div>
                 </div>

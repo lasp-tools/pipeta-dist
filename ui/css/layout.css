@@ -5,7 +5,7 @@
     display: flex;
     flex: 1;
     overflow: hidden;
-    height: calc(100vh - 60px);
+    height: calc(100vh - 68px);
     /* Adjusted for taller header */
 }
 
@@ -26,7 +26,7 @@
 
 /* HEADER REDESIGN */
 .header-bar {
-    height: 60px;
+    height: 68px;
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -85,7 +85,7 @@
     padding: 4px 10px;
     border-radius: 4px;
     border: 1px solid #333;
-    min-width: 155px;
+    min-width: 175px;
 }
 
 .project-selector {
@@ -131,8 +131,8 @@
 }
 
 #headerUserAvatar {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #ff9800;
     flex-shrink: 0;
@@ -388,6 +388,103 @@
     padding: 0;
 }
 
+#toolsPanel-Browser {
+    width: 300px;
+    min-width: 300px;
+    flex-shrink: 0;
+    transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, border-color 0.2s ease;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+#toolsPanel-Browser > .prop-row,
+#toolsPanel-Browser > .prop-section,
+#toolsPanel-Browser > #prop-metadata-section {
+    padding-left: 15px;
+    padding-right: 15px;
+}
+
+#toolsPanel-Browser > .prop-row:first-of-type {
+    margin-top: 15px;
+}
+
+#toolsPanel-Browser.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-left: none !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden;
+}
+
+.panel-collapse-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.panel-collapse-btn:hover {
+    background: #333;
+    color: #4fc3f7;
+}
+
+.properties-expand-tab {
+    width: 22px;
+    min-width: 22px;
+    background: #181c24;
+    border-left: 1px solid #283240;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: background 0.15s ease, width 0.15s ease;
+    padding: 12px 0;
+    gap: 12px;
+    z-index: 5;
+    flex-shrink: 0;
+}
+
+.properties-expand-tab:hover {
+    background: #222b38;
+    width: 26px;
+    min-width: 26px;
+}
+
+.properties-expand-tab:hover .expand-chevron {
+    transform: translateX(-2px);
+    color: #81d4fa;
+}
+
+.properties-expand-tab .expand-chevron {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #4fc3f7;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.properties-expand-tab .expand-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #78909c;
+}
+
 .panel-header,
 .panel-heading {
     padding: 10px 15px;
@@ -503,6 +600,51 @@
     border-radius: 6px;
     padding: 2px 6px 3px 6px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar-stacked-container {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    justify-content: center;
+}
+
+.toolbar-section-compact {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background: #172233;
+    border: 1px solid #283c5a;
+    border-radius: 5px;
+    padding: 2px 7px;
+    height: 27px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.toolbar-section-compact .toolbar-section-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: #6d8db5;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    line-height: 1;
+    margin: 0 8px 0 0;
+    min-width: 80px;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.toolbar-section-compact .toolbar-section-content {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.toolbar-section-compact .tool-btn {
+    height: 21px;
+    padding: 2px 5px;
+    border-radius: 3px;
 }
 
 .toolbar-section-label {

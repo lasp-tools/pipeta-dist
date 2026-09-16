@@ -125,10 +125,13 @@
       "email": "",
       "avatarColor": "#ff9800",
       "notes": "",
-      "isSystem": false
+      "isSystem": false,
+      "authSource": "ramon"
     }
   ],
   "activeUser": "admin",
+  "autoRegisterRamonUsers": true,
+  "defaultRamonRole": "user",
   "hasAdminPassword": true,
   "adminPassword": "Pipetadmin.321"
 }

@@ -83,12 +83,12 @@ const Tutorials = {
                     </div>
                 </div>
 
-                <h3 style="color:#FF9800; border-bottom:1px solid #333; padding-bottom:5px;">Panel Lateral de Metadata e Integridad</h3>
-                <p style="color:#ccc; font-size:0.9rem;">Al seleccionar cualquier carpeta, el panel lateral derecho inspecciona su contenido:</p>
+                <h3 style="color:#FF9800; border-bottom:1px solid #333; padding-bottom:5px;">Panel Lateral de Propiedades</h3>
+                <p style="color:#ccc; font-size:0.9rem;">Al seleccionar cualquier carpeta o archivo, el panel lateral derecho muestra sus propiedades:</p>
                 <ul style="list-style:none; padding:0; line-height:2;">
-                    <li style="color:#aaa;">📄 <b style="color:#fff;">vfx_control.json:</b> Informa qué preset, qué nodo y qué usuario creó la estructura.</li>
-                    <li style="color:#aaa;">🔍 <b style="color:#fff;">Validación Jerárquica:</b> El validador sabe en qué nivel te encuentras (Episodio, Secuencia, Shot o Proceso) y comprueba únicamente las carpetas que le corresponden a ese nivel según el preset.</li>
-                    <li style="color:#aaa;">🛠️ <b style="color:#ff5722;">Reparar Estructura:</b> Si faltan subcarpetas obligatorias, un botón rojo de reparación creará exclusivamente las carpetas hijas directas que falten.</li>
+                    <li style="color:#aaa;">📄 <b style="color:#fff;">Ruta y Selección:</b> Nombre, ruta completa y formato de archivo o carpeta.</li>
+                    <li style="color:#aaa;">🎞️ <b style="color:#fff;">Secuencias de Imágenes:</b> Frames, rango (inicio/fin) y peso consolidado.</li>
+                    <li style="color:#aaa;">☁️ <b style="color:#fff;">Ubicación:</b> Estado de sincronización entre Local, Google Drive y Servidor Central.</li>
                 </ul>
 
                 <div style="background:#1a2a1a; padding:12px; border-radius:8px; border-left:4px solid #4CAF50; margin-top:15px;">

@@ -233,6 +233,60 @@ function scanWithRclone(remotePath) {
 }
 
 /**
+ * Lista los hijos directos de un directorio remoto vía rclone (no recursivo, rápido)
+ */
+function listWithRclone(remotePath) {
+    if (!fs.existsSync(RCLONE_EXE)) return null;
+
+    const norm = normalizeSlash(remotePath);
+    let driveName = '';
+    let relSubPath = '';
+
+    const match = norm.match(/(?:Unidades compartidas\/|lasp-drive:)([^/]+)(?:\/(.*))?$/i);
+    if (match) {
+        driveName = match[1];
+        relSubPath = match[2] || '';
+    } else {
+        const matchG = norm.match(/^G:\/([^/]+)(?:\/(.*))?$/i);
+        if (matchG) {
+            driveName = matchG[1];
+            relSubPath = matchG[2] || '';
+        }
+    }
+
+    if (!driveName) return null;
+
+    const teamDrives = getTeamDrivesMap();
+    const teamDriveId = teamDrives[driveName.toLowerCase()];
+    if (!teamDriveId) return null;
+
+    const rcloneTarget = relSubPath ? `lasp-drive:${relSubPath}` : `lasp-drive:`;
+    const confArg = RCLONE_CONF ? `--config "${RCLONE_CONF}" ` : '';
+    const cmd = `"${RCLONE_EXE}" ${confArg}lsjson "${rcloneTarget}" --drive-team-drive "${teamDriveId}"`;
+
+    try {
+        const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 20, encoding: 'utf-8', timeout: 30000 });
+        const rawItems = JSON.parse(stdout);
+        const baseNorm = norm.replace(/\/+$/, '');
+
+        return rawItems.map(item => ({
+            name: item.Name,
+            isDirectory: !!item.IsDir,
+            path: `${baseNorm}/${item.Name}`,
+            size: item.Size || 0,
+            modTime: item.ModTime || null,
+            fromRclone: true
+        })).sort((a, b) => {
+            if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+            return a.isDirectory ? -1 : 1;
+        });
+    } catch (e) {
+        console.warn(`[RCLONE LIST] Error listando ${remotePath}:`, e.message);
+        return null;
+    }
+}
+
+/**
  * Genera datos mock canónicos para desarrollo cuando no hay conexión física a G:
  */
 function generateMockItems(category, projectCode) {
@@ -1696,7 +1750,8 @@ module.exports = {
     listFromModularCatalog,
     refreshSubCatalog,
     getModularManifest,
-    clearMemoryCaches
+    clearMemoryCaches,
+    listWithRclone
 };
 
 // --- CLI RUNNER ---

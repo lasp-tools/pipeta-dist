@@ -1203,10 +1203,6 @@ const ShotCreator = {
                                   ` : ''}
                               </div>
 
-                              <div style="display:flex; align-items:center;">
-                                  <input type="checkbox" id="sc-inject-meta" checked style="accent-color:#4CAF50; cursor:pointer;">
-                                  <label for="sc-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:8px; color:#888; font-size:0.8rem; cursor:pointer;">Inyectar vfx_control.json</label>
-                              </div>
                         </div>
                     </div>
                 </div>
@@ -1328,7 +1324,6 @@ const ShotCreator = {
         const destProject = document.getElementById('sc-dest-project')?.checked || false;
         const destMedia = document.getElementById('sc-dest-media')?.checked || false;
         const destMediaFull = document.getElementById('sc-media-full')?.checked || false;
-        const injectMeta = document.getElementById('sc-inject-meta')?.checked || false;
 
         ShotCreator.pendingCreation = {
             mode: 'create',
@@ -1341,7 +1336,6 @@ const ShotCreator = {
             destProject,
             destMedia,
             destMediaFull,
-            injectMeta,
             fullTargetPath: targetPath,
             mirrorTargetPath: mirrorPath,
             level: ShotCreator.creationLevel
@@ -1396,7 +1390,7 @@ const ShotCreator = {
     },
 
     executeCreation: async () => {
-        const { mode, shotName, categoryPath, targetCategoryNode, targets, checkedProcs, checkedMediaNodes, fullTargetPath, level, checkedEpFolders, destProject, destMedia, destMediaFull, mirrorTargetPath, injectMeta } = ShotCreator.pendingCreation;
+        const { mode, shotName, categoryPath, targetCategoryNode, targets, checkedProcs, checkedMediaNodes, fullTargetPath, level, checkedEpFolders, destProject, destMedia, destMediaFull, mirrorTargetPath } = ShotCreator.pendingCreation;
 
         ShotCreator.showOverlay(`
             <div class="spinner-large" style="border-top-color:var(--accent);"></div>
@@ -1430,10 +1424,7 @@ const ShotCreator = {
 
                         const allAllowed = checkedProcs.concat(checkedEpFolders);
 
-                        // Inject Root Metadata
-                        if (injectMeta) await ShotCreator.writeMetadataFile(mainNode, finalPath);
-
-                        await ShotCreator.createNodesRecursively(mainNode.id, finalPath, ShotCreator.selectedPreset.nodes, allAllowed, shotName, true, {}, injectMeta);
+                        await ShotCreator.createNodesRecursively(mainNode.id, finalPath, ShotCreator.selectedPreset.nodes, allAllowed, shotName, true, {});
                         if (typeof PipetaConsole !== 'undefined') {
                             PipetaConsole.log('create', ` ↳ [SHOT WORK] 📁 Estructura creada en: ${finalPath}`, 'ok');
                         }
@@ -1452,13 +1443,9 @@ const ShotCreator = {
                         const mirrorConn = ShotCreator.selectedPreset.connections.find(c => c.from === mainNode.id && (c.fromPort === 'mirror' || c.toPort === 'mirror'));
                         if (mirrorConn) {
                             const mirrorNodeId = (mirrorConn.from === mainNode.id) ? mirrorConn.to : mirrorConn.from;
-                            const mirrorNode = ShotCreator.selectedPreset.nodes.find(n => n.id === mirrorNodeId);
-
-                            // Inject Root Metadata
-                            if (injectMeta && mirrorNode) await ShotCreator.writeMetadataFile(mirrorNode, mirrorTargetPath);
 
                             // For Mirror, we pass 'checkedMediaNodes' and the 'destMediaFull' flag
-                            await ShotCreator.createNodesRecursively(mirrorNodeId, mirrorTargetPath, ShotCreator.selectedPreset.nodes, checkedMediaNodes, shotName, destMediaFull, {}, injectMeta);
+                            await ShotCreator.createNodesRecursively(mirrorNodeId, mirrorTargetPath, ShotCreator.selectedPreset.nodes, checkedMediaNodes, shotName, destMediaFull, {});
                             if (typeof PipetaConsole !== 'undefined') {
                                 PipetaConsole.log('create', ` ↳ [SHOT MEDIA] 📁 Espejo creado en: ${mirrorTargetPath}`, 'ok');
                             }
@@ -1598,31 +1585,9 @@ const ShotCreator = {
         return res;
     },
 
-    writeMetadataFile: async (node, fullPath) => {
-        if (!ShotCreator.selectedPreset || !node) return;
-        const metaData = {
-            preset_id: ShotCreator.selectedPreset.id,
-            node_id: node.id,
-            node_name: node.name,
-            node_config: {
-                nameConfig: node.nameConfig || null,
-                processConfig: node.processConfig || null,
-                isRenderFolder: node.isRenderFolder || false,
-                isRenderFile: node.isRenderFile || false,
-                variableName: node.variableName || null
-            },
-            creation_date: new Date().toISOString(),
-            user: ShotCreator.systemInfo ? ShotCreator.systemInfo.username : "unknown"
-        };
-        const metaPath = fullPath + "/vfx_control.json";
-        try {
-            await API.fs.writeFile(metaPath, JSON.stringify(metaData, null, 2));
-        } catch (e) {
-            console.error("Error injecting metadata to:", metaPath, e);
-        }
-    },
+    writeMetadataFile: async () => {},
 
-    createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], shotName = "", isFullMedia = true, inheritedVars = {}, injectMeta = false) => {
+    createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], shotName = "", isFullMedia = true, inheritedVars = {}) => {
         const levelWeight = { 'episode': 1, 'scene': 2, 'shot': 3 };
         const currentWeight = levelWeight[ShotCreator.creationLevel] || 99;
 
@@ -1805,15 +1770,9 @@ const ShotCreator = {
             const fullPath = parentPath + "/" + finalName;
             try { await API.fs.mkdir(fullPath); } catch (e) { }
 
-            // --- METADATA INJECTION (vfx_control.json) ---
-            if (injectMeta) {
-                await ShotCreator.writeMetadataFile(child, fullPath);
-            }
-            // ----------------------------------------------
-
             // Recurse
             if (isFullMedia || !isFilterableNode) {
-                await ShotCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, shotName, isFullMedia, ctx.vars, injectMeta);
+                await ShotCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, shotName, isFullMedia, ctx.vars);
             }
         }
     },

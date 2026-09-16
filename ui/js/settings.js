@@ -69,10 +69,16 @@ const CANONICAL_BASE_PRESETS = {
 
 const settings = {
     isVisible: false,
-    currentCategory: 'proyecto',
+    currentCategory: 'interfaz',
     projectSubTab: 'id_nombre',
     container: null,
     devMode: false,
+
+    // UI View Preferences
+    defaultViewMode: 'local', // 'local' | 'drive' | 'server'
+    defaultBrowserMode: 'split', // 'split' (Vista Clásica) | 'pipeta' (Miller View)
+    defaultSyncComparisonMode: 'drive', // 'drive' | 'server'
+    localAccordionOpen: false,
 
     // Persistence Logic
     projects: [],
@@ -176,7 +182,11 @@ const settings = {
                 const content = await API.fs.readFile(settings.configPath);
                 if (content) {
                     const cfg = JSON.parse(content);
-                    if (cfg.defaultViewMode) settings.defaultViewMode = cfg.defaultViewMode;
+                    if (cfg.defaultViewMode) {
+                        settings.defaultViewMode = (cfg.defaultViewMode === 'online') ? 'drive' : cfg.defaultViewMode;
+                    }
+                    if (cfg.defaultBrowserMode) settings.defaultBrowserMode = cfg.defaultBrowserMode;
+                    if (cfg.defaultSyncComparisonMode) settings.defaultSyncComparisonMode = cfg.defaultSyncComparisonMode;
 
                     // Validation Presets
                     if (cfg.validationPresetAsset) settings.validationPresetAsset = cfg.validationPresetAsset;
@@ -203,6 +213,8 @@ const settings = {
         const defaultLogs = isBeta ? 'C:\\TOOLS\\APPS\\Pipeta_Beta\\logs' : 'C:\\TOOLS\\APPS\\Pipeta\\logs';
         const cfg = {
             defaultViewMode: settings.defaultViewMode || 'local',
+            defaultBrowserMode: settings.defaultBrowserMode || 'split',
+            defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'drive',
             validationPresetAsset: settings.validationPresetAsset || null,
             validationPresetShot: settings.validationPresetShot || null,
             loggingEnabled: settings.loggingEnabled,
@@ -216,6 +228,11 @@ const settings = {
             if (window.API && API.fs && API.fs.writeFile) {
                 await API.fs.writeFile(settings.configPath, JSON.stringify(cfg, null, 2));
             }
+            try {
+                localStorage.setItem('pipeta_view_location_mode', cfg.defaultViewMode);
+                localStorage.setItem('pipeta_browser_mode', cfg.defaultBrowserMode);
+                localStorage.setItem('pipeta_sync_comparison_mode', cfg.defaultSyncComparisonMode);
+            } catch(e){}
         } catch (e) {
             console.error("Error saving config:", e);
         }
@@ -790,16 +807,14 @@ const settings = {
 
     renderMenu() {
         const items = [
+            { id: 'interfaz', label: '🎨 Interfaz' },
+            { id: 'shortcuts', label: '⌨️ Atajos de Teclado' },
             { id: 'proyecto', label: '📁 Proyectos' },
             { id: 'users', label: '👤 User Settings', restricted: true },
-            { id: 'statuses', label: '🏷️ Diseñador Estados', restricted: true },
-            { id: 'workflow', label: '🗂️ Workflow & Sync DB', restricted: true },
-            { id: 'interfaz', label: '🎨 Interfaz & Canvas' },
-            { id: 'shortcuts', label: '⌨️ Atajos de Teclado' },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
             { id: 'avanzado', label: '⚙️ Avanzado' },
-            { id: 'exportar', label: '📦 Exportar Presets' },
-            { id: 'version', label: '🚀 Versión & Updates' }
+            { id: 'exportar', label: '📦 Update / Export Presets' },
+            { id: 'version', label: '🚀 Versión / Patch Notes' }
         ];
 
         return items.map(i => `
@@ -845,7 +860,12 @@ const settings = {
     },
 
     setCategory(cat) {
-        const restricted = ['users', 'statuses', 'workflow'];
+        if (cat === 'statuses' || cat === 'workflow') {
+            cat = 'avanzado';
+            settings.localAccordionOpen = true;
+        }
+
+        const restricted = ['users'];
         if (restricted.includes(cat) && !settings.isAdminUnlocked()) {
             settings.promptAdminPassword(cat);
             return;
@@ -854,12 +874,14 @@ const settings = {
         settings.currentCategory = cat;
         if (cat === 'users') {
             settings.loadUsersConfig().then(() => settings.render());
-        } else if (cat === 'statuses') {
-            settings.loadStatusesConfig().then(() => settings.render());
         } else if (cat === 'sincronizacion') {
             settings.loadSyncEnvironment().then(() => settings.render());
-        } else if (cat === 'proyecto' || cat === 'proyectos' || cat === 'avanzado') {
+        } else if (cat === 'proyecto' || cat === 'proyectos') {
             settings.loadPresets().then(() => {
+                if (settings.currentCategory === cat) settings.render();
+            });
+        } else if (cat === 'avanzado') {
+            Promise.all([settings.loadPresets(), settings.loadStatusesConfig()]).then(() => {
                 if (settings.currentCategory === cat) settings.render();
             });
         }
@@ -1891,6 +1913,36 @@ const settings = {
                         </select>
                     </div>
 
+                    <!-- Integración & Auto-Registro Ramón (TACTIC) -->
+                    <div style="background:rgba(0,188,212,0.04); border:1px solid #00bcd433; border-radius:6px; padding:14px; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="font-size:1.1rem;">🌐</span>
+                                <b style="color:#00bcd4; font-size:0.9rem;">Integración & Auto-Registro de Ramón (TACTIC)</b>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#eee; font-size:0.8rem;">
+                                    <input type="checkbox" ${uData.autoRegisterRamonUsers !== false ? 'checked' : ''} 
+                                        onchange="settings.updateUsersConfigProp('autoRegisterRamonUsers', this.checked)"
+                                        style="accent-color:#00bcd4; width:15px; height:15px;">
+                                    <span>Auto-registrar usuarios al iniciar sesión</span>
+                                </label>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="color:#aaa; font-size:0.8rem;">Rol por defecto:</span>
+                                    <select onchange="settings.updateUsersConfigProp('defaultRamonRole', this.value)" 
+                                            style="background:#14171d; color:var(--accent); border:1px solid #444; border-radius:4px; padding:3px 8px; font-size:0.8rem;">
+                                        ${(uData.roles || []).map(r => `
+                                            <option value="${r.id}" ${(uData.defaultRamonRole || 'user') === r.id ? 'selected' : ''}>${r.name} (${r.id})</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color:#888; font-size:0.75rem; margin:0; line-height:1.4;">
+                            Los artistas del estudio que inicien sesión con sus credenciales de red en este equipo se vincularán automáticamente con el rol por defecto seleccionado (<b>${(uData.roles || []).find(r => r.id === (uData.defaultRamonRole || 'user'))?.name || 'Artista'}</b>). Luego puedes cambiarles el rol a Cordinadora, Administrador u otro rol personalizado desde la tabla inferior con el botón ✏️.
+                        </p>
+                    </div>
+
                     <!-- Tabla de Usuarios -->
                     <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px; margin-bottom:25px;">
                         <h4 style="margin:0 0 12px 0; color:#eee;">Listado de Usuarios (${(uData.users || []).length})</h4>
@@ -1898,6 +1950,7 @@ const settings = {
                             <thead>
                                 <tr style="border-bottom:1px solid #444; color:#888; font-size:0.75rem; text-transform:uppercase;">
                                     <th style="padding:8px;">Nombre de Usuario</th>
+                                    <th style="padding:8px;">Origen</th>
                                     <th style="padding:8px;">Nombre</th>
                                     <th style="padding:8px;">Apellido</th>
                                     <th style="padding:8px;">Usuario LASP</th>
@@ -1911,12 +1964,24 @@ const settings = {
                                 ${(uData.users || []).map(u => {
                                     const roleObj = (uData.roles || []).find(r => r.id === u.role) || { name: u.role || 'user', color: '#888' };
                                     const uName = u.username || (u.laspUser ? u.laspUser.replace('lasp-', '') : u.id);
+                                    const isRamon = u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-'));
                                     return `
                                         <tr style="border-bottom:1px solid #222;">
                                             <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
                                                 <div style="width:10px; height:10px; border-radius:50%; background:${u.avatarColor || '#ff9800'};"></div>
                                                 <b style="color:#fff; font-family:monospace;">${uName}</b>
                                                 ${u.isSystem ? '<span style="font-size:0.65rem; background:#333; color:#aaa; padding:1px 4px; border-radius:3px;">default</span>' : ''}
+                                            </td>
+                                            <td style="padding:10px 8px;">
+                                                ${isRamon ? `
+                                                    <span style="background:rgba(0,188,212,0.15); color:#00bcd4; border:1px solid #00bcd455; padding:2px 7px; border-radius:4px; font-size:0.72rem; font-weight:bold; display:inline-flex; align-items:center; gap:4px;">
+                                                        <span>🌐</span> Ramón
+                                                    </span>
+                                                ` : `
+                                                    <span style="background:rgba(255,152,0,0.12); color:#ff9800; border:1px solid #ff980044; padding:2px 7px; border-radius:4px; font-size:0.72rem; font-weight:bold; display:inline-flex; align-items:center; gap:4px;">
+                                                        <span>💻</span> Local
+                                                    </span>
+                                                `}
                                             </td>
                                             <td style="padding:10px 8px; color:#ccc;">${u.firstName || '—'}</td>
                                             <td style="padding:10px 8px; color:#ccc;">${u.lastName || '—'}</td>
@@ -2050,119 +2115,89 @@ const settings = {
                 `;
 
             case 'statuses':
-                const sData = settings.statusesData || { statuses: [] };
-                return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
-                        <div>
-                            <h3 style="margin:0;">🏷️ Diseñador de Estados (Shots / Assets)</h3>
-                            <p style="margin:4px 0 0 0; color:#888; font-size:0.85rem;">Define y personaliza los estados de procesos y avance aplicables a shots y assets.</p>
-                        </div>
-                        <button class="btn" onclick="settings.addStatusModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer;">
-                            + Nuevo Estado
-                        </button>
-                    </div>
-
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:15px;">
-                        <table style="width:100%; border-collapse:collapse; font-size:0.85rem; text-align:left;">
-                            <thead>
-                                <tr style="border-bottom:1px solid #444; color:#888; font-size:0.75rem; text-transform:uppercase;">
-                                    <th style="padding:8px;">Icono & Estado</th>
-                                    <th style="padding:8px;">Identificador</th>
-                                    <th style="padding:8px;">Ámbito</th>
-                                    <th style="padding:8px;">Color</th>
-                                    <th style="padding:8px; text-align:right;">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${(sData.statuses || []).map(st => `
-                                    <tr style="border-bottom:1px solid #222;">
-                                        <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
-                                            <span style="font-size:1.1rem;">${st.icon || '⚪'}</span>
-                                            <b style="color:${st.color || '#fff'};">${st.name}</b>
-                                            ${st.isDefault ? `<span style="background:#333; color:#aaa; font-size:0.7rem; padding:1px 6px; border-radius:3px;">Por Defecto</span>` : ''}
-                                        </td>
-                                        <td style="padding:10px 8px; font-family:monospace; color:#888;">${st.id}</td>
-                                        <td style="padding:10px 8px; text-transform:capitalize; color:#ccc;">${st.scope === 'both' ? 'Shots & Assets' : st.scope}</td>
-                                        <td style="padding:10px 8px;">
-                                            <div style="display:flex; align-items:center; gap:6px;">
-                                                <div style="width:16px; height:16px; border-radius:3px; background:${st.color}; border:1px solid #555;"></div>
-                                                <span style="font-family:monospace; font-size:0.75rem; color:#aaa;">${st.color}</span>
-                                            </div>
-                                        </td>
-                                        <td style="padding:10px 8px; text-align:right;">
-                                            ${!st.isDefault ? `<button onclick="settings.deleteStatus('${st.id}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Estado">🗑️</button>` : ''}
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-
             case 'workflow':
-                const curProj = settings.currentProject || settings.getBaseProject();
-                const defaultWfDir = (curProj.roots?.work || 'Z:/[cliente]/[proyecto]').replace(/\//g, '\\') + '\\workflow';
-
-                return `
-                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">🗂️ Workflow, Asignaciones & Base de Datos</h3>
-                    <p style="color:#aaa; font-size:0.85rem; line-height:1.6;">
-                        Pipeta mantiene la base de datos de planos, estados y asignaciones en un archivo estructurado <code>shot_tracker.json</code> dentro de la carpeta de workflow del proyecto.
-                    </p>
-
-                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px;">Carpeta de Workflow del Proyecto</div>
-                        <div style="display:flex; gap:10px; margin-bottom:15px;">
-                            <input type="text" readonly value="${defaultWfDir}" style="flex:1; background:#111; border:1px solid #444; border-radius:4px; padding:8px 12px; color:#ccc; font-family:monospace; font-size:0.82rem;">
-                            <button class="btn" onclick="API.fs.open('${defaultWfDir.replace(/\\/g, '\\\\')}')" style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px 14px; cursor:pointer; font-size:0.82rem;">📂 Abrir</button>
-                        </div>
-
-                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px;">
-                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.loadWorkflow(); alert('✅ Base de datos de workflow recargada con éxito.'); }" style="background:#1c222d; color:#4fc3f7; border:1px solid #4fc3f766; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
-                                🔄 Recargar Workflow Local
-                            </button>
-                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.saveTracker(); alert('✅ Base de datos de workflow guardada.'); }" style="background:#1c222d; color:#4caf50; border:1px solid #4caf5066; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
-                                💾 Guardar / Publicar Tracker
-                            </button>
-                            <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.exportMyTasksFile(); }" style="background:#1c222d; color:#ff9800; border:1px solid #ff980066; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">
-                                👤 Exportar Mis Tareas (.json)
-                            </button>
-                        </div>
-                    </div>
-                `;
+                settings.localAccordionOpen = true;
+                settings.currentCategory = 'avanzado';
+                return settings.renderCategoryContent();
 
             case 'interfaz':
+                const curViewMode = (settings.defaultViewMode === 'online') ? 'drive' : (settings.defaultViewMode || 'local');
+                const curBrowserMode = settings.defaultBrowserMode || (typeof currentBrowserMode !== 'undefined' ? currentBrowserMode : 'split');
+                const curCompMode = settings.defaultSyncComparisonMode || (typeof window !== 'undefined' && window.syncComparisonMode ? window.syncComparisonMode : 'drive');
+
                 return `
-                    <h3>Interfaz de Usuario & Canvas</h3>
+                    <h3 style="margin-top:0; margin-bottom:15px; color:#fff;">Interfaz de Usuario</h3>
                     
-                    <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
-                        <h4 style="margin-top:0; margin-bottom:10px; color:#ccc;">Modo de Explorador por Defecto</h4>
-                        <div style="font-size:0.85rem; color:#888; margin-bottom:10px;">
-                            Define qué vista se carga al iniciar la aplicación.
+                    <!-- 1. MODO DE EXPLORADOR POR DEFECTO -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Modo de Explorador por Defecto</h4>
+                        <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
+                            Define qué ubicación se carga al iniciar la aplicación en el explorador.
                         </div>
-                        <div style="display:flex; gap:20px;">
-                            <label style="display:flex; align-items:center; cursor:pointer;">
+                        <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultViewMode" value="local" 
-                                    ${(!settings.defaultViewMode || settings.defaultViewMode === 'local') ? 'checked' : ''}
-                                    onchange="settings.defaultViewMode = 'local';">
-                                <span style="margin-left:8px;">Local (Z:)</span>
+                                    ${curViewMode === 'local' ? 'checked' : ''}
+                                    onchange="settings.defaultViewMode = 'local'; try { localStorage.setItem('pipeta_view_location_mode', 'local'); } catch(e){}">
+                                <span>Local (Z:)</span>
                             </label>
-                            <label style="display:flex; align-items:center; cursor:pointer;">
-                                <input type="radio" name="defaultViewMode" value="online" 
-                                    ${(settings.defaultViewMode === 'online') ? 'checked' : ''}
-                                    onchange="settings.defaultViewMode = 'online';">
-                                <span style="margin-left:8px;">Online (G:)</span>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultViewMode" value="drive" 
+                                    ${curViewMode === 'drive' ? 'checked' : ''}
+                                    onchange="settings.defaultViewMode = 'drive'; try { localStorage.setItem('pipeta_view_location_mode', 'drive'); } catch(e){}">
+                                <span>Drive (G:)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultViewMode" value="server" 
+                                    ${curViewMode === 'server' ? 'checked' : ''}
+                                    onchange="settings.defaultViewMode = 'server'; try { localStorage.setItem('pipeta_view_location_mode', 'server'); } catch(e){}">
+                                <span>Servidor (S:)</span>
                             </label>
                         </div>
                     </div>
 
-                    <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
-                        <h4 style="margin-top:0; margin-bottom:10px; color:var(--accent);">🖥️ Modo Pantalla Completa & Maximizar Canvas</h4>
-                        <div style="font-size:0.85rem; color:#888; margin-bottom:12px;">
-                            Permite ocultar la barra lateral y cabeceras para aprovechar el 100% de la pantalla en los módulos <b>Shot Navigator</b>, <b>Asset Designer</b> y <b>Explorer</b>.
+                    <!-- 2. VISTA POR DEFECTO DEL EXPLORADOR (CLÁSICA VS MILLER) -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Tipo de Vista del Explorador por Defecto</h4>
+                        <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
+                            Define la disposición visual de carpetas y archivos al iniciar Pipeta.
                         </div>
-                        <button class="btn" onclick="window.toggleCanvasFullscreen()" style="background:#1c222d; color:#fff; border:1px solid #555; padding:8px 16px; border-radius:4px; cursor:pointer; font-weight:bold;">
-                            🔲 Alternar Modo Canvas Completo
-                        </button>
+                        <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultBrowserMode" value="split" 
+                                    ${curBrowserMode === 'split' ? 'checked' : ''}
+                                    onchange="settings.defaultBrowserMode = 'split'; try { localStorage.setItem('pipeta_browser_mode', 'split'); if (typeof switchBrowserMode === 'function') switchBrowserMode('split'); } catch(e){}">
+                                <span>Vista Clásica (Split View / Árbol)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultBrowserMode" value="pipeta" 
+                                    ${curBrowserMode === 'pipeta' ? 'checked' : ''}
+                                    onchange="settings.defaultBrowserMode = 'pipeta'; try { localStorage.setItem('pipeta_browser_mode', 'pipeta'); if (typeof switchBrowserMode === 'function') switchBrowserMode('pipeta'); } catch(e){}">
+                                <span>Miller View (Columnas en cascada)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 3. COMPARACIÓN POR DEFECTO (EN MODO LOCAL) -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Comparación por Defecto (en modo Local)</h4>
+                        <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
+                            Define el destino contra el cual se auditan y comparan los archivos locales al activar la sincronización en el explorador.
+                        </div>
+                        <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultSyncComparisonMode" value="drive" 
+                                    ${curCompMode !== 'server' ? 'checked' : ''}
+                                    onchange="settings.defaultSyncComparisonMode = 'drive'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}">
+                                <span>Google Drive (G:)</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultSyncComparisonMode" value="server" 
+                                    ${curCompMode === 'server' ? 'checked' : ''}
+                                    onchange="settings.defaultSyncComparisonMode = 'server'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'server'); } catch(e){}">
+                                <span>Servidor Central Real (S:)</span>
+                            </label>
+                        </div>
                     </div>
                 `;
             case 'avanzado':
@@ -2180,15 +2215,103 @@ const settings = {
                     shotPresets = `<option disabled>Verificar ruta de instalación</option>`;
                 }
 
+                const sData = settings.statusesData || { statuses: [] };
+                const curProj = settings.currentProject || settings.getBaseProject();
+                const defaultWfDir = (curProj.roots?.work || 'Z:/[cliente]/[proyecto]').replace(/\//g, '\\') + '\\workflow';
+
                 return `
-                    <h3>Opciones Avanzadas</h3>
+                    <h3 style="margin-top:0; margin-bottom:15px; color:#fff;">Opciones Avanzadas</h3>
+                    
+                    <!-- DESPLEGABLE: LOCAL (DISEÑADOR DE ESTADOS & WORKFLOW) -->
+                    <details ${settings.localAccordionOpen ? 'open' : ''} ontoggle="settings.localAccordionOpen = this.open" style="background:rgba(255,255,255,0.03); border:1px solid #384252; border-radius:8px; margin-bottom:20px; overflow:hidden;">
+                        <summary style="padding:14px 18px; cursor:pointer; font-weight:bold; color:var(--accent); font-size:0.95rem; user-select:none; background:rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:space-between;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span>💻</span>
+                                <span style="color:#fff;">Local</span>
+                                <span style="color:#888; font-weight:normal; font-size:0.8rem;">(Diseñador de Estados, Workflow & Base de Datos)</span>
+                            </div>
+                            <span style="font-size:0.75rem; color:#888;">▼ Desplegable</span>
+                        </summary>
+                        <div style="padding:18px; border-top:1px solid #2a3442; display:flex; flex-direction:column; gap:20px;">
+                            
+                            <!-- BLOQUE 1: DISEÑADOR DE ESTADOS -->
+                            <div style="background:#14171d; border:1px solid #2a3342; border-radius:6px; padding:16px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3342; padding-bottom:10px; margin-bottom:14px;">
+                                    <div>
+                                        <div style="font-weight:bold; color:var(--accent); font-size:0.92rem;">🏷️ Diseñador de Estados (Shots / Assets)</div>
+                                        <div style="color:#888; font-size:0.8rem; margin-top:2px;">Define y personaliza los estados de procesos y avance aplicables a shots y assets.</div>
+                                    </div>
+                                    <button class="btn" onclick="settings.addStatusModal()" style="background:var(--accent); color:black; font-weight:bold; padding:6px 14px; border:none; border-radius:4px; cursor:pointer; font-size:0.82rem;">
+                                        + Nuevo Estado
+                                    </button>
+                                </div>
+                                <table style="width:100%; border-collapse:collapse; font-size:0.82rem; text-align:left;">
+                                    <thead>
+                                        <tr style="border-bottom:1px solid #333; color:#888; font-size:0.72rem; text-transform:uppercase;">
+                                            <th style="padding:6px 8px;">Icono & Estado</th>
+                                            <th style="padding:6px 8px;">Identificador</th>
+                                            <th style="padding:6px 8px;">Ámbito</th>
+                                            <th style="padding:6px 8px;">Color</th>
+                                            <th style="padding:6px 8px; text-align:right;">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${(sData.statuses || []).map(st => `
+                                            <tr style="border-bottom:1px solid #222;">
+                                                <td style="padding:8px; display:flex; align-items:center; gap:8px;">
+                                                    <span style="font-size:1.05rem;">${st.icon || '⚪'}</span>
+                                                    <b style="color:${st.color || '#fff'};">${st.name}</b>
+                                                    ${st.isDefault ? `<span style="background:#222; color:#aaa; font-size:0.65rem; padding:1px 5px; border-radius:3px;">Por Defecto</span>` : ''}
+                                                </td>
+                                                <td style="padding:8px; font-family:monospace; color:#888;">${st.id}</td>
+                                                <td style="padding:8px; text-transform:capitalize; color:#ccc;">${st.scope === 'both' ? 'Shots & Assets' : st.scope}</td>
+                                                <td style="padding:8px;">
+                                                    <div style="display:flex; align-items:center; gap:6px;">
+                                                        <div style="width:14px; height:14px; border-radius:3px; background:${st.color}; border:1px solid #555;"></div>
+                                                        <span style="font-family:monospace; font-size:0.75rem; color:#aaa;">${st.color}</span>
+                                                    </div>
+                                                </td>
+                                                <td style="padding:8px; text-align:right;">
+                                                    ${!st.isDefault ? `<button onclick="settings.deleteStatus('${st.id}')" class="icon-btn danger" style="background:transparent; border:none; color:#f44336; cursor:pointer;" title="Eliminar Estado">🗑️</button>` : ''}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- BLOQUE 2: WORKFLOW & BASE DE DATOS -->
+                            <div style="background:#14171d; border:1px solid #2a3342; border-radius:6px; padding:16px;">
+                                <div style="font-weight:bold; color:var(--accent); font-size:0.92rem; margin-bottom:4px;">🗂️ Workflow, Asignaciones & Base de Datos</div>
+                                <p style="color:#aaa; font-size:0.8rem; line-height:1.5; margin-top:0; margin-bottom:12px;">
+                                    Pipeta mantiene la base de datos de planos, estados y asignaciones en <code>shot_tracker.json</code> dentro de la carpeta de workflow del proyecto.
+                                </p>
+                                <div style="display:flex; gap:8px; margin-bottom:14px;">
+                                    <input type="text" readonly value="${defaultWfDir}" style="flex:1; background:#0d1117; border:1px solid #333; border-radius:4px; padding:6px 10px; color:#ccc; font-family:monospace; font-size:0.8rem;">
+                                    <button class="btn" onclick="API.fs.open('${defaultWfDir.replace(/\\/g, '\\\\')}')" style="background:#222; color:#fff; border:1px solid #444; border-radius:4px; padding:6px 12px; cursor:pointer; font-size:0.8rem;">📂 Abrir</button>
+                                </div>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.loadWorkflow(); alert('✅ Base de datos de workflow recargada con éxito.'); }" style="background:#1c222d; color:#4fc3f7; border:1px solid #4fc3f766; padding:7px 14px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.82rem;">
+                                        🔄 Recargar Workflow Local
+                                    </button>
+                                    <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.saveTracker(); alert('✅ Base de datos de workflow guardada.'); }" style="background:#1c222d; color:#4caf50; border:1px solid #4caf5066; padding:7px 14px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.82rem;">
+                                        💾 Guardar / Publicar Tracker
+                                    </button>
+                                    <button class="btn" onclick="if(typeof ShotNavigator !== 'undefined') { ShotNavigator.exportMyTasksFile(); }" style="background:#1c222d; color:#ff9800; border:1px solid #ff980066; padding:7px 14px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.82rem;">
+                                        👤 Exportar Mis Tareas (.json)
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </details>
                     
                     <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <h4 style="margin-top:0; margin-bottom:10px; color:var(--accent);">Presets Maestros de Validación</h4>
                             <button onclick="settings.loadPresets().then(() => settings.render())" style="background:none; border:none; color:#666; cursor:pointer;" title="Recargar Presets">↻</button>
                         </div>
-                        <p style="font-size:0.8rem; color:#888;">Define qué presets se usan para auditar y reparar carpetas que no tienen metadatos (vfx_control.json).</p>
+                        <p style="font-size:0.8rem; color:#888;">Define qué presets se usan para auditar y verificar la estructura de carpetas de Assets y Shots.</p>
                         
                         <div class="config-group" style="margin-top:15px;">
                             <label class="config-label">Maestro para Assets</label>
@@ -2243,68 +2366,104 @@ const settings = {
                 `;
             case 'exportar':
                 return `
-                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">📦 Exportar & Publicar Presets (Dev)</h3>
-                    <p style="color:#aaa; font-size:0.85rem; line-height:1.6;">
+                    <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">📦 Update / Export Presets</h3>
+
+                    <!-- SECCIÓN: ACTUALIZADOR DIRECTO & ACCESOS (ARRIBA DE TODO) -->
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.95rem;">
+                                🔄 Actualizador Directo & Accesos
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <button id="createShortcutBtn" class="btn" onclick="settings.createDesktopShortcut()" title="Crea un acceso directo en tu Escritorio con el icono de Pipeta"
+                                    style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:9px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                    <span>📌 Crear Acceso Directo</span>
+                                </button>
+                                <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
+                                    style="background:var(--accent); color:black; font-weight:bold; padding:9px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
+                                    <span>🚀 ACTUALIZAR PIPETA DESDE RED</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; margin-bottom:12px;"></div>
+                        <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
+                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\LASP-VM\\Pipeta</code>) y reinicia el sistema automáticamente.
+                        </p>
+
+                        <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; font-size:0.8rem;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
+                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span style="color:#888;">Instalación Local:</span>
+                                <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p style="color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:14px;">
                         Esta herramienta permite respaldar y publicar selectivamente las configuraciones, proyectos y presets de diseño (Shots y Assets) desde tu disco local <code>C:\\</code> hacia la unidad de red <code>Z:\\</code> o cualquier otra carpeta de destino, manteniendo intacto el carpetaje original.
                     </p>
 
-                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:12px; font-size:0.9rem;">1. Elementos a Exportar</div>
-                        <div style="display:flex; flex-direction:column; gap:10px;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptShotDesigner" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>🎬 <b>Presets de Shot Designer</b> (<code>presets/ShotDesigner/*.json</code>)</span>
+                    <!-- RECUADRO UNIFICADO: ELEMENTOS + DESTINO DE EXPORTACIÓN -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:10px; font-size:0.85rem;">Elementos a Exportar</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:0.78rem;">
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptShotDesigner" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Presets de Shot Designer</b> <span style="color:#777; font-size:0.72rem;">(presets/ShotDesigner/*.json)</span></span>
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptAssetDesigner" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>🎨 <b>Presets de Asset Designer</b> (<code>presets/AssetDesigner/*.json</code>)</span>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptAssetDesigner" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Presets de Asset Designer</b> <span style="color:#777; font-size:0.72rem;">(presets/AssetDesigner/*.json)</span></span>
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptProjects" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>📁 <b>Proyectos Configurados</b> (<code>presets/Projects/*.json</code>)</span>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptProjects" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Proyectos Configurados</b> <span style="color:#777; font-size:0.72rem;">(presets/Projects/*.json)</span></span>
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptUsers" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>👥 <b>Usuarios y Roles</b> (<code>presets/users_config.json</code>)</span>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptUsers" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Usuarios y Roles</b> <span style="color:#777; font-size:0.72rem;">(presets/users_config.json)</span></span>
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptStatuses" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>🏷️ <b>Estados de Procesos y Planos</b> (<code>presets/status_config.json</code>)</span>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptStatuses" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Estados de Procesos y Planos</b> <span style="color:#777; font-size:0.72rem;">(presets/status_config.json)</span></span>
                             </label>
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; color:#eee; font-size:0.85rem;">
-                                <input type="checkbox" id="expOptConfig" checked style="accent-color:var(--accent); width:16px; height:16px;">
-                                <span>⚙️ <b>Configuración General</b> (<code>presets/config.json</code>)</span>
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#ddd;">
+                                <input type="checkbox" id="expOptConfig" checked style="accent-color:var(--accent); width:14px; height:14px;">
+                                <span><b>Configuración General</b> <span style="color:#777; font-size:0.72rem;">(presets/config.json)</span></span>
                             </label>
                         </div>
-                    </div>
 
-                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px; font-size:0.9rem;">2. Ruta de Destino de la Exportación</div>
-                        <p style="color:#888; font-size:0.8rem; margin-top:0; margin-bottom:8px;">
-                            Selecciona o examina la carpeta de destino (por defecto en la unidad de red <code>Z:</code> para publicar rápidamente):
-                        </p>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="expTargetPath" class="config-input" 
-                                value="${settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets'}" 
-                                oninput="settings.exportPresetsPath = this.value"
-                                style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
-                            <button id="expBrowseBtn" class="btn" onclick="settings.browseExportPath()" 
-                                style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:8px 14px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
-                                <span>📁 Examinar...</span>
-                            </button>
-                            <button class="btn" onclick="settings.setDefaultExportPath()" title="Restablecer a la ruta de red por defecto en Z:"
-                                style="background:#222; color:#aaa; border:1px solid #444; border-radius:4px; padding:8px 12px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
-                                <span>↺ Default (Z:)</span>
-                            </button>
+                        <div style="border-top:1px solid #282828; margin-top:14px; padding-top:12px;">
+                            <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+                                <span style="font-weight:bold; color:var(--accent); font-size:0.85rem;">Ruta de Destino de la Exportación:</span>
+                                <span style="color:#888; font-size:0.76rem;">Selecciona o examina la carpeta de destino:</span>
+                            </div>
+                            <div style="display:flex; gap:8px; margin-bottom:14px;">
+                                <input type="text" id="expTargetPath" class="config-input" 
+                                    value="${settings.exportPresetsPath || 'Z:\\\\INTERNO\\\\TOOLS\\\\Mati\\\\Propios\\\\Scripts\\\\Pipeta\\\\presets'}" 
+                                    oninput="settings.exportPresetsPath = this.value"
+                                    style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
+                                <button id="expBrowseBtn" class="btn" onclick="settings.browseExportPath()" 
+                                    style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:8px 14px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                    <span>📁 Examinar...</span>
+                                </button>
+                                <button class="btn" onclick="settings.setDefaultExportPath()" title="Restablecer a la ruta de red por defecto en Z:"
+                                    style="background:#222; color:#aaa; border:1px solid #444; border-radius:4px; padding:8px 12px; font-size:0.85rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                                    <span>↺ Default (Z:)</span>
+                                </button>
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:4px;">
+                                <div id="expStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
+                                <button class="btn" onclick="settings.confirmExportPresets()" 
+                                    style="background:var(--accent); color:black; font-weight:bold; padding:9px 20px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px;">
+                                    <span>🚀 EXPORTAR / PUBLICAR PRESETS</span>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; padding-bottom:15px; border-bottom:1px solid #333;">
-                        <div id="expStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
-                        <button class="btn" onclick="settings.confirmExportPresets()" 
-                            style="background:var(--accent); color:black; font-weight:bold; padding:10px 20px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px;">
-                            <span>🚀 EXPORTAR / PUBLICAR PRESETS</span>
-                        </button>
                     </div>
 
                     <!-- SECCIÓN: EMPAQUETAR VERSIÓN PORTABLE (.ZIP) -->
@@ -2351,63 +2510,24 @@ const settings = {
             case 'version':
                 return `
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>🚀 Versión & Actualizaciones</span>
+                        <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
                             ${window.APP_VERSION || 'v0.9.72'}
                         </span>
                     </h3>
 
-                    <!-- CARD 1: ESTADO Y ACCIONES -->
-                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:8px; font-size:0.95rem;">
-                            🔄 Actualizador Directo & Accesos
-                        </div>
-                        <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta</code> o <code>\\LASP-VM\Pipeta</code>) y reinicia el sistema automáticamente.
-                        </p>
-
-                        <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; margin-bottom:15px; font-size:0.8rem;">
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
-                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                <span style="color:#888;">Instalación Local:</span>
-                                <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between;">
-                                <span style="color:#888;">Versión Instalada:</span>
-                                <span style="color:var(--accent); font-weight:bold;">${window.APP_VERSION || 'v1.0.02'}</span>
-                            </div>
-                        </div>
-
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                            <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; flex:1; min-width:200px;"></div>
-                            <div style="display:flex; gap:10px;">
-                                <button id="createShortcutBtn" class="btn" onclick="settings.createDesktopShortcut()" title="Crea un acceso directo en tu Escritorio con el icono de Pipeta"
-                                    style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:10px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                                    <span>📌 Crear Acceso Directo</span>
-                                </button>
-                                <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
-                                    style="background:var(--accent); color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
-                                    <span>🚀 ACTUALIZAR PIPETA DESDE RED</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CARD 2: HISTORIAL DE VERSIONES & PATCH NOTES -->
+                    <!-- CARD: HISTORIAL DE VERSIONES & PATCH NOTES -->
                     <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333;">
                         <div style="font-weight:bold; color:var(--accent); margin-bottom:12px; font-size:0.95rem;">
                             📋 Notas de la Versión (Patch Notes)
                         </div>
 
-                        <div style="max-height:260px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
+                        <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
                                 <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.0.02 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Detección de Instancia en Acceso Directo:</b> Si Pipeta ya está en ejecución, el acceso directo abre directamente el navegador sin provocar bloqueos ni errores de puerto ocupado.</li>
-                                    <li><b>Ruta Default de Exportación de Paquetes:</b> Destino predeterminado de compresión y publicación establecido en <code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS</code>.</li>
+                                    <li><b>Ruta Default de Exportación de Paquetes:</b> Destino predeterminado de compresión y publicación establecido en <code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS</code>.</li>
                                 </ul>
                             </div>
 
@@ -2415,11 +2535,14 @@ const settings = {
                                 <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.0.01</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
                                     <li><b>Versión Oficial de Estudio:</b> Lanzamiento de Pipeta 1.0 para todo el equipo.</li>
-                                    <li><b>Migración & Publicación Automatizada:</b> Ubicación canónica en <code>APPS\Pipeta</code> y flujo de publicación directo a <code>S:</code> (el <code>Z:</code> real de los artistas).</li>
-                                    <li><b>Actualizador Multi-Origen:</b> Detección automática tanto en unidad mapeada como en recurso compartido <code>\\LASP-VM\Pipeta</code>.</li>
+                                    <li><b>Migración & Publicación Automatizada:</b> Ubicación canónica en <code>APPS\\Pipeta</code> y flujo de publicación directo a <code>S:</code> (el <code>Z:</code> real de los artistas).</li>
+                                    <li><b>Actualizador Multi-Origen:</b> Detección automática tanto en unidad mapeada como en recurso compartido <code>\\\\LASP-VM\\Pipeta</code>.</li>
                                     <li><b>Plantillas v001 en Shot & Asset Creator:</b> Creación automatizada de archivos v001 con resolución canónica de extensiones y templates configurables por proceso y proyecto.</li>
                                 </ul>
                             </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v0.9.72</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Exportación Completa de Presets & Configs:</b> Se integró el respaldo y publicación de <code>users_config.json</code> (Usuarios & Roles) y <code>status_config.json</code> (Diseñador de Estados) en la herramienta de exportación.</li>
                                     <li><b>Visualización Exhaustiva de Permisos:</b> Las tarjetas de rol en User Settings muestran directamente el desglose completo de las 5 categorías y 21 permisos sin necesidad de abrir el editor.</li>
@@ -2867,6 +2990,14 @@ const settings = {
         } catch(e) {
             console.error("Error saving users config:", e);
         }
+    },
+
+    updateUsersConfigProp: async (prop, value) => {
+        if (!settings.usersData) settings.usersData = { users: [], roles: [] };
+        settings.usersData[prop] = value;
+        await settings.saveUsersConfig();
+        settings.render();
+        settings.showToast("Configuración de usuarios actualizada", "success", 2);
     },
 
     setActiveUser: async (laspUser) => {

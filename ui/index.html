@@ -41,8 +41,8 @@
                 </select>
             </div>
             <div class="header-config-divider"></div>
-            <div id="headerUserSelectorContainer" title="Cambiar Operador Activo">
-                <div id="headerUserAvatar"></div>
+            <div id="headerUserSelectorContainer" title="Gestionar Sesión y Operador Activo">
+                <div id="headerUserAvatar" onclick="Ramon.toggleUserMenu(event)"></div>
                 <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)">
                     <option>Cargando...</option>
                 </select>
@@ -128,11 +128,17 @@
                 <!-- SEPARADOR MODULOS / TOOLS -->
                 <div class="sidebar-divider"></div>
 
-                <!-- COLA DE TRANSFERENCIAS & SYNC WORKER -->
-                <div class="mode-btn" id="sidebarTransferQueueBtn" title="Cola de Transferencias & Sync Worker" onclick="if (window.syncQueueUI) window.syncQueueUI.toggle();" style="position:relative; cursor:pointer;">
+                <!-- SYNC QUEUE -->
+                <div class="mode-btn" id="sidebarTransferQueueBtn" title="Sync Queue" onclick="if (window.syncQueueUI) window.syncQueueUI.toggle();" style="position:relative; cursor:pointer;">
                     <span id="headerSyncWorkerDot" style="position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%; background:#888; border:1px solid #111;" title="Estado del Worker"></span>
                     <span style="font-size:1.15rem; color:#ff9800;">⚡</span>
                     <span id="headerTransferCountBadge" style="display:none; position:absolute; bottom:5px; right:5px; background:#ff9800; color:#000; font-size:0.62rem; font-weight:bold; border-radius:10px; padding:0 4px; line-height:13px; height:13px; min-width:13px; text-align:center;">0</span>
+                </div>
+
+                <!-- MIS TAREAS (RAMON) -->
+                <div class="mode-btn" id="sidebarMyTasksBtn" title="Mis Tareas en Ramón" onclick="if(typeof Ramon !== 'undefined') Ramon.openMyTasksModal();" style="position:relative; cursor:pointer;">
+                    <img src="icons/ramon.png" class="btn-icon-svg" style="width:20px; height:20px;">
+                    <span id="ramonStatusDot" style="position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%; background:#888; border:1px solid #111;" title="Estado Ramón"></span>
                 </div>
 
                 <!-- PIPELINE TOOLS -->
@@ -216,8 +222,13 @@
                         </div>
                     </div>
                     <!-- Detalles Contextuales (Only for Split View) -->
-                    <div class="tools-panel" id="toolsPanel-Browser">
-                        <div class="panel-heading">Propiedades</div>
+                    <div class="tools-panel collapsed" id="toolsPanel-Browser">
+                        <div class="panel-heading">
+                            <span>Propiedades</span>
+                            <button id="btnCollapseProperties" class="panel-collapse-btn" onclick="togglePropertiesPanel(false)" title="Ocultar Panel de Propiedades (Alt+P)">
+                                ▶
+                            </button>
+                        </div>
                         <div class="prop-row">
                             <span class="prop-label">Selección:</span>
                             <h3 id="selectionName" style="margin:0;">-</h3>
@@ -228,6 +239,11 @@
                                 style="font-family:monospace; font-size:0.75rem; color:#888; word-break:break-all;">-
                             </div>
                         </div>
+                    </div>
+                    <!-- Pestaña lateral para re-expandir cuando está oculto -->
+                    <div id="propertiesPanelExpandTab" onclick="togglePropertiesPanel(true)" title="Mostrar Panel de Propiedades (Alt+P)" class="properties-expand-tab" style="display:flex;">
+                        <span class="expand-chevron">◀</span>
+                        <span class="expand-text">PROPIEDADES</span>
                     </div>
                 </div>
 
@@ -723,6 +739,7 @@
     <script src="js/config.js"></script>
     <script src="js/state.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/ramon.js"></script>
     <script src="js/console.js"></script>
     <script src="js/selection.js"></script>
     <script src="js/inspector.js"></script>
@@ -740,6 +757,7 @@
     <script src="js/tutorials.js"></script>
     <script src="js/sync-analyzer.js"></script>
     <script src="js/sync-queue.js"></script>
+    <script src="js/sync-conflict.js"></script>
     <script src="js/ia-ingest.js"></script>
     <script src="js/file-auditor.js"></script>
     <script src="js/shot-navigator.js"></script>

@@ -1,6 +1,11 @@
 // --- API INTEGRATION ---
-async function fetchDir(path) {
-    const url = path ? `/api/fs/list?path=${encodeURIComponent(path)}` : '/api/fs/list';
+async function fetchDir(path, options = {}) {
+    let url = path ? `/api/fs/list?path=${encodeURIComponent(path)}` : '/api/fs/list';
+    if (options && typeof options === 'object') {
+        if (options.onlineEngine) url += `&online_engine=${encodeURIComponent(options.onlineEngine)}`;
+        if (options.localSource) url += `&local_source=${encodeURIComponent(options.localSource)}`;
+        if (options.force) url += `&force=true`;
+    }
     try {
         const res = await fetch(url);
         return await res.json();
@@ -97,6 +102,18 @@ const API = {
                 body: JSON.stringify({ src, dest })
             }).then(r => r.json());
         },
+        stat: async (path) => {
+            try {
+                const res = await fetch('/api/fs/stat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                return await res.json();
+            } catch (e) {
+                return { exists: false, error: e.message };
+            }
+        },
         delete: async (path) => {
             return await fetch('/api/fs/delete', {
                 method: 'POST',
@@ -155,6 +172,30 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ laspUser })
         }).then(r => r.json())
+    },
+    ramon: {
+        status: async () => fetch('/api/ramon/status').then(r => r.json()),
+        login: async (username, password) => fetch('/api/ramon/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        }).then(r => r.json()),
+        getTasks: async (user, project, force = false) => {
+            let url = `/api/ramon/tasks?user=${encodeURIComponent(user)}`;
+            if (project) url += `&project=${encodeURIComponent(project)}`;
+            if (force) url += `&force=true`;
+            return fetch(url).then(r => r.json());
+        },
+        invalidateTasksCache: async (user) => fetch('/api/ramon/tasks/invalidate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: user || '' })
+        }).then(r => r.json()),
+        getProjects: async (force = false) => {
+            let url = `/api/ramon/projects`;
+            if (force) url += `?force=true`;
+            return fetch(url).then(r => r.json());
+        }
     },
     statuses: {
         get: async () => fetch('/api/statuses').then(r => r.json()),

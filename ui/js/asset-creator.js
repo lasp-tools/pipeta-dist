@@ -892,11 +892,6 @@ const AssetCreator = {
                                      </div>
                                  ` : ''}
                              </div>
-
-                             <div style="display:flex; align-items:center;">
-                                 <input type="checkbox" id="ac-inject-meta" checked style="accent-color:#4CAF50; cursor:pointer;">
-                                 <label for="ac-inject-meta" title="Inyecta un archivo vfx_control.json con metadatos del preset" style="margin-left:8px; color:#888; font-size:0.8rem; cursor:pointer;">Inyectar vfx_control.json</label>
-                             </div>
                         </div>
                     </div>
                 </div>
@@ -1039,8 +1034,7 @@ const AssetCreator = {
             assetName,
             categoryPath: targetCategoryPath,
             targets,
-            checkedProcs,
-            injectMeta: document.getElementById('ac-inject-meta')?.checked || false
+            checkedProcs
         };
 
         AssetCreator.showOverlay(`
@@ -1062,7 +1056,7 @@ const AssetCreator = {
     },
 
     executeCreation: async () => {
-        const { mode, assetName, categoryPath, targets, checkedProcs, injectMeta } = AssetCreator.pendingCreation;
+        const { mode, assetName, categoryPath, targets, checkedProcs } = AssetCreator.pendingCreation;
 
         if (typeof PipetaConsole !== 'undefined') {
             PipetaConsole.log('create', `[ASSET CREATOR] 🎨 ${mode === 'create' ? `Creando nuevo asset '${assetName}'` : `Inyectando procesos en ${targets.length} asset(s)`} en ${categoryPath} [Preset: ${AssetCreator.selectedPreset?.name || 'Asset Preset'}]`, 'info');
@@ -1077,16 +1071,8 @@ const AssetCreator = {
         // Ensure Category Directory exists
         try { await API.fs.mkdir(categoryPath); } catch (e) { }
 
-        // Find relevant item node for this subcategory
         const nodes = AssetCreator.selectedPreset.nodes;
-        const targetSubCatId = AssetCreator.selectedSubCatId;
-        const targetMainCatId = AssetCreator.selectedMainCatId;
-
-        let itemNode = nodes.find(n => 
-            (n.isItem || n.isAssetFocus || n.isVariable) && 
-            (n.parent === targetSubCatId || (targetSubCatId && n.id === targetSubCatId) || (!targetSubCatId && n.parent === targetMainCatId))
-        );
-
+        let itemNode = nodes.find(n => n.id === AssetCreator.selectedPreset.mainNodeId);
         if (!itemNode) {
             itemNode = nodes.find(n => n.isAssetFocus || n.name === 'ASSET');
         }
@@ -1097,18 +1083,13 @@ const AssetCreator = {
                 const res = await API.fs.mkdir(assetRootPath);
                 if (res && res.error) throw new Error(res.error);
 
-                if (itemNode && injectMeta) {
-                    await AssetCreator.writeMetadataFile(itemNode, assetRootPath);
-                }
-
                 // Create all checked processes inside the new asset folder
                 for (const procId of checkedProcs) {
                     const procNode = nodes.find(n => n.id === procId);
                     if (procNode) {
                         const procPath = assetRootPath + "/" + procNode.name;
                         try { await API.fs.mkdir(procPath); } catch (e) { }
-                        if (injectMeta) await AssetCreator.writeMetadataFile(procNode, procPath);
-                        await AssetCreator.createNodesRecursively(procNode.id, procPath, nodes, checkedProcs, assetName, injectMeta);
+                        await AssetCreator.createNodesRecursively(procNode.id, procPath, nodes, checkedProcs, assetName);
                     }
                 }
 
@@ -1119,17 +1100,13 @@ const AssetCreator = {
                 // Batch injection
                 for (const assetPath of targets) {
                     const currentAssetName = assetPath.trim().replace(/\\/g, '/').split('/').pop();
-                    if (itemNode && injectMeta) {
-                        await AssetCreator.writeMetadataFile(itemNode, assetPath);
-                    }
 
                     for (const procId of checkedProcs) {
                         const procNode = nodes.find(n => n.id === procId);
                         if (procNode) {
                             const procPath = (assetPath + "/" + procNode.name).replace(/\/+/g, '/');
                             try { await API.fs.mkdir(procPath); } catch (e) { }
-                            if (injectMeta) await AssetCreator.writeMetadataFile(procNode, procPath);
-                            await AssetCreator.createNodesRecursively(procNode.id, procPath, nodes, checkedProcs, currentAssetName, injectMeta);
+                            await AssetCreator.createNodesRecursively(procNode.id, procPath, nodes, checkedProcs, currentAssetName);
                         }
                     }
 
@@ -1175,31 +1152,9 @@ const AssetCreator = {
         }, 1800);
     },
 
-    writeMetadataFile: async (node, fullPath) => {
-        if (!AssetCreator.selectedPreset || !node) return;
-        const metaData = {
-            preset_id: AssetCreator.selectedPreset.id,
-            node_id: node.id,
-            node_name: node.name,
-            node_config: {
-                nameConfig: node.nameConfig || null,
-                processConfig: node.processConfig || null,
-                isRenderFolder: node.isRenderFolder || false,
-                isRenderFile: node.isRenderFile || false,
-                variableName: node.variableName || null
-            },
-            creation_date: new Date().toISOString(),
-            user: AssetCreator.systemInfo ? AssetCreator.systemInfo.username : "unknown"
-        };
-        const metaPath = (fullPath + "/vfx_control.json").replace(/\/+/g, '/');
-        try {
-            await API.fs.writeFile(metaPath, JSON.stringify(metaData, null, 2));
-        } catch (e) {
-            console.error("Error injecting metadata to:", metaPath, e);
-        }
-    },
+    writeMetadataFile: async () => {},
 
-    createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], assetName = "", injectMeta = false) => {
+    createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], assetName = "") => {
         const children = allNodes.filter(n => n.parent === parentId);
         for (const child of children) {
 
@@ -1317,11 +1272,7 @@ const AssetCreator = {
             const fullPath = (parentPath + "/" + child.name).replace(/\/+/g, '/');
             try { await API.fs.mkdir(fullPath); } catch (e) { }
 
-            if (injectMeta) {
-                await AssetCreator.writeMetadataFile(child, fullPath);
-            }
-
-            await AssetCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, assetName, injectMeta);
+            await AssetCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, assetName);
         }
     },
 

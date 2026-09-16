@@ -558,13 +558,17 @@ app.get('/api/sync/worker-status', (req, res) => {
     }
 });
 
-// Caché en memoria para listados de directorios en red (SMB S:)
+// Caché en memoria para listados de directorios en red (SMB S:) y Rclone
 const serverDirCache = new Map();
+const rcloneDirCache = new Map();
 const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
+const RCLONE_CACHE_TTL = 60 * 1000; // 1 minuto
 
 app.get('/api/fs/list', (req, res) => {
     let requestedPath = req.query.path;
     let forceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
+    let onlineEngine = req.query.online_engine; // 'rclone' | 'gdrive' | 'catalog'
+    let localSource = req.query.local_source;   // 'z_local' | 'server_catalog'
 
     try {
         let targetPath = null;
@@ -572,6 +576,24 @@ app.get('/api/fs/list', (req, res) => {
         if (requestedPath) {
             let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
             const lowerSafeP = safeP.toLowerCase();
+
+            // 0. Si se solicita expresamente origen del Servidor Central para una ruta local Z:
+            if (localSource === 'server_catalog' && (lowerSafeP.startsWith('z:/') || lowerSafeP === 'z:')) {
+                const sEquivalent = safeP.replace(/^z:/i, 'S:');
+                let serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
+                    ? catalogGenerator.listFromModularCatalog(sEquivalent, 'server')
+                    : null;
+
+                if (serverItems === null && typeof catalogGenerator.listFromServerCatalog === 'function') {
+                    serverItems = catalogGenerator.listFromServerCatalog(sEquivalent);
+                }
+
+                if (serverItems !== null) {
+                    return res.json({ path: safeP, items: serverItems, exists: true, fromCatalog: true, isServer: true });
+                }
+                return res.json({ path: safeP, items: [], exists: false, isServer: true });
+            }
+
             const isServerPath = lowerSafeP.startsWith('s:/') || lowerSafeP === 's:' || lowerSafeP === 's';
 
             // Comprobar si está en caché en memoria (para evitar re-consultar la red)
@@ -602,9 +624,26 @@ app.get('/api/fs/list', (req, res) => {
 
             // 2. MODO GOOGLE DRIVE
             if (lowerSafeP.startsWith('g:/') || lowerSafeP === 'g:') {
-                if (fs.existsSync(safeP)) {
-                    targetPath = safeP;
-                } else {
+                // A. Motor Rclone (solo si se selecciona explícitamente)
+                if (onlineEngine === 'rclone') {
+                    if (!forceRefresh && rcloneDirCache.has(lowerSafeP)) {
+                        const cached = rcloneDirCache.get(lowerSafeP);
+                        if (Date.now() - cached.time < RCLONE_CACHE_TTL) {
+                            return res.json({ path: safeP, items: cached.items, exists: true, fromCache: true, fromRclone: true });
+                        }
+                    }
+
+                    if (typeof catalogGenerator.listWithRclone === 'function') {
+                        const rcloneItems = catalogGenerator.listWithRclone(safeP);
+                        if (rcloneItems !== null) {
+                            rcloneDirCache.set(lowerSafeP, { time: Date.now(), items: rcloneItems });
+                            return res.json({ path: safeP, items: rcloneItems, exists: true, fromRclone: true });
+                        }
+                    }
+                }
+
+                // B. Motor Catálogo Caché (o fallback si rclone o G: fallan)
+                if (onlineEngine === 'catalog' || (!fs.existsSync(safeP) && onlineEngine !== 'gdrive')) {
                     let catalogItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
                         ? catalogGenerator.listFromModularCatalog(safeP, 'drive')
                         : null;
@@ -616,6 +655,13 @@ app.get('/api/fs/list', (req, res) => {
                     if (catalogItems !== null) {
                         return res.json({ path: safeP, items: catalogItems, exists: true, fromCatalog: true });
                     }
+                    return res.json({ path: safeP, items: [], exists: false });
+                }
+
+                // C. Motor Unidad G: (Google Drive físico montado en Windows)
+                if (fs.existsSync(safeP)) {
+                    targetPath = safeP;
+                } else {
                     return res.json({ path: safeP, items: [], exists: false });
                 }
             } 
@@ -770,6 +816,36 @@ app.post('/api/fs/copy', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/fs/stat', async (req, res) => {
+    let { path: p } = req.body;
+    if (!p) return res.status(400).json({ error: "No path provided" });
+    try {
+        p = p.replace(/\\/g, '/');
+        if (!await fs.pathExists(p)) {
+            return res.json({ exists: false });
+        }
+        const st = await fs.stat(p);
+        const isDirectory = st.isDirectory();
+        let itemCount = null;
+        if (isDirectory) {
+            try {
+                const entries = await fs.readdir(p);
+                itemCount = entries.length;
+            } catch (e) {}
+        }
+        res.json({
+            exists: true,
+            isDirectory,
+            size: st.size,
+            mtime: st.mtime ? st.mtime.toISOString() : null,
+            birthtime: st.birthtime ? st.birthtime.toISOString() : null,
+            itemCount
+        });
+    } catch (err) {
+        res.json({ exists: false, error: err.message });
     }
 });
 
@@ -1936,18 +2012,6 @@ app.post('/api/mirror/repairBatch', async (req, res) => {
                 for (const sub of targetMediaSubfolders) {
                     await fs.ensureDir(path.join(item.mediaPath, sub));
                 }
-                if (!omitControl) {
-                    const ctrlFile = path.join(item.mediaPath, 'vfx_control.json');
-                    if (!await fs.pathExists(ctrlFile)) {
-                        await fs.writeJson(ctrlFile, {
-                            node_id: item.shot,
-                            type: 'shot',
-                            preset_id: 'master_shot',
-                            created_by: 'MirrorAuditor',
-                            created_at: new Date().toISOString()
-                        }, { spaces: 2 });
-                    }
-                }
                 repairedCount++;
             }
 
@@ -1957,18 +2021,6 @@ app.post('/api/mirror/repairBatch', async (req, res) => {
                 // Create missing standard subfolders
                 for (const sub of targetWorkSubfolders) {
                     await fs.ensureDir(path.join(item.workPath, sub));
-                }
-                if (!omitControl) {
-                    const ctrlFile = path.join(item.workPath, 'vfx_control.json');
-                    if (!await fs.pathExists(ctrlFile)) {
-                        await fs.writeJson(ctrlFile, {
-                            node_id: item.shot,
-                            type: 'shot',
-                            preset_id: 'master_shot',
-                            created_by: 'MirrorAuditor',
-                            created_at: new Date().toISOString()
-                        }, { spaces: 2 });
-                    }
                 }
                 repairedCount++;
             }
@@ -2752,6 +2804,187 @@ app.get('/api/ia/file-preview', (req, res) => {
         return res.status(404).send('File not found');
     }
     res.sendFile(path.resolve(filePath));
+});
+
+// ==========================================
+// --- RAMON (TACTIC) INTEGRATION API ---
+// ==========================================
+const RAMON_CLIENT_SCRIPT = path.join(__dirname, 'helpers/ramon_client.py');
+
+function runRamonBridge(args, timeoutMs = 30000) {
+    return new Promise((resolve) => {
+        const pyProc = spawn('python', [RAMON_CLIENT_SCRIPT, ...args], {
+            windowsHide: true,
+            timeout: timeoutMs
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        pyProc.stdout.on('data', (data) => {
+            stdout += data.toString('utf8');
+        });
+
+        pyProc.stderr.on('data', (data) => {
+            stderr += data.toString('utf8');
+        });
+
+        pyProc.on('close', (code) => {
+            if (code !== 0 && !stdout.trim()) {
+                return resolve({ success: false, error: stderr || `Proceso Ramon salio con codigo ${code}` });
+            }
+            try {
+                const parsed = JSON.parse(stdout.trim());
+                resolve(parsed);
+            } catch (e) {
+                resolve({ success: false, error: `Respuesta invalida de Ramon: ${stdout || stderr}` });
+            }
+        });
+
+        pyProc.on('error', (err) => {
+            resolve({ success: false, error: `Error ejecutando Python para Ramon: ${err.message}` });
+        });
+    });
+}
+
+app.get('/api/ramon/status', async (req, res) => {
+    try {
+        const result = await runRamonBridge(['ping'], 10000);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/ramon/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ success: false, error: "Usuario y contrasena requeridos" });
+        }
+
+        const authResult = await runRamonBridge(['login', username, password], 15000);
+        if (!authResult.success) {
+            return res.status(401).json(authResult);
+        }
+
+        // Si autentico con exito en Ramon, asegurar/vincular el usuario en users_config.json
+        try {
+            if (fs.existsSync(USERS_CONFIG_FILE)) {
+                const uData = await fs.readJson(USERS_CONFIG_FILE);
+                const shouldAutoRegister = typeof uData.autoRegisterRamonUsers !== 'undefined' ? !!uData.autoRegisterRamonUsers : true;
+                const defaultRole = uData.defaultRamonRole || "user";
+                uData.users = uData.users || [];
+                let existing = uData.users.find(u => u.laspUser === username || u.username === username);
+                if (!existing && shouldAutoRegister) {
+                    existing = {
+                        id: `u_ramon_${username}`,
+                        username: username,
+                        firstName: authResult.user.first_name || "",
+                        lastName: authResult.user.last_name || "",
+                        laspUser: username,
+                        role: defaultRole,
+                        email: authResult.user.email || "",
+                        notes: "Sincronizado desde Ramon",
+                        avatarColor: "#00bcd4",
+                        isSystem: false,
+                        authSource: "ramon"
+                    };
+                    uData.users.push(existing);
+                } else if (existing) {
+                    existing.authSource = "ramon";
+                    if (authResult.user.first_name) existing.firstName = authResult.user.first_name;
+                    if (authResult.user.last_name) existing.lastName = authResult.user.last_name;
+                    if (authResult.user.email && !existing.email) existing.email = authResult.user.email;
+                }
+                uData.activeUser = username;
+                await fs.writeJson(USERS_CONFIG_FILE, uData, { spaces: 2 });
+            }
+        } catch(syncErr) {
+            console.warn("[RAMON] Error asociando usuario local:", syncErr);
+        }
+
+        res.json(authResult);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Cache en memoria para Ramón (persiste entre llamadas sin re-ejecutar Python innecesariamente)
+const ramonTasksCache = new Map();
+let ramonProjectsCache = null;
+
+app.get('/api/ramon/tasks', async (req, res) => {
+    try {
+        const targetUser = (req.query.user || '').trim();
+        const project = (req.query.project || '').trim();
+        const force = req.query.force === 'true' || req.query.refresh === 'true';
+
+        if (!targetUser) {
+            return res.status(400).json({ success: false, error: "Parametro 'user' requerido" });
+        }
+
+        const cacheKey = `${targetUser.toLowerCase()}::${project.toLowerCase() || 'all'}`;
+
+        // Si no se fuerza refresh y existe en cache, responder de inmediato
+        if (!force && ramonTasksCache.has(cacheKey)) {
+            const cached = ramonTasksCache.get(cacheKey);
+            return res.json({ ...cached.data, cached: true, cachedAt: cached.cachedAt });
+        }
+
+        const args = ['tasks', targetUser];
+        if (project) args.push(project);
+
+        const result = await runRamonBridge(args, 35000);
+        if (result && result.success) {
+            ramonTasksCache.set(cacheKey, {
+                cachedAt: new Date().toISOString(),
+                data: result
+            });
+        }
+        res.json({ ...result, cached: false });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Invalida el caché de tareas (para forzar refresh cuando una tool lo requiera)
+app.post('/api/ramon/tasks/invalidate', (req, res) => {
+    try {
+        const user = (req.body?.user || '').trim().toLowerCase();
+        if (user) {
+            for (const key of ramonTasksCache.keys()) {
+                if (key.startsWith(`${user}::`)) {
+                    ramonTasksCache.delete(key);
+                }
+            }
+        } else {
+            ramonTasksCache.clear();
+        }
+        res.json({ success: true, message: "Cache de Ramon invalidado" });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/ramon/projects', async (req, res) => {
+    try {
+        const force = req.query.force === 'true' || req.query.refresh === 'true';
+        if (!force && ramonProjectsCache) {
+            return res.json({ ...ramonProjectsCache.data, cached: true, cachedAt: ramonProjectsCache.cachedAt });
+        }
+
+        const result = await runRamonBridge(['projects'], 15000);
+        if (result && result.success) {
+            ramonProjectsCache = {
+                cachedAt: new Date().toISOString(),
+                data: result
+            };
+        }
+        res.json({ ...result, cached: false });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // Fallback logic

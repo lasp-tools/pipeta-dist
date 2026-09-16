@@ -243,19 +243,9 @@ const Inspector = {
     },
 
     // ==========================================
-    // INJECT METADATA
+    // INJECT METADATA (Deprecated / No-op)
     // ==========================================
-    injectMetadata: async (folderPath, presetId, user) => {
-        const preset = await Inspector.getPreset(presetId);
-        const meta = {
-            preset_id: presetId,
-            node_name: preset ? preset.name : "Custom",
-            items: [],
-            user: user || "Inspector",
-            creation_date: new Date().toISOString()
-        };
-        await API.fs.writeFile(folderPath + "\\vfx_control.json", JSON.stringify(meta, null, 2));
-    }
+    injectMetadata: async () => {}
 };
 
 window.Inspector = Inspector;

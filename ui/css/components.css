@@ -328,24 +328,52 @@
     color: #eee;
 }
 
-.settings-window.maximized {
-    top: 60px !important;
+.settings-window.maximized,
+#sync-queue-window.maximized,
+#sync-analyzer-window.maximized {
+    top: 68px !important;
     left: 50px !important;
+    right: auto !important;
+    bottom: auto !important;
     transform: none !important;
     width: calc(100vw - 50px) !important;
-    height: calc(100vh - 60px) !important;
+    height: calc(100vh - 68px) !important;
     max-width: 100vw !important;
     max-height: 100vh !important;
     border-radius: 0 !important;
     border: none !important;
     resize: none !important;
+    box-shadow: none !important;
+    z-index: 99 !important;
 }
 
-body.canvas-fullscreen .settings-window.maximized {
-    top: 42px !important;
+body.canvas-fullscreen .settings-window.maximized,
+body.canvas-fullscreen #sync-queue-window.maximized,
+body.canvas-fullscreen #sync-analyzer-window.maximized {
+    top: 0 !important;
     left: 0 !important;
     width: 100vw !important;
-    height: calc(100vh - 42px) !important;
+    height: 100vh !important;
+}
+
+#sync-queue-window.maximized #sync-queue-header {
+    cursor: default !important;
+    padding: 10px 16px !important;
+}
+
+#sync-queue-window.maximized #sync-queue-body {
+    height: calc(100% - 110px) !important;
+    padding: 20px 24px !important;
+}
+
+/* Sync Analyzer Settings Dropdown */
+#sync-analyzer-settings-menu {
+    animation: fadeInScale 0.15s ease-out;
+}
+
+#sync-analyzer-settings-menu input[type="radio"] {
+    accent-color: #4fc3f7;
+    cursor: pointer;
 }
 
 .settings-header {
@@ -680,4 +708,637 @@ body.canvas-fullscreen .settings-window.maximized {
 .toolbar-dropdown-item.active {
     background: rgba(79, 195, 247, 0.22);
     border-color: #4fc3f7;
-}
+}
+
+/* ==========================================================================
+   SYNC CONFLICT MODAL (Upload / Download Overwrite & Copy Protection)
+   ========================================================================== */
+.sync-conflict-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(8, 10, 15, 0.82);
+    backdrop-filter: blur(4px);
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    animation: fadeInConflict 0.2s ease;
+}
+
+@keyframes fadeInConflict {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.sync-conflict-dialog {
+    width: 680px;
+    max-width: 95vw;
+    background: #181c24;
+    border: 1px solid #2f3b4c;
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #e0e6ed;
+    font-family: var(--font-main, sans-serif);
+}
+
+.sync-conflict-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: #14171f;
+    border-bottom: 1px solid #252e3c;
+}
+
+.conflict-close-btn {
+    background: transparent;
+    border: none;
+    color: #8a99ad;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.conflict-close-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.sync-conflict-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.sync-conflict-cards {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+}
+
+.conflict-card {
+    flex: 1;
+    background: #10131a;
+    border: 1px solid #232b38;
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.conflict-card.card-source {
+    border-color: #2b3f5c;
+    background: #0f1724;
+}
+
+.conflict-card.card-target {
+    border-color: #5c322b;
+    background: #1e1312;
+}
+
+.conflict-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.card-role-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #79a6d2;
+}
+
+.target-alert-label {
+    color: #f28b82;
+}
+
+.conflict-card-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    word-break: break-all;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.conflict-prop-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.conflict-prop-k {
+    font-size: 0.72rem;
+    color: #8a99ad;
+    text-transform: uppercase;
+}
+
+.conflict-prop-v {
+    font-size: 0.82rem;
+    color: #d1d9e2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.conflict-path-mono {
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: #708196;
+    word-break: break-all;
+    max-height: 40px;
+    overflow-y: auto;
+}
+
+.conflict-vs-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f28b82;
+    font-size: 1.3rem;
+    font-weight: bold;
+    padding: 0 4px;
+}
+
+.conflict-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.badge-newer {
+    background: rgba(129, 199, 132, 0.2);
+    color: #81c784;
+    border: 1px solid rgba(129, 199, 132, 0.4);
+}
+
+.badge-older {
+    background: rgba(229, 115, 115, 0.2);
+    color: #e57373;
+    border: 1px solid rgba(229, 115, 115, 0.4);
+}
+
+.badge-diff {
+    background: rgba(255, 183, 77, 0.2);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 183, 77, 0.4);
+}
+
+.conflict-warning-box {
+    background: rgba(230, 81, 0, 0.15);
+    border: 1px solid rgba(255, 152, 0, 0.35);
+    border-radius: 5px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    color: #ffcc80;
+    line-height: 1.35;
+}
+
+.sync-conflict-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: #14171f;
+    border-top: 1px solid #252e3c;
+}
+
+.conflict-btn {
+    padding: 7px 14px;
+    border-radius: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.conflict-btn.btn-cancel {
+    background: #252e3c;
+    color: #c5d1de;
+    border-color: #384556;
+}
+
+.conflict-btn.btn-cancel:hover {
+    background: #313d4e;
+    color: #fff;
+}
+
+.conflict-btn.btn-copy {
+    background: #133a38;
+    color: #4dd0e1;
+    border-color: #1f5f5c;
+}
+
+.conflict-btn.btn-copy:hover {
+    background: #1a4d4a;
+    border-color: #267975;
+    color: #80deea;
+}
+
+.conflict-btn.btn-overwrite {
+    background: #4a1c1a;
+    color: #ff8a80;
+    border-color: #792d29;
+}
+
+.conflict-btn.btn-overwrite:hover {
+    background: #612320;
+    border-color: #993732;
+    color: #ffab91;
+}
+
+/* ==========================================================================
+   RAMON (TACTIC) INTEGRATION & AUTHENTICATION STYLES
+   ========================================================================== */
+.ramon-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(6, 8, 12, 0.88);
+    backdrop-filter: blur(6px);
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    animation: ramonFadeIn 0.2s ease;
+}
+
+@keyframes ramonFadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.ramon-modal-dialog {
+    width: 480px;
+    max-width: 95vw;
+    background: #15181f;
+    border: 1px solid #2b3545;
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+    color: #e0e6ed;
+    font-family: var(--font-main, sans-serif);
+}
+
+.ramon-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: #10131a;
+    border-bottom: 1px solid #232a36;
+}
+
+.ramon-modal-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.ramon-modal-close:hover {
+    color: #fff;
+}
+
+.ramon-login-tabs {
+    display: flex;
+    background: #0e1117;
+    border-bottom: 1px solid #232a36;
+}
+
+.ramon-tab-btn {
+    flex: 1;
+    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #888;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ramon-tab-btn.active {
+    color: #00bcd4;
+    border-bottom-color: #00bcd4;
+    background: rgba(0, 188, 212, 0.05);
+}
+
+.ramon-modal-body {
+    padding: 22px;
+}
+
+.ramon-field-group {
+    margin-bottom: 14px;
+}
+
+.ramon-field-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.ramon-field-group input,
+.ramon-field-group select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0b0d12;
+    border: 1px solid #2f3b4c;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.ramon-field-group input:focus,
+.ramon-field-group select:focus {
+    border-color: #00bcd4;
+}
+
+.ramon-btn-primary {
+    width: 100%;
+    padding: 12px;
+    background: #00bcd4;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 10px;
+    box-shadow: 0 4px 14px rgba(0, 188, 212, 0.3);
+    transition: all 0.2s ease;
+}
+
+.ramon-btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+.ramon-btn-primary:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.ramon-btn-secondary {
+    width: 100%;
+    padding: 12px;
+    background: #ff9800;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 10px;
+    box-shadow: 0 4px 14px rgba(255, 152, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+.ramon-btn-secondary:hover {
+    filter: brightness(1.1);
+}
+
+.ramon-login-error {
+    background: rgba(244, 67, 54, 0.15);
+    border: 1px solid rgba(244, 67, 54, 0.4);
+    color: #ff8a80;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    margin: 10px 0;
+}
+
+/* User dropdown menu */
+.ramon-user-dropdown {
+    position: fixed;
+    background: #15181f;
+    border: 1px solid #2f3b4c;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    min-width: 240px;
+    overflow: hidden;
+    display: none;
+    animation: ramonFadeIn 0.15s ease;
+}
+
+.ramon-user-menu-header {
+    padding: 12px 16px;
+    background: #10131a;
+    border-bottom: 1px solid #232a36;
+}
+
+.ramon-user-menu-body {
+    padding: 6px 0;
+}
+
+.ramon-menu-item {
+    width: 100%;
+    padding: 9px 16px;
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.15s ease;
+}
+
+.ramon-menu-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+}
+
+.ramon-menu-item.danger:hover {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ff8a80;
+}
+
+/* Tasks modal styles */
+.ramon-tasks-filters-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 18px;
+    background: #10131a;
+    border-bottom: 1px solid #232a36;
+}
+
+.ramon-tasks-filters-bar select {
+    background: #0b0d12;
+    border: 1px solid #2f3b4c;
+    border-radius: 5px;
+    padding: 6px 10px;
+    color: #ccc;
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.ramon-refresh-btn {
+    background: #1f2530;
+    border: 1px solid #2f3b4c;
+    color: #ccc;
+    border-radius: 5px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ramon-refresh-btn:hover {
+    background: #2a3342;
+    color: #fff;
+}
+
+.ramon-tasks-list-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ramon-task-card {
+    background: #1a1e27;
+    border: 1px solid #2a3344;
+    border-radius: 8px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ramon-task-card:hover {
+    border-color: #00bcd4;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 188, 212, 0.15);
+}
+
+.ramon-task-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.ramon-task-shot-name {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+.ramon-task-shot-code {
+    font-size: 0.8rem;
+    color: #888;
+    margin-left: 6px;
+}
+
+.ramon-task-proj-badge {
+    background: #0b0d12;
+    border: 1px solid #333;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: #aaa;
+    font-family: monospace;
+}
+
+.ramon-task-status-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+.ramon-task-card-body {
+    font-size: 0.8rem;
+    color: #bbb;
+    margin-bottom: 10px;
+}
+
+.ramon-task-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 6px 12px;
+    background: #11141b;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.ramon-task-desc {
+    color: #aaa;
+    font-size: 0.8rem;
+    background: #13161f;
+    padding: 8px 10px;
+    border-left: 3px solid #00bcd4;
+    border-radius: 0 4px 4px 0;
+    margin-top: 6px;
+}
+
+.ramon-task-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid #232a36;
+}
+
+.ramon-jump-btn {
+    background: #00bcd422;
+    color: #00bcd4;
+    border: 1px solid #00bcd466;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ramon-jump-btn:hover {
+    background: #00bcd4;
+    color: #000;
+}
+

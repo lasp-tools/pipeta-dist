@@ -95,10 +95,6 @@ class FileAuditor {
                                     <input type="checkbox" id="mirror-omit-proj" ${this.omitProjectFiles ? 'checked' : ''} onchange="fileAuditor.toggleOmitProjectFiles(this.checked)">
                                     <span>Omitir archivos de proyecto (.nk, .hip, .txt)</span>
                                 </label>
-                                <label style="font-size:0.72rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:4px; user-select:none;">
-                                    <input type="checkbox" id="mirror-omit-control" ${this.omitControlFiles ? 'checked' : ''} onchange="fileAuditor.toggleOmitControl(this.checked)">
-                                    <span>Omitir <code>vfx_control.json</code></span>
-                                </label>
                             </div>
                             <span id="mirror-audit-roots-summary" style="font-size:0.7rem; color:#666;">-</span>
                         </div>

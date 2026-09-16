@@ -412,20 +412,7 @@ async function initPipetaPane(rootPath, containerId, filterList) {
     container.innerHTML = "";
 
     if (!data.error && data.items) {
-        let itemsToRender = data.items;
-        // Apply filter if active and it's the project tree
-        if (window.pipetaUseFilter && containerId === 'tree-work') {
-            const filterList = window.pipetaFilterList;
-            itemsToRender = data.items.filter(i => {
-                return filterList.some(w => i.name.toLowerCase() === w.toLowerCase());
-            });
-        }
-        if (filterList) {
-            itemsToRender = data.items.filter(i => {
-                return filterList.some(w => i.name.toLowerCase() === w.toLowerCase());
-            });
-        }
-        await renderPipetaColumn(container, itemsToRender, 0, containerId, rootPath);
+        await renderPipetaColumn(container, data.items, 0, containerId, rootPath);
 
         // Restore from saved chain
         if (savedChain.length > 0) {
@@ -541,8 +528,18 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
         }
     }
 
-    const finalItems = (typeof collapseImageSequences === 'function') ? collapseImageSequences(items) : items;
+    const allLocalNames = new Set((items || []).map(i => (i.name || '').toLowerCase()));
+
+    const filteredItems = (typeof window.filterExplorerItems === 'function')
+        ? window.filterExplorerItems(items, containerId, parentPath, items)
+        : items;
+
+    const finalItems = (typeof collapseImageSequences === 'function') ? collapseImageSequences(filteredItems) : filteredItems;
     const finalRemoteChildren = (typeof collapseImageSequences === 'function') ? collapseImageSequences(remoteChildren) : remoteChildren;
+
+    const filteredRemoteChildren = (typeof window.filterExplorerItems === 'function')
+        ? window.filterExplorerItems(finalRemoteChildren, containerId, parentPath, items)
+        : finalRemoteChildren;
 
     const renderedNames = new Set();
 
@@ -648,9 +645,9 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
     });
 
     // 2. Elementos Fantasma (Están en catálogo/server pero FALTAN en local)
-    if (syncActive && finalRemoteChildren.length > 0) {
-        finalRemoteChildren.forEach(catItem => {
-            if (!renderedNames.has(catItem.name.toLowerCase())) {
+    if (syncActive && filteredRemoteChildren.length > 0) {
+        filteredRemoteChildren.forEach(catItem => {
+            if (!allLocalNames.has((catItem.name || '').toLowerCase())) {
                 const ghostBlock = document.createElement('div');
                 ghostBlock.className = 'pipeta-block sync-ghost';
                 ghostBlock.setAttribute('data-path', catItem.targetLocalPath);

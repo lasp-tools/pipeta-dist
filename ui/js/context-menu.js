@@ -30,7 +30,7 @@ class ContextMenu {
         this.activeTarget = target;
         let path = target.getAttribute('data-path');
         let isDir = target.getAttribute('data-isdir') === 'true';
-        let name = target.innerText.trim();
+        let name = target.getAttribute('data-name') || (path ? path.split(/[\\/]/).pop() : '') || target.innerText.trim();
 
         if (!path) return;
 
@@ -92,12 +92,67 @@ class ContextMenu {
         const canPaste = !!this.clipboard;
         const labelSuffix = multi ? ` (${count})` : '';
 
-        // If multi, disable single-item actions like Rename, Open in Explorer?
-        // Open in Explorer could open multiple windows, maybe limit it?
+        const compMode = window.syncComparisonMode || 'off';
+        const syncItems = [];
+
+        if (compMode === 'drive') {
+            syncItems.push(
+                { separator: true },
+                { 
+                    label: `Upload (Subir a Google Drive)${labelSuffix}`, 
+                    icon: '⬆️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'drive', path: p, isDir, name }) 
+                },
+                { 
+                    label: `Download (Bajar de Google Drive)${labelSuffix}`, 
+                    icon: '⬇️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'drive', path: p, isDir, name }) 
+                }
+            );
+        } else if (compMode === 'server') {
+            syncItems.push(
+                { separator: true },
+                { 
+                    label: `Upload (Subir a Servidor S:)${labelSuffix}`, 
+                    icon: '⬆️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'server', path: p, isDir, name }) 
+                },
+                { 
+                    label: `Download (Bajar de Servidor S:)${labelSuffix}`, 
+                    icon: '⬇️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'server', path: p, isDir, name }) 
+                }
+            );
+        } else {
+            syncItems.push(
+                { separator: true },
+                { 
+                    label: `Subir a Servidor (S:)${labelSuffix}`, 
+                    icon: '🗄️⬆️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'server', path: p, isDir, name }) 
+                },
+                { 
+                    label: `Bajar de Servidor (S:)${labelSuffix}`, 
+                    icon: '🗄️⬇️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'server', path: p, isDir, name }) 
+                },
+                { 
+                    label: `Subir a Google Drive${labelSuffix}`, 
+                    icon: '☁️⬆️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'drive', path: p, isDir, name }) 
+                },
+                { 
+                    label: `Bajar de Google Drive${labelSuffix}`, 
+                    icon: '☁️⬇️', 
+                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'drive', path: p, isDir, name }) 
+                }
+            );
+        }
 
         return [
             { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi) },
             { label: 'Refrescar Carpeta', icon: '🔄', action: (p) => this.refreshFolder(p, isDir) },
+            ...syncItems,
             { separator: true },
             { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false) },
             { label: `Cortar${labelSuffix}`, icon: '✂️', action: (p) => this.copyToClipboard(true) },

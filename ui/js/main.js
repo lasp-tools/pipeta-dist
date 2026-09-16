@@ -78,52 +78,95 @@ const headerToolsTemplates = {
         </div>
     `,
     'view-browser': () => `
-        <!-- Block 1: Vistas y Navegación -->
-        <div class="toolbar-section-group" title="Opciones de Visualización">
-            <span class="toolbar-section-label">View Options</span>
-            <div class="toolbar-section-content">
-                <div class="toolbar-dropdown" id="browserModeDropdown">
-                    <button type="button" class="tool-btn" id="browserModeBtn" onclick="toggleBrowserModeDropdown(event)" title="${currentBrowserMode === 'pipeta' ? 'Vista Miller (Columnas)' : 'Vista Clásica (Split View)'}" style="display:inline-flex; align-items:center; gap:2px; padding:2px 5px; cursor:pointer;">
-                        <img src="icons/${currentBrowserMode === 'pipeta' ? 'view_miller.svg' : 'view_classic.svg'}" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
-                        <span style="font-size:0.55rem; color:#888; margin-left:1px; line-height:1; pointer-events:none;">▾</span>
+        <!-- Block 1: Opciones de Vista y Filtros en 2 niveles (Superior e Inferior) -->
+        <div class="toolbar-stacked-container">
+            <!-- Fila Superior: View Options (sin el project filter) -->
+            <div class="toolbar-section-compact" title="Opciones de Visualización">
+                <span class="toolbar-section-label">View Options</span>
+                <div class="toolbar-section-content">
+                    <div class="toolbar-dropdown" id="browserModeDropdown">
+                        <button type="button" class="tool-btn" id="browserModeBtn" onclick="toggleBrowserModeDropdown(event)" title="${currentBrowserMode === 'pipeta' ? 'Vista Miller (Columnas)' : 'Vista Clásica (Split View)'}" style="display:inline-flex; align-items:center; gap:2px; padding:2px 4px; cursor:pointer;">
+                            <img src="icons/${currentBrowserMode === 'pipeta' ? 'view_miller.svg' : 'view_classic.svg'}" class="btn-icon-svg" style="width:14px; height:14px; pointer-events:none;">
+                            <span style="font-size:0.50rem; color:#888; margin-left:1px; line-height:1; pointer-events:none;">▾</span>
+                        </button>
+                        <div class="toolbar-dropdown-menu" id="browserModeDropdownMenu">
+                            <button type="button" class="toolbar-dropdown-item ${(!currentBrowserMode || currentBrowserMode === 'split') ? 'active' : ''}" onclick="selectBrowserMode('split', event)" title="Vista Clásica (Split View)">
+                                <img src="icons/view_classic.svg" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
+                            </button>
+                            <button type="button" class="toolbar-dropdown-item ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="selectBrowserMode('pipeta', event)" title="Vista Miller (Columnas)">
+                                <img src="icons/view_miller.svg" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
+                            </button>
+                        </div>
+                    </div>
+                    <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo)" id="btnMirrorModeTool">
+                        <img src="icons/mirror.svg" class="btn-icon-svg" style="width:14px; height:14px;">
                     </button>
-                    <div class="toolbar-dropdown-menu" id="browserModeDropdownMenu">
-                        <button type="button" class="toolbar-dropdown-item ${(!currentBrowserMode || currentBrowserMode === 'split') ? 'active' : ''}" onclick="selectBrowserMode('split', event)" title="Vista Clásica (Split View)">
-                            <img src="icons/view_classic.svg" class="btn-icon-svg" style="width:18px; height:18px; pointer-events:none;">
-                        </button>
-                        <button type="button" class="toolbar-dropdown-item ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="selectBrowserMode('pipeta', event)" title="Vista Miller (Columnas)">
-                            <img src="icons/view_miller.svg" class="btn-icon-svg" style="width:18px; height:18px; pointer-events:none;">
-                        </button>
+                    <button class="tool-btn ${window.isPropertiesPanelVisible === true ? 'active' : ''}" 
+                            id="btnTogglePropertiesToolbar" 
+                            onclick="togglePropertiesPanel()" 
+                            title="Panel de Propiedades (Alt+P | Clic para Mostrar/Ocultar)">
+                        <img src="icons/panel_properties.svg" class="btn-icon-svg" style="width:14px; height:14px; ${window.isPropertiesPanelVisible === true ? '' : 'opacity:0.4'}">
+                    </button>
+                    
+                    <div style="width:2px"></div>
+                    
+                    <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
+                    <div style="display:flex; background:#0e141f; border-radius:3px; padding:1px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
+                        <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
+                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1;"
+                                onclick="switchViewLocation('local')" title="Disco Z Local (Copia Local / vsubst)">LOCAL</button>
+                        <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
+                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
+                                onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
+                        <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
+                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
+                                onclick="switchViewLocation('server')" title="Server Central Real del Estudio (S:)">SERVER</button>
+                    </div>
+
+                    <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpetas Locales (Instantáneo - Relee disco)">
+                        <img src="icons/refresh.svg" class="btn-icon-svg" style="width:14px; height:14px;">
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fila Inferior: Filters (Project Filter + My Tasks + Search) -->
+            <div class="toolbar-section-compact" title="Filtros del Explorador">
+                <span class="toolbar-section-label">Filters</span>
+                <div class="toolbar-section-content">
+                    <!-- Project Filter (Embudo) -->
+                    <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
+                            onclick="togglePipetaFilter()" 
+                            oncontextmenu="handleFilterContextMenu(event)"
+                            title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
+                        <img src="icons/filter.svg" class="btn-icon-svg" style="width:13px; height:13px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
+                    </button>
+
+                    <!-- My Tasks Filter (Solo Icono Ramon + Tooltip) -->
+                    <button class="tool-btn ${window.explorerOnlyMyTasks ? 'active' : ''}" 
+                            id="btnExplorerMyTasksFilter"
+                            onclick="toggleExplorerOnlyMyTasks()" 
+                            style="${window.explorerOnlyMyTasks ? 'background:#00bcd433; border:1px solid #00bcd488;' : ''}"
+                            title="My Tasks (Filtrar solo planos y assets asignados a mi usuario en Ramón | Clic: ON/OFF)">
+                        <img src="icons/ramon.png" class="btn-icon-svg" style="width:14px; height:14px; ${!window.explorerOnlyMyTasks ? 'opacity:0.45;' : ''}">
+                    </button>
+
+                    <!-- Search Input (Filtrado en vivo) -->
+                    <div style="position:relative; display:flex; align-items:center;">
+                        <input type="text" 
+                                id="explorerSearchInput" 
+                                placeholder="🔍 Filtrar..." 
+                                value="${window.explorerSearchQuery || ''}" 
+                                oninput="setExplorerSearchQuery(this.value)"
+                                title="Escribí para filtrar elementos en vivo"
+                                style="background:#0e141f; border:1px solid #1e2c40; border-radius:3px; padding:1px 18px 1px 5px; font-size:0.68rem; color:#fff; width:110px; height:17px; outline:none;">
+                        ${window.explorerSearchQuery ? `
+                        <button type="button" 
+                                onclick="clearExplorerSearchQuery()" 
+                                title="Limpiar búsqueda" 
+                                style="position:absolute; right:2px; background:transparent; border:none; color:#888; font-size:0.60rem; cursor:pointer; padding:0 2px;">✕</button>
+                        ` : ''}
                     </div>
                 </div>
-                <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
-                        onclick="togglePipetaFilter()" 
-                        oncontextmenu="handleFilterContextMenu(event)"
-                        title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
-                    <img src="icons/filter.svg" class="btn-icon-svg" style="${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
-                </button>
-                <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo)" id="btnMirrorModeTool">
-                    <img src="icons/mirror.svg" class="btn-icon-svg">
-                </button>
-                
-                <div style="width:3px"></div>
-                
-                <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
-                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
-                    <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
-                            onclick="switchViewLocation('local')" title="Disco Z Local (Copia Local / vsubst)">LOCAL</button>
-                    <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
-                            onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
-                    <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
-                            onclick="switchViewLocation('server')" title="Server Central Real del Estudio (S:)">SERVER</button>
-                </div>
-
-                <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpetas Locales (Instantáneo - Relee disco)">
-                    <img src="icons/refresh.svg" class="btn-icon-svg">
-                </button>
             </div>
         </div>
 
@@ -483,6 +526,14 @@ function switchView(viewId) {
     if (typeof settings !== 'undefined' && settings.isVisible) {
         settings.close();
     }
+    // Si Sync Queue está abierto (especialmente en modo maximizado canvas), cerrarlo para ver el nuevo módulo
+    if (window.syncQueueUI && window.syncQueueUI.isVisible && window.syncQueueUI.isMaximized) {
+        window.syncQueueUI.close();
+    }
+    // Si Sync Analyzer está abierto (especialmente en modo maximizado canvas), cerrarlo para ver el nuevo módulo
+    if (window.syncAnalyzer && window.syncAnalyzer.isVisible && window.syncAnalyzer.isMaximized) {
+        window.syncAnalyzer.close();
+    }
 
     // 1. Update Buttons State
     document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -556,6 +607,12 @@ if (localStorage.getItem('pipeta_canvas_fullscreen') === 'true') {
 // Bind Click Events
 document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+        if (btn.id !== 'sidebarTransferQueueBtn' && window.syncQueueUI && window.syncQueueUI.isVisible && window.syncQueueUI.isMaximized) {
+            window.syncQueueUI.close();
+        }
+        if (btn.getAttribute('title') !== 'Sync Analyzer' && window.syncAnalyzer && window.syncAnalyzer.isVisible && window.syncAnalyzer.isMaximized) {
+            window.syncAnalyzer.close();
+        }
         const viewId = tabs[btn.getAttribute('title')];
         if (viewId) switchView(viewId);
     });
@@ -665,12 +722,26 @@ async function initApp() {
     }
 
     // 2. Set Default View Mode (from config if available)
-    const initialMode = settings && settings.config && settings.config.defaultViewMode
-        ? settings.config.defaultViewMode
-        : 'local';
+    const initialMode = (settings && settings.defaultViewMode)
+        ? (settings.defaultViewMode === 'online' ? 'drive' : settings.defaultViewMode)
+        : (localStorage.getItem('pipeta_view_location_mode') || 'local');
 
-    // Set global mode (without triggering refesh yet)
+    // Set global mode (without triggering refresh yet)
     window.viewLocationMode = initialMode;
+
+    // 2b. Set Default Browser Mode (Classic Split vs Miller)
+    const initialBrowserMode = (settings && settings.defaultBrowserMode)
+        ? settings.defaultBrowserMode
+        : (localStorage.getItem('pipeta_browser_mode') || 'split');
+    if (typeof switchBrowserMode === 'function') {
+        switchBrowserMode(initialBrowserMode);
+    }
+
+    // 2c. Set Default Sync Comparison Mode (Drive vs Server)
+    const initialCompMode = (settings && settings.defaultSyncComparisonMode)
+        ? settings.defaultSyncComparisonMode
+        : (localStorage.getItem('pipeta_sync_comparison_mode') || 'drive');
+    window.syncComparisonMode = initialCompMode;
 
     // 3. Init Browser (will use window.viewLocationMode)
     await initBrowser();
@@ -691,6 +762,9 @@ async function initApp() {
     // 8. Init Header User Selector and Permissions
     await updateHeaderUserSelector();
     await applyRolePermissionsToUI();
+
+    // 9. Init Ramon session
+    if (typeof Ramon !== 'undefined') Ramon.init();
 }
 
 // --- HEADER USER SWITCHER ---
@@ -746,12 +820,20 @@ window.updateHeaderUserSelector = async () => {
         
         const active = uData.activeUser || 'admin';
         const activeObj = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
-        if (avatar) avatar.style.background = activeObj?.avatarColor || '#ff9800';
+        if (avatar) {
+            avatar.innerHTML = '';
+            avatar.style.background = activeObj?.avatarColor || (activeObj?.authSource === 'ramon' ? '#00bcd4' : '#ff9800');
+        }
         
         select.innerHTML = (uData.users || []).map(u => {
-            const val = u.username || u.laspUser || u.id;
-            const label = u.firstName ? `${u.username || u.laspUser} (${u.firstName} ${u.lastName})` : (u.username || u.laspUser);
-            return `<option value="${val}" ${val === active ? 'selected' : ''}>${label}</option>`;
+            const isRamon = u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-'));
+            const val = (isRamon && u.laspUser) ? u.laspUser : (u.username || u.laspUser || u.id);
+            const userTag = isRamon ? ' [Ramón]' : '';
+            const cleanLast = (u.lastName || '').replace(/_+$/, '').trim();
+            const fullName = u.firstName ? ` (${u.firstName}${cleanLast ? ' ' + cleanLast : ''})` : '';
+            const label = `${val}${fullName}${userTag}`;
+            const isSelected = (val === active || u.username === active || u.laspUser === active);
+            return `<option value="${val}" ${isSelected ? 'selected' : ''}>${label}</option>`;
         }).join('');
     } catch(e) {
         console.warn("Could not load users for header selector:", e);
@@ -929,6 +1011,17 @@ window.addEventListener('scroll', closeAllToolbarDropdowns, true);
 window.toggleBrowserModeDropdown = toggleBrowserModeDropdown;
 window.selectBrowserMode = selectBrowserMode;
 window.closeAllToolbarDropdowns = closeAllToolbarDropdowns;
+
+// Shortcuts
+window.addEventListener('keydown', (e) => {
+    // Alt+P: Alternar Panel de Propiedades
+    if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        if (typeof togglePropertiesPanel === 'function') {
+            togglePropertiesPanel();
+        }
+    }
+});
 
 // Start
 document.addEventListener('DOMContentLoaded', () => initApp());

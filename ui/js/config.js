@@ -7,7 +7,7 @@ const ROOTS = {
 };
 
 // --- GLOBAL STATE ---
-let currentBrowserMode = 'split';
+let currentBrowserMode = (typeof localStorage !== 'undefined' && localStorage.getItem('pipeta_browser_mode')) || 'split';
 let selectedContextPath = "";
 let isMirrorMode = false;
 let isMirroringInProgress = false; // Prevent infinite loop
