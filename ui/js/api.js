@@ -6,6 +6,9 @@ async function fetchDir(path, options = {}) {
         if (options.localSource) url += `&local_source=${encodeURIComponent(options.localSource)}`;
         if (options.force) url += `&force=true`;
     }
+    if ((!options || !options.localSource) && window.viewLocationMode === 'server') {
+        url += `&local_source=server_catalog`;
+    }
     try {
         const res = await fetch(url);
         return await res.json();

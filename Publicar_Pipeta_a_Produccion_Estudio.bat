@@ -39,6 +39,14 @@ if exist "%SRC%\presets" (
     robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
 )
 
+if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Instalar_o_Actualizar_Pipeta_Local.bat" (
+    copy /Y "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Instalar_o_Actualizar_Pipeta_Local.bat" "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Instalar_o_Actualizar_Pipeta_Local.bat" >nul 2>&1
+)
+
+if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta_*.zip" (
+    copy /Y "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta_*.zip" "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\" >nul 2>&1
+)
+
 echo.
 echo ============================================================
 echo   OK: Pipeta ha sido publicada con exito en S: (Z: del estudio)

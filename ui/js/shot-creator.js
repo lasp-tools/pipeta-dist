@@ -211,7 +211,7 @@ const ShotCreator = {
         let hasUnitRoot = false;
 
         const projNode = ShotCreator.selectedPreset.nodes.find(n => n.isProjectNode);
-        const projNick = projNode?.nickExample || projNode?.nickVarName || "SURF";
+        const projNick = ShotCreator.currentContext?.projectObj?.projectCode || projNode?.nickExample || projNode?.nickVarName || "SURF";
         const epVal = (level === 'episode') ? itemName : (ShotCreator.selectedParentEpisode || "EPISODIO");
         const scnVal = (level === 'scene') ? itemName : (ShotCreator.selectedParentScene || "ESCENA");
         const shotVal = itemName;
@@ -455,34 +455,53 @@ const ShotCreator = {
     loadPresets: async () => {
         ShotCreator.presets = [];
         try {
-            if (window.API && API.fs && API.fs.getFiles) {
-                const files = await API.fs.getFiles(ShotCreator.presetsPath);
-                for (const f of files) {
-                    if (f.endsWith('.json')) {
-                        const content = await API.fs.readFile(ShotCreator.presetsPath + "\\" + f);
-                        if (content) {
-                            try {
-                                const preset = JSON.parse(content);
-                                ShotCreator.presets.push(preset);
-                            } catch (e) {
-                                console.error("Error parsing preset:", f, e);
+            const candidateDirs = [
+                ShotCreator.presetsPath,
+                "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner",
+                "S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner"
+            ];
+            for (const cDir of candidateDirs) {
+                if (window.API && API.fs && API.fs.getFiles) {
+                    try {
+                        const files = await API.fs.getFiles(cDir);
+                        if (files && files.length > 0) {
+                            for (const f of files) {
+                                if (f.endsWith('.json')) {
+                                    const content = await API.fs.readFile(cDir + "\\" + f);
+                                    if (content) {
+                                        try {
+                                            const preset = JSON.parse(content);
+                                            if (!ShotCreator.presets.some(p => p.id === preset.id)) {
+                                                ShotCreator.presets.push(preset);
+                                            }
+                                        } catch (e) {
+                                            console.error("Error parsing preset:", f, e);
+                                        }
+                                    }
+                                }
+                            }
+                            if (ShotCreator.presets.length > 0) {
+                                ShotCreator.presetsPath = cDir;
+                                break;
                             }
                         }
-                    }
+                    } catch(err) {}
                 }
-            }
-            // Add Default Preset if empty
-            if (ShotCreator.presets.length === 0) {
-                // Optionally add a dummy preset or warn
             }
 
-            // Restore last selected preset
+            // Restore last selected preset or fallback to project default/master_shot
             const lastId = localStorage.getItem('pipeta_sc_last_preset');
+            let foundIdx = -1;
             if (lastId) {
-                const found = ShotCreator.presets.findIndex(p => p.id === lastId);
-                if (found !== -1) {
-                    ShotCreator.selectPreset(found);
-                }
+                foundIdx = ShotCreator.presets.findIndex(p => p.id === lastId);
+            }
+            if (foundIdx === -1 && ShotCreator.presets.length > 0) {
+                const defId = (typeof settings !== 'undefined' && settings.currentProject?.defaultShotPresetId) || 'master_shot';
+                foundIdx = ShotCreator.presets.findIndex(p => p.id === defId || p.name === defId);
+                if (foundIdx === -1) foundIdx = 0;
+            }
+            if (foundIdx !== -1) {
+                ShotCreator.selectPreset(foundIdx);
             }
         } catch (e) {
             console.error("ShotCreator: Error loading presets", e);
@@ -1592,7 +1611,7 @@ const ShotCreator = {
         const currentWeight = levelWeight[ShotCreator.creationLevel] || 99;
 
         const projNode = ShotCreator.selectedPreset?.nodes?.find(n => n.isProjectNode);
-        const projNick = projNode?.nickExample || projNode?.nickVarName || "SURF";
+        const projNick = ShotCreator.currentContext?.projectObj?.projectCode || projNode?.nickExample || projNode?.nickVarName || "SURF";
 
         // Calculate resolved shot folder name if in shot level
         let shotResolvedName = shotName;

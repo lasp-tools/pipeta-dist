@@ -47,6 +47,15 @@ window.filterExplorerItems = function(items, containerId, dirPath, allDiskItems)
 
     // 2. My Tasks Filter (window.explorerOnlyMyTasks)
     if (window.explorerOnlyMyTasks) {
+        let currentProj = '';
+        if (typeof settings !== 'undefined' && settings.currentProject) {
+            currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
+        }
+
+        const userTasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks))
+            ? Ramon.tasks.filter(t => !currentProj || !t.project || t.project.toLowerCase() === currentProj.toLowerCase())
+            : [];
+
         const assignedTasks = typeof window.getExplorerAssignedTaskNames === 'function' 
             ? Array.from(window.getExplorerAssignedTaskNames()) 
             : [];
@@ -60,8 +69,34 @@ window.filterExplorerItems = function(items, containerId, dirPath, allDiskItems)
                 }
             }
 
+            // Determinar dinámicamente si el usuario tiene planos o assets asignados
+            let hasShotTasks = false;
+            let hasAssetTasks = false;
+
+            if (userTasks.length > 0) {
+                for (const t of userTasks) {
+                    const it = (t.item_type || '').toLowerCase();
+                    const st = (t.search_type || '').toLowerCase();
+                    const nm = (t.name || '').toLowerCase();
+                    if (it.includes('plano') || it.includes('shot') || st.includes('plano') || /_b\d+_/i.test(nm)) {
+                        hasShotTasks = true;
+                    } else if (it.includes('asset') || st.includes('asset')) {
+                        hasAssetTasks = true;
+                    } else {
+                        if (/_b\d+_/i.test(nm) || /b\d+/i.test(nm)) {
+                            hasShotTasks = true;
+                        } else {
+                            hasAssetTasks = true;
+                        }
+                    }
+                }
+            } else {
+                hasShotTasks = assignedTasks.some(t => /_b\d+_/i.test(t) || /b\d+/i.test(t));
+                hasAssetTasks = assignedTasks.some(t => !/_b\d+_/i.test(t) && !/b\d+/i.test(t));
+            }
+
             const SHOT_CONTAINERS = new Set(['episodios', 'secuencias', 'shots', 'planos']);
-            const ASSET_CONTAINERS = new Set(['assets', '3d', '2d', 'props', 'characters', 'char', 'prop', 'env', 'environments']);
+            const ASSET_CONTAINERS = new Set(['assets', '3d', '2d', 'props', 'characters', 'char', 'prop', 'env', 'environments', 'assets2d', 'assets3d']);
 
             result = result.filter(item => {
                 const nameLower = (item.name || '').toLowerCase();
@@ -84,9 +119,9 @@ window.filterExplorerItems = function(items, containerId, dirPath, allDiskItems)
                     }
                 }
 
-                // C. Carpetas estructurales universales
-                if (SHOT_CONTAINERS.has(nameLower)) return true;
-                if (ASSET_CONTAINERS.has(nameLower)) return true;
+                // C. Carpetas estructurales universales (solo si el usuario tiene tareas asignadas en esa rama)
+                if (hasShotTasks && SHOT_CONTAINERS.has(nameLower)) return true;
+                if (hasAssetTasks && ASSET_CONTAINERS.has(nameLower)) return true;
 
                 // D. Tokens de la tarea (ej: 'b01', '003')
                 if (taskTokens.has(nameLower)) return true;
@@ -118,21 +153,14 @@ window.togglePipetaFilter = function() {
 window.toggleExplorerOnlyMyTasks = async function() {
     window.explorerOnlyMyTasks = !window.explorerOnlyMyTasks;
     if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
+    
+    // Refresco INSTANTÁNEO de la vista (0 ms de espera)
+    refreshCurrentView();
 
     if (window.explorerOnlyMyTasks) {
         let currentProj = '';
         if (typeof settings !== 'undefined' && settings.currentProject) {
             currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
-        }
-
-        // Si tenemos sesión de Ramón, refrescar tareas del proyecto activo en vivo
-        if (typeof Ramon !== 'undefined' && Ramon.session?.user) {
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                settings.showToast('Sincronizando tareas con Ramón...', 'info', 1.5);
-            }
-            if (typeof Ramon.fetchTasks === 'function') {
-                await Ramon.fetchTasks(currentProj || null, true);
-            }
         }
 
         const assigned = typeof window.getExplorerAssignedTaskNames === 'function' 
@@ -143,17 +171,29 @@ window.toggleExplorerOnlyMyTasks = async function() {
             if (assigned.size > 0) {
                 settings.showToast(`Filtro Mis Tareas: ${assigned.size} ítems asignados`, 'success', 2);
             } else {
-                settings.showToast('Mis Tareas: sin tareas asignadas para este proyecto', 'warning', 3);
+                settings.showToast('Mis Tareas activado (sincronizando con Ramón...)', 'info', 2);
             }
+        }
+
+        // Si tenemos sesión de Ramón, sincronizar en background sin congelar la interfaz
+        if (typeof Ramon !== 'undefined' && Ramon.session?.user && typeof Ramon.fetchTasks === 'function') {
+            Ramon.fetchTasks(currentProj || null, false).then((updatedTasks) => {
+                if (window.explorerOnlyMyTasks) {
+                    const newAssigned = typeof window.getExplorerAssignedTaskNames === 'function'
+                        ? window.getExplorerAssignedTaskNames()
+                        : new Set();
+                    if (newAssigned.size > 0 && typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                        settings.showToast(`Filtro Mis Tareas: ${newAssigned.size} ítems asignados`, 'success', 2);
+                    }
+                    refreshCurrentView();
+                }
+            }).catch(() => {});
         }
     } else {
         if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
             settings.showToast('Filtro Mis Tareas desactivado', 'info', 1.5);
         }
     }
-
-    if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
-    refreshCurrentView();
 };
 
 window.setExplorerSearchQuery = function(q) {
@@ -221,36 +261,59 @@ function switchBrowserMode(mode) {
     }
 }
 
-function refreshCurrentView() {
+async function refreshCurrentView(forceCatalog = false) {
     // Invalida caché en memoria del backend de directorios de red
-    fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+    try {
+        await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
+    } catch(e) {}
 
     // Visual feedback
-    const btn = document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
+    const btn = document.querySelector('.tool-btn[title*="Refrescar"]') || document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
     if (btn) {
         btn.style.transform = "rotate(360deg)";
         btn.style.transition = "transform 0.5s";
         setTimeout(() => btn.style.transform = "none", 500);
     }
 
+    if (forceCatalog && typeof loadActiveProjectSyncCatalog === 'function') {
+        try {
+            await loadActiveProjectSyncCatalog(true);
+        } catch(e) {}
+    }
+
     if (currentBrowserMode === 'split') {
-        if (typeof initBrowser === 'function') initBrowser();
+        if (typeof initBrowser === 'function') await initBrowser();
     } else {
-        if (typeof initPipetaView === 'function') initPipetaView();
+        if (typeof initPipetaView === 'function') await initPipetaView();
     }
 }
 
 window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || 'local';
-window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'drive'; // 'drive' | 'server' | 'off'
-window.pipetaSystemEnv = null;
+if (typeof isZRealServer === 'function' && isZRealServer() && window.viewLocationMode === 'server') {
+    window.viewLocationMode = 'local';
+}
+window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'drive';
+if (typeof isZRealServer === 'function' && isZRealServer() && window.syncComparisonMode === 'server') {
+    window.syncComparisonMode = 'drive';
+}
 window.zEnvOverride = localStorage.getItem('pipeta_z_env_override') || 'auto'; // 'auto' | 'force_real' | 'force_fake'
 
-async function detectSystemEnvironment() {
+// Cargar entorno previamente guardado de forma instantánea
+try {
+    const savedEnv = localStorage.getItem('pipeta_system_env');
+    window.pipetaSystemEnv = savedEnv ? JSON.parse(savedEnv) : null;
+} catch (e) {
+    window.pipetaSystemEnv = null;
+}
+
+async function detectSystemEnvironment(force = false) {
     try {
-        const res = await fetch('/api/sync/detect-env').then(r => r.json()).catch(() => null);
+        const url = '/api/sync/detect-env' + (force ? '?force=true' : '');
+        const res = await fetch(url).then(r => r.json()).catch(() => null);
         if (res && res.success) {
             window.pipetaSystemEnv = res;
-            console.log('[ENV DETECT] Info de Unidades:', res.zInfo, res.sInfo);
+            try { localStorage.setItem('pipeta_system_env', JSON.stringify(res)); } catch(e){}
+            console.log('[ENV DETECT] Estado:', res.hasInternet ? 'Online' : 'Offline', 'Unidades:', res.zInfo, res.sInfo);
             if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
             return res;
         }
@@ -260,14 +323,16 @@ async function detectSystemEnvironment() {
     return null;
 }
 
-// Ejecutar detección en segundo plano al cargar
+// Ejecutar detección en segundo plano (usará caché del equipo si ya se detectó)
 detectSystemEnvironment();
 
 function isZRealServer() {
     const override = window.zEnvOverride || 'auto';
     if (override === 'force_real') return true;
     if (override === 'force_fake') return false;
-    return !!(window.pipetaSystemEnv && window.pipetaSystemEnv.zInfo && window.pipetaSystemEnv.zInfo.isRealServer);
+    // Si aún no se completó la detección, en el estudio por defecto Z: es el Servidor Real
+    if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return true;
+    return !!window.pipetaSystemEnv.zInfo.isRealServer;
 }
 
 function getZEnvStatusLabel() {
@@ -310,26 +375,69 @@ async function setSyncComparisonMode(mode) {
 }
 
 async function refreshSyncCatalogManual() {
+    const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
+        ? settings.currentProject.name 
+        : 'surf_love';
+
+    const viewMode = window.viewLocationMode || 'local';
+    const compMode = window.syncComparisonMode || 'drive';
+    const isServerTarget = (viewMode === 'server') || (compMode === 'server');
+    const targetType = isServerTarget ? 'server' : 'drive';
+
     if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', 'Solicitado refresco manual de catálogos (Drive & Servidor)...', 'pending');
+        PipetaConsole.log('sync', `Solicitando refresco de catálogo (${targetType.toUpperCase()}) para '${projName}' al Worker...`, 'pending');
     }
     if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-        settings.showToast('Actualizando catálogos...', 'info', 3);
+        settings.showToast(`Actualizando catálogo de ${targetType === 'server' ? 'Servidor' : 'Drive'}...`, 'info', 10);
     }
+
+    // Identificar carpeta seleccionada o raíz activa
+    let currentFolder = '';
+    const selectedEl = document.querySelector('.tree-node.selected, .tree-node.active');
+    if (selectedEl && selectedEl.getAttribute('data-path')) {
+        currentFolder = selectedEl.getAttribute('data-path');
+    } else if (typeof activePath !== 'undefined' && activePath) {
+        currentFolder = activePath;
+    } else {
+        const roots = getCurrentRoots();
+        currentFolder = roots.work || `Z:/atresmedia/${projName}`;
+    }
+
+    try {
+        const res = await fetch('/api/sync/catalog/refresh-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project: projName,
+                path: currentFolder,
+                type: targetType
+            })
+        }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+
+        if (res && res.success) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `✓ Catálogo (${targetType.toUpperCase()}) actualizado (${res.itemsCount || 0} items)`, 'ok');
+            }
+            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                settings.showToast('Catálogo actualizado', 'success', 3);
+            }
+        }
+    } catch (e) {
+        console.warn('[REFRESH CATALOG] Error:', e);
+    }
+
+    // Invalida caché y fuerza recarga
     fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
     if (typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog(false);
-    }
-    if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', '✓ Catálogos recargados con éxito.', 'ok');
-    }
-    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-        settings.showToast('Catálogos actualizados', 'success', 3);
+        await loadActiveProjectSyncCatalog(true);
     }
     refreshCurrentView();
 }
 
 async function switchViewLocation(mode) {
+    if (typeof isZRealServer === 'function' && isZRealServer() && mode === 'server') {
+        mode = 'local';
+    }
     window.viewLocationMode = mode;
     localStorage.setItem('pipeta_view_location_mode', mode);
 
@@ -363,16 +471,7 @@ function getCurrentRoots() {
                 media: proj.roots.onlineMedia || `G:/Unidades compartidas/${proj.name || proj.projectCode}_media`
             };
         }
-        if (mode === 'server') {
-            const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-                ? settings.centralServerPath.replace(/\/+$/, '') 
-                : 'S:';
-            return {
-                work: (proj.roots.work || 'Z:').replace(/^Z:/i, serverPrefix),
-                media: (proj.roots.media || 'Z:').replace(/^Z:/i, serverPrefix)
-            };
-        }
-        // mode === 'local'
+        // En modos 'local' y 'server', las rutas conceptuales del proyecto son siempre Z:/
         return {
             work: proj.roots.work || 'Z:/',
             media: proj.roots.media || 'Z:/'

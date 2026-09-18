@@ -195,8 +195,11 @@ class SyncAnalyzer {
             const data = await res.json();
             if (data && data.success) {
                 this.envInfo = data;
-                // Si la máquina no tiene G: montada y el motor actual es gdrive, pasar a catálogo
-                if (!this.envInfo.hasDriveG && this.onlineEngine === 'gdrive') {
+                // Si la máquina no tiene internet, forzar inmediatamente a catálogo
+                if (this.envInfo.hasInternet === false) {
+                    this.setOnlineEngine('catalog');
+                } else if (!this.envInfo.hasDriveG && this.onlineEngine === 'gdrive') {
+                    // Si no tiene G: montada y el motor actual es gdrive, pasar a catálogo
                     this.setOnlineEngine('catalog');
                 }
                 this._updateSettingsUI();
@@ -226,28 +229,62 @@ class SyncAnalyzer {
             if (labelZ) labelZ.innerText = 'Disco Z: Local';
         }
 
-        // Si no hay unidad G:, advertir en radio de G
+        const hasInternet = this.envInfo.hasInternet !== false;
+
+        // Si no hay unidad G: o no hay internet, advertir en radio de G
         const gdriveRadio = document.querySelector('input[name="sync_online_engine"][value="gdrive"]');
         const gdriveBadge = document.getElementById('sync-badge-gdrive');
-        if (gdriveRadio && !this.envInfo.hasDriveG) {
-            gdriveRadio.disabled = true;
-            if (gdriveBadge) {
-                gdriveBadge.innerText = 'No montada';
-                gdriveBadge.style.background = '#3e2723';
-                gdriveBadge.style.color = '#ff8a65';
-            }
-            if (this.onlineEngine === 'gdrive') {
-                this.setOnlineEngine('catalog');
+        if (gdriveRadio) {
+            if (!hasInternet) {
+                gdriveRadio.disabled = true;
+                if (gdriveBadge) {
+                    gdriveBadge.innerText = 'Sin Internet';
+                    gdriveBadge.style.background = '#3e2723';
+                    gdriveBadge.style.color = '#ff8a65';
+                }
+            } else if (!this.envInfo.hasDriveG) {
+                gdriveRadio.disabled = true;
+                if (gdriveBadge) {
+                    gdriveBadge.innerText = 'No montada';
+                    gdriveBadge.style.background = '#3e2723';
+                    gdriveBadge.style.color = '#ff8a65';
+                }
+            } else {
+                gdriveRadio.disabled = false;
+                if (gdriveBadge) {
+                    gdriveBadge.innerText = 'Default';
+                    gdriveBadge.style.background = '#16331c';
+                    gdriveBadge.style.color = '#81c784';
+                }
             }
         }
 
-        // Si rclone no está instalado/disponible, deshabilitar opción rclone
+        // Si rclone no está disponible o no hay internet, deshabilitar opción rclone
         const rcloneRadio = document.querySelector('input[name="sync_online_engine"][value="rclone"]');
-        if (rcloneRadio && !this.envInfo.rcloneAvailable) {
-            rcloneRadio.disabled = true;
-            if (this.onlineEngine === 'rclone') {
-                this.setOnlineEngine(this.envInfo.hasDriveG ? 'gdrive' : 'catalog');
+        const rcloneBadge = document.getElementById('sync-badge-rclone');
+        if (rcloneRadio) {
+            if (!hasInternet) {
+                rcloneRadio.disabled = true;
+                if (rcloneBadge) {
+                    rcloneBadge.innerText = 'Sin Internet';
+                    rcloneBadge.style.background = '#3e2723';
+                    rcloneBadge.style.color = '#ff8a65';
+                }
+            } else if (!this.envInfo.rcloneAvailable) {
+                rcloneRadio.disabled = true;
+            } else {
+                rcloneRadio.disabled = false;
+                if (rcloneBadge) {
+                    rcloneBadge.innerText = 'Lento';
+                    rcloneBadge.style.background = '#332200';
+                    rcloneBadge.style.color = '#ffa726';
+                }
             }
+        }
+
+        // Si no hay internet, asegurar que el motor seleccionado sea catálogo
+        if (!hasInternet && this.onlineEngine !== 'catalog') {
+            this.setOnlineEngine('catalog');
         }
 
         // Sincronizar estado visual de los radios
@@ -463,7 +500,7 @@ class SyncAnalyzer {
                             <input type="radio" name="sync_online_engine" value="rclone" ${this.onlineEngine === 'rclone' ? 'checked' : ''} onchange="window.syncAnalyzer.setOnlineEngine('rclone')" style="margin-top:2px;">
                             <div>
                                 <div style="color:#fff; font-weight:bold; display:flex; align-items:center; gap:6px;">
-                                    Rclone Local <span style="font-size:0.65rem; color:#ffa726; background:#332200; padding:1px 5px; border-radius:3px; font-weight:normal;">Lento</span>
+                                    Rclone Local <span id="sync-badge-rclone" style="font-size:0.65rem; color:#ffa726; background:#332200; padding:1px 5px; border-radius:3px; font-weight:normal;">Lento</span>
                                 </div>
                                 <div style="font-size:0.7rem; color:#888; line-height:1.2; margin-top:2px;">Consulta remota directa por API a Google Drive. Más lento por latencia de red.</div>
                             </div>
@@ -1095,7 +1132,7 @@ class SyncAnalyzer {
         }
 
         // Mostrar rutas en UI
-        const localDisplay = scanPairs.map(p => (this.localSource === 'server_catalog' ? p.local.replace(/^z:/i, 'S:') : p.local)).join(' | ');
+        const localDisplay = scanPairs.map(p => (this.localSource === 'server_catalog' ? `[Servidor] ${p.local}` : p.local)).join(' | ');
         const onlineDisplay = scanPairs.map(p => {
             if (this.onlineEngine === 'rclone') {
                 return p.online.replace(/^G:\/Unidades compartidas\//i, 'rclone:lasp-drive:');
@@ -1652,6 +1689,7 @@ class SyncAnalyzer {
             }
         });
 
+        const isServerMode = (this.localSource === 'server_catalog' || window.syncComparisonMode === 'server');
         const endpoint = direction === 'push' ? '/api/sync/request-upload' : '/api/sync/request-download';
         try {
             const res = await fetch(endpoint, {
@@ -1660,6 +1698,7 @@ class SyncAnalyzer {
                 body: JSON.stringify({
                     project: proj,
                     user: user,
+                    transferType: isServerMode ? 'server' : 'drive',
                     items: orderItems
                 })
             });

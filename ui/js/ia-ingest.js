@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- 1. GESTIÓN DE CONTEXTO DE SHOT (EXPLORADOR GUIADO / MANUAL) ---
 let iaContextMode = 'guided'; // 'guided' | 'manual'
+let iaOnlyMyTasks = localStorage.getItem('pipeta_ia_only_my_tasks') === 'true';
 let iaHierarchy = {
     episodes: [],
     scenes: [],
@@ -66,6 +67,157 @@ let iaHierarchy = {
 let iaSelectedEp = '';
 let iaSelectedSeq = '';
 let iaSelectedShot = '';
+
+function updateIaMyTasksButtonUI() {
+    const btn = document.getElementById('iaMyTasksFilterBtn');
+    if (!btn) return;
+    const img = btn.querySelector('img');
+    if (iaOnlyMyTasks) {
+        btn.style.background = 'rgba(0,188,212,0.25)';
+        btn.style.borderColor = '#00bcd4';
+        btn.title = 'Mis Tareas en Ramón: ACTIVO (Solo muestra tus shots asignados | Clic para ver todos)';
+        if (img) {
+            img.style.opacity = '1';
+            img.style.filter = 'none';
+        }
+    } else {
+        btn.style.background = 'transparent';
+        btn.style.borderColor = '#444';
+        btn.title = 'Mis Tareas en Ramón: INACTIVO (Clic para filtrar solo tus shots asignados)';
+        if (img) {
+            img.style.opacity = '0.4';
+            img.style.filter = 'grayscale(100%)';
+        }
+    }
+}
+
+function getIaAssignedShots() {
+    let currentProj = '';
+    if (typeof settings !== 'undefined' && settings.currentProject) {
+        currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
+    }
+
+    const tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
+    const assignedShots = [];
+
+    for (const t of tasks) {
+        if (!currentProj || !t.project || t.project.toLowerCase() === currentProj.toLowerCase()) {
+            const it = (t.item_type || '').toLowerCase();
+            const st = (t.search_type || '').toLowerCase();
+            const nm = (t.name || '').trim();
+            const cd = (t.code || '').trim();
+            const sc = (t.search_code || '').trim();
+            if (it.includes('plano') || it.includes('shot') || st.includes('plano') || /_b\d+_/i.test(nm) || /b\d+/i.test(nm) || /_b\d+_/i.test(cd) || /b\d+/i.test(cd)) {
+                if (nm) assignedShots.push(nm);
+                if (cd) assignedShots.push(cd);
+                if (sc) assignedShots.push(sc);
+            }
+        }
+    }
+
+    if (assignedShots.length === 0 && typeof window.getExplorerAssignedTaskNames === 'function') {
+        const names = Array.from(window.getExplorerAssignedTaskNames());
+        for (const n of names) {
+            if (/_b\d+_/i.test(n) || /b\d+/i.test(n) || n.toLowerCase().startsWith('shot') || n.includes('_')) {
+                assignedShots.push(n);
+            }
+        }
+    }
+
+    return Array.from(new Set(assignedShots));
+}
+
+function iaTaskMatchesEpisode(sh, ep) {
+    if (!sh || !ep) return false;
+    const s = sh.toLowerCase().trim();
+    const e = ep.toLowerCase().trim();
+    if (s === e) return true;
+    const tokens = s.split(/[^a-z0-9]+/);
+    if (tokens.includes(e)) return true;
+    const numE = e.replace(/^[a-z]+/i, '');
+    if (numE && tokens.includes(numE)) return true;
+    if (s.includes('_' + e + '_') || s.startsWith(e + '_') || s.endsWith('_' + e)) return true;
+    if (s.includes(e)) return true;
+    return false;
+}
+
+function iaTaskMatchesSequence(sh, ep, seq) {
+    if (!sh || !seq) return false;
+    const s = sh.toLowerCase().trim();
+    const sq = seq.toLowerCase().trim();
+    let matchesSeq = false;
+    const tokens = s.split(/[^a-z0-9]+/);
+    if (tokens.includes(sq)) matchesSeq = true;
+    else if (s.includes('_' + sq + '_') || s.startsWith(sq + '_') || s.endsWith('_' + sq)) matchesSeq = true;
+    else if (s.includes(sq)) matchesSeq = true;
+    else {
+        const numSq = sq.replace(/^[a-z]+/i, '');
+        if (numSq && tokens.includes(numSq)) matchesSeq = true;
+    }
+    if (!matchesSeq) return false;
+
+    if (ep) {
+        return iaTaskMatchesEpisode(sh, ep);
+    }
+    return true;
+}
+
+function iaTaskMatchesShot(sh, ep, seq, shotName) {
+    if (!sh || !shotName) return false;
+    const s = sh.toLowerCase().trim();
+    const sn = shotName.toLowerCase().trim();
+    if (s === sn) return true;
+    if (s.includes(sn) || sn.includes(s)) return true;
+    const tokensS = s.split(/[^a-z0-9]+/);
+    const tokensSn = sn.split(/[^a-z0-9]+/);
+    const lastS = tokensS[tokensS.length - 1];
+    const lastSn = tokensSn[tokensSn.length - 1];
+    if (lastS && lastSn && lastS === lastSn) {
+        if (seq && !iaTaskMatchesSequence(sh, ep, seq)) return false;
+        return true;
+    }
+    return false;
+}
+
+function toggleIaOnlyMyTasks() {
+    iaOnlyMyTasks = !iaOnlyMyTasks;
+    try {
+        localStorage.setItem('pipeta_ia_only_my_tasks', iaOnlyMyTasks ? 'true' : 'false');
+    } catch(e) {}
+
+    updateIaMyTasksButtonUI();
+    refreshIaHierarchy();
+
+    if (iaOnlyMyTasks) {
+        const myShots = getIaAssignedShots();
+        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            if (myShots.length > 0) {
+                settings.showToast(`IA Ingest: Filtrando ${myShots.length} shots asignados en Ramón`, 'success', 2);
+            } else {
+                settings.showToast('IA Ingest: Sin tareas de planos asignadas en este proyecto', 'warning', 3);
+            }
+        }
+
+        let currentProj = '';
+        if (typeof settings !== 'undefined' && settings.currentProject) {
+            currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
+        }
+        if (typeof Ramon !== 'undefined' && Ramon.session?.user && typeof Ramon.fetchTasks === 'function') {
+            Ramon.fetchTasks(currentProj || null, false).then(() => {
+                if (iaOnlyMyTasks) refreshIaHierarchy();
+            }).catch(() => {});
+        }
+    } else {
+        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            settings.showToast('IA Ingest: Mostrando todos los shots del proyecto', 'info', 1.5);
+        }
+    }
+}
+
+window.initIaIngest = function() {
+    updateIaMyTasksButtonUI();
+    refreshIaHierarchy();
+};
 
 function setIaContextMode(mode) {
     iaContextMode = mode;
@@ -284,6 +436,7 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
 }
 
 async function refreshIaHierarchy() {
+    updateIaMyTasksButtonUI();
     populateIaTokenSelectsFromProject();
     const { workRoot, mediaRoot } = getIaProjectRoots();
     const epSelect = document.getElementById('iaEpSelect');
@@ -299,14 +452,25 @@ async function refreshIaHierarchy() {
     try {
         let epDir = workRoot + '/episodios';
         let dirData = await API.fetchDir(epDir);
+        let rawEpisodes = [];
         if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
-            iaHierarchy.episodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            rawEpisodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        }
+
+        if (iaOnlyMyTasks) {
+            const myShots = getIaAssignedShots();
+            if (myShots.length === 0) {
+                iaHierarchy.episodes = [];
+                epSelect.innerHTML = '<option value="">(Sin episodios con tareas asignadas)</option>';
+                return;
+            }
+            iaHierarchy.episodes = rawEpisodes.filter(ep => myShots.some(sh => iaTaskMatchesEpisode(sh, ep)));
         } else {
-            iaHierarchy.episodes = [];
+            iaHierarchy.episodes = rawEpisodes;
         }
 
         if (iaHierarchy.episodes.length > 0) {
-            // Si no hay episodio seleccionado o el previo no existe, tomar el primero
+            // Si no hay episodio seleccionado o el previo no existe en la lista filtrada, tomar el primero
             if (!iaSelectedEp || !iaHierarchy.episodes.includes(iaSelectedEp)) {
                 iaSelectedEp = iaHierarchy.episodes[0];
             }
@@ -318,7 +482,9 @@ async function refreshIaHierarchy() {
                 await handleIaEpChange(iaSelectedEp);
             }
         } else {
-            epSelect.innerHTML = '<option value="">(No se encontraron episodios)</option>';
+            epSelect.innerHTML = iaOnlyMyTasks 
+                ? '<option value="">(Sin episodios con tareas asignadas)</option>'
+                : '<option value="">(No se encontraron episodios)</option>';
         }
     } catch(e) {
         console.error("Error refreshing IA hierarchy:", e);
@@ -345,10 +511,16 @@ async function handleIaEpChange(ep) {
     try {
         let seqDir = `${workRoot}/episodios/${ep}/secuencias`;
         let dirData = await API.fetchDir(seqDir);
+        let rawScenes = [];
         if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
-            iaHierarchy.scenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            rawScenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        }
+
+        if (iaOnlyMyTasks) {
+            const myShots = getIaAssignedShots();
+            iaHierarchy.scenes = rawScenes.filter(seq => myShots.some(sh => iaTaskMatchesSequence(sh, ep, seq)));
         } else {
-            iaHierarchy.scenes = [];
+            iaHierarchy.scenes = rawScenes;
         }
 
         if (iaHierarchy.scenes.length > 0) {
@@ -364,7 +536,9 @@ async function handleIaEpChange(ep) {
                 await handleIaSeqChange(iaSelectedSeq);
             }
         } else {
-            seqSelect.innerHTML = '<option value="">(Sin escenas)</option>';
+            seqSelect.innerHTML = iaOnlyMyTasks
+                ? '<option value="">(Sin escenas con tareas)</option>'
+                : '<option value="">(Sin escenas)</option>';
         }
     } catch(e) {
         console.error("Error loading scenes for IA:", e);
@@ -394,10 +568,16 @@ async function handleIaSeqChange(seq) {
             dirData = await API.fetchDir(shotDir);
         }
 
+        let rawShots = [];
         if (dirData && dirData.items) {
-            iaHierarchy.shots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            rawShots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        }
+
+        if (iaOnlyMyTasks) {
+            const myShots = getIaAssignedShots();
+            iaHierarchy.shots = rawShots.filter(shName => myShots.some(sh => iaTaskMatchesShot(sh, iaSelectedEp, seq, shName)));
         } else {
-            iaHierarchy.shots = [];
+            iaHierarchy.shots = rawShots;
         }
 
         if (iaHierarchy.shots.length > 0) {
@@ -413,7 +593,9 @@ async function handleIaSeqChange(seq) {
                 handleIaShotChange(iaSelectedShot);
             }
         } else {
-            shotSelect.innerHTML = '<option value="">(Sin shots)</option>';
+            shotSelect.innerHTML = iaOnlyMyTasks
+                ? '<option value="">(Sin shots asignados)</option>'
+                : '<option value="">(Sin shots)</option>';
         }
     } catch(e) {
         console.error("Error loading shots for IA:", e);

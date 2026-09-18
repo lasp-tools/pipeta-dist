@@ -110,17 +110,19 @@ const headerToolsTemplates = {
                     
                     <div style="width:2px"></div>
                     
-                    <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
+                    <!-- Location Switcher: LOCAL | DRIVE | SERVER (si Z: no es el servidor SMB) -->
                     <div style="display:flex; background:#0e141f; border-radius:3px; padding:1px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
                         <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1;"
-                                onclick="switchViewLocation('local')" title="Disco Z Local (Copia Local / vsubst)">LOCAL</button>
+                                onclick="switchViewLocation('local')" title="${(typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)'}">LOCAL</button>
                         <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
                                 onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
+                        ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
                         <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
-                                onclick="switchViewLocation('server')" title="Server Central Real del Estudio (S:)">SERVER</button>
+                                onclick="switchViewLocation('server')" title="Servidor Central del Estudio (Catálogo Central / Worker)">SERVER</button>
+                        ` : ''}
                     </div>
 
                     <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpetas Locales (Instantáneo - Relee disco)">
@@ -141,29 +143,32 @@ const headerToolsTemplates = {
                         <img src="icons/filter.svg" class="btn-icon-svg" style="width:13px; height:13px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
                     </button>
 
-                    <!-- My Tasks Filter (Solo Icono Ramon + Tooltip) -->
+                    <!-- My Tasks Filter (Icono Ramon + Tooltip) -->
                     <button class="tool-btn ${window.explorerOnlyMyTasks ? 'active' : ''}" 
                             id="btnExplorerMyTasksFilter"
                             onclick="toggleExplorerOnlyMyTasks()" 
-                            style="${window.explorerOnlyMyTasks ? 'background:#00bcd433; border:1px solid #00bcd488;' : ''}"
-                            title="My Tasks (Filtrar solo planos y assets asignados a mi usuario en Ramón | Clic: ON/OFF)">
-                        <img src="icons/ramon.png" class="btn-icon-svg" style="width:14px; height:14px; ${!window.explorerOnlyMyTasks ? 'opacity:0.45;' : ''}">
+                            style="${window.explorerOnlyMyTasks ? 'background:rgba(0,188,212,0.25); border:1px solid #00bcd4;' : ''}"
+                            title="Mis Tareas en Ramón (Filtrar elementos asignados a mi usuario)">
+                        <img src="icons/ramon.png" style="width:14px; height:14px; object-fit:contain; vertical-align:middle; ${!window.explorerOnlyMyTasks ? 'opacity:0.4; filter:grayscale(100%);' : ''}">
                     </button>
 
-                    <!-- Search Input (Filtrado en vivo) -->
+                    <div class="tool-space-small"></div>
+
+                    <!-- Search Filter (Lupa) -->
                     <div style="position:relative; display:flex; align-items:center;">
                         <input type="text" 
-                                id="explorerSearchInput" 
-                                placeholder="🔍 Filtrar..." 
-                                value="${window.explorerSearchQuery || ''}" 
-                                oninput="setExplorerSearchQuery(this.value)"
-                                title="Escribí para filtrar elementos en vivo"
-                                style="background:#0e141f; border:1px solid #1e2c40; border-radius:3px; padding:1px 18px 1px 5px; font-size:0.68rem; color:#fff; width:110px; height:17px; outline:none;">
-                        ${window.explorerSearchQuery ? `
-                        <button type="button" 
-                                onclick="clearExplorerSearchQuery()" 
-                                title="Limpiar búsqueda" 
-                                style="position:absolute; right:2px; background:transparent; border:none; color:#888; font-size:0.60rem; cursor:pointer; padding:0 2px;">✕</button>
+                               id="filter-search-input" 
+                               placeholder="Filtrar..." 
+                               value="${window.pipetaSearchFilter || ''}"
+                               oninput="handleSearchFilterInput(this.value)"
+                               title="Búsqueda rápida de carpetas y archivos en la vista actual"
+                               style="background:#0e141f; border:1px solid #1e2c40; color:#eee; font-size:0.75rem; border-radius:3px; padding:1px 18px 1px 5px; width:90px; height:16px; outline:none; transition: width 0.2s;"
+                               onfocus="this.style.width='130px'; this.style.borderColor='var(--accent)';"
+                               onblur="if(!this.value) { this.style.width='90px'; this.style.borderColor='#1e2c40'; }">
+                        ${window.pipetaSearchFilter ? `
+                            <span onclick="clearSearchFilter()" 
+                                  style="position:absolute; right:4px; color:#888; cursor:pointer; font-size:10px; font-weight:bold; line-height:1;" 
+                                  title="Limpiar filtro">✕</span>
                         ` : ''}
                     </div>
                 </div>
@@ -183,12 +188,12 @@ const headerToolsTemplates = {
                 ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
                         style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
-                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central Real S: (Clic para activar/desactivar)">🗄️ SERVER</button>
+                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">🗄️ SERVER</button>
                 ` : ''}
                 ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
                 <button class="tool-btn" 
                         style="padding: 2px 6px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
-                        onclick="refreshSyncCatalogManual()" title="Refrescar catálogo en caché de Google Drive (Rclone)">🔄</button>
+                        onclick="refreshSyncCatalogManual()" title="Refrescar catálogo en caché (${window.syncComparisonMode === 'server' ? 'Servidor' : 'Google Drive'})">🔄</button>
                 ` : ''}
             </div>
         </div>
@@ -770,6 +775,21 @@ async function initApp() {
 // --- HEADER USER SWITCHER ---
 window.handleHeaderUserSwitch = async (userVal) => {
     try {
+        if (userVal === '__RAMON_LOGIN__') {
+            await updateHeaderUserSelector();
+            if (typeof Ramon !== 'undefined' && typeof Ramon.showLoginModal === 'function') {
+                Ramon.showLoginModal('ramon');
+            }
+            return;
+        }
+        if (userVal === '__LOCAL_LOGIN__') {
+            await updateHeaderUserSelector();
+            if (typeof Ramon !== 'undefined' && typeof Ramon.showLoginModal === 'function') {
+                Ramon.showLoginModal('local');
+            }
+            return;
+        }
+
         const uData = await API.users.get();
         const targetUser = (uData.users || []).find(u => u.username === userVal || u.laspUser === userVal || u.id === userVal);
         
@@ -802,7 +822,27 @@ window.handleHeaderUserSwitch = async (userVal) => {
             ShotNavigator.activeUser = activeKey;
             ShotNavigator.render();
         }
+        const isTargetAdmin = targetUser?.username === 'admin' || targetUser?.id === 'u_admin' || (targetUser?.isSystem && targetUser?.role === 'admin');
+        const isTargetRamon = !isTargetAdmin && (targetUser?.authSource === 'ramon' || (targetUser?.laspUser && targetUser?.laspUser.startsWith('lasp-')));
+        if (typeof Ramon !== 'undefined') {
+            if (!isTargetRamon) {
+                Ramon.session = {
+                    mode: 'local',
+                    user: {
+                        login: activeKey,
+                        username: activeKey,
+                        display_name: targetUser?.firstName ? `${targetUser.firstName} ${targetUser.lastName || ''}`.trim() : activeKey,
+                        role: targetUser?.role || (isTargetAdmin ? 'admin' : 'user')
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                try { localStorage.setItem('pipeta_session', JSON.stringify(Ramon.session)); } catch(e){}
+            }
+        }
         await updateHeaderUserSelector();
+        if (typeof Ramon !== 'undefined' && typeof Ramon.applySessionToHeader === 'function') {
+            Ramon.applySessionToHeader();
+        }
         await applyRolePermissionsToUI();
     } catch(e) {
         console.error("Error switching user:", e);
@@ -820,21 +860,31 @@ window.updateHeaderUserSelector = async () => {
         
         const active = uData.activeUser || 'admin';
         const activeObj = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
+        const isActiveAdmin = activeObj?.username === 'admin' || activeObj?.id === 'u_admin' || (activeObj?.isSystem && activeObj?.role === 'admin');
+        const isActiveRamon = !isActiveAdmin && (activeObj?.authSource === 'ramon' || (activeObj?.laspUser && activeObj?.laspUser.startsWith('lasp-')));
         if (avatar) {
             avatar.innerHTML = '';
-            avatar.style.background = activeObj?.avatarColor || (activeObj?.authSource === 'ramon' ? '#00bcd4' : '#ff9800');
+            avatar.style.background = activeObj?.avatarColor || (isActiveRamon ? '#00bcd4' : '#ff9800');
         }
         
-        select.innerHTML = (uData.users || []).map(u => {
-            const isRamon = u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-'));
+        const usersHtml = (uData.users || []).map(u => {
+            const isSystemAdmin = u.username === 'admin' || u.id === 'u_admin' || (u.isSystem && u.role === 'admin');
+            const isRamon = !isSystemAdmin && (u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-')));
             const val = (isRamon && u.laspUser) ? u.laspUser : (u.username || u.laspUser || u.id);
-            const userTag = isRamon ? ' [Ramón]' : '';
+            const userTag = isRamon ? ' [Ramón]' : (isSystemAdmin ? ' [Local]' : '');
             const cleanLast = (u.lastName || '').replace(/_+$/, '').trim();
-            const fullName = u.firstName ? ` (${u.firstName}${cleanLast ? ' ' + cleanLast : ''})` : '';
+            const fullName = (!isSystemAdmin && u.firstName) ? ` (${u.firstName}${cleanLast ? ' ' + cleanLast : ''})` : '';
             const label = `${val}${fullName}${userTag}`;
             const isSelected = (val === active || u.username === active || u.laspUser === active);
             return `<option value="${val}" ${isSelected ? 'selected' : ''}>${label}</option>`;
         }).join('');
+
+        const actionsHtml = `
+            <option disabled value="">───────────────</option>
+            <option value="__RAMON_LOGIN__">🌐 + Iniciar Sesión con Ramón...</option>
+        `;
+
+        select.innerHTML = usersHtml + actionsHtml;
     } catch(e) {
         console.warn("Could not load users for header selector:", e);
     }

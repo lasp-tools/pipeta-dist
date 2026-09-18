@@ -1,5 +1,5 @@
 // Configuration
-window.APP_VERSION = "v1.0.02-beta";
+window.APP_VERSION = "v1.1.10";
 
 const ROOTS = {
     work: "M:/Mi unidad/Z/mango/ick",

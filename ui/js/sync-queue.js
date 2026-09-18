@@ -3,6 +3,21 @@
 // Muestra el estado del Worker de la VM 105 y las órdenes activas.
 // ================================================================
 
+function formatQueueBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatQueueEta(seconds) {
+    if (!seconds || seconds <= 0) return '';
+    if (seconds < 60) return `${seconds}s restantes`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s restantes`;
+}
+
 class SyncQueueUI {
     constructor() {
         this.isVisible = false;
@@ -12,6 +27,8 @@ class SyncQueueUI {
         this.pollingInterval = null;
         this.prevOrderStates = new Map();
         this.prevWorkerAlive = null;
+        this.processedCompletedOrderIds = new Set();
+        this.isInitialFetchDone = false;
         this.isMaximized = false; // Por defecto siempre ventana flotante al abrir Pipeta
         this.prevBounds = null;
 
@@ -24,11 +41,10 @@ class SyncQueueUI {
         this.startPolling();
     }
 
-    startPolling() {
-        this.fetchStatus();
+    startPolling(customInterval = 3000) {
         if (this.pollingInterval) clearInterval(this.pollingInterval);
-        // Polling cada 3 segundos
-        this.pollingInterval = setInterval(() => this.fetchStatus(), 3000);
+        this.currentIntervalMs = customInterval;
+        this.pollingInterval = setInterval(() => this.fetchStatus(), customInterval);
     }
 
     async fetchStatus() {
@@ -45,6 +61,13 @@ class SyncQueueUI {
                 this.orders = resOrders.orders || [];
             }
 
+            // Polling adaptativo: 1.2s durante transferencias activas, 3s en reposo
+            const hasProcessing = this.orders.some(o => o.status === 'processing');
+            const desiredInterval = hasProcessing ? 1200 : 3000;
+            if (this.currentIntervalMs !== desiredInterval) {
+                this.startPolling(desiredInterval);
+            }
+
             // Detect & log worker state transitions
             const isAlive = !!(this.workerStatus && this.workerStatus.isAlive);
             if (this.prevWorkerAlive !== null && this.prevWorkerAlive !== isAlive) {
@@ -58,18 +81,36 @@ class SyncQueueUI {
             }
             this.prevWorkerAlive = isAlive;
 
-            // Detect & log order transitions
+            // Si es el primer ciclo de fetch, inicializar órdenes ya terminadas para no disparar refrescos masivos del pasado
+            if (!this.isInitialFetchDone) {
+                for (const o of this.orders) {
+                    if (o.status === 'completed' || o.status === 'completed_with_errors' || o.status === 'failed') {
+                        this.processedCompletedOrderIds.add(o.id);
+                    }
+                    this.prevOrderStates.set(o.id, o.status);
+                }
+                this.isInitialFetchDone = true;
+            }
+
+            // Detect & log order transitions and trigger automatic folder refresh
             for (const order of this.orders) {
                 const prev = this.prevOrderStates.get(order.id);
+                const isFinished = order.status === 'completed' || order.status === 'completed_with_errors';
+
+                if (isFinished && !this.processedCompletedOrderIds.has(order.id)) {
+                    this.processedCompletedOrderIds.add(order.id);
+                    this.triggerOrderCompletionRefresh(order);
+                }
+
                 if (prev && prev !== order.status) {
-                    if (typeof PipetaConsole !== 'undefined') {
-                        const shortId = order.id.slice(-6);
-                        const itemsCount = Array.isArray(order.items) ? order.items.length : 1;
-                        if (order.status === 'processing') {
-                            PipetaConsole.log('sync', `Worker inició transferencia #${shortId} [${(order.type || '').toUpperCase()}] (${itemsCount} items)`, 'pending');
-                        } else if (order.status === 'completed') {
-                            PipetaConsole.log('sync', `✓ Orden #${shortId} completada exitosamente (${itemsCount} items en ${order.durationSeconds || 0}s)`, 'ok');
-                        } else if (order.status === 'failed') {
+                    const shortId = order.id.slice(-6);
+                    const itemsCount = Array.isArray(order.items) ? order.items.length : 1;
+                    if (order.status === 'processing') {
+                        if (typeof PipetaConsole !== 'undefined') {
+                            PipetaConsole.log('sync', `Inició transferencia #${shortId} [${(order.type || '').toUpperCase()}] (${itemsCount} items)`, 'pending');
+                        }
+                    } else if (order.status === 'failed') {
+                        if (typeof PipetaConsole !== 'undefined') {
                             PipetaConsole.log('sync', `❌ Orden #${shortId} falló: ${order.error || 'Error en transferencia'}`, 'error');
                         }
                     }
@@ -83,6 +124,80 @@ class SyncQueueUI {
             }
         } catch (e) {
             console.error("Error polling sync queue:", e);
+        }
+    }
+
+    async triggerOrderCompletionRefresh(order) {
+        try {
+            const shortId = order.id.slice(-6);
+            const itemsCount = Array.isArray(order.items) ? order.items.length : 1;
+            const isDownload = order.type === 'download' || order.type === 'server_download';
+            const typeLabel = isDownload ? 'Descarga' : 'Subida';
+            const proj = order.project || ((typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love');
+
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `✓ ${typeLabel} #${shortId} completada (${itemsCount} items en ${order.durationSeconds || 0}s). Actualizando vista de carpeta local...`, 'ok');
+            }
+
+            // 1. Identificar carpetas locales y remotas afectadas
+            const parentFolders = new Set();
+            for (const it of (order.items || [])) {
+                const p = it.targetLocalPath || it.localPath || it.serverPath || it.path;
+                if (p) {
+                    const norm = p.replace(/\\/g, '/');
+                    const folder = norm.substring(0, norm.lastIndexOf('/'));
+                    if (folder) parentFolders.add(folder);
+                }
+            }
+
+            // 2. Si fue subida, solicitar al backend actualización del sub-catálogo correspondiente
+            if (order.type === 'upload' || order.type === 'server_upload') {
+                const targetType = order.type === 'server_upload' ? 'server' : 'drive';
+                for (const folder of parentFolders) {
+                    try {
+                        await fetch('/api/sync/catalog/refresh-folder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ project: proj, path: folder, type: targetType })
+                        });
+                    } catch (e) {}
+                }
+            }
+
+            // 3. Limpiar cachés de memoria del backend
+            try {
+                await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
+            } catch (e) {}
+
+            // 4. Recargar catálogos en frontend (force = true)
+            if (typeof loadActiveProjectSyncCatalog === 'function') {
+                try {
+                    await loadActiveProjectSyncCatalog(true);
+                } catch(e) {}
+            }
+
+            // 5. Refrescar la vista actual de carpetas locales
+            if (typeof refreshCurrentView === 'function') {
+                await refreshCurrentView(true);
+            }
+
+            // 6. Si Sync Analyzer está abierto, refrescar también su escaneo si aplica
+            if (window.syncAnalyzer && window.syncAnalyzer.isVisible && typeof window.syncAnalyzer.runScan === 'function') {
+                try {
+                    window.syncAnalyzer.runScan(window.syncAnalyzer.scanScope || 'selection');
+                } catch (e) {}
+            }
+
+            // 7. Notificación toast sutil
+            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                const firstItemName = order.items?.[0]?.name || 'elemento';
+                const more = (order.items?.length || 1) - 1;
+                const nameStr = more > 0 ? `${firstItemName} (+${more})` : firstItemName;
+                settings.showToast(`✅ ${typeLabel} completada: ${nameStr}`, 'success', 3, 'Carpeta local y estado actualizados');
+            }
+        } catch (err) {
+            console.error('[SYNC QUEUE] Error al actualizar estado post-transferencia:', err);
+            if (typeof refreshCurrentView === 'function') refreshCurrentView(true);
         }
     }
 
@@ -355,13 +470,56 @@ class SyncQueueUI {
 
         container.innerHTML = activeOrders.map(order => {
             const isProcessing = order.status === 'processing';
-            const isDownload = order.type === 'download';
-            const typeColor = isDownload ? '#00bcd4' : '#4caf50';
-            const typeIcon = isDownload ? '📥' : '📤';
-            const typeLabel = isDownload ? 'DESCARGA DE DRIVE' : 'SUBIDA A DRIVE';
+            let typeColor = '#00bcd4';
+            let typeIcon = '📥';
+            let typeLabel = 'DESCARGA DE DRIVE';
+            let isServerTransfer = false;
+
+            if (order.type === 'download') {
+                typeLabel = 'DESCARGA DE DRIVE';
+                typeIcon = '📥';
+                typeColor = '#00bcd4';
+            } else if (order.type === 'upload') {
+                typeLabel = 'SUBIDA A DRIVE';
+                typeIcon = '📤';
+                typeColor = '#4caf50';
+            } else if (order.type === 'server_download') {
+                typeLabel = 'DESCARGA DE SERVER';
+                typeIcon = '📥';
+                typeColor = '#ab47bc';
+                isServerTransfer = true;
+            } else if (order.type === 'server_upload') {
+                typeLabel = 'SUBIDA A SERVER';
+                typeIcon = '📤';
+                typeColor = '#ff9800';
+                isServerTransfer = true;
+            }
+
+            const progress = order.progress;
+            const pct = (progress && typeof progress.percentage === 'number') 
+                ? Math.min(100, Math.max(0, Math.round(progress.percentage * 10) / 10)) 
+                : 0;
+            const speedText = (progress && progress.speedFormatted) ? progress.speedFormatted : (isProcessing ? 'Calculando tasa...' : '');
+            const transferredStr = (progress && progress.transferredBytes) ? formatQueueBytes(progress.transferredBytes) : null;
+            const totalStr = (progress && progress.totalBytes) ? formatQueueBytes(progress.totalBytes) : null;
+            const bytesRatio = (transferredStr && totalStr) ? `${transferredStr} / ${totalStr}` : (transferredStr || '');
+            const etaStr = (progress && progress.etaSeconds > 0) ? formatQueueEta(progress.etaSeconds) : '';
+            const currentFile = (progress && progress.currentFile) ? progress.currentFile : '';
+
+            const engineBadge = isProcessing
+                ? (isServerTransfer
+                    ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(171,71,188,0.15); border:1px solid #ab47bc; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ce93d8; font-weight:bold;">
+                        <span class="spinner-mini" style="width:8px; height:8px;"></span>
+                        <span>Copia en red LAN...</span>
+                       </div>`
+                    : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
+                        <span class="spinner-mini" style="width:8px; height:8px;"></span>
+                        <span>Transfiriendo en VM 105...</span>
+                       </div>`)
+                : `<span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>`;
 
             return `
-                <div style="background:#14171d; border:1px solid ${isProcessing ? 'var(--accent)' : '#28303d'}; border-radius:6px; padding:12px; box-shadow:0 3px 10px rgba(0,0,0,0.3);">
+                <div style="background:#14171d; border:1px solid ${isProcessing ? typeColor : '#28303d'}; border-radius:6px; padding:12px; box-shadow:0 3px 10px rgba(0,0,0,0.3);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span style="background:${typeColor}22; color:${typeColor}; border:1px solid ${typeColor}44; font-size:0.72rem; font-weight:bold; padding:2px 8px; border-radius:4px;">
@@ -371,36 +529,68 @@ class SyncQueueUI {
                             <span style="color:#666; font-size:0.75rem;">• ${order.project || ''}</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:6px;">
-                            ${isProcessing ? `
-                                <div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
-                                    <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                                    <span>Transfiriendo en VM 105...</span>
-                                </div>
-                            ` : `
-                                <span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>
-                            `}
+                            ${engineBadge}
                         </div>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:6px;">
                         ${(order.items || []).map(it => {
-                            const sizeStr = it.size ? ` (${(it.size / (1024 * 1024)).toFixed(2)} MB)` : '';
+                            const sizeStr = it.size ? ` (${formatQueueBytes(it.size)})` : '';
+                            let pathInfoHtml = '';
+                            if (order.type === 'download') {
+                                pathInfoHtml = `<span style="color:#00bcd4;">☁️ Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">💾 Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                            } else if (order.type === 'upload') {
+                                pathInfoHtml = `<span style="color:#4caf50;">💾 Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">☁️ Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                            } else if (order.type === 'server_download') {
+                                pathInfoHtml = `<span style="color:#ab47bc;">🏢 Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">💾 Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                            } else if (order.type === 'server_upload') {
+                                pathInfoHtml = `<span style="color:#4caf50;">💾 Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">🏢 Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
+                            }
+
                             return `
                                 <div style="background:#0c0e12; border:1px solid #1a202c; border-radius:4px; padding:8px 10px; font-size:0.78rem;">
                                     <div style="font-weight:bold; color:#fff; display:flex; justify-content:space-between;">
-                                        <span>${it.isDir ? '📁' : '📄'} ${it.name || it.relativePath}</span>
+                                        <span>${it.isDir ? '📁' : '📄'} ${it.name || it.relativePath || it.path}</span>
                                         <span style="color:#888;">${sizeStr}</span>
                                     </div>
-                                    <div style="font-size:0.7rem; color:#888; margin-top:4px; word-break:break-all;">
-                                        ${isDownload 
-                                            ? `<span style="color:#00bcd4;">☁️ Origen:</span> ${it.onlinePath}<br><span style="color:#4caf50;">💾 Destino:</span> ${it.targetLocalPath}`
-                                            : `<span style="color:#4caf50;">💾 Origen:</span> ${it.localPath || it.targetLocalPath}<br><span style="color:#00bcd4;">☁️ Destino:</span> ${it.onlinePath || 'Auto-Drive'}`
-                                        }
+                                    <div style="font-size:0.7rem; color:#888; margin-top:4px; word-break:break-all; line-height:1.4;">
+                                        ${pathInfoHtml}
                                     </div>
                                 </div>
                             `;
                         }).join('')}
                     </div>
+
+                    ${isProcessing ? `
+                        <div style="margin-top:10px; background:#0a0c10; border:1px solid #1f2735; border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="background:rgba(0,229,255,0.12); color:#00e5ff; border:1px solid rgba(0,229,255,0.25); font-size:0.75rem; font-weight:bold; padding:2px 8px; border-radius:4px; display:inline-flex; align-items:center; gap:4px;">
+                                        ⚡ ${speedText}
+                                    </span>
+                                    <span style="font-size:0.85rem; font-weight:bold; color:#fff;">
+                                        ${pct}%
+                                    </span>
+                                    ${bytesRatio ? `<span style="font-size:0.72rem; color:#888;">(${bytesRatio})</span>` : ''}
+                                </div>
+                                ${etaStr ? `
+                                    <span style="font-size:0.72rem; color:#aaa; background:#14171d; border:1px solid #28303d; padding:2px 6px; border-radius:4px;">
+                                        ⏱️ ${etaStr}
+                                    </span>
+                                ` : ''}
+                            </div>
+
+                            <div style="width:100%; height:7px; background:#1a202c; border-radius:4px; overflow:hidden; position:relative;">
+                                <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, ${typeColor}, #00e5ff); border-radius:4px; transition:width 0.3s ease;"></div>
+                            </div>
+
+                            ${currentFile ? `
+                                <div style="font-size:0.7rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${currentFile}">
+                                    📄 Archivo actual: <span style="color:#ccc;">${currentFile}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:0.72rem; color:#666;">
                         <span>Solicitado por: <b>${order.user || 'artista'}</b></span>
@@ -424,8 +614,12 @@ class SyncQueueUI {
         container.innerHTML = historyOrders.map(order => {
             const isOk = order.status === 'completed';
             const isPartial = order.status === 'completed_with_errors';
-            const isDownload = order.type === 'download';
-            const typeLabel = isDownload ? 'Descarga' : 'Subida';
+            
+            let typeLabel = 'Descarga';
+            if (order.type === 'download') typeLabel = '📥 Descarga Drive';
+            else if (order.type === 'upload') typeLabel = '📤 Subida Drive';
+            else if (order.type === 'server_download') typeLabel = '📥 Descarga Server';
+            else if (order.type === 'server_upload') typeLabel = '📤 Subida Server';
 
             const statusColor = isOk ? '#4caf50' : (isPartial ? '#ff9800' : '#f44336');
             const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló');
@@ -447,7 +641,7 @@ class SyncQueueUI {
 
                     ${order.errors && order.errors.length ? `
                         <div style="margin-top:6px; background:rgba(244,67,54,0.1); border-left:2px solid #f44336; padding:4px 8px; font-size:0.72rem; color:#ff8a80;">
-                            ${order.errors.map(e => `<div>${e.item ? `<b>${e.item}:</b> ` : ''}${e.error}</div>`).join('')}
+                            ${order.errors.map(e => `<div>${e.item || e.file ? `<b>${e.item || e.file}:</b> ` : ''}${e.error}</div>`).join('')}
                         </div>
                     ` : ''}
                 </div>

@@ -43,11 +43,22 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
     // 2. COMPARACIÓN LOCAL vs GOOGLE DRIVE
     if (mode === 'local' && compMode === 'drive') {
-        if (typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog) {
-            await loadActiveProjectSyncCatalog();
+        let driveItems = [];
+        try {
+            const dData = await fetchDir(dirPath, { localSource: 'drive_catalog' });
+            if (dData && dData.items && !dData.error && dData.items.length > 0) {
+                driveItems = dData.items;
+            }
+        } catch (e) {}
+
+        let catalogChildren = driveItems;
+        if (catalogChildren.length === 0) {
+            if (typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog) {
+                await loadActiveProjectSyncCatalog();
+            }
+            catalogChildren = window.pipetaSyncCatalogLookup?.byParentLocalPath?.get(normDirPath) || [];
         }
 
-        const catalogChildren = window.pipetaSyncCatalogLookup?.byParentLocalPath?.get(normDirPath) || [];
         const catalogMap = new Map(catalogChildren.map(c => [c.name.toLowerCase(), c]));
 
         for (const item of (rawItems || [])) {
@@ -55,8 +66,8 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
             const catItem = catalogMap.get(item.name.toLowerCase());
             if (catItem) {
                 itemCopy.syncStatus = 'matched_drive';
-                itemCopy.onlinePath = catItem.onlinePath;
-                itemCopy.targetLocalPath = catItem.targetLocalPath;
+                itemCopy.onlinePath = catItem.onlinePath || catItem.path;
+                itemCopy.targetLocalPath = catItem.targetLocalPath || item.path;
             } else {
                 itemCopy.syncStatus = 'upload_drive';
                 itemCopy.targetLocalPath = item.path;
@@ -67,29 +78,25 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
         // Inyectar nodos FANTASMA (están en Drive pero faltan en Local Z)
         for (const catItem of catalogChildren) {
             if (!localNames.has(catItem.name.toLowerCase())) {
+                const targetLocal = catItem.targetLocalPath || (normDirPath + '/' + catItem.name);
                 decorated.push({
                     name: catItem.name,
-                    isDirectory: !!catItem.isDir,
-                    path: catItem.targetLocalPath,
+                    isDirectory: !!(catItem.isDir || catItem.isDirectory),
+                    path: targetLocal,
                     isGhost: true,
                     size: catItem.size || 0,
-                    onlinePath: catItem.onlinePath,
-                    targetLocalPath: catItem.targetLocalPath,
+                    onlinePath: catItem.onlinePath || catItem.path,
+                    targetLocalPath: targetLocal,
                     syncStatus: 'ghost_drive'
                 });
             }
         }
     } 
-    // 3. COMPARACIÓN LOCAL vs SERVIDOR CENTRAL REAL (S:)
+    // 3. COMPARACIÓN LOCAL vs SERVIDOR CENTRAL (Catálogo Central)
     else if (mode === 'local' && compMode === 'server') {
-        const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-            ? settings.centralServerPath.replace(/\/+$/, '') 
-            : 'S:';
-        const serverFolder = dirPath.replace(/^Z:/i, serverPrefix);
-
         let serverItems = [];
         try {
-            const sData = await fetchDir(serverFolder);
+            const sData = await fetchDir(dirPath, { localSource: 'server_catalog' });
             if (sData && sData.items && !sData.error) {
                 serverItems = sData.items;
             }
@@ -101,7 +108,7 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
             const itemCopy = { ...item };
             const sMatch = serverNames.get(item.name.toLowerCase());
             itemCopy.targetLocalPath = item.path;
-            itemCopy.serverPath = item.path.replace(/^Z:/i, serverPrefix);
+            itemCopy.serverPath = item.path;
 
             if (sMatch) {
                 itemCopy.syncStatus = 'matched_server';
@@ -111,18 +118,17 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
             decorated.push(itemCopy);
         }
 
-        // Inyectar nodos FANTASMA del Server (están en S: pero faltan en Z:)
+        // Inyectar nodos FANTASMA del Server (están en Server pero faltan en Local)
         for (const sItem of serverItems) {
             if (!localNames.has(sItem.name.toLowerCase())) {
-                const targetLocal = sItem.path.replace(new RegExp('^' + serverPrefix, 'i'), 'Z:');
                 decorated.push({
                     name: sItem.name,
                     isDirectory: !!sItem.isDirectory,
-                    path: targetLocal,
+                    path: sItem.path,
                     isGhost: true,
                     size: sItem.size || 0,
                     serverPath: sItem.path,
-                    targetLocalPath: targetLocal,
+                    targetLocalPath: sItem.path,
                     syncStatus: 'ghost_server'
                 });
             }
@@ -136,9 +142,9 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
         for (const item of (rawItems || [])) {
             const itemCopy = { ...item };
-            let localTarget = item.path;
+            let localTarget = item.targetLocalPath || item.path;
             const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
-            if (proj?.roots) {
+            if (!item.targetLocalPath && proj?.roots) {
                 const oWork = (proj.roots.onlineWork || '').replace(/\\/g, '/');
                 const oMedia = (proj.roots.onlineMedia || '').replace(/\\/g, '/');
                 if (oWork && localTarget.toLowerCase().startsWith(oWork.toLowerCase())) {
@@ -150,27 +156,28 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
             itemCopy.targetLocalPath = localTarget.replace(/\\/g, '/');
             itemCopy.onlinePath = item.path;
 
-            const normTarget = itemCopy.targetLocalPath.toLowerCase();
-            const inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget);
+            let inLocal = false;
+            if (typeof item.localExists === 'boolean') {
+                inLocal = item.localExists;
+            } else {
+                const normTarget = itemCopy.targetLocalPath.toLowerCase();
+                inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget);
+            }
+
             itemCopy.syncStatus = inLocal ? 'matched_drive' : 'ghost_drive';
             decorated.push(itemCopy);
         }
     }
-    // 5. MODO EXPLORACIÓN DIRECTA DE SERVER CENTRAL
+    // 5. MODO EXPLORACIÓN DE SERVER CENTRAL (Catálogo)
     else if (mode === 'server') {
-        const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-            ? settings.centralServerPath.replace(/\/+$/, '') 
-            : 'S:';
-
         for (const item of (rawItems || [])) {
             const itemCopy = { ...item };
             itemCopy.serverPath = item.path;
-            itemCopy.targetLocalPath = item.path.replace(new RegExp('^' + serverPrefix, 'i'), 'Z:');
+            itemCopy.targetLocalPath = item.path;
 
             // Consultar si existe en local
             const normTarget = itemCopy.targetLocalPath.toLowerCase();
-            const inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget) ||
-                            window.pipetaServerCatalogLookup?.byLocalPath?.has(normTarget);
+            const inLocal = window.pipetaServerCatalogLookup?.byLocalPath?.has(normTarget);
             itemCopy.syncStatus = inLocal ? 'matched_server' : 'ghost_server';
             decorated.push(itemCopy);
         }
@@ -219,24 +226,31 @@ async function loadRootTree(rootPath, containerId) {
 
         const fragment = document.createDocumentFragment();
         for (const item of finalItems) {
-            const node = createTreeNode(item, 0);
+            const node = createTreeNode(item, 0, containerId);
             fragment.appendChild(node);
-
-            const normPath = item.path.replace(/\\/g, '/').toLowerCase();
-            if (item.isDirectory && expandedPaths.has(normPath)) {
-                await toggleNode(node, item, 0, node.querySelector('.tree-node'));
-            }
         }
         container.appendChild(fragment);
+
+        // Expandir nodos ya guardados una vez que el árbol está en el DOM
+        for (const node of container.children) {
+            const item = node._item;
+            if (item && item.isDirectory) {
+                const normPath = item.path.replace(/\\/g, '/').toLowerCase();
+                if (expandedPaths.has(normPath)) {
+                    await toggleNode(node, item, 0, node.querySelector('.tree-node'));
+                }
+            }
+        }
     } else {
         container.innerHTML = `<div style="color:red; padding:10px;">Error: ${data.error}</div>`;
     }
 }
 
-function createTreeNode(item, level) {
+function createTreeNode(item, level, containerId = '') {
     const wrapper = document.createElement('div');
     wrapper.className = 'node-wrapper' + (item.isGhost ? ' sync-ghost-wrapper' : '');
     wrapper._item = item;
+    wrapper._containerId = containerId;
 
     const row = document.createElement('div');
     row.className = 'tree-node' + (item.isGhost ? ' sync-ghost' : '');
@@ -260,12 +274,12 @@ function createTreeNode(item, level) {
     if (status === 'matched_drive') {
         badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Sincronizado con Google Drive)">✓</span>`;
     } else if (status === 'matched_server') {
-        badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Idéntico en Servidor Central S:)">✓</span>`;
+        badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Idéntico en Servidor Central)">✓</span>`;
     } else if (status === 'upload_drive') {
         const dest = item.onlinePath || 'Google Drive';
         badgeHtml = `<span class="sync-badge-action sync-badge-upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Subir a Drive</span>`;
     } else if (status === 'upload_server') {
-        const dest = item.serverPath || 'S:';
+        const dest = item.serverPath || 'Servidor Central';
         badgeHtml = `<span class="sync-badge-action sync-badge-upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">⬆️ Subir a Server</span>`;
     } else if (status === 'ghost_drive') {
         badgeHtml = `<span class="sync-badge-action sync-badge-download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Bajar de Drive</span>`;
@@ -330,7 +344,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
             container.innerHTML = "";
             const allDiskItems = (data && data.items) ? data.items : [];
             const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
-            const containerId = (wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media';
+            const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
             const filteredItems = (typeof window.filterExplorerItems === 'function')
                 ? window.filterExplorerItems(decoratedItems, containerId, item.path, allDiskItems)
                 : decoratedItems;
@@ -343,7 +357,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
             } else {
                 const fragment = document.createDocumentFragment();
                 for (const child of finalItems) {
-                    const node = createTreeNode(child, level + 1);
+                    const node = createTreeNode(child, level + 1, containerId);
                     fragment.appendChild(node);
 
                     const normChildPath = child.path.replace(/\\/g, '/').toLowerCase();
@@ -402,7 +416,7 @@ async function updateDetailsPanel(item) {
         return;
     }
 
-    if (window.viewLocationMode === 'server' || item.isServer || (item.path && item.path.replace(/\\/g, '/').toLowerCase().startsWith('s:'))) {
+    if (window.viewLocationMode === 'server' || item.isServer) {
         const infoSection = document.createElement('div');
         infoSection.id = 'prop-metadata-section';
         infoSection.className = 'prop-section';

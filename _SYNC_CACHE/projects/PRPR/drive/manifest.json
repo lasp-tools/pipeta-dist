@@ -1,0 +1,450 @@
+{
+  "project": "PRPR",
+  "projectCode": "pride_and_prejudice",
+  "client": "amazon",
+  "type": "drive",
+  "version": "2.0-modular",
+  "generatedAt": "2026-09-16T22:06:05.512Z",
+  "roots": {
+    "work": {
+      "local": "Z:/amazon/pride_and_prejudice",
+      "online": "G:/Unidades compartidas/pride_and_prejudice"
+    },
+    "media": {
+      "local": "Z:/INTERNO/MEDIA/amazon/pride_and_prejudice",
+      "online": "G:/Unidades compartidas/pride_and_prejudice_media"
+    }
+  },
+  "stats": {
+    "totalFiles": 3890,
+    "totalFolders": 995,
+    "totalBytes": 38581682601,
+    "workFiles": 3357,
+    "workBytes": 37897554316,
+    "mediaFiles": 533,
+    "mediaBytes": 684128285
+  },
+  "subCatalogs": {
+    "misc": {
+      "id": "misc",
+      "file": "misc.json",
+      "category": "work",
+      "prefix": "COMPRESIONES_PRESENTACIONES",
+      "itemCount": 1244,
+      "fileCount": 1184,
+      "byteCount": 34157400580
+    },
+    "episodios/_root": {
+      "id": "episodios/_root",
+      "file": "episodios/_root.json",
+      "category": "work",
+      "prefix": "episodios",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/XXX": {
+      "id": "episodios/XXX",
+      "file": "episodios/XXX.json",
+      "category": "work",
+      "prefix": "episodios/XXX",
+      "itemCount": 19,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/VFX-Edits": {
+      "id": "episodios/VFX-Edits",
+      "file": "episodios/VFX-Edits.json",
+      "category": "work",
+      "prefix": "episodios/VFX-Edits",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/templates": {
+      "id": "episodios/templates",
+      "file": "episodios/templates.json",
+      "category": "work",
+      "prefix": "episodios/templates",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/TEST": {
+      "id": "episodios/TEST",
+      "file": "episodios/TEST.json",
+      "category": "work",
+      "prefix": "episodios/TEST",
+      "itemCount": 37,
+      "fileCount": 6,
+      "byteCount": 4153854
+    },
+    "episodios/A01": {
+      "id": "episodios/A01",
+      "file": "episodios/A01.json",
+      "category": "work",
+      "prefix": "episodios/A01",
+      "itemCount": 188,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "assets2D": {
+      "id": "assets2D",
+      "file": "assets2D.json",
+      "category": "work",
+      "prefix": "assets2D",
+      "itemCount": 1749,
+      "fileCount": 1652,
+      "byteCount": 918544034
+    },
+    "assets3D": {
+      "id": "assets3D",
+      "file": "assets3D.json",
+      "category": "work",
+      "prefix": "assets3D",
+      "itemCount": 633,
+      "fileCount": 515,
+      "byteCount": 2817455848
+    },
+    "media/XXX": {
+      "id": "media/XXX",
+      "file": "media/XXX.json",
+      "category": "media",
+      "prefix": "XXX",
+      "itemCount": 24,
+      "fileCount": 8,
+      "byteCount": 0
+    },
+    "media/Wrap": {
+      "id": "media/Wrap",
+      "file": "media/Wrap.json",
+      "category": "media",
+      "prefix": "Wrap",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/VFX-Edits": {
+      "id": "media/VFX-Edits",
+      "file": "media/VFX-Edits.json",
+      "category": "media",
+      "prefix": "VFX-Edits",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/Preeditados": {
+      "id": "media/Preeditados",
+      "file": "media/Preeditados.json",
+      "category": "media",
+      "prefix": "Preeditados",
+      "itemCount": 22,
+      "fileCount": 8,
+      "byteCount": 682199906
+    },
+    "media/_Auxiliar": {
+      "id": "media/_Auxiliar",
+      "file": "media/_Auxiliar.json",
+      "category": "media",
+      "prefix": "_Auxiliar",
+      "itemCount": 21,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/_gsdata_": {
+      "id": "media/_gsdata_",
+      "file": "media/_gsdata_.json",
+      "category": "media",
+      "prefix": "_gsdata_",
+      "itemCount": 517,
+      "fileCount": 516,
+      "byteCount": 1928133
+    },
+    "media/TEST": {
+      "id": "media/TEST",
+      "file": "media/TEST.json",
+      "category": "media",
+      "prefix": "TEST",
+      "itemCount": 35,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/AVION": {
+      "id": "media/AVION",
+      "file": "media/AVION.json",
+      "category": "media",
+      "prefix": "AVION",
+      "itemCount": 104,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/E00": {
+      "id": "media/E00",
+      "file": "media/E00.json",
+      "category": "media",
+      "prefix": "E00",
+      "itemCount": 4,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/thumbnails": {
+      "id": "media/thumbnails",
+      "file": "media/thumbnails.json",
+      "category": "media",
+      "prefix": "thumbnails",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/A01": {
+      "id": "media/A01",
+      "file": "media/A01.json",
+      "category": "media",
+      "prefix": "A01",
+      "itemCount": 281,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/desktop.ini": {
+      "id": "media/desktop.ini",
+      "file": "media/desktop.ini.json",
+      "category": "media",
+      "prefix": "desktop.ini",
+      "itemCount": 1,
+      "fileCount": 1,
+      "byteCount": 246
+    }
+  },
+  "rootChildren": {
+    "work": [
+      {
+        "name": "COMPRESIONES_PRESENTACIONES",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/COMPRESIONES_PRESENTACIONES",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_Out",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/_Out",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "workflow",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/workflow",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "logs",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/logs",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "pre",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/pre",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "episodios",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/episodios",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "assets2D",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/assets2D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "assets3D",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/assets3D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "COMPRESSOR",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/COMPRESSOR",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "desktop.ini",
+        "isDirectory": false,
+        "path": "G:/Unidades compartidas/pride_and_prejudice/desktop.ini",
+        "size": 246,
+        "fromCatalog": true,
+        "isServer": false
+      }
+    ],
+    "media": [
+      {
+        "name": "XXX",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/XXX",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "Wrap",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/Wrap",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "VFX-Edits",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/VFX-Edits",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "Preeditados",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/Preeditados",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_Auxiliar",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/_Auxiliar",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "TEST",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/TEST",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "AVION",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/AVION",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "E00",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/E00",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "thumbnails",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/thumbnails",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "A01",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/A01",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "desktop.ini",
+        "isDirectory": false,
+        "path": "G:/Unidades compartidas/pride_and_prejudice_media/desktop.ini",
+        "size": 246,
+        "fromCatalog": true,
+        "isServer": false
+      }
+    ]
+  },
+  "episodiosChildren": [
+    {
+      "name": "XXX",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/pride_and_prejudice/episodios/XXX",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "VFX-Edits",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/pride_and_prejudice/episodios/VFX-Edits",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "templates",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/pride_and_prejudice/episodios/templates",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "TEST",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/pride_and_prejudice/episodios/TEST",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "A01",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/pride_and_prejudice/episodios/A01",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    }
+  ]
+}

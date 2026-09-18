@@ -9,12 +9,21 @@ Uso desde Node.js / CLI:
 """
 
 import sys
+import os
 import json
 
-# Libreria cliente de TACTIC ya disponible en el estudio
-TACTIC_LIB_PATH = r"Z:\INTERNO\TOOLS\GITHUB\TOOLS\dev\lasp\tactic\client"
-if TACTIC_LIB_PATH not in sys.path:
-    sys.path.insert(0, TACTIC_LIB_PATH)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+# Libreria cliente de TACTIC ya disponible en el estudio (Z: o S:)
+TACTIC_PATHS = [
+    r"Z:\INTERNO\TOOLS\GITHUB\TOOLS\dev\lasp\tactic\client",
+    r"S:\INTERNO\TOOLS\GITHUB\TOOLS\dev\lasp\tactic\client",
+]
+for tp in TACTIC_PATHS:
+    if os.path.exists(tp) and tp not in sys.path:
+        sys.path.insert(0, tp)
 
 try:
     from tactic_client_lib.tactic_server_stub import TacticServerStub

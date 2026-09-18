@@ -4,8 +4,11 @@ const os = require('os');
 const { execSync, spawn } = require('child_process');
 const catalogGenerator = require('./sync_catalog_generator');
 
-const CACHE_ROOT = 'Z:/_SYNC_CACHE';
-const ORDERS_DIR = 'Z:/_SYNC_CACHE/requests';
+const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
+const CACHE_ROOT = fs.existsSync('Z:/_SYNC_CACHE') 
+    ? 'Z:/_SYNC_CACHE' 
+    : (fs.existsSync(UNC_CACHE) ? UNC_CACHE : path.join(__dirname, '../_SYNC_CACHE'));
+const ORDERS_DIR = path.join(CACHE_ROOT, 'requests');
 const STATUS_FILE = path.join(CACHE_ROOT, 'worker_status.json');
 const TRIGGER_FILE = path.join(CACHE_ROOT, 'catalog_refresh_trigger.json');
 
@@ -70,15 +73,7 @@ function resolveRemoteInfo(fullPath) {
  */
 function resolveLocalPathForWorker(p) {
     if (!p) return '';
-    let norm = p.replace(/\\/g, '/');
-    if (fs.existsSync(norm)) return norm;
-    if (norm.match(/^S:/i) && fs.existsSync(norm.replace(/^S:/i, 'Z:'))) {
-        return norm.replace(/^S:/i, 'Z:');
-    }
-    if (norm.match(/^Z:/i) && fs.existsSync(norm.replace(/^Z:/i, 'S:'))) {
-        return norm.replace(/^Z:/i, 'S:');
-    }
-    return norm;
+    return p.replace(/\\/g, '/');
 }
 
 /**
@@ -103,10 +98,104 @@ function updateHeartbeat(status = 'idle', activeTask = null) {
     }
 }
 
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatSpeed(bytesPerSec) {
+    if (!bytesPerSec || bytesPerSec <= 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.floor(Math.log(bytesPerSec) / Math.log(1024));
+    return (bytesPerSec / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+}
+
 /**
- * Procesa una transferencia individual con Rclone
+ * Ejecuta Rclone en segundo plano capturando métricas de progreso (--stats 1s --use-json-log)
  */
-async function executeRcloneTransfer(type, item, orderData = null) {
+function runRcloneWithProgress(args, onProgress) {
+    return new Promise((resolve, reject) => {
+        const fullArgs = [
+            ...args,
+            '--stats', '1s',
+            '--use-json-log',
+            '-v'
+        ];
+
+        const proc = spawn(RCLONE_EXE, fullArgs, {
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let stderrBuffer = '';
+        let stdoutBuffer = '';
+
+        function handleLine(line) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return;
+            try {
+                const parsed = JSON.parse(trimmed);
+                if (parsed && parsed.stats && typeof onProgress === 'function') {
+                    const stats = parsed.stats;
+                    const totalBytes = stats.totalBytes || 0;
+                    const transferredBytes = stats.bytes || 0;
+                    let percentage = totalBytes > 0 ? (transferredBytes / totalBytes) * 100 : 0;
+                    percentage = Math.min(100, Math.max(0, Math.round(percentage * 10) / 10));
+
+                    onProgress({
+                        percentage,
+                        transferredBytes,
+                        totalBytes,
+                        speedBytesPerSec: stats.speed || 0,
+                        speedFormatted: formatSpeed(stats.speed || 0),
+                        etaSeconds: (stats.eta !== null && stats.eta !== undefined) ? stats.eta : null,
+                        transfers: stats.transfers || 0,
+                        totalTransfers: stats.totalTransfers || 0
+                    });
+                }
+            } catch (e) {}
+        }
+
+        proc.stderr.on('data', (chunk) => {
+            stderrBuffer += chunk.toString();
+            const lines = stderrBuffer.split(/\r?\n/);
+            stderrBuffer = lines.pop();
+            for (const line of lines) {
+                handleLine(line);
+            }
+        });
+
+        proc.stdout.on('data', (chunk) => {
+            stdoutBuffer += chunk.toString();
+            const lines = stdoutBuffer.split(/\r?\n/);
+            stdoutBuffer = lines.pop();
+            for (const line of lines) {
+                handleLine(line);
+            }
+        });
+
+        proc.on('error', (err) => {
+            reject(err);
+        });
+
+        proc.on('close', (code) => {
+            if (stderrBuffer) handleLine(stderrBuffer);
+            if (stdoutBuffer) handleLine(stdoutBuffer);
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`rclone terminó con código de salida ${code}`));
+            }
+        });
+    });
+}
+
+/**
+ * Procesa una transferencia individual con Rclone reportando progreso
+ */
+async function executeRcloneTransfer(type, item, orderData = null, onProgress = null) {
     if (!fs.existsSync(RCLONE_EXE)) {
         throw new Error(`rclone.exe no encontrado en: ${RCLONE_EXE}`);
     }
@@ -114,7 +203,6 @@ async function executeRcloneTransfer(type, item, orderData = null) {
         throw new Error(`rclone.conf no encontrado`);
     }
 
-    const { execFileSync } = require('child_process');
     const isDir = !!item.isDir;
 
     if (type === 'download') {
@@ -142,10 +230,9 @@ async function executeRcloneTransfer(type, item, orderData = null) {
                 '--drive-team-drive', remote.teamDriveId,
                 '--create-empty-src-dirs',
                 '--transfers', '4',
-                '--checkers', '8',
-                '-v'
+                '--checkers', '8'
             ];
-            execFileSync(RCLONE_EXE, args, { stdio: 'inherit', timeout: 3600000 });
+            await runRcloneWithProgress(args, onProgress);
         } else {
             fs.ensureDirSync(path.dirname(targetLocal));
             const args = [
@@ -153,11 +240,10 @@ async function executeRcloneTransfer(type, item, orderData = null) {
                 'copyto',
                 `lasp-drive:${remote.relPath}`,
                 targetLocal,
-                '--drive-team-drive', remote.teamDriveId,
-                '-v'
+                '--drive-team-drive', remote.teamDriveId
             ];
             try {
-                execFileSync(RCLONE_EXE, args, { stdio: 'inherit', timeout: 3600000 });
+                await runRcloneWithProgress(args, onProgress);
             } catch (copyErr) {
                 // Fallback con directory copy si copyto falla por rutas complejas de Google Drive
                 const targetDir = path.dirname(targetLocal);
@@ -171,10 +257,9 @@ async function executeRcloneTransfer(type, item, orderData = null) {
                     sourceRemote,
                     targetDir,
                     '--drive-team-drive', remote.teamDriveId,
-                    '--include', `${fileName}*`,
-                    '-v'
+                    '--include', `${fileName}*`
                 ];
-                execFileSync(RCLONE_EXE, fallbackArgs, { stdio: 'inherit', timeout: 3600000 });
+                await runRcloneWithProgress(fallbackArgs, onProgress);
             }
         }
     } else if (type === 'upload') {
@@ -227,20 +312,18 @@ async function executeRcloneTransfer(type, item, orderData = null) {
                 `lasp-drive:${remote.relPath}`,
                 '--drive-team-drive', remote.teamDriveId,
                 '--transfers', '4',
-                '--checkers', '8',
-                '-v'
+                '--checkers', '8'
             ];
-            execFileSync(RCLONE_EXE, args, { stdio: 'inherit', timeout: 3600000 });
+            await runRcloneWithProgress(args, onProgress);
         } else {
             const args = [
                 '--config', RCLONE_CONF,
                 'copyto',
                 localSource,
                 `lasp-drive:${remote.relPath}`,
-                '--drive-team-drive', remote.teamDriveId,
-                '-v'
+                '--drive-team-drive', remote.teamDriveId
             ];
-            execFileSync(RCLONE_EXE, args, { stdio: 'inherit', timeout: 3600000 });
+            await runRcloneWithProgress(args, onProgress);
         }
     } else {
         throw new Error(`Tipo de operación desconocido: ${type}`);
@@ -271,7 +354,7 @@ async function processQueue() {
         const fullPath = path.join(ORDERS_DIR, file);
         try {
             const data = fs.readJsonSync(fullPath);
-            if (data.status === 'pending') {
+            if (data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
                 if (!orderData || new Date(data.createdAt) < new Date(orderData.createdAt)) {
                     orderData = data;
                     pendingOrderFile = fullPath;
@@ -288,7 +371,7 @@ async function processQueue() {
 
     // Petición de refresco quirúrgico de subcarpeta específica
     if (orderData.type === 'refresh_folder') {
-        const targetType = orderData.targetType || (orderData.path?.toLowerCase().startsWith('s:') ? 'server' : 'drive');
+        const targetType = orderData.targetType || (orderData.path?.toLowerCase().startsWith('g:') ? 'drive' : 'server');
         log(`🔄 Petición de refresco de carpeta recibida: [${orderData.project}] '${orderData.path}' (${targetType.toUpperCase()}) (Usuario: ${orderData.user})`);
         orderData.status = 'processing';
         orderData.worker = WORKER_ID;
@@ -349,11 +432,44 @@ async function processQueue() {
     const errors = [];
 
     try {
+        let lastProgressWrite = 0;
+
         for (let i = 0; i < orderData.items.length; i++) {
             const item = orderData.items[i];
             log(`  [${i + 1}/${orderData.items.length}] Procesando ${item.name || item.relPath || item.path}...`);
+
+            const itemProgressCallback = (p) => {
+                const baseItemWeight = 100 / orderData.items.length;
+                const overallPct = (i * baseItemWeight) + ((p.percentage || 0) * baseItemWeight / 100);
+
+                orderData.progress = {
+                    percentage: Math.min(100, Math.max(0, Math.round(overallPct * 10) / 10)),
+                    itemPercentage: p.percentage || 0,
+                    transferredBytes: p.transferredBytes || 0,
+                    totalBytes: p.totalBytes || 0,
+                    speedBytesPerSec: p.speedBytesPerSec || 0,
+                    speedFormatted: p.speedFormatted || '0 B/s',
+                    etaSeconds: p.etaSeconds,
+                    currentFile: item.name || item.relativePath || path.basename(item.path || ''),
+                    itemIndex: i + 1,
+                    itemsTotal: orderData.items.length
+                };
+
+                const now = Date.now();
+                if (now - lastProgressWrite >= 800) {
+                    lastProgressWrite = now;
+                    try { fs.writeJsonSync(pendingOrderFile, orderData, { spaces: 2 }); } catch (e) {}
+                    updateHeartbeat('processing', {
+                        orderId: orderData.id,
+                        type: orderData.type,
+                        project: orderData.project,
+                        progress: orderData.progress
+                    });
+                }
+            };
+
             try {
-                await executeRcloneTransfer(orderData.type, item, orderData);
+                await executeRcloneTransfer(orderData.type, item, orderData, itemProgressCallback);
                 successCount++;
             } catch (err) {
                 failedCount++;
@@ -363,6 +479,12 @@ async function processQueue() {
         }
 
         const durationSeconds = Math.round((Date.now() - startTime) / 1000);
+
+        if (orderData.progress) {
+            orderData.progress.percentage = 100;
+            orderData.progress.speedFormatted = 'Completado';
+            orderData.progress.etaSeconds = 0;
+        }
 
         if (failedCount === 0) {
             orderData.status = 'completed';
@@ -375,6 +497,37 @@ async function processQueue() {
             orderData.status = 'failed';
             orderData.errors = errors;
             log(`❌ Orden ${orderData.id} FALLÓ completamente`);
+        }
+
+        // Actualización quirúrgica del catálogo en Google Drive / Server tras transferencias exitosas
+        if ((orderData.type === 'upload' || orderData.type === 'download') && successCount > 0) {
+            log(`📝 Actualizando catálogos para ${successCount} items transferidos con éxito (${orderData.type})...`);
+            const parentFolders = new Set();
+
+            for (const item of orderData.items) {
+                try {
+                    if (orderData.type === 'upload' && typeof catalogGenerator.recordTransferredItem === 'function') {
+                        catalogGenerator.recordTransferredItem(orderData.project, item, 'drive');
+                    }
+                    const folder = item.localPath ? path.dirname(item.localPath).replace(/\\/g, '/') : null;
+                    if (folder) parentFolders.add(folder);
+                } catch (recErr) {
+                    log(`⚠️ Error registrando item en catálogo (${item.name}): ${recErr.message}`);
+                }
+            }
+
+            for (const folder of parentFolders) {
+                try {
+                    log(`🔄 Sincronizando sub-catálogo con Google Drive para: '${folder}'...`);
+                    if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+                        await catalogGenerator.refreshSubCatalog(orderData.project, folder, 'drive');
+                    } else if (typeof catalogGenerator.refreshCatalogSubfolder === 'function') {
+                        await catalogGenerator.refreshCatalogSubfolder(orderData.project, folder);
+                    }
+                } catch (rfErr) {
+                    log(`⚠️ Advertencia al refrescar sub-catálogo con Google Drive: ${rfErr.message}`);
+                }
+            }
         }
 
         orderData.completedAt = new Date().toISOString();

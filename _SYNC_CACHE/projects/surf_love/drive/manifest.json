@@ -1,0 +1,510 @@
+{
+  "project": "surf_love",
+  "projectCode": "surf_love",
+  "client": "atresmedia",
+  "type": "drive",
+  "version": "2.0-modular",
+  "generatedAt": "2026-09-16T17:59:38.738Z",
+  "roots": {
+    "work": {
+      "local": "Z:/atresmedia/surf_love",
+      "online": "G:/Unidades compartidas/surf_love"
+    },
+    "media": {
+      "local": "Z:/INTERNO/MEDIA/atresmedia/surf_love",
+      "online": "G:/Unidades compartidas/surf_love_media"
+    }
+  },
+  "stats": {
+    "totalFiles": 42399,
+    "totalFolders": 1993,
+    "totalBytes": 2297993777455,
+    "workFiles": 822,
+    "workBytes": 876172762760,
+    "mediaFiles": 41577,
+    "mediaBytes": 1421821014695
+  },
+  "subCatalogs": {
+    "misc": {
+      "id": "misc",
+      "file": "misc.json",
+      "category": "work",
+      "prefix": "COMPRESSOR",
+      "itemCount": 635,
+      "fileCount": 555,
+      "byteCount": 869824432506
+    },
+    "assets2D": {
+      "id": "assets2D",
+      "file": "assets2D.json",
+      "category": "work",
+      "prefix": "assets2D",
+      "itemCount": 95,
+      "fileCount": 57,
+      "byteCount": 5476777641
+    },
+    "assets3D": {
+      "id": "assets3D",
+      "file": "assets3D.json",
+      "category": "work",
+      "prefix": "assets3D",
+      "itemCount": 42,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/_root": {
+      "id": "episodios/_root",
+      "file": "episodios/_root.json",
+      "category": "work",
+      "prefix": "episodios",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/B02": {
+      "id": "episodios/B02",
+      "file": "episodios/B02.json",
+      "category": "work",
+      "prefix": "episodios/B02",
+      "itemCount": 42,
+      "fileCount": 16,
+      "byteCount": 71267468
+    },
+    "episodios/B03": {
+      "id": "episodios/B03",
+      "file": "episodios/B03.json",
+      "category": "work",
+      "prefix": "episodios/B03",
+      "itemCount": 151,
+      "fileCount": 55,
+      "byteCount": 271249464
+    },
+    "episodios/B04": {
+      "id": "episodios/B04",
+      "file": "episodios/B04.json",
+      "category": "work",
+      "prefix": "episodios/B04",
+      "itemCount": 186,
+      "fileCount": 69,
+      "byteCount": 391759106
+    },
+    "episodios/XXX": {
+      "id": "episodios/XXX",
+      "file": "episodios/XXX.json",
+      "category": "work",
+      "prefix": "episodios/XXX",
+      "itemCount": 21,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/templates": {
+      "id": "episodios/templates",
+      "file": "episodios/templates.json",
+      "category": "work",
+      "prefix": "episodios/templates",
+      "itemCount": 10,
+      "fileCount": 8,
+      "byteCount": 34583759
+    },
+    "episodios/VFX-Edits": {
+      "id": "episodios/VFX-Edits",
+      "file": "episodios/VFX-Edits.json",
+      "category": "work",
+      "prefix": "episodios/VFX-Edits",
+      "itemCount": 2,
+      "fileCount": 1,
+      "byteCount": 284012
+    },
+    "episodios/B01": {
+      "id": "episodios/B01",
+      "file": "episodios/B01.json",
+      "category": "work",
+      "prefix": "episodios/B01",
+      "itemCount": 133,
+      "fileCount": 62,
+      "byteCount": 267720284
+    },
+    "media/thumbnails": {
+      "id": "media/thumbnails",
+      "file": "media/thumbnails.json",
+      "category": "media",
+      "prefix": "thumbnails",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/B00": {
+      "id": "media/B00",
+      "file": "media/B00.json",
+      "category": "media",
+      "prefix": "B00",
+      "itemCount": 4,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/B03": {
+      "id": "media/B03",
+      "file": "media/B03.json",
+      "category": "media",
+      "prefix": "B03",
+      "itemCount": 11650,
+      "fileCount": 11219,
+      "byteCount": 364262664032
+    },
+    "media/B02": {
+      "id": "media/B02",
+      "file": "media/B02.json",
+      "category": "media",
+      "prefix": "B02",
+      "itemCount": 6044,
+      "fileCount": 5893,
+      "byteCount": 229023217599
+    },
+    "media/B04": {
+      "id": "media/B04",
+      "file": "media/B04.json",
+      "category": "media",
+      "prefix": "B04",
+      "itemCount": 9110,
+      "fileCount": 8778,
+      "byteCount": 312197111543
+    },
+    "media/B01": {
+      "id": "media/B01",
+      "file": "media/B01.json",
+      "category": "media",
+      "prefix": "B01",
+      "itemCount": 14471,
+      "fileCount": 13960,
+      "byteCount": 487573854896
+    },
+    "media/_gsdata_": {
+      "id": "media/_gsdata_",
+      "file": "media/_gsdata_.json",
+      "category": "media",
+      "prefix": "_gsdata_",
+      "itemCount": 256,
+      "fileCount": 255,
+      "byteCount": 1967194
+    },
+    "media/XXX": {
+      "id": "media/XXX",
+      "file": "media/XXX.json",
+      "category": "media",
+      "prefix": "XXX",
+      "itemCount": 24,
+      "fileCount": 8,
+      "byteCount": 0
+    },
+    "media/_Auxiliar": {
+      "id": "media/_Auxiliar",
+      "file": "media/_Auxiliar.json",
+      "category": "media",
+      "prefix": "_Auxiliar",
+      "itemCount": 1500,
+      "fileCount": 1463,
+      "byteCount": 28636315467
+    },
+    "media/_OutPost": {
+      "id": "media/_OutPost",
+      "file": "media/_OutPost.json",
+      "category": "media",
+      "prefix": "_OutPost",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/_InPost": {
+      "id": "media/_InPost",
+      "file": "media/_InPost.json",
+      "category": "media",
+      "prefix": "_InPost",
+      "itemCount": 4,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/Wrap": {
+      "id": "media/Wrap",
+      "file": "media/Wrap.json",
+      "category": "media",
+      "prefix": "Wrap",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/Preeditados": {
+      "id": "media/Preeditados",
+      "file": "media/Preeditados.json",
+      "category": "media",
+      "prefix": "Preeditados",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/VFX-Edits": {
+      "id": "media/VFX-Edits",
+      "file": "media/VFX-Edits.json",
+      "category": "media",
+      "prefix": "VFX-Edits",
+      "itemCount": 7,
+      "fileCount": 1,
+      "byteCount": 125883964
+    }
+  },
+  "rootChildren": {
+    "work": [
+      {
+        "name": "COMPRESSOR",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/COMPRESSOR",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "assets2D",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/assets2D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "assets3D",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/assets3D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "episodios",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/episodios",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_Out",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/_Out",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "COMPRESIONES_PRESENTACIONES",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/COMPRESIONES_PRESENTACIONES",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "workflow",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/workflow",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "logs",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/logs",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "pre",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love/pre",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      }
+    ],
+    "media": [
+      {
+        "name": "thumbnails",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/thumbnails",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "B00",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/B00",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "B03",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/B03",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "B02",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/B02",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "B04",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/B04",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "B01",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/B01",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "XXX",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/XXX",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_Auxiliar",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/_Auxiliar",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_OutPost",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/_OutPost",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "_InPost",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/_InPost",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "Wrap",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/Wrap",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "Preeditados",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/Preeditados",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      },
+      {
+        "name": "VFX-Edits",
+        "isDirectory": true,
+        "path": "G:/Unidades compartidas/surf_love_media/VFX-Edits",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": false
+      }
+    ]
+  },
+  "episodiosChildren": [
+    {
+      "name": "B02",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/B02",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "B03",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/B03",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "B04",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/B04",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "XXX",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/XXX",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "templates",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/templates",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "VFX-Edits",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/VFX-Edits",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    },
+    {
+      "name": "B01",
+      "isDirectory": true,
+      "path": "G:/Unidades compartidas/surf_love/episodios/B01",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": false
+    }
+  ]
+}

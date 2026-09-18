@@ -97,7 +97,7 @@ const settings = {
     // Sync Configuration & State
     syncMode: 'auto',
     isFakeZ: false,
-    centralServerPath: 'S:/',
+    centralServerPath: '',
     syncEnvData: null,
     syncCatalogsData: [],
     isLoadingSyncEnv: false,
@@ -200,6 +200,8 @@ const settings = {
                     if (cfg.syncMode) settings.syncMode = cfg.syncMode;
                     if (typeof cfg.isFakeZ !== 'undefined') settings.isFakeZ = !!cfg.isFakeZ;
                     if (cfg.centralServerPath) settings.centralServerPath = cfg.centralServerPath;
+                    if (cfg.centralServerUnc) settings.centralServerUnc = cfg.centralServerUnc;
+                    if (cfg.centralServerUser) settings.centralServerUser = cfg.centralServerUser;
                     if (cfg.copyEngine) settings.copyEngine = cfg.copyEngine;
                 }
             }
@@ -221,7 +223,9 @@ const settings = {
             logsPath: settings.logsPath || defaultLogs,
             syncMode: settings.syncMode || 'auto',
             isFakeZ: !!settings.isFakeZ,
-            centralServerPath: settings.centralServerPath || 'S:/',
+            centralServerPath: settings.centralServerPath || '',
+            centralServerUnc: settings.centralServerUnc || '\\\\192.168.206.116\\Z',
+            centralServerUser: settings.centralServerUser || '',
             copyEngine: settings.copyEngine || 'auto'
         };
         try {
@@ -542,6 +546,46 @@ const settings = {
     selectProjectSubTab: (tabId) => {
         settings.projectSubTab = tabId;
         settings.render();
+    },
+
+    testUncConnection: async () => {
+        const uncInput = document.getElementById('setting-central-server-unc');
+        const userInput = document.getElementById('setting-central-server-user');
+        const passInput = document.getElementById('setting-central-server-pass');
+
+        const uncPath = (uncInput?.value || '\\\\192.168.206.116\\Z').trim();
+        const user = (userInput?.value || '').trim();
+        const pass = passInput?.value || '';
+
+        settings.centralServerUnc = uncPath;
+        settings.centralServerUser = user;
+        settings.saveConfig();
+
+        if (typeof settings.showToast === 'function') {
+            settings.showToast(`Probando conexión con ${uncPath}...`, 'info', 6);
+        }
+
+        try {
+            const res = await fetch('/api/server/connect-unc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uncPath, user, pass })
+            }).then(r => r.json());
+
+            if (res && res.success && res.accessible) {
+                if (typeof settings.showToast === 'function') {
+                    settings.showToast('✅ Conexión SMB Exitosa', 'success', 5, `Acceso validado a ${res.connectedTo}`);
+                } else {
+                    alert(`✅ Conexión SMB exitosa a: ${res.connectedTo}`);
+                }
+            } else if (res && res.success) {
+                alert(`⚠️ Sesión establecida con ${res.connectedTo}, pero el recurso no responde lectura inmediata.`);
+            } else {
+                alert(`❌ Error conectando a ${uncPath}:\n${res?.error || 'No se pudo conectar'}`);
+            }
+        } catch (e) {
+            alert(`❌ Error de red: ${e.message}`);
+        }
     },
 
     addIaTokenChip: (listKey) => {
@@ -888,12 +932,14 @@ const settings = {
         settings.render();
     },
 
-    loadSyncEnvironment: async () => {
+    loadSyncEnvironment: async (force = false) => {
         settings.isLoadingSyncEnv = true;
         try {
-            const resEnv = await fetch('/api/sync/detect-env');
+            const resEnv = await fetch('/api/sync/detect-env' + (force ? '?force=true' : ''));
             if (resEnv.ok) {
                 settings.syncEnvData = await resEnv.json();
+                window.pipetaSystemEnv = settings.syncEnvData;
+                try { localStorage.setItem('pipeta_system_env', JSON.stringify(settings.syncEnvData)); } catch(e){}
             }
             const resCat = await fetch('/api/sync/catalogs');
             if (resCat.ok) {
@@ -909,6 +955,25 @@ const settings = {
             console.error("Error loading sync environment:", e);
         } finally {
             settings.isLoadingSyncEnv = false;
+        }
+    },
+
+    reDetectSyncEnvironment: async () => {
+        settings.isLoadingSyncEnv = true;
+        settings.render();
+        try {
+            await settings.loadSyncEnvironment(true);
+            if (typeof settings.showToast === 'function') {
+                settings.showToast('Entorno re-detectado correctamente', 'success', 3);
+            }
+        } catch (e) {
+            console.error('Error re-detecting sync environment:', e);
+            if (typeof settings.showToast === 'function') {
+                settings.showToast('Error re-detectando entorno', 'error', 3);
+            }
+        } finally {
+            settings.isLoadingSyncEnv = false;
+            settings.render();
         }
     },
 
@@ -1088,7 +1153,6 @@ const settings = {
                 const engine = settings.copyEngine || 'auto';
                 const syncMode = settings.syncMode || 'auto';
                 const isFakeZ = !!settings.isFakeZ;
-                const centralServer = settings.centralServerPath || 'S:/';
                 const env = settings.syncEnvData;
                 const catalogs = settings.syncCatalogsData || [];
                 const projects = settings.projects || [];
@@ -1105,7 +1169,7 @@ const settings = {
                                 Detección inteligente de conectividad, catálogos offline para puestos sin internet y sincronización con almacenamiento central.
                             </p>
                         </div>
-                        <button class="btn" onclick="settings.loadSyncEnvironment().then(() => settings.render())" style="background:#222; border:1px solid #444; color:#4fc3f7; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
+                        <button class="btn" onclick="settings.reDetectSyncEnvironment()" style="background:#222; border:1px solid #444; color:#4fc3f7; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
                             <span>🔄</span> <span>${settings.isLoadingSyncEnv ? 'Analizando...' : 'Re-detectar Entorno'}</span>
                         </button>
                     </div>
@@ -1121,6 +1185,9 @@ const settings = {
                                 <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🌐 Acceso a Internet</div>
                                 <div style="font-size:0.88rem; font-weight:bold; color:${env?.hasInternet ? '#4caf50' : (env ? '#f44336' : '#888')};">
                                     ${env?.hasInternet ? '● Online (Conectado)' : (env ? '● Offline (Aislado)' : 'Consultando...')}
+                                </div>
+                                <div style="font-size:0.7rem; color:#666; margin-top:2px;">
+                                    ${env?.hasInternet ? 'Conexión verificada' : 'Guardado en este equipo (sin intentos web)'}
                                 </div>
                             </div>
                             <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
@@ -1144,12 +1211,17 @@ const settings = {
                                     ${env?.zInfo?.isRealServer ? `● Servidor Real (${env.zInfo.target})` : (env?.zInfo?.type === 'subst' ? `● Virtual (${env.zInfo.target})` : (env?.zInfo ? `● Local (${env.zInfo.type})` : 'Consultando...'))}
                                 </div>
                             </div>
+                            ${(!env?.zInfo?.isRealServer) ? `
                             <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
-                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🗄️ Servidor Central (S:)</div>
-                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.sInfo?.available ? '#4caf50' : '#888'};">
-                                    ${env?.sInfo?.available ? `● Conectado (${env.sInfo.remote || 'S:'})` : '○ No Conectado'}
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🗄️ Servidor Central (Estudio)</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:#4caf50;">
+                                    ● Modo Habilitado (Catálogo Central)
+                                </div>
+                                <div style="font-size:0.7rem; color:#666; margin-top:2px;">
+                                    Z: es local/virtual en este equipo
                                 </div>
                             </div>
+                            ` : ''}
                         </div>
                     </div>
 
@@ -1162,25 +1234,31 @@ const settings = {
                                 <div>
                                     <div style="font-weight:bold; color:#eee; font-size:0.88rem;">🤖 Automático Inteligente (Recomendado)</div>
                                     <div style="font-size:0.8rem; color:#888; margin-top:2px;">
-                                        Si la máquina tiene internet y disco G: mapeado, usa Google Drive directamente.<br>
-                                        Si no hay disco G: pero hay internet, usa Rclone.<br>
-                                        Si la máquina no tiene acceso a internet (puestos VFX aislados), conmuta a los <b>Catálogos Offline</b> en <code>Z:\\_SYNC_CACHE</code>.
+                                        ${env && !env.hasInternet 
+                                            ? 'Equipo sin internet guardado: utiliza automáticamente los <b>Catálogos Offline</b> sin intentar acceder a la nube.' 
+                                            : 'Si la máquina tiene internet y disco G: mapeado, usa Google Drive directamente. Si no hay internet, conmuta a los <b>Catálogos Offline</b> en <code>Z:\\_SYNC_CACHE</code>.'}
                                     </div>
                                 </div>
                             </label>
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'online_gdrive' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="online_gdrive" ${syncMode === 'online_gdrive' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_gdrive')" style="margin-top:3px;">
+                            <label style="display:flex; gap:12px; cursor:${env && !env.hasInternet ? 'not-allowed' : 'pointer'}; padding:8px 10px; border-radius:4px; align-items:flex-start; opacity:${env && !env.hasInternet ? '0.5' : '1'}; background:${syncMode === 'online_gdrive' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="online_gdrive" ${syncMode === 'online_gdrive' ? 'checked' : ''} ${env && !env.hasInternet ? 'disabled' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_gdrive')" style="margin-top:3px;">
                                 <div>
-                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.88rem;">☁️ Forzar Google Drive Desktop (Disco G:)</div>
+                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
+                                        <span>☁️ Forzar Google Drive Desktop (Disco G:)</span>
+                                        ${env && !env.hasInternet ? '<span style="color:#e57373; font-size:0.75rem;">(Deshabilitado: sin internet)</span>' : ''}
+                                    </div>
                                     <div style="font-size:0.8rem; color:#888; margin-top:2px;">
                                         Lee y compara directamente contra <code>G:/Unidades compartidas/</code>.
                                     </div>
                                 </div>
                             </label>
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'online_rclone' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="online_rclone" ${syncMode === 'online_rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_rclone')" style="margin-top:3px;">
+                            <label style="display:flex; gap:12px; cursor:${env && !env.hasInternet ? 'not-allowed' : 'pointer'}; padding:8px 10px; border-radius:4px; align-items:flex-start; opacity:${env && !env.hasInternet ? '0.5' : '1'}; background:${syncMode === 'online_rclone' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
+                                <input type="radio" name="syncMode" value="online_rclone" ${syncMode === 'online_rclone' ? 'checked' : ''} ${env && !env.hasInternet ? 'disabled' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_rclone')" style="margin-top:3px;">
                                 <div>
-                                    <div style="font-weight:bold; color:#9c27b0; font-size:0.88rem;">🚀 Forzar Rclone Cloud Directo</div>
+                                    <div style="font-weight:bold; color:#9c27b0; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
+                                        <span>🚀 Forzar Rclone Cloud Directo</span>
+                                        ${env && !env.hasInternet ? '<span style="color:#e57373; font-size:0.75rem;">(Deshabilitado: sin internet)</span>' : ''}
+                                    </div>
                                     <div style="font-size:0.8rem; color:#888; margin-top:2px;">
                                         Usa conexión cloud directa mediante binario de Rclone.
                                     </div>
@@ -1238,24 +1316,39 @@ const settings = {
                                            onchange="window.zEnvOverride='force_fake'; localStorage.setItem('pipeta_z_env_override', 'force_fake'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
                                     <div>
                                         <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">💻 Forzar: Z es Falso / Scratch Local</div>
-                                        <div style="font-size:0.76rem; color:#888; margin-top:2px;">Habilita comparación y copias contra Server Central (S:).</div>
+                                        <div style="font-size:0.76rem; color:#888; margin-top:2px;">Habilita vista SERVER para consultar el catálogo del Servidor Central.</div>
                                     </div>
                                 </label>
                             </div>
+                        </div>
 
-                            <div style="margin-top:15px; padding-top:12px; border-top:1px solid #333;">
-                                <label style="display:block; font-size:0.82rem; color:#ccc; margin-bottom:6px; font-weight:bold;">
-                                    Ruta al Servidor Central Real (Z: Verdadero del Estudio):
-                                </label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="text" value="${escapeHtml(centralServer)}" 
-                                           oninput="settings.centralServerPath = this.value; settings.saveConfig();"
-                                           placeholder="S:/ o \\\\\\\\192.168.206.116\\\\Z"
-                                           style="flex:1; background:#111; border:1px solid #444; border-radius:4px; padding:7px 10px; color:#fff; font-family:monospace; font-size:0.85rem; outline:none;">
+                        <!-- CONEXION DIRECTA SMB / UNC (SIN LETRA DE UNIDAD) -->
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; margin-bottom:4px;">🌐 Conexión al Servidor Central (SMB / UNC sin letra)</div>
+                            <div style="font-size:0.8rem; color:#888; margin-bottom:12px;">Para máquinas donde Z: es un disco virtual local. Permite copiar archivos directamente desde el almacenamiento central sin necesidad de montar unidades adicionales.</div>
+                            
+                            <div style="display:grid; grid-template-columns: 1fr 180px 180px auto; gap:10px; align-items:flex-end;">
+                                <div>
+                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Ruta UNC del Servidor:</label>
+                                    <input type="text" id="setting-central-server-unc" class="input" value="${escapeHtml(settings.centralServerUnc || '\\\\192.168.206.116\\Z')}" 
+                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-family:monospace; font-size:0.82rem;"
+                                           onchange="settings.centralServerUnc=this.value.trim(); settings.saveConfig();">
                                 </div>
-                                <div style="font-size:0.75rem; color:#888; margin-top:6px;">
-                                    ℹ️ En la vista LOCAL del Explorer, puedes activar <b>COMPARAR: [🗄️ SERVER]</b> para contrastar tu disco local contra esta ruta y copiar plates o renders.
+                                <div>
+                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Usuario (opcional):</label>
+                                    <input type="text" id="setting-central-server-user" class="input" value="${escapeHtml(settings.centralServerUser || '')}" placeholder="ej. lasp-artista"
+                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;"
+                                           onchange="settings.centralServerUser=this.value.trim(); settings.saveConfig();">
                                 </div>
+                                <div>
+                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Contraseña:</label>
+                                    <input type="password" id="setting-central-server-pass" class="input" placeholder="••••••••"
+                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;">
+                                </div>
+                                <button type="button" class="btn" onclick="settings.testUncConnection()" 
+                                        style="background:#222; border:1px solid var(--accent); color:var(--accent); font-weight:bold; padding:6px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; height:33px; white-space:nowrap;">
+                                    🔌 Probar Conexión
+                                </button>
                             </div>
                         </div>
                         `;
@@ -1425,9 +1518,9 @@ const settings = {
                                        onchange="settings.updateProjectProp('client', this.value)">
                             </div>
                             <div class="config-group" style="margin-bottom:0;">
-                                <label class="config-label">Proyecto (Tag / Code)</label>
+                                <label class="config-label">Proyecto (NICK / Tag)</label>
                                 <input type="text" class="config-input" value="${escapeHtml(cp.projectCode || '')}" 
-                                       placeholder="${isBase ? '[proyecto]' : 'surf_love'}"
+                                       placeholder="${isBase ? '[NICK]' : 'surf_love'}"
                                        onchange="settings.updateProjectProp('projectCode', this.value)">
                             </div>
                         </div>
@@ -1964,7 +2057,8 @@ const settings = {
                                 ${(uData.users || []).map(u => {
                                     const roleObj = (uData.roles || []).find(r => r.id === u.role) || { name: u.role || 'user', color: '#888' };
                                     const uName = u.username || (u.laspUser ? u.laspUser.replace('lasp-', '') : u.id);
-                                    const isRamon = u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-'));
+                                    const isSystemAdmin = u.username === 'admin' || u.id === 'u_admin' || (u.isSystem && u.role === 'admin');
+                                    const isRamon = !isSystemAdmin && (u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-')));
                                     return `
                                         <tr style="border-bottom:1px solid #222;">
                                             <td style="padding:10px 8px; display:flex; align-items:center; gap:8px;">
@@ -2147,12 +2241,14 @@ const settings = {
                                     onchange="settings.defaultViewMode = 'drive'; try { localStorage.setItem('pipeta_view_location_mode', 'drive'); } catch(e){}">
                                 <span>Drive (G:)</span>
                             </label>
+                            ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultViewMode" value="server" 
                                     ${curViewMode === 'server' ? 'checked' : ''}
                                     onchange="settings.defaultViewMode = 'server'; try { localStorage.setItem('pipeta_view_location_mode', 'server'); } catch(e){}">
-                                <span>Servidor (S:)</span>
+                                <span>Servidor (Catálogo)</span>
                             </label>
+                            ` : ''}
                         </div>
                     </div>
 
@@ -2182,20 +2278,28 @@ const settings = {
                     <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
                         <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Comparación por Defecto (en modo Local)</h4>
                         <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
-                            Define el destino contra el cual se auditan y comparan los archivos locales al activar la sincronización en el explorador.
+                            Define si se auditan y comparan los archivos locales contra Google Drive o el Servidor Central al abrir el explorador.
                         </div>
                         <div style="display:flex; gap:24px; flex-wrap:wrap;">
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultSyncComparisonMode" value="drive" 
-                                    ${curCompMode !== 'server' ? 'checked' : ''}
+                                    ${curCompMode === 'drive' ? 'checked' : ''}
                                     onchange="settings.defaultSyncComparisonMode = 'drive'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}">
                                 <span>Google Drive (G:)</span>
                             </label>
+                            ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultSyncComparisonMode" value="server" 
                                     ${curCompMode === 'server' ? 'checked' : ''}
                                     onchange="settings.defaultSyncComparisonMode = 'server'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'server'); } catch(e){}">
-                                <span>Servidor Central Real (S:)</span>
+                                <span>Servidor Central</span>
+                            </label>
+                            ` : ''}
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
+                                <input type="radio" name="defaultSyncComparisonMode" value="off" 
+                                    ${curCompMode === 'off' ? 'checked' : ''}
+                                    onchange="settings.defaultSyncComparisonMode = 'off'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'off'); } catch(e){}">
+                                <span>Desactivada</span>
                             </label>
                         </div>
                     </div>
@@ -2473,7 +2577,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable Completa (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v0.9.72'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.05'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -2512,7 +2616,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v0.9.72'}
+                            ${window.APP_VERSION || 'v1.1.10'}
                         </span>
                     </h3>
 
@@ -2524,8 +2628,96 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.0.02 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.10 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Detección Inteligente de Python para Ramón:</b> Pipeta ahora detecta y utiliza de forma transparente el intérprete de Python del estudio (<code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\python\python.exe</code>), instalaciones locales estándar o Python Launcher, eliminando el fallo por alias de Microsoft Store en puestos nuevos. Se integró la librería <code>six.py</code> de forma nativa en el puente de Ramón.</li>
+                                    <li><b>Inicio de Sesión de Ramón en Selector de Cabecera:</b> Se incorporó la opción <code>🌐 + Iniciar Sesión con Ramón...</code> directamente en el desplegable de usuarios y se aseguró su visibilidad permanente en el menú de usuario para poder conectar múltiples cuentas de red del estudio con total fluidez.</li>
+                                    <li><b>Blindaje de Usuario Admin Local:</b> El administrador del sistema queda protegido de forma estricta como usuario local, previniendo etiquetas o modos erróneos de Ramón.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.09</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Filtro de "Mis Tareas" en IA Ingest:</b> Se incorporó el botón de filtro con el icono oficial de Ramón junto a <code>1. TARGET</code>. Al activarse, los selectores de jerarquía (Episodio, Escena y Shot) se restringen de forma automática e instantánea únicamente a los planos asignados al usuario en Ramón.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.08</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Filtrado Inteligente de Ramas Estructurales:</b> Las carpetas contenedoras raíz (<code>episodios</code>, <code>assets2D</code>, <code>assets3D</code>) ahora solo se muestran si el usuario tiene al menos una tarea asignada en esa categoría en Ramón, evitando carpetas de assets vacías para artistas de planos (y viceversa).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.07</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Restauración del Icono Oficial de Ramón en Filtro:</b> Reincorporación del logo oficial de Ramón (<code>icons/ramon.png</code>) en el botón de filtro de tareas de la barra del explorador con soporte para estado activo y atenuado.</li>
+                                    <li><b>Refresco Instantáneo al Activar Filtro:</b> El filtrado de "Mis Tareas" ahora se aplica de inmediato (0 ms) en pantalla sin requerir pulsar manualmente el botón de refresh, sincronizando tareas en segundo plano sin congelar la interfaz.</li>
+                                    <li><b>Corrección de Contexto en Árbol de Carpetas:</b> Se corrigió la identificación del contenedor (<code>tree-work</code> vs <code>tree-media</code>) durante la expansión de carpetas para garantizar el filtrado correcto en todas las subcarpetas del proyecto.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.06</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Sincronización Dinámica de Drive en Vista Local:</b> La comparación entre disco Local y Google Drive ahora consulta en tiempo real los subcatálogos modulares frescos desde la caché central (vía UNC SMB directo), reconociendo de inmediato archivos descargados o preexistentes sin falsos avisos de "Subir a Drive".</li>
+                                    <li><b>Mapeo Bidireccional Local-Drive:</b> Los subcatálogos modulares ahora indexan y resuelven peticiones tanto por rutas virtuales de Google Drive como por rutas locales (Z:), logrando coincidencia instantánea (✓ Sincronizado).</li>
+                                    <li><b>Refresco Automático de Subcatálogos al Descargar:</b> El Worker y Pipeta actualizan e invalidan quirúrgicamente los subcatálogos afectados tras descargas exitosas desde Google Drive.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.05</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Descarga y Subida Directa UNC (Sin Letra de Unidad):</b> En máquinas virtuales y puestos donde Z: es un disco virtual local, las descargas y subidas desde/hacia el Servidor Central se resuelven directamente vía protocolo SMB / UNC (<code>\\192.168.206.116\Z</code>) sin requerir el mapeo de unidades adicionales.</li>
+                                    <li><b>Gestión de Credenciales SMB:</b> Panel de conexión directa al Servidor Central en Configuración con opción de usuario, contraseña y prueba de conectividad en tiempo real.</li>
+                                    <li><b>Resolución Automática de Rutas en Copia:</b> El endpoint de copia de archivos detecta automáticamente el contexto del servidor y redirige la lectura física al recurso compartido central.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.04</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Detección Precisa de Entorno SMB:</b> Reconocimiento instantáneo y certero de estaciones de trabajo donde Z: es el servidor real de producción. Se desactiva y oculta limpiamente el modo SERVER en estos puestos.</li>
+                                    <li><b>Erradicación Total de Prefijo S:</b> Sanitización completa de rutas y catálogos bajo el canon de estudio Z:. Ni en el Explorer, ni en árboles de carpetas ni en cabeceras se expondrán rutas de desarrollo locales.</li>
+                                    <li><b>Sincronización Transparente con Worker Central:</b> En entornos virtuales o de desarrollo, las peticiones de catálogo consultan y delegan directamente al Worker de red, visualizando en tiempo real archivos como ejecutables y assets del servidor central.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.03</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Unificación de Almacenamiento:</b> Eliminación del modo "SERVER" en estaciones estándar para evitar discrepancias, explorando exclusivamente LOCAL (Z:) y DRIVE (G: o Catálogo).</li>
+                                    <li><b>Sonda HTTP Real de Internet:</b> Reemplazo de resolución DNS por comprobación HTTP transparente (<code>generate_204</code>).</li>
+                                    <li><b>Refresco Directo al Worker:</b> Botón manual de refresco delega directamente al Worker central.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.02</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Sincronización Quirúrgica del Catálogo:</b> Inyección instantánea (&lt;5ms) y refresco específico por Rclone de carpetas subidas a Google Drive.</li>
+                                    <li><b>Detección Persistente de Entorno:</b> Detección única de internet y discos guardada por equipo (<code>env_state.json</code>), con bloqueo automático de llamadas web innecesarias en puestos aislados.</li>
+                                    <li><b>Corrección de Rutas en Clientes:</b> Detección robusta de subcarpetas en proyectos cuyos nombres o clientes contienen subcadenas reservadas.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.0</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Sync Analyzer & Google Drive:</b> Motor de análisis y sincronización contra Google Drive (G:), catálogo offline para comparación ultrarrápida, escaneo filtrado por tareas asignadas ("Solo mis shots") y resolución interactiva de conflictos.</li>
+                                    <li><b>Integración Ramón (TACTIC):</b> Autenticación de dominio en caliente, panel de "Mis Tareas" en cabecera y auto-registro transparente de artistas en la base local con asignación de roles.</li>
+                                    <li><b>Consola de Diagnóstico & Logs:</b> Visor de eventos en tiempo real con filtrado por niveles (INFO, WARN, ERROR), persistencia diaria en disco (formato JSONL) y descargas para soporte.</li>
+                                    <li><b>Rediseño de Configuraciones & Presets:</b> Nueva distribución intuitiva en categorías (Interfaz, Atajos, Proyectos, Usuarios, Avanzado), unificación de configuración local (Estados y Workflow) y panel centralizado de actualización y empaquetado.</li>
+                                    <li><b>Arquitectura de Producción Oficial:</b> Consolidación del runtime en el puerto canónico 3002 y unificación definitiva de la rama de desarrollo a producción.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.0.02</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
                                     <li><b>Detección de Instancia en Acceso Directo:</b> Si Pipeta ya está en ejecución, el acceso directo abre directamente el navegador sin provocar bloqueos ni errores de puerto ocupado.</li>
                                     <li><b>Ruta Default de Exportación de Paquetes:</b> Destino predeterminado de compresión y publicación establecido en <code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS</code>.</li>
                                 </ul>

@@ -196,7 +196,7 @@ class ContextMenu {
 
         try {
             const viewMode = window.viewLocationMode || 'local';
-            const isServer = (viewMode === 'server') || (compMode === 'server') || folderPath.toLowerCase().startsWith('s:');
+            const isServer = (viewMode === 'server') || (compMode === 'server');
             const isDrive = (viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:');
             const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
 

@@ -144,13 +144,10 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
     const targetType = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
     const proj = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
 
-    // 1. DESCARGA DESDE SERVER CENTRAL REAL (S:)
+    // 1. DESCARGA DESDE SERVER CENTRAL
     if (targetType === 'server') {
-        const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-            ? settings.centralServerPath.replace(/\/+$/, '') 
-            : 'S:';
-        const src = item.serverPath || item.onlinePath || item.path.replace(/^Z:/i, serverPrefix);
-        const dest = item.targetLocalPath || item.path.replace(new RegExp('^' + serverPrefix, 'i'), 'Z:');
+        const src = item.serverPath || item.onlinePath || item.path;
+        const dest = item.targetLocalPath || item.path;
         const sizeStr = item.size ? ` (${(item.size / (1024 * 1024)).toFixed(1)} MB)` : '';
 
         const msg = `📥 DESCARGAR DESDE SERVIDOR CENTRAL:\n` +
@@ -159,34 +156,52 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
                     `• Tipo: ${typeLabel}\n` +
                     `• Origen (Server): ${src}\n` +
                     `• Destino (Local): ${dest}\n` +
-                    `• Método: Copia directa de red LAN\n` +
+                    `• Método: Copia de red central\n` +
                     `══════════════════════════════════════════════════\n\n` +
-                    `¿Copiar directamente ahora a tu disco local Z:?`;
+                    `¿Copiar ahora a tu disco local Z:?`;
         if (!confirm(msg)) return;
 
         try {
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                settings.showToast(`Copiando ${item.name} desde Server Central...`, 'info', 30);
-            }
-            const res = await fetch('/api/fs/copy', {
+            const res = await fetch('/api/sync/request-download', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ src, dest })
+                body: JSON.stringify({
+                    project: proj,
+                    transferType: 'server',
+                    user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                    items: [{
+                        name: item.name,
+                        isDir: isDir,
+                        relativePath: item.relativePath || item.name,
+                        serverPath: src,
+                        targetLocalPath: dest,
+                        size: item.size || 0
+                    }]
+                })
             });
             const data = await res.json();
             if (data.success) {
-                if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('sync', `✓ Copiado directo desde Server Central LAN: ${item.name} -> ${dest}`, 'ok');
+                if (e && e.target) {
+                    e.target.innerHTML = '⏳ Descargando...';
+                    e.target.style.opacity = '0.6';
+                    e.target.style.pointerEvents = 'none';
                 }
+                const toastMsg = `Descarga desde Server iniciada para: ${item.name}`;
                 if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                    settings.showToast(`✅ Descargado desde Server: ${item.name}`, 'success', 4, `Guardado en ${dest}`);
+                    settings.showToast(toastMsg, 'info', 4, `Destino: ${dest}`);
                 }
-                if (typeof refreshCurrentView === 'function') refreshCurrentView();
+                if (window.syncQueueUI) {
+                    window.syncQueueUI.fetchStatus();
+                    window.syncQueueUI.open();
+                }
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `[DESCARGA SERVER] Iniciada transferencia: ${item.name} (${typeLabel}) -> ${dest}`, 'pending');
+                }
             } else {
                 if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('sync', `❌ Error copiando ${item.name} desde server: ${data.error}`, 'error');
+                    PipetaConsole.log('sync', `❌ Error al iniciar descarga de ${item.name}: ${data.error}`, 'error');
                 }
-                alert(`❌ Error al copiar desde server: ${data.error}`);
+                alert(`❌ Error al iniciar descarga: ${data.error}`);
             }
         } catch(err) {
             if (typeof PipetaConsole !== 'undefined') {
@@ -233,6 +248,11 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
         });
         const data = await res.json();
         if (data.success) {
+            if (e && e.target) {
+                e.target.innerHTML = '⏳ Descargando...';
+                e.target.style.opacity = '0.6';
+                e.target.style.pointerEvents = 'none';
+            }
             const toastMsg = `Orden de descarga #${data.orderId.slice(-6)} encolada para: ${item.name}`;
             if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 settings.showToast(toastMsg, 'success', 4, `Destino: ${dest}`);
@@ -267,45 +287,69 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
     const targetType = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
     const proj = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
 
-    // 1. SUBIDA A SERVER CENTRAL REAL (S:)
+    // 1. SUBIDA A SERVER CENTRAL
     if (targetType === 'server') {
-        const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath)
-            ? settings.centralServerPath.replace(/\/+$/, '')
-            : 'S:';
         const src = item.path;
-        const dest = item.serverPath || item.path.replace(/^Z:/i, serverPrefix);
+        const dest = item.serverPath || item.path;
         const sizeStr = item.size ? ` (${(item.size / (1024 * 1024)).toFixed(1)} MB)` : '';
 
-        const msg = `⬆️ SUBIR A SERVIDOR CENTRAL REAL:\n` +
+        const msg = `⬆️ SUBIR A SERVIDOR CENTRAL:\n` +
                     `══════════════════════════════════════════════════\n` +
                     `• Elemento: ${item.name}${sizeStr}\n` +
                     `• Tipo: ${typeLabel}\n` +
                     `• Origen (Local): ${src}\n` +
                     `• Destino (Server): ${dest}\n` +
-                    `• Método: Copia directa de red LAN\n` +
+                    `• Método: Copia de red central\n` +
                     `══════════════════════════════════════════════════\n\n` +
-                    `¿Copiar directamente ahora al almacenamiento central del estudio?`;
+                    `¿Copiar ahora al almacenamiento central del estudio?`;
         if (!confirm(msg)) return;
 
         try {
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                settings.showToast(`Subiendo ${item.name} a Server Central...`, 'info', 30);
-            }
-            const res = await fetch('/api/fs/copy', {
+            const res = await fetch('/api/sync/request-upload', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ src, dest })
+                body: JSON.stringify({
+                    project: proj,
+                    transferType: 'server',
+                    user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                    items: [{
+                        name: item.name,
+                        isDir: isDir,
+                        relativePath: item.relativePath || item.name,
+                        localPath: src,
+                        targetServerPath: dest,
+                        size: item.size || 0
+                    }]
+                })
             });
             const data = await res.json();
             if (data.success) {
-                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                    settings.showToast(`✅ Subido a Server Central: ${item.name}`, 'success', 4, `Destino: ${dest}`);
+                if (e && e.target) {
+                    e.target.innerHTML = '⏳ Subiendo...';
+                    e.target.style.opacity = '0.6';
+                    e.target.style.pointerEvents = 'none';
                 }
-                if (typeof refreshCurrentView === 'function') refreshCurrentView();
+                const toastMsg = `Subida a Server Central iniciada para: ${item.name}`;
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast(toastMsg, 'info', 4, `Destino: ${dest}`);
+                }
+                if (window.syncQueueUI) {
+                    window.syncQueueUI.fetchStatus();
+                    window.syncQueueUI.open();
+                }
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `[SUBIDA SERVER] Iniciada transferencia: ${item.name} (${typeLabel}) -> ${dest}`, 'pending');
+                }
             } else {
-                alert(`❌ Error al subir al server: ${data.error}`);
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('sync', `❌ Error al iniciar subida de ${item.name}: ${data.error}`, 'error');
+                }
+                alert(`❌ Error al iniciar subida al server: ${data.error}`);
             }
         } catch(err) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error de red con server LAN: ${err.message}`, 'error');
+            }
             alert(`❌ Error de conexión: ${err.message}`);
         }
         return;
@@ -345,6 +389,36 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
         });
         const data = await res.json();
         if (data.success) {
+            // Inyección optimista inmediata en el catálogo en memoria (< 1ms)
+            if (window.pipetaSyncCatalogLookup) {
+                const normLocal = normalizeSyncPath(item.path);
+                window.pipetaSyncCatalogLookup.byLocalPath.set(normLocal, {
+                    name: item.name,
+                    targetLocalPath: item.path,
+                    onlinePath: item.onlinePath || `Google Drive (${proj})`,
+                    isDir: isDir
+                });
+                const parent = normLocal.substring(0, normLocal.lastIndexOf('/'));
+                if (window.pipetaSyncCatalogLookup.byParentLocalPath.has(parent)) {
+                    const list = window.pipetaSyncCatalogLookup.byParentLocalPath.get(parent);
+                    if (!list.some(x => (x.name || '').toLowerCase() === item.name.toLowerCase())) {
+                        list.push({
+                            name: item.name,
+                            isDir: isDir,
+                            targetLocalPath: item.path,
+                            onlinePath: item.onlinePath || `Google Drive (${proj})`
+                        });
+                    }
+                }
+                if (typeof refreshCurrentView === 'function') refreshCurrentView();
+            }
+
+            if (e && e.target) {
+                e.target.innerHTML = '⏳ Subiendo...';
+                e.target.style.opacity = '0.6';
+                e.target.style.pointerEvents = 'none';
+            }
+
             const toastMsg = `Orden de subida #${data.orderId.slice(-6)} encolada para: ${item.name}`;
             if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 settings.showToast(toastMsg, 'success', 4, `Origen: ${item.path}`);
@@ -485,28 +559,38 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
 
     if (syncActive) {
         if (syncMode === 'drive') {
-            remoteChildren = window.pipetaSyncCatalogLookup?.byParentLocalPath?.get(normParent) || [];
-        } else if (syncMode === 'server' && parentPath) {
-            const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-                ? settings.centralServerPath.replace(/\/+$/, '') 
-                : 'S:';
-            const serverFolder = parentPath.replace(/^Z:/i, serverPrefix);
-            const normServerFolder = normalizeSyncPath(serverFolder);
+            try {
+                const dData = await fetchDir(parentPath, { localSource: 'drive_catalog' });
+                if (dData && dData.items && !dData.error && dData.items.length > 0) {
+                    remoteChildren = dData.items.map(d => ({
+                        name: d.name,
+                        isDir: !!(d.isDirectory || d.isDir),
+                        onlinePath: d.onlinePath || d.path,
+                        targetLocalPath: d.targetLocalPath || (parentPath ? parentPath.replace(/\/+$/, '') + '/' + d.name : d.path),
+                        size: d.size || 0
+                    }));
+                }
+            } catch (e) {}
 
+            if (remoteChildren.length === 0) {
+                remoteChildren = window.pipetaSyncCatalogLookup?.byParentLocalPath?.get(normParent) || [];
+            }
+        } else if (syncMode === 'server' && parentPath) {
             // Primero intentar desde el catálogo de servidor ya indexado en memoria (0 ms)
-            const memServerItems = window.pipetaServerCatalogLookup?.byParentServerPath?.get(normServerFolder);
+            const memServerItems = window.pipetaServerCatalogLookup?.byParentServerPath?.get(normParent) ||
+                                   window.pipetaServerCatalogLookup?.byParentLocalPath?.get(normParent);
             if (memServerItems && memServerItems.length > 0) {
                 remoteChildren = memServerItems.map(s => ({
                     name: s.name,
                     isDir: !!s.isDir,
-                    onlinePath: s.serverPath,
-                    serverPath: s.serverPath,
+                    onlinePath: s.serverPath || s.path,
+                    serverPath: s.serverPath || s.path,
                     targetLocalPath: parentPath.replace(/\/+$/, '') + '/' + s.name,
                     size: s.size || 0
                 }));
             } else {
                 try {
-                    const sData = await fetchDir(serverFolder);
+                    const sData = await fetchDir(parentPath, { localSource: 'server_catalog' });
                     if (sData && sData.items) {
                         remoteChildren = sData.items.map(s => ({
                             name: s.name,

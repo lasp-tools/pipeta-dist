@@ -3,7 +3,7 @@ title Pipeta Sync Worker - Motor de Transferencias (VM 105)
 setlocal enabledelayedexpansion
 
 echo ======================================================================
-echo          PIPETA SYNC WORKER & DAEMON DE COLA (STUDIO DAEMON)
+echo          PIPETA SYNC WORKER ^& DAEMON DE COLA (STUDIO DAEMON)
 echo ======================================================================
 echo.
 

@@ -1,0 +1,27 @@
+{
+  "id": "episodios/VFX-Edits",
+  "project": "PRPR",
+  "type": "drive",
+  "category": "work",
+  "prefix": "episodios/VFX-Edits",
+  "file": "episodios/VFX-Edits.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_work_744",
+      "category": "work",
+      "name": "VFX-Edits",
+      "relPath": "episodios/VFX-Edits",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2024-03-21T14:39:41.086Z",
+      "onlinePath": "G:/Unidades compartidas/pride_and_prejudice/episodios/VFX-Edits",
+      "targetLocalPath": "Z:/amazon/pride_and_prejudice/episodios/VFX-Edits"
+    }
+  ]
+}

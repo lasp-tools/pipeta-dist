@@ -1,0 +1,27 @@
+{
+  "id": "media/desktop.ini",
+  "project": "PRPR",
+  "type": "drive",
+  "category": "media",
+  "prefix": "desktop.ini",
+  "file": "media/desktop.ini.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 1,
+    "byteCount": 246
+  },
+  "flatList": [
+    {
+      "id": "sync_media_4885",
+      "category": "media",
+      "name": "desktop.ini",
+      "relPath": "desktop.ini",
+      "ext": ".ini",
+      "isDir": false,
+      "size": 246,
+      "modTime": "2026-09-10T18:34:24.643Z",
+      "onlinePath": "G:/Unidades compartidas/pride_and_prejudice_media/desktop.ini",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/amazon/pride_and_prejudice/desktop.ini"
+    }
+  ]
+}

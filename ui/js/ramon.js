@@ -76,9 +76,13 @@ const Ramon = {
     // --- APLICAR SESION A LA CABECERA ---
     applySessionToHeader: () => {
         const u = Ramon.session?.user;
-        const mode = Ramon.session?.mode || 'local';
+        let mode = Ramon.session?.mode || 'local';
         const activeLogin = u?.login || u?.laspUser || u?.username || 'admin';
-        const fullName = u?.display_name || (u?.firstName ? `${u.firstName} ${u.lastName}`.trim() : '');
+        const isSystemAdmin = activeLogin === 'admin' || u?.id === 'u_admin' || u?.isSystem;
+        if (isSystemAdmin) {
+            mode = 'local';
+        }
+        const fullName = !isSystemAdmin ? (u?.display_name || (u?.firstName ? `${u.firstName} ${u.lastName}`.trim() : '')) : '';
 
         // Formato claro: nombre de usuario de red / local + aclaración del sistema
         const sessionLabel = mode === 'ramon'
@@ -152,9 +156,13 @@ const Ramon = {
         }
 
         const u = Ramon.session?.user;
-        const mode = Ramon.session?.mode || 'local';
+        let mode = Ramon.session?.mode || 'local';
         const activeLogin = u?.login || u?.username || 'admin';
-        const displayName = u?.display_name || activeLogin;
+        const isSystemAdmin = activeLogin === 'admin' || u?.id === 'u_admin' || u?.isSystem;
+        if (isSystemAdmin) {
+            mode = 'local';
+        }
+        const displayName = isSystemAdmin ? 'admin' : (u?.display_name || activeLogin);
 
         const rect = document.getElementById('headerUserAvatar').getBoundingClientRect();
         menu.style.top = `${rect.bottom + 8}px`;
@@ -169,17 +177,16 @@ const Ramon = {
                 </div>
             </div>
             <div class="ramon-user-menu-body">
+                <button class="ramon-menu-item" onclick="Ramon.showLoginModal('ramon'); document.getElementById('ramonUserDropdownMenu').style.display='none';">
+                    <span>🌐</span> Iniciar Sesión con Ramón
+                </button>
                 ${mode === 'ramon' ? `
                     <button class="ramon-menu-item" onclick="Ramon.openMyTasksModal(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
                         <span><img src="icons/ramon.png" style="width:16px; height:16px; object-fit:contain; vertical-align:middle; margin-right:6px;"></span> Mis Tareas en Ramón
                     </button>
-                ` : `
-                    <button class="ramon-menu-item" onclick="Ramon.showLoginModal(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
-                        <span>🌐</span> Conectar con Ramón
-                    </button>
-                `}
-                <button class="ramon-menu-item" onclick="Ramon.showLoginModal(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
-                    <span>🔄</span> Cambiar de Usuario
+                ` : ''}
+                <button class="ramon-menu-item" onclick="Ramon.showLoginModal('local'); document.getElementById('ramonUserDropdownMenu').style.display='none';">
+                    <span>💻</span> Conectar Usuario Local
                 </button>
                 <button class="ramon-menu-item danger" onclick="Ramon.logout(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
                     <span>🚪</span> Cerrar Sesión
@@ -190,7 +197,7 @@ const Ramon = {
     },
 
     // --- MODAL DE LOGIN (UI) ---
-    showLoginModal: async () => {
+    showLoginModal: async (defaultTab = 'ramon') => {
         const modal = document.getElementById('ramonLoginModal');
         if (!modal) return;
 
@@ -213,13 +220,19 @@ const Ramon = {
         const userInp = document.getElementById('ramonUsernameInput');
         const passInp = document.getElementById('ramonPasswordInput');
         const errDiv = document.getElementById('ramonLoginError');
-        if (userInp && !userInp.value && Ramon.session?.user?.login) {
-            userInp.value = Ramon.session.user.login;
+        if (userInp) {
+            if (defaultTab === 'ramon' && (!userInp.value || userInp.value === 'admin')) {
+                userInp.value = (Ramon.session?.user?.login && Ramon.session.user.login !== 'admin') ? Ramon.session.user.login : '';
+            }
         }
         if (passInp) passInp.value = '';
         if (errDiv) errDiv.style.display = 'none';
 
+        Ramon.switchLoginTab(defaultTab);
         modal.style.display = 'flex';
+        setTimeout(() => {
+            if (defaultTab === 'ramon' && userInp) userInp.focus();
+        }, 100);
     },
 
     hideLoginModal: () => {

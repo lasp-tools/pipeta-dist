@@ -255,26 +255,13 @@
         const itemName = name || normPath.split('/').pop();
         const copyName = computeCopyName(itemName, isDir);
 
-        const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-            ? settings.centralServerPath.replace(/\/+$/, '') 
-            : 'S:';
-
-        // Pre-cargar catálogo de sync si es Drive y aún no está en memoria
-        if (targetType === 'drive' && typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog) {
-            await loadActiveProjectSyncCatalog();
-        }
-
-        // Determinar rutas canónicas local (Z:) y server (S:)
+        // Determinar rutas canónicas local (Z:) y server (Z:)
         let localPath = normPath;
         let serverPath = normPath;
 
-        if (normPath.toLowerCase().startsWith('z:')) {
-            serverPath = normPath.replace(/^Z:/i, serverPrefix);
-        } else if (normPath.toLowerCase().startsWith(serverPrefix.toLowerCase())) {
-            localPath = normPath.replace(new RegExp('^' + serverPrefix, 'i'), 'Z:');
-        } else {
+        if (!normPath.toLowerCase().startsWith('z:')) {
             localPath = `Z:/${normPath.replace(/^\/+/, '')}`;
-            serverPath = `${serverPrefix}/${normPath.replace(/^\/+/, '')}`;
+            serverPath = localPath;
         }
 
         // -------------------------------------------------------------
@@ -405,10 +392,6 @@
 
         if (targetType === 'server') {
             // ==================== OPERACIÓN SERVER (LAN COPY) ====================
-            const serverPrefix = (typeof settings !== 'undefined' && settings.centralServerPath) 
-                ? settings.centralServerPath.replace(/\/+$/, '') 
-                : 'S:';
-
             let src = action === 'upload' ? localPath : serverPath;
             let dest = action === 'upload' ? serverPath : localPath;
 
@@ -428,7 +411,7 @@
                 const res = await fetch('/api/fs/copy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ src, dest })
+                    body: JSON.stringify({ src, dest, action: action === 'upload' ? 'upload_server' : 'download_server' })
                 }).then(r => r.json());
 
                 if (res && res.success) {

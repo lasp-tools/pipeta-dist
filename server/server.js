@@ -5,8 +5,8 @@ const open = require('open');
 const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3050;
-const VERSION = "v1.0.02-beta";
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
+const VERSION = "v1.1.10";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -199,68 +199,110 @@ app.get('/api/config', (req, res) => {
 // --- SYNC CATALOG API ---
 const catalogGenerator = require('./sync_catalog_generator');
 
+// --- CACHED ENVIRONMENT & PERSISTENT INTERNET DETECTION ---
+const ENV_STATE_FILE = path.join(process.env.LOCALAPPDATA || process.env.TEMP || __dirname, 'Pipeta_env_state.json');
+let cachedEnvState = null;
+
+try {
+    if (fs.existsSync(ENV_STATE_FILE)) {
+        cachedEnvState = fs.readJsonSync(ENV_STATE_FILE);
+        console.log(`[ENV CACHE] Estado de entorno cargado desde disco: Internet = ${cachedEnvState.hasInternet ? 'ONLINE' : 'OFFLINE (Aislado)'}`);
+    }
+} catch (e) {}
+
+async function runEnvironmentDetection() {
+    const http = require('http');
+    let hasInternet = false;
+    try {
+        hasInternet = await new Promise((resolve) => {
+            const req = http.get('http://clients3.google.com/generate_204', { timeout: 1800 }, (res) => {
+                res.resume();
+                resolve(res.statusCode >= 200 && res.statusCode < 400);
+            });
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+            req.on('error', () => { resolve(false); });
+        });
+    } catch (e) {
+        hasInternet = false;
+    }
+
+    const hasDriveG = fs.existsSync('G:/Unidades compartidas') || fs.existsSync('G:/');
+    const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE') || fs.existsSync(path.join(__dirname, '../_SYNC_CACHE'));
+
+    // Detección precisa de Z: (Real vs Falso / Subst)
+    let zInfo = { isRealServer: true, type: 'network', target: 'Servidor Central SMB' };
+
+    // 1. Comprobar si Z: es un virtual subst local (típico de VM de desarrollo)
+    try {
+        const substOut = execSync('subst', { encoding: 'utf8', timeout: 1500 });
+        const match = substOut.match(/Z:\\: => ([^\r\n]+)/i);
+        if (match) {
+            zInfo = { isRealServer: false, type: 'subst', target: match[1].trim() };
+        }
+    } catch (e) {}
+
+    // 2. Si no fue subst, verificar recurso de red con comando net use dirigido específicamente a Z:
+    if (zInfo.isRealServer) {
+        try {
+            const netOut = execSync('cmd.exe /c "net use z:"', { encoding: 'utf8', timeout: 1500 });
+            const m = netOut.match(/(?:Nombre remoto|Remote name)\s+([^\r\n]+)/i);
+            if (m) {
+                zInfo = { isRealServer: true, type: 'network', target: m[1].trim() };
+            }
+        } catch (e) {
+            // En caso de que falle net use pero Z: exista físicamente y no sea subst:
+            if (fs.existsSync('Z:/')) {
+                zInfo = { isRealServer: true, type: 'network', target: 'Servidor Central' };
+            }
+        }
+    }
+
+    let recommendedMode = 'offline_catalog';
+    if (hasInternet) {
+        recommendedMode = hasDriveG ? 'online_gdrive' : 'online_rclone';
+    }
+
+    cachedEnvState = {
+        success: true,
+        hasInternet,
+        hasDriveG,
+        hasSyncCache,
+        recommendedMode,
+        zInfo,
+        rcloneAvailable,
+        rcloneVersion,
+        detectedAt: new Date().toISOString()
+    };
+
+    try {
+        fs.ensureDirSync(path.dirname(ENV_STATE_FILE));
+        fs.writeJsonSync(ENV_STATE_FILE, cachedEnvState, { spaces: 2 });
+        console.log(`[ENV DETECT] Estado persistido en ${ENV_STATE_FILE}: Internet = ${hasInternet ? 'ONLINE' : 'OFFLINE (Aislado)'}, Z = ${zInfo.isRealServer ? 'Servidor Real' : 'Local/Subst'}`);
+    } catch (e) {}
+
+    return cachedEnvState;
+}
+
+function checkInternetQuickly() {
+    if (cachedEnvState && typeof cachedEnvState.hasInternet === 'boolean') {
+        return cachedEnvState.hasInternet;
+    }
+    return false;
+}
+
+// Ejecutar detección inicial en background si no estaba previamente guardada
+if (!cachedEnvState) {
+    runEnvironmentDetection().catch(() => {});
+}
+
 app.get('/api/sync/detect-env', async (req, res) => {
     try {
-        const dns = require('dns').promises;
-        let hasInternet = false;
-        try {
-            await Promise.race([
-                dns.lookup('google.com'),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
-            ]);
-            hasInternet = true;
-        } catch (e) {
-            hasInternet = false;
+        const force = req.query.force === 'true';
+        if (!force && cachedEnvState) {
+            return res.json({ ...cachedEnvState, cached: true });
         }
-
-        const hasDriveG = fs.existsSync('G:/Unidades compartidas') || fs.existsSync('G:/');
-        const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE');
-
-        // Detección automática de Z: (Real vs Falso / Subst / Local)
-        let zInfo = { isRealServer: false, type: 'unknown', target: '' };
-        let sInfo = { available: false, remote: '' };
-
-        try {
-            const substOut = execSync('subst', { encoding: 'utf8', timeout: 1500 });
-            const match = substOut.match(/Z:\\: => ([^\r\n]+)/i);
-            if (match) {
-                zInfo = { isRealServer: false, type: 'subst', target: match[1].trim() };
-            }
-        } catch (e) {}
-
-        try {
-            const netOut = execSync('net use', { encoding: 'utf8', timeout: 1500 });
-            const zNet = netOut.match(/Z:\s+([^\s\r\n]+)/i);
-            if (zNet) {
-                zInfo = { isRealServer: true, type: 'network', target: zNet[1].trim() };
-            }
-            const sNet = netOut.match(/S:\s+([^\s\r\n]+)/i);
-            if (sNet) {
-                sInfo = { available: true, remote: sNet[1].trim() };
-            }
-        } catch (e) {}
-
-        // Fallback para Z si existe físicamente y no está en net use
-        if (zInfo.type === 'unknown' && fs.existsSync('Z:/')) {
-            zInfo = { isRealServer: false, type: 'local', target: 'Disco Local' };
-        }
-
-        let recommendedMode = 'offline_catalog';
-        if (hasInternet) {
-            recommendedMode = hasDriveG ? 'online_gdrive' : 'online_rclone';
-        }
-
-        res.json({
-            success: true,
-            hasInternet,
-            hasDriveG,
-            hasSyncCache,
-            recommendedMode,
-            zInfo,
-            sInfo,
-            rcloneAvailable: rcloneAvailable,
-            rcloneVersion: rcloneVersion
-        });
+        const state = await runEnvironmentDetection();
+        res.json(state);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -327,6 +369,18 @@ app.post('/api/sync/catalog/generate', async (req, res) => {
             serverDirCache.clear();
         }
 
+        const hasInternet = checkInternetQuickly();
+        if (!hasInternet && (type === 'drive' || !type)) {
+            const triggerFile = path.join(ORDERS_DIR, '..', 'catalog_refresh_trigger.json');
+            fs.writeJsonSync(triggerFile, {
+                project,
+                mode: mode || 'auto',
+                type: type || 'drive',
+                requestedAt: new Date().toISOString()
+            }, { spaces: 2 });
+            return res.json({ success: true, delegated: true, message: `Petición enviada al Worker central para escanear ${project}` });
+        }
+
         let result = {};
         if (type === 'server') {
             result = await catalogGenerator.generateServerCatalog(project, { mode: mode || 'auto' });
@@ -346,20 +400,55 @@ app.post('/api/sync/catalog/generate', async (req, res) => {
     }
 });
 
-// --- SYNC DOWNLOAD & UPLOAD REQUEST ORDERS ---
-const ORDERS_DIR = fs.existsSync('S:/_SYNC_CACHE/requests') ? 'S:/_SYNC_CACHE/requests' : 'Z:/_SYNC_CACHE/requests';
+const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 
-async function checkInternetQuickly() {
+function getCentralCacheDir() {
+    // 1. Si Z:/_SYNC_CACHE tiene un heartbeat activo o reciente (< 45s), usar Z:/
     try {
-        const dns = require('dns').promises;
-        await Promise.race([
-            dns.lookup('google.com'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1200))
-        ]);
-        return true;
-    } catch (e) {
-        return false;
+        const zStatus = path.join('Z:/_SYNC_CACHE', 'worker_status.json');
+        if (fs.existsSync(zStatus)) {
+            const data = fs.readJsonSync(zStatus);
+            const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+            if (diff < 45) return 'Z:/_SYNC_CACHE';
+        }
+    } catch (e) {}
+
+    // 2. Si UNC_CACHE tiene un heartbeat activo o reciente (< 45s), usar UNC_CACHE
+    try {
+        const uncStatus = path.join(UNC_CACHE, 'worker_status.json');
+        if (fs.existsSync(uncStatus)) {
+            const data = fs.readJsonSync(uncStatus);
+            const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+            if (diff < 45) return UNC_CACHE;
+        }
+    } catch (e) {}
+
+    // 3. Si Z: es un subst local (típico de VM de desarrollo) y existe UNC_CACHE, preferir UNC_CACHE
+    try {
+        if (fs.existsSync(UNC_CACHE)) {
+            const substOut = execSync('subst', { encoding: 'utf8', timeout: 500 });
+            if (/Z:\\: =>/i.test(substOut)) {
+                return UNC_CACHE;
+            }
+        }
+    } catch (e) {}
+
+    // 4. Si Z:/_SYNC_CACHE existe (ruta estándar en puestos de trabajo con Z: mapeado)
+    if (fs.existsSync('Z:/_SYNC_CACHE')) {
+        return 'Z:/_SYNC_CACHE';
     }
+
+    // 5. Si UNC_CACHE existe
+    if (fs.existsSync(UNC_CACHE)) {
+        return UNC_CACHE;
+    }
+
+    // 6. Fallback a carpeta local en la aplicación
+    return path.join(__dirname, '../_SYNC_CACHE');
+}
+
+function getOrdersDir() {
+    return path.join(getCentralCacheDir(), 'requests');
 }
 
 app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
@@ -370,7 +459,7 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
         }
 
         const safeP = folderPath.replace(/\\/g, '/');
-        const isServer = reqType === 'server' || safeP.toLowerCase().startsWith('s:');
+        const isServer = reqType === 'server';
         const catType = isServer ? 'server' : 'drive';
 
         // Invalidar caché en memoria del servidor
@@ -381,22 +470,32 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             catalogGenerator.clearMemoryCaches();
         }
 
-        // 1. Ejecutar de forma local mediante el sistema modular (toma ~15-30ms)
-        if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+        // 1. Si es Server Y este puesto tiene Z como Servidor Real físico, ejecutar de forma local
+        if (catType === 'server' && cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
             try {
-                const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, catType);
+                const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
                 if (modularRes && modularRes.success) {
                     return res.json(modularRes);
                 }
             } catch (localModularErr) {
-                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (${catType}):`, localModularErr.message);
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
             }
         }
 
-        // 2. Si es Drive y tiene internet, intentar el método rclone clásico
+        // 2. Si es Drive y tiene internet, ejecutar de inmediato vía rclone
         if (catType === 'drive') {
             const hasInternet = await checkInternetQuickly();
             if (hasInternet) {
+                if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+                    try {
+                        const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'drive');
+                        if (modularRes && modularRes.success) {
+                            return res.json(modularRes);
+                        }
+                    } catch (localModularErr) {
+                        console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (drive):`, localModularErr.message);
+                    }
+                }
                 try {
                     const result = await catalogGenerator.refreshCatalogSubfolder(project, folderPath);
                     if (result && result.success) {
@@ -410,12 +509,13 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
 
         // 3. Si la máquina no tiene internet o no tiene las unidades montadas, delegar al Worker central
         console.log(`[CATALOG REFRESH FOLDER] Delegando consulta de '${folderPath}' (${catType}) al Worker central en servidor...`);
-        if (!fs.existsSync(ORDERS_DIR)) {
-            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        const ordersDir = getOrdersDir();
+        if (!fs.existsSync(ordersDir)) {
+            fs.mkdirSync(ordersDir, { recursive: true });
         }
 
         const reqId = `rf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        const reqFile = path.join(ORDERS_DIR, `${reqId}.json`);
+        const reqFile = path.join(ordersDir, `${reqId}.json`);
 
         fs.writeJsonSync(reqFile, {
             id: reqId,
@@ -437,6 +537,11 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                     const data = fs.readJsonSync(reqFile);
                     if (data.status === 'completed') {
                         try { fs.removeSync(reqFile); } catch(e){}
+                        if (typeof serverDirCache !== 'undefined') serverDirCache.clear();
+                        if (typeof rcloneDirCache !== 'undefined') rcloneDirCache.clear();
+                        if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+                            catalogGenerator.clearMemoryCaches();
+                        }
                         return res.json(data.result || { success: true, delegated: true });
                     } else if (data.status === 'failed') {
                         try { fs.removeSync(reqFile); } catch(e){}
@@ -454,33 +559,294 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
     }
 });
 
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatSpeed(bytesPerSec) {
+    if (!bytesPerSec || bytesPerSec <= 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.floor(Math.log(bytesPerSec) / Math.log(1024));
+    return (bytesPerSec / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+}
+
+function getDirectoryFilesAndSize(dirPath) {
+    const files = [];
+    let totalBytes = 0;
+    function walk(currentDir, relPrefix = '') {
+        try {
+            const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullEntryPath = path.join(currentDir, entry.name).replace(/\\/g, '/');
+                const relEntryPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+                if (entry.isDirectory()) {
+                    walk(fullEntryPath, relEntryPath);
+                } else if (entry.isFile()) {
+                    try {
+                        const st = fs.statSync(fullEntryPath);
+                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: st.size });
+                        totalBytes += st.size;
+                    } catch (e) {
+                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: 0 });
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+    walk(dirPath);
+    return { files, totalBytes };
+}
+
+function streamCopyFile(srcFile, destFile, onChunk) {
+    return new Promise((resolve, reject) => {
+        try {
+            fs.ensureDirSync(path.dirname(destFile));
+            const readStream = fs.createReadStream(srcFile, { highWaterMark: 1024 * 512 });
+            const writeStream = fs.createWriteStream(destFile);
+
+            readStream.on('data', (chunk) => {
+                if (onChunk) onChunk(chunk.length);
+            });
+
+            readStream.on('error', (err) => {
+                try { writeStream.destroy(); } catch(e){}
+                reject(err);
+            });
+
+            writeStream.on('error', (err) => {
+                try { readStream.destroy(); } catch(e){}
+                reject(err);
+            });
+
+            writeStream.on('finish', () => {
+                resolve();
+            });
+
+            readStream.pipe(writeStream);
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+async function runLocalTransferOrder(orderId, orderData, filePath) {
+    const startTime = Date.now();
+    orderData.status = 'processing';
+    orderData.startedAt = new Date().toISOString();
+    orderData.worker = `local_${os.hostname()}`;
+    try { fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8'); } catch(e){}
+
+    const env = cachedEnvState || {};
+    const isNotRealServer = !env?.zInfo?.isRealServer;
+    const uncRoot = isNotRealServer ? getServerUncRoot() : null;
+    if (isNotRealServer && uncRoot) {
+        ensureServerUncAccess(uncRoot);
+    }
+
+    const isDownload = orderData.type === 'server_download';
+    const itemsPlan = [];
+    let grandTotalBytes = 0;
+
+    for (const it of orderData.items) {
+        let src = isDownload
+            ? (it.serverPath || it.onlinePath || it.path)
+            : (it.localPath || it.path);
+        let dest = isDownload
+            ? (it.targetLocalPath || it.path)
+            : (it.targetServerPath || it.serverPath || it.path);
+
+        if (!src || !dest) continue;
+        src = src.replace(/\\/g, '/');
+        dest = dest.replace(/\\/g, '/');
+
+        if (isNotRealServer && uncRoot) {
+            if (isDownload) {
+                if (src.toLowerCase().startsWith('z:/') || !fs.existsSync(src)) {
+                    src = src.replace(/^z:/i, uncRoot);
+                }
+            } else {
+                if (dest.toLowerCase().startsWith('z:/')) {
+                    dest = dest.replace(/^z:/i, uncRoot);
+                }
+            }
+        }
+
+        let isDir = !!it.isDir || !!it.isDirectory;
+        let filesList = [];
+        let itemBytes = 0;
+
+        try {
+            if (fs.existsSync(src)) {
+                const st = fs.statSync(src);
+                isDir = st.isDirectory();
+                if (isDir) {
+                    const dirData = getDirectoryFilesAndSize(src);
+                    filesList = dirData.files;
+                    itemBytes = dirData.totalBytes;
+                } else {
+                    itemBytes = st.size;
+                    filesList = [{ fullPath: src, relPath: path.basename(src), size: itemBytes }];
+                }
+            }
+        } catch (e) {
+            console.warn(`[LOCAL TRANSFER] Error al analizar ${src}:`, e.message);
+        }
+
+        grandTotalBytes += itemBytes;
+        itemsPlan.push({ src, dest, isDir, filesList, itemBytes, it });
+    }
+
+    let overallTransferredBytes = 0;
+    let lastProgressWrite = 0;
+    let windowStartTime = Date.now();
+    let windowBytesTransferred = 0;
+    let lastSpeed = 0;
+
+    const updateProgress = (force = false, currentFileName = '', itemIndex = 1) => {
+        const now = Date.now();
+        if (!force && (now - lastProgressWrite < 700)) return;
+
+        const timeDiffSec = (now - windowStartTime) / 1000;
+        if (timeDiffSec >= 0.7) {
+            lastSpeed = Math.round(windowBytesTransferred / timeDiffSec);
+            windowBytesTransferred = 0;
+            windowStartTime = now;
+        }
+
+        const remainingBytes = Math.max(0, grandTotalBytes - overallTransferredBytes);
+        const etaSeconds = (lastSpeed > 0 && remainingBytes > 0) ? Math.round(remainingBytes / lastSpeed) : 0;
+        const pct = grandTotalBytes > 0 
+            ? Math.min(100, Math.round((overallTransferredBytes / grandTotalBytes) * 1000) / 10) 
+            : 0;
+
+        orderData.progress = {
+            percentage: pct,
+            transferredBytes: overallTransferredBytes,
+            totalBytes: grandTotalBytes,
+            speedBytesPerSec: lastSpeed,
+            speedFormatted: formatSpeed(lastSpeed),
+            etaSeconds,
+            currentFile: currentFileName,
+            itemIndex,
+            itemsTotal: itemsPlan.length
+        };
+
+        lastProgressWrite = now;
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+        } catch (e) {}
+    };
+
+    const errors = [];
+    try {
+        for (let i = 0; i < itemsPlan.length; i++) {
+            const plan = itemsPlan[i];
+            const normSrc = path.resolve(plan.src.replace(/\//g, '\\')).toLowerCase();
+            const normDest = path.resolve(plan.dest.replace(/\//g, '\\')).toLowerCase();
+
+            if (normSrc === normDest) {
+                console.log(`[LOCAL TRANSFER] Origen y destino idénticos, omitiendo copia física: ${plan.src}`);
+                overallTransferredBytes += plan.itemBytes;
+                updateProgress(true, path.basename(plan.src), i + 1);
+                continue;
+            }
+
+            for (const file of plan.filesList) {
+                const targetFilePath = plan.isDir 
+                    ? path.join(plan.dest, file.relPath).replace(/\\/g, '/')
+                    : plan.dest;
+
+                try {
+                    await streamCopyFile(file.fullPath, targetFilePath, (chunkBytes) => {
+                        overallTransferredBytes += chunkBytes;
+                        windowBytesTransferred += chunkBytes;
+                        updateProgress(false, path.basename(file.relPath), i + 1);
+                    });
+                } catch (copyErr) {
+                    errors.push({ file: file.relPath, error: copyErr.message });
+                    console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
+                }
+            }
+        }
+
+        updateProgress(true, '', itemsPlan.length);
+        orderData.status = errors.length === 0 ? 'completed' : (errors.length < itemsPlan.length ? 'completed_with_errors' : 'failed');
+        orderData.completedAt = new Date().toISOString();
+        orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        if (orderData.progress) {
+            orderData.progress.percentage = 100;
+            orderData.progress.speedFormatted = 'Completado';
+            orderData.progress.etaSeconds = 0;
+        }
+        if (errors.length > 0) orderData.errors = errors;
+
+        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+
+        if (typeof serverDirCache !== 'undefined') serverDirCache.clear();
+        if (typeof rcloneDirCache !== 'undefined') rcloneDirCache.clear();
+        if (typeof catalogGenerator !== 'undefined' && typeof catalogGenerator.clearMemoryCaches === 'function') {
+            catalogGenerator.clearMemoryCaches();
+        }
+
+        // Si fue subida al Servidor Central, refrescar el sub-catálogo del servidor para las carpetas afectadas
+        if (orderData.type === 'server_upload' && typeof catalogGenerator !== 'undefined' && typeof catalogGenerator.refreshSubCatalog === 'function') {
+            for (const plan of itemsPlan) {
+                try {
+                    const folder = path.dirname(plan.dest).replace(/\\/g, '/');
+                    catalogGenerator.refreshSubCatalog(orderData.project, folder, 'server').catch(() => {});
+                } catch(e) {}
+            }
+        }
+    } catch (err) {
+        console.error(`[LOCAL TRANSFER ORDER] Error en ${orderId}:`, err);
+        orderData.status = 'failed';
+        orderData.error = err.message;
+        orderData.completedAt = new Date().toISOString();
+        orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        try { fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8'); } catch (e) {}
+    }
+}
+
 app.post('/api/sync/request-download', async (req, res) => {
     try {
-        const { project, items, user } = req.body;
+        const { project, items, user, transferType, type } = req.body;
         if (!project || !items || !items.length) {
             return res.status(400).json({ success: false, error: 'Parámetros project e items son requeridos' });
         }
 
-        if (!fs.existsSync(ORDERS_DIR)) {
-            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        const ordersDir = getOrdersDir();
+        if (!fs.existsSync(ordersDir)) {
+            fs.mkdirSync(ordersDir, { recursive: true });
         }
 
+        const isServer = transferType === 'server' || type === 'server_download';
         const orderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const orderData = {
             id: orderId,
-            type: 'download',
+            type: isServer ? 'server_download' : 'download',
             project,
             user: user || (os.userInfo ? os.userInfo().username : 'unknown'),
             createdAt: new Date().toISOString(),
-            status: 'pending',
+            status: isServer ? 'processing' : 'pending',
             items
         };
 
-        const filePath = path.join(ORDERS_DIR, `${orderId}.json`);
+        const filePath = path.join(ordersDir, `${orderId}.json`);
         fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
 
-        console.log(`[SYNC ORDER] Orden de descarga creada: ${orderId} (${items.length} items) para ${project}`);
-        res.json({ success: true, orderId, count: items.length, status: 'pending' });
+        if (isServer) {
+            console.log(`[SYNC ORDER] Orden de descarga de SERVIDOR iniciada localmente: ${orderId} (${items.length} items)`);
+            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+                console.error(`[LOCAL DOWNLOAD] Error en orden ${orderId}:`, err);
+            });
+            res.json({ success: true, orderId, count: items.length, status: 'processing' });
+        } else {
+            console.log(`[SYNC ORDER] Orden de descarga de DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project}`);
+            res.json({ success: true, orderId, count: items.length, status: 'pending' });
+        }
     } catch (err) {
         console.error("Sync request-download error:", err);
         res.status(500).json({ success: false, error: err.message });
@@ -489,31 +855,41 @@ app.post('/api/sync/request-download', async (req, res) => {
 
 app.post('/api/sync/request-upload', async (req, res) => {
     try {
-        const { project, items, user } = req.body;
+        const { project, items, user, transferType, type } = req.body;
         if (!project || !items || !items.length) {
             return res.status(400).json({ success: false, error: 'Parámetros project e items son requeridos' });
         }
 
-        if (!fs.existsSync(ORDERS_DIR)) {
-            fs.mkdirSync(ORDERS_DIR, { recursive: true });
+        const ordersDir = getOrdersDir();
+        if (!fs.existsSync(ordersDir)) {
+            fs.mkdirSync(ordersDir, { recursive: true });
         }
 
+        const isServer = transferType === 'server' || type === 'server_upload';
         const orderId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const orderData = {
             id: orderId,
-            type: 'upload',
+            type: isServer ? 'server_upload' : 'upload',
             project,
             user: user || (os.userInfo ? os.userInfo().username : 'unknown'),
             createdAt: new Date().toISOString(),
-            status: 'pending',
+            status: isServer ? 'processing' : 'pending',
             items
         };
 
-        const filePath = path.join(ORDERS_DIR, `${orderId}.json`);
+        const filePath = path.join(ordersDir, `${orderId}.json`);
         fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
 
-        console.log(`[SYNC ORDER] Orden de subida creada: ${orderId} (${items.length} items) para ${project}`);
-        res.json({ success: true, orderId, count: items.length, status: 'pending' });
+        if (isServer) {
+            console.log(`[SYNC ORDER] Orden de subida a SERVIDOR iniciada localmente: ${orderId} (${items.length} items)`);
+            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+                console.error(`[LOCAL UPLOAD] Error en orden ${orderId}:`, err);
+            });
+            res.json({ success: true, orderId, count: items.length, status: 'processing' });
+        } else {
+            console.log(`[SYNC ORDER] Orden de subida a DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project}`);
+            res.json({ success: true, orderId, count: items.length, status: 'pending' });
+        }
     } catch (err) {
         console.error("Sync request-upload error:", err);
         res.status(500).json({ success: false, error: err.message });
@@ -522,14 +898,15 @@ app.post('/api/sync/request-upload', async (req, res) => {
 
 app.get('/api/sync/orders', (req, res) => {
     try {
-        if (!fs.existsSync(ORDERS_DIR)) {
+        const ordersDir = getOrdersDir();
+        if (!fs.existsSync(ordersDir)) {
             return res.json({ success: true, orders: [] });
         }
-        const files = fs.readdirSync(ORDERS_DIR).filter(f => f.endsWith('.json'));
+        const files = fs.readdirSync(ordersDir).filter(f => f.endsWith('.json'));
         const orders = [];
         for (const f of files) {
             try {
-                const content = JSON.parse(fs.readFileSync(path.join(ORDERS_DIR, f), 'utf8'));
+                const content = JSON.parse(fs.readFileSync(path.join(ordersDir, f), 'utf8'));
                 orders.push(content);
             } catch(e){}
         }
@@ -542,9 +919,7 @@ app.get('/api/sync/orders', (req, res) => {
 
 app.get('/api/sync/worker-status', (req, res) => {
     try {
-        const statusFile = fs.existsSync('S:/_SYNC_CACHE/worker_status.json')
-            ? 'S:/_SYNC_CACHE/worker_status.json'
-            : 'Z:/_SYNC_CACHE/worker_status.json';
+        const statusFile = path.join(getCentralCacheDir(), 'worker_status.json');
         if (fs.existsSync(statusFile)) {
             const status = fs.readJsonSync(statusFile);
             const diffSeconds = (Date.now() - new Date(status.lastPing).getTime()) / 1000;
@@ -558,7 +933,7 @@ app.get('/api/sync/worker-status', (req, res) => {
     }
 });
 
-// Caché en memoria para listados de directorios en red (SMB S:) y Rclone
+// Caché en memoria para listados de directorios en red (SMB) y Rclone
 const serverDirCache = new Map();
 const rcloneDirCache = new Map();
 const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
@@ -569,6 +944,7 @@ app.get('/api/fs/list', (req, res) => {
     let forceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
     let onlineEngine = req.query.online_engine; // 'rclone' | 'gdrive' | 'catalog'
     let localSource = req.query.local_source;   // 'z_local' | 'server_catalog'
+    let source = req.query.source;
 
     try {
         let targetPath = null;
@@ -577,54 +953,57 @@ app.get('/api/fs/list', (req, res) => {
             let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
             const lowerSafeP = safeP.toLowerCase();
 
-            // 0. Si se solicita expresamente origen del Servidor Central para una ruta local Z:
-            if (localSource === 'server_catalog' && (lowerSafeP.startsWith('z:/') || lowerSafeP === 'z:')) {
-                const sEquivalent = safeP.replace(/^z:/i, 'S:');
+            // 0. Si se solicita expresamente origen del Servidor Central para una ruta Z:
+            if ((localSource === 'server_catalog' || source === 'server') && (lowerSafeP.startsWith('z:/') || lowerSafeP === 'z:')) {
                 let serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
-                    ? catalogGenerator.listFromModularCatalog(sEquivalent, 'server')
-                    : null;
-
-                if (serverItems === null && typeof catalogGenerator.listFromServerCatalog === 'function') {
-                    serverItems = catalogGenerator.listFromServerCatalog(sEquivalent);
-                }
-
-                if (serverItems !== null) {
-                    return res.json({ path: safeP, items: serverItems, exists: true, fromCatalog: true, isServer: true });
-                }
-                return res.json({ path: safeP, items: [], exists: false, isServer: true });
-            }
-
-            const isServerPath = lowerSafeP.startsWith('s:/') || lowerSafeP === 's:' || lowerSafeP === 's';
-
-            // Comprobar si está en caché en memoria (para evitar re-consultar la red)
-            if (!forceRefresh && serverDirCache.has(lowerSafeP)) {
-                const cached = serverDirCache.get(lowerSafeP);
-                if (Date.now() - cached.time < SERVER_CACHE_TTL) {
-                    return res.json({ path: safeP, items: cached.items, exists: true, fromCache: true });
-                }
-            }
-
-            // 1. MODO SERVIDOR CENTRAL REAL: SIEMPRE desde catálogo del Worker (modular o monolítico)
-            // NUNCA consultar SMB física S: (los puestos de artistas no la tienen montada)
-            if (isServerPath) {
-                let serverCatalogItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
                     ? catalogGenerator.listFromModularCatalog(safeP, 'server')
                     : null;
 
-                if (serverCatalogItems === null && typeof catalogGenerator.listFromServerCatalog === 'function') {
-                    serverCatalogItems = catalogGenerator.listFromServerCatalog(safeP);
+                if (serverItems === null && typeof catalogGenerator.listFromServerCatalog === 'function') {
+                    serverItems = catalogGenerator.listFromServerCatalog(safeP);
                 }
 
-                if (serverCatalogItems !== null) {
-                    serverDirCache.set(lowerSafeP, { time: Date.now(), items: serverCatalogItems });
-                    return res.json({ path: safeP, items: serverCatalogItems, exists: true, fromCatalog: true, isServer: true });
+                if (serverItems !== null) {
+                    const cleanItems = serverItems.map(item => ({
+                        ...item,
+                        path: (item.path || '').replace(/^S:/i, 'Z:'),
+                        serverPath: (item.serverPath || item.path || '').replace(/^S:/i, 'Z:'),
+                        targetLocalPath: (item.targetLocalPath || item.path || '').replace(/^S:/i, 'Z:')
+                    }));
+                    return res.json({ path: safeP, items: cleanItems, exists: true, fromCatalog: true, isServer: true });
                 }
                 return res.json({ path: safeP, items: [], exists: false, isServer: true });
             }
 
+            // 0.1 Si se solicita expresamente origen del Catálogo de Drive para una ruta Z:
+            if ((localSource === 'drive_catalog' || source === 'drive') && (lowerSafeP.startsWith('z:/') || lowerSafeP === 'z:')) {
+                let driveItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
+                    ? catalogGenerator.listFromModularCatalog(safeP, 'drive')
+                    : null;
+
+                if (driveItems === null && typeof catalogGenerator.listFromCatalog === 'function') {
+                    driveItems = catalogGenerator.listFromCatalog(safeP);
+                }
+
+                if (driveItems !== null) {
+                    const cleanDriveItems = driveItems.map(item => ({
+                        ...item,
+                        path: item.path || item.onlinePath,
+                        onlinePath: item.onlinePath || item.path,
+                        targetLocalPath: (item.targetLocalPath || item.path || '').replace(/^S:/i, 'Z:')
+                    }));
+                    return res.json({ path: safeP, items: cleanDriveItems, exists: true, fromCatalog: true, isDrive: true });
+                }
+                return res.json({ path: safeP, items: [], exists: false, isDrive: true });
+            }
             // 2. MODO GOOGLE DRIVE
             if (lowerSafeP.startsWith('g:/') || lowerSafeP === 'g:') {
-                // A. Motor Rclone (solo si se selecciona explícitamente)
+                // Si la máquina no tiene internet, forzar motor de catálogo (cero tráfico a internet, rclone o G:)
+                if (!checkInternetQuickly()) {
+                    onlineEngine = 'catalog';
+                }
+
+                // A. Motor Rclone (solo si se selecciona explícitamente y hay internet)
                 if (onlineEngine === 'rclone') {
                     if (!forceRefresh && rcloneDirCache.has(lowerSafeP)) {
                         const cached = rcloneDirCache.get(lowerSafeP);
@@ -653,6 +1032,15 @@ app.get('/api/fs/list', (req, res) => {
                     }
 
                     if (catalogItems !== null) {
+                        for (const it of catalogItems) {
+                            if (it.targetLocalPath) {
+                                try {
+                                    it.localExists = fs.existsSync(it.targetLocalPath);
+                                } catch (e) {
+                                    it.localExists = false;
+                                }
+                            }
+                        }
                         return res.json({ path: safeP, items: catalogItems, exists: true, fromCatalog: true });
                     }
                     return res.json({ path: safeP, items: [], exists: false });
@@ -698,13 +1086,13 @@ app.get('/api/fs/list', (req, res) => {
             return res.json({ path: requestedPath || 'Z:/', items: [] });
         }
 
-        const isNetworkPath = targetPath.toLowerCase().startsWith('s:') || targetPath.startsWith('//') || targetPath.startsWith('\\\\');
+        const isNetworkPath = targetPath.startsWith('//') || targetPath.startsWith('\\\\');
         const items = fs.readdirSync(targetPath, { withFileTypes: true });
         const result = items.map(item => {
             const isDir = item.isDirectory();
             const fullItemPath = path.join(targetPath, item.name).replace(/\\/g, '/');
             let size = 0;
-            // Solo calcular tamaño síncrono si es disco local rápido. En red SMB (S:), se omite para evitar freeze de 3-5s.
+            // Solo calcular tamaño síncrono si es disco local rápido. En red SMB, se omite para evitar freeze.
             if (!isDir && !isNetworkPath) {
                 try {
                     const st = fs.statSync(fullItemPath);
@@ -808,13 +1196,85 @@ app.post('/api/fs/rename', async (req, res) => {
     }
 });
 
+function getServerUncRoot() {
+    try {
+        const cfgFile = path.join(__dirname, '../config/settings.json');
+        if (fs.existsSync(cfgFile)) {
+            const cfg = fs.readJsonSync(cfgFile);
+            if (cfg.centralServerUnc) return cfg.centralServerUnc.replace(/\\/g, '/').replace(/\/+$/, '');
+        }
+    } catch (e) {}
+
+    if (process.env.PIPETA_SERVER_UNC) {
+        return process.env.PIPETA_SERVER_UNC.replace(/\\/g, '/').replace(/\/+$/, '');
+    }
+
+    return '//192.168.206.116/Z';
+}
+
+function ensureServerUncAccess(uncPath = null) {
+    const root = (uncPath || getServerUncRoot()).replace(/\//g, '\\');
+    try {
+        if (fs.existsSync(root)) return true;
+    } catch (e) {}
+    try {
+        execSync(`net use "${root}" /persistent:no`, { encoding: 'utf8', timeout: 3000 });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+app.post('/api/server/connect-unc', async (req, res) => {
+    try {
+        const { uncPath, user, pass } = req.body;
+        const targetUnc = (uncPath || getServerUncRoot()).replace(/\//g, '\\');
+        let cmd = `net use "${targetUnc}"`;
+        if (pass && user) {
+            cmd += ` "${pass}" /user:"${user}" /persistent:no`;
+        } else if (user) {
+            cmd += ` /user:"${user}" /persistent:no`;
+        } else {
+            cmd += ` /persistent:no`;
+        }
+        execSync(cmd, { encoding: 'utf8', timeout: 5000 });
+        const accessible = fs.existsSync(targetUnc);
+        res.json({ success: true, connectedTo: targetUnc, accessible });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/api/fs/copy', async (req, res) => {
-    const { src, dest } = req.body;
+    let { src, dest, action } = req.body;
     if (!src || !dest) return res.status(400).json({ error: "Missing paths" });
     try {
-        await fs.copy(src, dest);
+        let actualSrc = src.replace(/\\/g, '/');
+        let actualDest = dest.replace(/\\/g, '/');
+
+        // Si se copia desde o hacia el Servidor Central y esta máquina no es el servidor real (Z: local / subst):
+        const env = cachedEnvState || {};
+        const isNotRealServer = !env?.zInfo?.isRealServer;
+
+        if (isNotRealServer) {
+            const uncRoot = getServerUncRoot();
+            ensureServerUncAccess(uncRoot);
+
+            // Si es descarga desde server o si el origen empieza con Z: pero no existe en el disco local:
+            if (action === 'download_server' || (!fs.existsSync(actualSrc) && actualSrc.toLowerCase().startsWith('z:/'))) {
+                actualSrc = actualSrc.replace(/^z:/i, uncRoot);
+                console.log(`[FS COPY] Descargando desde Servidor Central UNC: ${actualSrc} -> ${actualDest}`);
+            } else if (action === 'upload_server') {
+                actualDest = actualDest.replace(/^z:/i, uncRoot);
+                console.log(`[FS COPY] Subiendo a Servidor Central UNC: ${actualSrc} -> ${actualDest}`);
+            }
+        }
+
+        await fs.ensureDir(path.dirname(actualDest));
+        await fs.copy(actualSrc, actualDest);
         res.json({ success: true });
     } catch (err) {
+        console.error(`[FS COPY ERROR] Error copiando ${src} -> ${dest}:`, err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -875,7 +1335,7 @@ app.get('/api/fs/readFile', async (req, res) => {
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'Missing path' });
     const norm = filePath.replace(/\\/g, '/').toLowerCase();
-    if (norm.startsWith('s:/') || norm.startsWith('s:') || norm.startsWith('g:/') || norm.startsWith('g:')) {
+    if (norm.startsWith('g:/') || norm.startsWith('g:')) {
         return res.json({ content: null });
     }
     try {
@@ -1405,12 +1865,46 @@ app.get('/api/app/version-info', async (req, res) => {
 const USERS_CONFIG_FILE = path.join(__dirname, '../presets/users_config.json');
 const STATUS_CONFIG_FILE = path.join(__dirname, '../presets/status_config.json');
 
+function sanitizeUsersConfig(data) {
+    if (!data || !Array.isArray(data.users)) return false;
+    let modified = false;
+    data.users.forEach(u => {
+        if (u.id === 'u_admin' || u.username === 'admin' || (u.isSystem && u.role === 'admin')) {
+            if (u.authSource) {
+                delete u.authSource;
+                modified = true;
+            }
+            if (u.laspUser === 'lasp-admin') {
+                u.laspUser = '';
+                modified = true;
+            }
+            if (u.firstName === 'Admin') {
+                u.firstName = '';
+                modified = true;
+            }
+            if (u.isSystem !== true) {
+                u.isSystem = true;
+                modified = true;
+            }
+            if (u.avatarColor !== '#ff9800') {
+                u.avatarColor = '#ff9800';
+                modified = true;
+            }
+        }
+    });
+    return modified;
+}
+
 app.get('/api/users', async (req, res) => {
     try {
         if (!fs.existsSync(USERS_CONFIG_FILE)) {
             return res.json({ adminPassword: "Pipetadmin.321", roles: [], users: [], activeUser: "lasp-mpastorino" });
         }
         const data = await fs.readJson(USERS_CONFIG_FILE);
+        const wasSanitized = sanitizeUsersConfig(data);
+        if (wasSanitized) {
+            fs.writeJson(USERS_CONFIG_FILE, data, { spaces: 2 }).catch(e => console.warn("[USERS] Error auto-healing config:", e));
+        }
         const safeData = { ...data, hasAdminPassword: !!data.adminPassword };
         delete safeData.adminPassword;
         res.json(safeData);
@@ -1423,6 +1917,7 @@ app.post('/api/users', async (req, res) => {
     try {
         const current = fs.existsSync(USERS_CONFIG_FILE) ? await fs.readJson(USERS_CONFIG_FILE) : {};
         const incoming = req.body || {};
+        sanitizeUsersConfig(incoming);
         
         if (!incoming.adminPassword && current.adminPassword) {
             incoming.adminPassword = current.adminPassword;
@@ -1645,9 +2140,9 @@ app.get('/api/fs/dirSize', (req, res) => {
         }
     } catch (e) {}
 
-    // 2. Si es una ruta de red/servidor (S:, UNC, etc.) y no está en el catálogo, retornar 0 sin bloquear
+    // 2. Si es una ruta de red/servidor (UNC, etc.) y no está en el catálogo, retornar 0 sin bloquear
     const norm = (dirPath || '').replace(/\\/g, '/').toLowerCase();
-    if (norm.startsWith('s:') || norm.startsWith('//') || norm.startsWith('\\\\')) {
+    if (norm.startsWith('//') || norm.startsWith('\\\\')) {
         return res.json({ path: dirPath, size: 0, fromCatalog: false });
     }
 
@@ -2811,9 +3306,62 @@ app.get('/api/ia/file-preview', (req, res) => {
 // ==========================================
 const RAMON_CLIENT_SCRIPT = path.join(__dirname, 'helpers/ramon_client.py');
 
+let detectedPythonBin = null;
+
+function getPythonExecutable() {
+    if (detectedPythonBin && (detectedPythonBin === 'python' || fs.existsSync(detectedPythonBin))) {
+        return detectedPythonBin;
+    }
+
+    const candidates = [
+        path.join(__dirname, '../bin/python/python.exe'),
+        'C:\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
+        'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe',
+        'S:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe',
+        'C:\\Python39\\python.exe',
+        'C:\\Python310\\python.exe',
+        'C:\\Python311\\python.exe',
+        'C:\\Python312\\python.exe',
+        'C:\\Python38\\python.exe',
+        'C:\\Program Files\\Python39\\python.exe',
+        'C:\\Program Files\\Python310\\python.exe',
+        'C:\\Program Files\\Python311\\python.exe',
+        'C:\\Program Files\\Python312\\python.exe',
+        ...(process.env.LOCALAPPDATA ? [
+            path.join(process.env.LOCALAPPDATA, 'Programs\\Python\\Python39\\python.exe'),
+            path.join(process.env.LOCALAPPDATA, 'Programs\\Python\\Python310\\python.exe'),
+            path.join(process.env.LOCALAPPDATA, 'Programs\\Python\\Python311\\python.exe'),
+            path.join(process.env.LOCALAPPDATA, 'Programs\\Python\\Python312\\python.exe')
+        ] : []),
+        'py.exe'
+    ];
+
+    for (const cand of candidates) {
+        if (cand.includes('\\') && !fs.existsSync(cand)) continue;
+        try {
+            const out = require('child_process').execSync(`"${cand}" -c "import sys; print(sys.version_info[0])"`, {
+                timeout: 3000,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true
+            }).toString().trim();
+            if (out === '3' || out === '2') {
+                console.log(`[RAMON] Intérprete Python verificado con éxito: ${cand}`);
+                detectedPythonBin = cand;
+                return detectedPythonBin;
+            }
+        } catch(e) {}
+    }
+
+    detectedPythonBin = 'python';
+    return detectedPythonBin;
+}
+
 function runRamonBridge(args, timeoutMs = 30000) {
     return new Promise((resolve) => {
-        const pyProc = spawn('python', [RAMON_CLIENT_SCRIPT, ...args], {
+        const pyBin = getPythonExecutable();
+        const pyProc = spawn(pyBin, [RAMON_CLIENT_SCRIPT, ...args], {
             windowsHide: true,
             timeout: timeoutMs
         });
@@ -2831,7 +3379,12 @@ function runRamonBridge(args, timeoutMs = 30000) {
 
         pyProc.on('close', (code) => {
             if (code !== 0 && !stdout.trim()) {
-                return resolve({ success: false, error: stderr || `Proceso Ramon salio con codigo ${code}` });
+                let errMsg = stderr.trim() || `Proceso Ramon salio con codigo ${code}`;
+                if (errMsg.includes('Microsoft Store') || errMsg.includes('No se encontró Python') || errMsg.includes('No se encontr')) {
+                    detectedPythonBin = null;
+                    errMsg = "No se encontró un intérprete de Python en el equipo ni en la red (Z:/S:). Asegúrate de tener acceso a Z:\\INTERNO\\TOOLS\\... o Python instalado.";
+                }
+                return resolve({ success: false, error: errMsg });
             }
             try {
                 const parsed = JSON.parse(stdout.trim());
@@ -2842,7 +3395,8 @@ function runRamonBridge(args, timeoutMs = 30000) {
         });
 
         pyProc.on('error', (err) => {
-            resolve({ success: false, error: `Error ejecutando Python para Ramon: ${err.message}` });
+            detectedPythonBin = null;
+            resolve({ success: false, error: `Error ejecutando Python para Ramon (${pyBin}): ${err.message}` });
         });
     });
 }
@@ -2876,27 +3430,31 @@ app.post('/api/ramon/login', async (req, res) => {
                 const defaultRole = uData.defaultRamonRole || "user";
                 uData.users = uData.users || [];
                 let existing = uData.users.find(u => u.laspUser === username || u.username === username);
+                const isLocalSystemUser = username === 'admin' || (existing && (existing.id === 'u_admin' || existing.username === 'admin' || existing.isSystem));
                 if (!existing && shouldAutoRegister) {
-                    existing = {
-                        id: `u_ramon_${username}`,
-                        username: username,
-                        firstName: authResult.user.first_name || "",
-                        lastName: authResult.user.last_name || "",
-                        laspUser: username,
-                        role: defaultRole,
-                        email: authResult.user.email || "",
-                        notes: "Sincronizado desde Ramon",
-                        avatarColor: "#00bcd4",
-                        isSystem: false,
-                        authSource: "ramon"
-                    };
-                    uData.users.push(existing);
-                } else if (existing) {
+                    if (!isLocalSystemUser) {
+                        existing = {
+                            id: `u_ramon_${username}`,
+                            username: username,
+                            firstName: authResult.user.first_name || "",
+                            lastName: authResult.user.last_name || "",
+                            laspUser: username,
+                            role: defaultRole,
+                            email: authResult.user.email || "",
+                            notes: "Sincronizado desde Ramon",
+                            avatarColor: "#00bcd4",
+                            isSystem: false,
+                            authSource: "ramon"
+                        };
+                        uData.users.push(existing);
+                    }
+                } else if (existing && !isLocalSystemUser) {
                     existing.authSource = "ramon";
                     if (authResult.user.first_name) existing.firstName = authResult.user.first_name;
                     if (authResult.user.last_name) existing.lastName = authResult.user.last_name;
                     if (authResult.user.email && !existing.email) existing.email = authResult.user.email;
                 }
+                sanitizeUsersConfig(uData);
                 uData.activeUser = username;
                 await fs.writeJson(USERS_CONFIG_FILE, uData, { spaces: 2 });
             }
