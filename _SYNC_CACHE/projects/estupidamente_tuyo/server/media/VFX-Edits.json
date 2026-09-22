@@ -1,0 +1,27 @@
+{
+  "id": "media/VFX-Edits",
+  "project": "estupidamente_tuyo",
+  "type": "server",
+  "category": "media",
+  "prefix": "VFX-Edits",
+  "file": "media/VFX-Edits.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_media_23085",
+      "category": "media",
+      "name": "VFX-Edits",
+      "relPath": "VFX-Edits",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2024-03-21T14:41:01.660Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/VFX-Edits",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/VFX-Edits"
+    }
+  ]
+}

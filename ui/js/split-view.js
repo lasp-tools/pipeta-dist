@@ -6,14 +6,12 @@
 const expandedPaths = new Set();
 
 async function initBrowser() {
+    window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
+    const currentToken = window.activeBrowserRenderToken;
+
     const roots = getCurrentRoots();
     const mode = window.viewLocationMode || 'local';
     const modeLabel = mode === 'drive' ? '☁️ DRIVE' : (mode === 'server' ? '🗄️ SERVER' : '💻 LOCAL');
-
-    // Pre-cargar catálogo de sincronización
-    if (typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog();
-    }
 
     // Set Header Labels
     const workLabel = document.getElementById('label-work-path');
@@ -21,8 +19,10 @@ async function initBrowser() {
     if (workLabel) workLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.work}`;
     if (mediaLabel) mediaLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.media}`;
 
-    await loadRootTree(roots.work, 'tree-work');
-    await loadRootTree(roots.media, 'tree-media');
+    await Promise.all([
+        loadRootTree(roots.work, 'tree-work', currentToken),
+        loadRootTree(roots.media, 'tree-media', currentToken)
+    ]);
 
     // Calculate folder sizes (async, non-blocking)
     if (typeof updateFolderSizes === 'function') updateFolderSizes();
@@ -52,11 +52,8 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
         } catch (e) {}
 
         let catalogChildren = driveItems;
-        if (catalogChildren.length === 0) {
-            if (typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog) {
-                await loadActiveProjectSyncCatalog();
-            }
-            catalogChildren = window.pipetaSyncCatalogLookup?.byParentLocalPath?.get(normDirPath) || [];
+        if (catalogChildren.length === 0 && window.pipetaSyncCatalogLookup?.byParentLocalPath) {
+            catalogChildren = window.pipetaSyncCatalogLookup.byParentLocalPath.get(normDirPath) || [];
         }
 
         const catalogMap = new Map(catalogChildren.map(c => [c.name.toLowerCase(), c]));
@@ -68,6 +65,11 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                 itemCopy.syncStatus = 'matched_drive';
                 itemCopy.onlinePath = catItem.onlinePath || catItem.path;
                 itemCopy.targetLocalPath = catItem.targetLocalPath || item.path;
+                if (catItem.hasPendingSync) {
+                    itemCopy.hasPendingSync = catItem.hasPendingSync;
+                    itemCopy.pendingType = catItem.pendingType;
+                    itemCopy.pendingCount = catItem.pendingCount;
+                }
             } else {
                 itemCopy.syncStatus = 'upload_drive';
                 itemCopy.targetLocalPath = item.path;
@@ -112,6 +114,11 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
             if (sMatch) {
                 itemCopy.syncStatus = 'matched_server';
+                if (sMatch.hasPendingSync) {
+                    itemCopy.hasPendingSync = sMatch.hasPendingSync;
+                    itemCopy.pendingType = sMatch.pendingType;
+                    itemCopy.pendingCount = sMatch.pendingCount;
+                }
             } else {
                 itemCopy.syncStatus = 'upload_server';
             }
@@ -136,17 +143,14 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
     }
     // 4. MODO EXPLORACIÓN DIRECTA DE DRIVE
     else if (mode === 'drive') {
-        if (typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog) {
-            await loadActiveProjectSyncCatalog();
-        }
+        const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
+        const oWork = (proj?.roots?.onlineWork || '').replace(/\\/g, '/');
+        const oMedia = (proj?.roots?.onlineMedia || '').replace(/\\/g, '/');
 
         for (const item of (rawItems || [])) {
             const itemCopy = { ...item };
             let localTarget = item.targetLocalPath || item.path;
-            const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
             if (!item.targetLocalPath && proj?.roots) {
-                const oWork = (proj.roots.onlineWork || '').replace(/\\/g, '/');
-                const oMedia = (proj.roots.onlineMedia || '').replace(/\\/g, '/');
                 if (oWork && localTarget.toLowerCase().startsWith(oWork.toLowerCase())) {
                     localTarget = proj.roots.work + localTarget.substring(oWork.length);
                 } else if (oMedia && localTarget.toLowerCase().startsWith(oMedia.toLowerCase())) {
@@ -154,14 +158,14 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                 }
             }
             itemCopy.targetLocalPath = localTarget.replace(/\\/g, '/');
-            itemCopy.onlinePath = item.path;
+            itemCopy.onlinePath = item.onlinePath || item.path;
 
             let inLocal = false;
             if (typeof item.localExists === 'boolean') {
                 inLocal = item.localExists;
-            } else {
+            } else if (window.pipetaSyncCatalogLookup?.byLocalPath) {
                 const normTarget = itemCopy.targetLocalPath.toLowerCase();
-                inLocal = window.pipetaSyncCatalogLookup?.byLocalPath?.has(normTarget);
+                inLocal = window.pipetaSyncCatalogLookup.byLocalPath.has(normTarget);
             }
 
             itemCopy.syncStatus = inLocal ? 'matched_drive' : 'ghost_drive';
@@ -172,12 +176,16 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
     else if (mode === 'server') {
         for (const item of (rawItems || [])) {
             const itemCopy = { ...item };
-            itemCopy.serverPath = item.path;
-            itemCopy.targetLocalPath = item.path;
+            itemCopy.serverPath = item.serverPath || item.path;
+            itemCopy.targetLocalPath = item.targetLocalPath || item.path;
 
-            // Consultar si existe en local
-            const normTarget = itemCopy.targetLocalPath.toLowerCase();
-            const inLocal = window.pipetaServerCatalogLookup?.byLocalPath?.has(normTarget);
+            let inLocal = false;
+            if (typeof item.localExists === 'boolean') {
+                inLocal = item.localExists;
+            } else if (window.pipetaServerCatalogLookup?.byLocalPath) {
+                const normTarget = itemCopy.targetLocalPath.toLowerCase();
+                inLocal = window.pipetaServerCatalogLookup.byLocalPath.has(normTarget);
+            }
             itemCopy.syncStatus = inLocal ? 'matched_server' : 'ghost_server';
             decorated.push(itemCopy);
         }
@@ -193,56 +201,66 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
     return decorated;
 }
 
-async function loadRootTree(rootPath, containerId) {
+async function loadRootTree(rootPath, containerId, token = null) {
     const container = document.getElementById(containerId);
+    if (!container) return;
     container.innerHTML = `<div style="padding:10px; color:#666;">Cargando...</div>`;
 
-    const mode = window.viewLocationMode || 'local';
-    const compMode = window.syncComparisonMode || 'off';
+    try {
+        const data = await fetchDir(rootPath);
+        if (token && token !== window.activeBrowserRenderToken) return;
 
-    // Cargar catálogo si explícitamente se requiere para Drive o Server
-    if ((mode === 'drive' || mode === 'server' || compMode === 'drive' || compMode === 'server') && (!window.pipetaSyncCatalog || !window.pipetaServerCatalog)) {
-        if (typeof loadActiveProjectSyncCatalog === 'function') {
-            await loadActiveProjectSyncCatalog();
-        }
-    }
+        if (!data.error) {
+            const allDiskItems = data.items || [];
+            const decoratedItems = await getDecoratedTreeItems(rootPath, allDiskItems, allDiskItems);
+            if (token && token !== window.activeBrowserRenderToken) return;
 
-    const data = await fetchDir(rootPath);
-    if (!data.error) {
-        container.innerHTML = "";
-        const allDiskItems = data.items || [];
-        const decoratedItems = await getDecoratedTreeItems(rootPath, allDiskItems, allDiskItems);
-        const filteredItems = (typeof window.filterExplorerItems === 'function')
-            ? window.filterExplorerItems(decoratedItems, containerId, rootPath, allDiskItems)
-            : decoratedItems;
-        const finalItems = (typeof collapseImageSequences === 'function') 
-            ? collapseImageSequences(filteredItems) 
-            : filteredItems;
+            const filteredItems = (typeof window.filterExplorerItems === 'function')
+                ? window.filterExplorerItems(decoratedItems, containerId, rootPath, allDiskItems)
+                : decoratedItems;
+            const finalItems = (typeof collapseImageSequences === 'function') 
+                ? collapseImageSequences(filteredItems) 
+                : filteredItems;
 
-        if (finalItems.length === 0) {
-            container.innerHTML = `<div style="padding:10px; color:#666; font-style:italic;">Carpeta vacía o sin elementos</div>`;
-            return;
-        }
+            if (token && token !== window.activeBrowserRenderToken) return;
+            container.innerHTML = "";
 
-        const fragment = document.createDocumentFragment();
-        for (const item of finalItems) {
-            const node = createTreeNode(item, 0, containerId);
-            fragment.appendChild(node);
-        }
-        container.appendChild(fragment);
+            if (finalItems.length === 0) {
+                const emptyMsg = window.explorerOnlyMyTasks
+                    ? `<div style="padding:15px; color:#aaa; font-style:italic; line-height:1.4;">
+                         🔒 <b>Filtro Ramón activo:</b><br>
+                         No tienes tareas asignadas en este proyecto.
+                       </div>`
+                    : `<div style="padding:10px; color:#666; font-style:italic;">Carpeta vacía o sin elementos</div>`;
+                container.innerHTML = emptyMsg;
+                return;
+            }
 
-        // Expandir nodos ya guardados una vez que el árbol está en el DOM
-        for (const node of container.children) {
-            const item = node._item;
-            if (item && item.isDirectory) {
-                const normPath = item.path.replace(/\\/g, '/').toLowerCase();
-                if (expandedPaths.has(normPath)) {
-                    await toggleNode(node, item, 0, node.querySelector('.tree-node'));
+            const fragment = document.createDocumentFragment();
+            for (const item of finalItems) {
+                const node = createTreeNode(item, 0, containerId);
+                fragment.appendChild(node);
+            }
+            container.appendChild(fragment);
+
+            // Expandir nodos ya guardados una vez que el árbol está en el DOM
+            for (const node of container.children) {
+                const item = node._item;
+                if (item && item.isDirectory) {
+                    const normPath = item.path.replace(/\\/g, '/').toLowerCase();
+                    const shouldAutoExpand = window.explorerOnlyMyTasks && finalItems.length <= 2;
+                    if (expandedPaths.has(normPath) || shouldAutoExpand) {
+                        await toggleNode(node, item, 0, node.querySelector('.tree-node'));
+                    }
                 }
             }
+        } else {
+            container.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${data.error}</div>`;
         }
-    } else {
-        container.innerHTML = `<div style="color:red; padding:10px;">Error: ${data.error}</div>`;
+    } catch (err) {
+        if (token && token !== window.activeBrowserRenderToken) return;
+        console.error(`[EXPLORER] Error cargando ${rootPath}:`, err);
+        container.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error al cargar contenido: ${err.message}</div>`;
     }
 }
 
@@ -272,9 +290,25 @@ function createTreeNode(item, level, containerId = '') {
     const status = item.syncStatus;
 
     if (status === 'matched_drive') {
-        badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Sincronizado con Google Drive)">✓</span>`;
+        if (item.isDirectory && item.hasPendingSync) {
+            const pCount = item.pendingCount ? ` (${item.pendingCount})` : '';
+            const isUp = item.pendingType === 'upload';
+            const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
+            const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')`;
+            badgeHtml = `<span class="sync-badge-action sync-badge-pending-folder" onclick="event.stopPropagation(); ${actionCall}" title="* Esta carpeta contiene ${item.pendingCount || 'varios'} archivo(s) pendientes de sincronizar con Google Drive">${actionText}${pCount}</span>`;
+        } else {
+            badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Sincronizado con Google Drive)">✓</span>`;
+        }
     } else if (status === 'matched_server') {
-        badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Idéntico en Servidor Central)">✓</span>`;
+        if (item.isDirectory && item.hasPendingSync) {
+            const pCount = item.pendingCount ? ` (${item.pendingCount})` : '';
+            const isUp = item.pendingType === 'upload';
+            const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
+            const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')`;
+            badgeHtml = `<span class="sync-badge-action sync-badge-pending-folder" onclick="event.stopPropagation(); ${actionCall}" title="* Esta carpeta contiene ${item.pendingCount || 'varios'} archivo(s) pendientes de sincronizar con Servidor Central">${actionText}${pCount}</span>`;
+        } else {
+            badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Idéntico en Servidor Central)">✓</span>`;
+        }
     } else if (status === 'upload_drive') {
         const dest = item.onlinePath || 'Google Drive';
         badgeHtml = `<span class="sync-badge-action sync-badge-upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Subir a Drive</span>`;
@@ -353,15 +387,27 @@ async function toggleNode(wrapper, item, level, rowElement) {
                 : filteredItems;
 
             if (finalItems.length === 0) {
-                container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
+                const emptyChildMsg = window.explorerOnlyMyTasks
+                    ? `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666; font-size:0.8rem; font-style:italic;">(Sin tareas asignadas en esta carpeta)</div>`
+                    : `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
+                container.innerHTML = emptyChildMsg;
             } else {
                 const fragment = document.createDocumentFragment();
+                const assignedSet = (window.explorerOnlyMyTasks && typeof window.getExplorerAssignedTaskNames === 'function')
+                    ? window.getExplorerAssignedTaskNames()
+                    : new Set();
+
                 for (const child of finalItems) {
                     const node = createTreeNode(child, level + 1, containerId);
                     fragment.appendChild(node);
 
                     const normChildPath = child.path.replace(/\\/g, '/').toLowerCase();
-                    if (child.isDirectory && expandedPaths.has(normChildPath)) {
+                    const childNameLower = (child.name || '').toLowerCase();
+                    // Auto-expandir carpetas intermedias en la ruta hacia la tarea, deteniéndose en la tarea asignada
+                    const isTargetTask = assignedSet.has(childNameLower);
+                    const shouldAutoExpandChild = window.explorerOnlyMyTasks && !isTargetTask && finalItems.length <= 2;
+
+                    if (child.isDirectory && (expandedPaths.has(normChildPath) || shouldAutoExpandChild)) {
                         await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
                     }
                 }

@@ -1,0 +1,27 @@
+{
+  "id": "media/_OutPost",
+  "project": "estupidamente_tuyo",
+  "type": "server",
+  "category": "media",
+  "prefix": "_OutPost",
+  "file": "media/_OutPost.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_media_24448",
+      "category": "media",
+      "name": "_OutPost",
+      "relPath": "_OutPost",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-19T19:47:29.986Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_OutPost",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_OutPost"
+    }
+  ]
+}

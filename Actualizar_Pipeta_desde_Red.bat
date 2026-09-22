@@ -41,7 +41,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 
 if exist "%SRC%\presets" (
-    robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+    robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /NFL /NDL /NJH /NJS /R:0 /W:0
 )
 
 echo [3/3] Creando acceso directo en Escritorio con icono oficial...
@@ -49,7 +49,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v1.1.10 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.1.19 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 timeout /t 2 >nul

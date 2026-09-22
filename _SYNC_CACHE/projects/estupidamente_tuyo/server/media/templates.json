@@ -1,0 +1,75 @@
+{
+  "id": "media/templates",
+  "project": "estupidamente_tuyo",
+  "type": "server",
+  "category": "media",
+  "prefix": "templates",
+  "file": "media/templates.json",
+  "stats": {
+    "itemCount": 5,
+    "fileCount": 1,
+    "byteCount": 38922342
+  },
+  "flatList": [
+    {
+      "id": "server_media_22998",
+      "category": "media",
+      "name": "templates",
+      "relPath": "templates",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-07T14:47:06.094Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates"
+    },
+    {
+      "id": "server_media_22999",
+      "category": "media",
+      "name": "ESTY_A01_Exx_xxx",
+      "relPath": "templates/ESTY_A01_Exx_xxx",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-07T14:47:06.096Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx"
+    },
+    {
+      "id": "server_media_23000",
+      "category": "media",
+      "name": "nuke",
+      "relPath": "templates/ESTY_A01_Exx_xxx/nuke",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-07T14:47:06.098Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke"
+    },
+    {
+      "id": "server_media_23001",
+      "category": "media",
+      "name": "mov",
+      "relPath": "templates/ESTY_A01_Exx_xxx/nuke/mov",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-07T14:47:06.144Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke/mov",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke/mov"
+    },
+    {
+      "id": "server_media_23002",
+      "category": "media",
+      "name": "ESTY_A01_Exx_xxx.mov",
+      "relPath": "templates/ESTY_A01_Exx_xxx/nuke/mov/ESTY_A01_Exx_xxx.mov",
+      "ext": ".mov",
+      "isDir": false,
+      "size": 38922342,
+      "modTime": "2026-09-07T14:47:57.512Z",
+      "serverPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke/mov/ESTY_A01_Exx_xxx.mov",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke/mov/ESTY_A01_Exx_xxx.mov"
+    }
+  ]
+}

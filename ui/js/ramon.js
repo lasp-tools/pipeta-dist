@@ -128,9 +128,22 @@ const Ramon = {
         if (typeof applyRolePermissionsToUI === 'function') {
             applyRolePermissionsToUI();
         }
+        if (typeof updateHeaderTools === 'function') {
+            updateHeaderTools();
+        }
         if (typeof ShotNavigator !== 'undefined') {
             ShotNavigator.activeUser = activeLogin;
-            if (typeof ShotNavigator.render === 'function') ShotNavigator.render();
+            if (typeof ShotNavigator.loadDependencies === 'function') {
+                ShotNavigator.loadDependencies(true).then(() => {
+                    if (ShotNavigator.isRamonMode() && typeof ShotNavigator.loadWorkflow === 'function') {
+                        ShotNavigator.loadWorkflow(true).then(() => ShotNavigator.render());
+                    } else if (typeof ShotNavigator.render === 'function') {
+                        ShotNavigator.render();
+                    }
+                });
+            } else if (typeof ShotNavigator.render === 'function') {
+                ShotNavigator.render();
+            }
         }
     },
 
@@ -286,6 +299,7 @@ const Ramon = {
                 Ramon.session = {
                     mode: 'ramon',
                     user: res.user,
+                    server: res.server || null,
                     timestamp: new Date().toISOString()
                 };
 
@@ -298,8 +312,27 @@ const Ramon = {
                 Ramon.hideLoginModal();
                 Ramon.applySessionToHeader();
 
+                // Si el login fue contra Ramón remoto (WAN / puerto 8075), re-detectar entorno para ajustar UI de inmediato
+                if (res.server && (res.server.includes('8075') || res.server.includes('https://') || res.server.includes('ramon.lasp.co'))) {
+                    if (typeof detectSystemEnvironment === 'function') {
+                        detectSystemEnvironment(true);
+                    }
+                    // Comprobar si el worker local está activo; si no, sugerir encenderlo con un toast informativo
+                    fetch('/api/sync/worker/local-status').then(r => r.json()).then(ws => {
+                        if (ws && ws.success && !ws.isRunning) {
+                            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                                settings.showToast(
+                                    '🌐 Equipo Remoto: Puedes iniciar el Worker Local desde la cola de transferencias (⚡) para procesar subidas y descargas con Rclone en segundo plano.',
+                                    'info',
+                                    8
+                                );
+                            }
+                        }
+                    }).catch(() => {});
+                }
+
                 // Notificar en consola y UI
-                console.log(`[RAMON] Bienvenido, ${res.user.display_name}`);
+                console.log(`[RAMON] Bienvenido, ${res.user.display_name} (Servidor: ${res.server || 'default'})`);
             } else {
                 errDiv.textContent = res.error || "No se pudo autenticar contra Ramón.";
                 errDiv.style.display = 'block';

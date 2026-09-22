@@ -1,0 +1,123 @@
+{
+  "id": "episodios/204",
+  "project": "aqee",
+  "type": "drive",
+  "category": "work",
+  "prefix": "episodios/204",
+  "file": "episodios/204.json",
+  "stats": {
+    "itemCount": 9,
+    "fileCount": 3,
+    "byteCount": 13451971
+  },
+  "flatList": [
+    {
+      "id": "sync_work_23",
+      "category": "work",
+      "name": "204",
+      "relPath": "episodios/204",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.079Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204"
+    },
+    {
+      "id": "sync_work_74",
+      "category": "work",
+      "name": "secuencias",
+      "relPath": "episodios/204/secuencias",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.085Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias"
+    },
+    {
+      "id": "sync_work_191",
+      "category": "work",
+      "name": "408",
+      "relPath": "episodios/204/secuencias/408",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.091Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408"
+    },
+    {
+      "id": "sync_work_263",
+      "category": "work",
+      "name": "shots",
+      "relPath": "episodios/204/secuencias/408/shots",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.097Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots"
+    },
+    {
+      "id": "sync_work_348",
+      "category": "work",
+      "name": "AQEE2_204_408_010",
+      "relPath": "episodios/204/secuencias/408/shots/AQEE2_204_408_010",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.103Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010"
+    },
+    {
+      "id": "sync_work_410",
+      "category": "work",
+      "name": "Compo",
+      "relPath": "episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-20T15:06:58.109Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo"
+    },
+    {
+      "id": "sync_work_472",
+      "category": "work",
+      "name": "AQEE2_204_408_010_Compo_v003.nk",
+      "relPath": "episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v003.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 4504695,
+      "modTime": "2026-08-27T12:16:00.012Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v003.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v003.nk"
+    },
+    {
+      "id": "sync_work_473",
+      "category": "work",
+      "name": "AQEE2_204_408_010_Compo_v002.nk",
+      "relPath": "episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v002.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 4498355,
+      "modTime": "2026-08-25T19:36:20.478Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v002.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v002.nk"
+    },
+    {
+      "id": "sync_work_474",
+      "category": "work",
+      "name": "AQEE2_204_408_010_Compo_v001.nk",
+      "relPath": "episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v001.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 4448921,
+      "modTime": "2026-08-20T15:06:35.255Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v001.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/204/secuencias/408/shots/AQEE2_204_408_010/Compo/AQEE2_204_408_010_Compo_v001.nk"
+    }
+  ]
+}

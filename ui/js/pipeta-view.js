@@ -21,50 +21,70 @@ function normalizeSyncPath(p) {
     return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
+let _catalogLoadPromise = null;
 async function loadActiveProjectSyncCatalog(force = false) {
     const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
         ? settings.currentProject.name 
         : 'surf_love';
     
-    if (force) {
+    if (force || (window.pipetaSyncCatalog && window.pipetaSyncCatalog.project !== projName)) {
         window.pipetaSyncCatalog = null;
         window.pipetaServerCatalog = null;
-    } else if (window.pipetaSyncCatalog && window.pipetaSyncCatalog.project === projName) {
-        return window.pipetaSyncCatalog;
+        window.pipetaSyncCatalogLookup = null;
+        window.pipetaServerCatalogLookup = null;
     }
 
-    try {
-        const mode = window.viewLocationMode || 'local';
-        const compMode = window.syncComparisonMode || 'off';
+    const mode = window.viewLocationMode || 'local';
+    const compMode = window.syncComparisonMode || 'off';
 
-        // 1. Cargar catálogo de Google Drive (solo si estamos en modo drive o comparando con drive)
-        if (mode === 'drive' || compMode === 'drive') {
-            let res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
-            if (res && res.success && res.catalog) {
-                window.pipetaSyncCatalog = res.catalog;
-                indexSyncCatalog(res.catalog);
-                console.log(`[SYNC LAYER] Catálogo Drive cargado para ${projName}: ${res.catalog.stats?.totalFiles || 0} archivos indexados.`);
-            }
-        }
+    const needDrive = (mode === 'drive' || compMode === 'drive');
+    const needServer = (mode === 'server' || compMode === 'server') && (typeof canUseServerMode === 'function' ? canUseServerMode() : false);
 
-        // 2. Cargar catálogo de Servidor Central (modo server o comparación server)
-        if (mode === 'server' || compMode === 'server' || (!window.pipetaServerCatalog && mode !== 'drive')) {
-            let sRes = await fetch(`/api/sync/server-catalog/${projName}`).then(r => r.json()).catch(() => null);
-            if (sRes && sRes.success && sRes.catalog) {
-                window.pipetaServerCatalog = sRes.catalog;
-                indexServerCatalog(sRes.catalog);
-                console.log(`[SYNC LAYER] Catálogo Servidor cargado para ${projName}: ${sRes.catalog.stats?.totalFiles || 0} archivos indexados.`);
-            }
-        }
-
-        return window.pipetaServerCatalog || window.pipetaSyncCatalog;
-    } catch (e) {
-        console.warn("[SYNC LAYER] Error cargando catálogo:", e);
-        if (typeof PipetaConsole !== 'undefined') {
-            PipetaConsole.log('sync', `❌ Error cargando catálogo para '${projName}': ${e.message}`, 'error');
+    if (!force) {
+        const driveReady = !needDrive || (window.pipetaSyncCatalog && window.pipetaSyncCatalog.project === projName);
+        const serverReady = !needServer || (window.pipetaServerCatalog && window.pipetaServerCatalog.project === projName);
+        if (driveReady && serverReady) {
+            return window.pipetaServerCatalog || window.pipetaSyncCatalog;
         }
     }
-    return null;
+
+    if (_catalogLoadPromise) return _catalogLoadPromise;
+
+    _catalogLoadPromise = (async () => {
+        try {
+            // 1. Cargar catálogo de Google Drive
+            if (needDrive && (!window.pipetaSyncCatalog || window.pipetaSyncCatalog.project !== projName)) {
+                let res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
+                if (res && res.success && res.catalog) {
+                    window.pipetaSyncCatalog = res.catalog;
+                    indexSyncCatalog(res.catalog);
+                    console.log(`[SYNC LAYER] Catálogo Drive cargado para ${projName}: ${res.catalog.stats?.totalFiles || 0} archivos indexados.`);
+                }
+            }
+
+            // 2. Cargar catálogo de Servidor Central
+            if (needServer && (!window.pipetaServerCatalog || window.pipetaServerCatalog.project !== projName)) {
+                let sRes = await fetch(`/api/sync/server-catalog/${projName}`).then(r => r.json()).catch(() => null);
+                if (sRes && sRes.success && sRes.catalog) {
+                    window.pipetaServerCatalog = sRes.catalog;
+                    indexServerCatalog(sRes.catalog);
+                    console.log(`[SYNC LAYER] Catálogo Servidor cargado para ${projName}: ${sRes.catalog.stats?.totalFiles || 0} archivos indexados.`);
+                }
+            }
+
+            return window.pipetaServerCatalog || window.pipetaSyncCatalog;
+        } catch (e) {
+            console.warn("[SYNC LAYER] Error cargando catálogo:", e);
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `❌ Error cargando catálogo para '${projName}': ${e.message}`, 'error');
+            }
+        } finally {
+            _catalogLoadPromise = null;
+        }
+        return null;
+    })();
+
+    return _catalogLoadPromise;
 }
 
 function indexSyncCatalog(catalog) {
@@ -168,7 +188,7 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
                 body: JSON.stringify({
                     project: proj,
                     transferType: 'server',
-                    user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                    user: (typeof getPipetaCurrentUser === 'function' ? getPipetaCurrentUser() : 'artista'),
                     items: [{
                         name: item.name,
                         isDir: isDir,
@@ -235,7 +255,7 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 project: proj,
-                user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                user: (typeof getPipetaCurrentUser === 'function' ? getPipetaCurrentUser() : 'artista'),
                 items: [{
                     name: item.name,
                     isDir: isDir,
@@ -311,7 +331,7 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
                 body: JSON.stringify({
                     project: proj,
                     transferType: 'server',
-                    user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                    user: (typeof getPipetaCurrentUser === 'function' ? getPipetaCurrentUser() : 'artista'),
                     items: [{
                         name: item.name,
                         isDir: isDir,
@@ -378,7 +398,7 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 project: proj,
-                user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                user: (typeof getPipetaCurrentUser === 'function' ? getPipetaCurrentUser() : 'artista'),
                 items: [{
                     name: item.name,
                     isDir: isDir,
@@ -457,14 +477,15 @@ async function initPipetaView() {
     // Filter Logic
     const filter = window.pipetaUseFilter ? window.pipetaFilterList : null;
 
-    const locMode = window.viewLocationMode || 'local';
-    const compMode = window.syncComparisonMode || 'off';
-    if ((locMode === 'drive' || (locMode === 'local' && compMode === 'drive')) && !window.pipetaSyncCatalog) {
-        await loadActiveProjectSyncCatalog();
+    // Cargar catálogo de sincronización en segundo plano sin bloquear renderizado
+    if (typeof loadActiveProjectSyncCatalog === 'function' && !window.pipetaSyncCatalog && !window.pipetaServerCatalog) {
+        loadActiveProjectSyncCatalog().catch(() => {});
     }
 
-    await initPipetaPane(roots.work, 'pipeta-project-container', filter);
-    await initPipetaPane(roots.media, 'pipeta-media-container', null);
+    await Promise.all([
+        initPipetaPane(roots.work, 'pipeta-project-container', filter),
+        initPipetaPane(roots.media, 'pipeta-media-container', null)
+    ]);
 }
 
 function togglePipetaFilter() {
@@ -769,6 +790,13 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
                 colDiv.appendChild(ghostBlock);
             }
         });
+    }
+
+    if (colDiv.children.length === 0) {
+        const emptyText = window.explorerOnlyMyTasks
+            ? '🔒 Sin tareas asignadas aquí'
+            : '(Carpeta vacía)';
+        colDiv.innerHTML = `<div style="padding:15px; color:#666; font-size:0.8rem; font-style:italic; text-align:center;">${emptyText}</div>`;
     }
 
     container.appendChild(colDiv);

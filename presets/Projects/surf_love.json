@@ -2,12 +2,12 @@
   "id": "proj_1786715737162",
   "name": "surf_love",
   "client": "atresmedia",
-  "projectCode": "surf_love",
+  "projectCode": "SURF",
   "roots": {
     "work": "Z:/atresmedia/surf_love",
     "media": "Z:/INTERNO/MEDIA/atresmedia/surf_love",
-    "onlineWork": "G:\\Unidades compartidas\\surf_love",
-    "onlineMedia": "G:\\Unidades compartidas\\surf_love_media"
+    "onlineWork": "G:/Unidades compartidas/surf_love",
+    "onlineMedia": "G:/Unidades compartidas/surf_love_media"
   },
   "defaultShotPresetId": "master_shot",
   "defaultAssetPresetId": "master_asset",

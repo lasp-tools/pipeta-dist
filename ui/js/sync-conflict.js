@@ -472,7 +472,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         project: proj,
-                        user: (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista',
+                        user: (typeof getPipetaCurrentUser === 'function') ? getPipetaCurrentUser() : 'artista',
                         items: [payloadItem]
                     })
                 }).then(r => r.json());

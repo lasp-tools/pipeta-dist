@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.10";
+const VERSION = "v1.1.19";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -202,13 +202,28 @@ const catalogGenerator = require('./sync_catalog_generator');
 // --- CACHED ENVIRONMENT & PERSISTENT INTERNET DETECTION ---
 const ENV_STATE_FILE = path.join(process.env.LOCALAPPDATA || process.env.TEMP || __dirname, 'Pipeta_env_state.json');
 let cachedEnvState = null;
+let locationMode = 'auto'; // 'auto' | 'studio' | 'home'
 
 try {
     if (fs.existsSync(ENV_STATE_FILE)) {
         cachedEnvState = fs.readJsonSync(ENV_STATE_FILE);
-        console.log(`[ENV CACHE] Estado de entorno cargado desde disco: Internet = ${cachedEnvState.hasInternet ? 'ONLINE' : 'OFFLINE (Aislado)'}`);
+        if (cachedEnvState && cachedEnvState.locationMode) {
+            locationMode = cachedEnvState.locationMode;
+        }
+        if (locationMode === 'studio') {
+            global.isExternalMachine = false;
+            global.isStudioNetworkDetected = true;
+        } else if (locationMode === 'home') {
+            global.isExternalMachine = true;
+            global.isStudioNetworkDetected = false;
+        } else if (cachedEnvState && typeof cachedEnvState.isExternalMachine === 'boolean') {
+            global.isExternalMachine = cachedEnvState.isExternalMachine;
+        }
+        console.log(`[ENV CACHE] Estado cargado de disco: Internet = ${cachedEnvState?.hasInternet ? 'ONLINE' : 'OFFLINE'} | Perfil = ${locationMode} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'}`);
     }
 } catch (e) {}
+global.locationMode = locationMode;
+
 
 async function runEnvironmentDetection() {
     const http = require('http');
@@ -257,6 +272,56 @@ async function runEnvironmentDetection() {
         }
     }
 
+    // Detección de red de estudio vs equipo externo
+    let isStudioNetwork = false;
+    let ramonHost = null;
+    try {
+        const ramonCacheFile = path.join(os.tmpdir ? os.tmpdir() : (process.env.TEMP || 'C:\\Windows\\Temp'), 'pipeta_ramon_host.txt');
+        if (fs.existsSync(ramonCacheFile)) {
+            ramonHost = fs.readFileSync(ramonCacheFile, 'utf8').trim();
+        }
+    } catch (e) {}
+
+    const net = require('net');
+    try {
+        isStudioNetwork = await new Promise((resolve) => {
+            const socket = new net.Socket();
+            socket.setTimeout(400);
+            socket.on('connect', () => {
+                socket.destroy();
+                resolve(true);
+            });
+            socket.on('timeout', () => {
+                socket.destroy();
+                resolve(false);
+            });
+            socket.on('error', () => {
+                socket.destroy();
+                resolve(false);
+            });
+            socket.connect(80, '192.168.206.140');
+        });
+    } catch (e) {
+        isStudioNetwork = false;
+    }
+
+    const isRemoteRamon = !!(ramonHost && (ramonHost.includes('8075') || ramonHost.includes('https://')));
+    
+    // Aplicar perfil de ubicación (Auto vs Forzar Estudio vs Forzar Home)
+    const activeLocationMode = global.locationMode || 'auto';
+    let isExternalMachine = !isStudioNetwork || isRemoteRamon;
+    if (activeLocationMode === 'studio') {
+        isExternalMachine = false;
+        isStudioNetwork = true;
+    } else if (activeLocationMode === 'home') {
+        isExternalMachine = true;
+        isStudioNetwork = false;
+    }
+
+    // Actualizar variables globales para el generador de catálogos y colas de transferencia
+    global.isExternalMachine = isExternalMachine;
+    global.isStudioNetworkDetected = isStudioNetwork;
+
     let recommendedMode = 'offline_catalog';
     if (hasInternet) {
         recommendedMode = hasDriveG ? 'online_gdrive' : 'online_rclone';
@@ -267,6 +332,10 @@ async function runEnvironmentDetection() {
         hasInternet,
         hasDriveG,
         hasSyncCache,
+        isStudioNetwork,
+        isExternalMachine,
+        locationMode: activeLocationMode,
+        ramonHost,
         recommendedMode,
         zInfo,
         rcloneAvailable,
@@ -277,7 +346,7 @@ async function runEnvironmentDetection() {
     try {
         fs.ensureDirSync(path.dirname(ENV_STATE_FILE));
         fs.writeJsonSync(ENV_STATE_FILE, cachedEnvState, { spaces: 2 });
-        console.log(`[ENV DETECT] Estado persistido en ${ENV_STATE_FILE}: Internet = ${hasInternet ? 'ONLINE' : 'OFFLINE (Aislado)'}, Z = ${zInfo.isRealServer ? 'Servidor Real' : 'Local/Subst'}`);
+        console.log(`[ENV DETECT] Estado persistido en ${ENV_STATE_FILE}: Internet = ${hasInternet ? 'ONLINE' : 'OFFLINE'}, Red Estudio = ${isStudioNetwork ? 'SÍ' : 'NO (Remoto/Externo)'}, Perfil = ${activeLocationMode.toUpperCase()}, Z = ${zInfo.isRealServer ? 'Servidor Real' : 'Local/Subst'}`);
     } catch (e) {}
 
     return cachedEnvState;
@@ -290,10 +359,9 @@ function checkInternetQuickly() {
     return false;
 }
 
-// Ejecutar detección inicial en background si no estaba previamente guardada
-if (!cachedEnvState) {
-    runEnvironmentDetection().catch(() => {});
-}
+// Ejecutar detección inicial en background para refrescar estado en cada inicio
+runEnvironmentDetection().catch(() => {});
+
 
 app.get('/api/sync/detect-env', async (req, res) => {
     try {
@@ -307,6 +375,25 @@ app.get('/api/sync/detect-env', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
+app.post('/api/sync/set-location-mode', async (req, res) => {
+    try {
+        const { mode } = req.body;
+        if (!['auto', 'studio', 'home'].includes(mode)) {
+            return res.status(400).json({ success: false, error: 'Modo inválido. Valores permitidos: auto, studio, home' });
+        }
+        global.locationMode = mode;
+        if (mode === 'studio') {
+            stopLocalWorker();
+        }
+        const state = await runEnvironmentDetection();
+        console.log(`[ENV PERFIL] Perfil de ubicación cambiado manualmente a: ${mode.toUpperCase()} (isExternalMachine=${state.isExternalMachine})`);
+        res.json({ success: true, locationMode: mode, env: state });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 
 app.get('/api/sync/catalogs', async (req, res) => {
     try {
@@ -332,6 +419,9 @@ app.get('/api/sync/catalog/:project', async (req, res) => {
 
 app.get('/api/sync/server-catalog/:project', async (req, res) => {
     try {
+        if (cachedEnvState && cachedEnvState.isExternalMachine) {
+            return res.status(404).json({ success: false, isExternal: true, error: "Catálogo de servidor deshabilitado en equipos externos" });
+        }
         const projectName = req.params.project;
         if (typeof catalogGenerator.loadServerCatalog === 'function') {
             const catalog = await catalogGenerator.loadServerCatalog(projectName);
@@ -403,13 +493,35 @@ app.post('/api/sync/catalog/generate', async (req, res) => {
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 
 function getCentralCacheDir() {
-    // 1. Si Z:/_SYNC_CACHE tiene un heartbeat activo o reciente (< 45s), usar Z:/
+    // 0. Si hay un Local Worker activo o corriendo en esta máquina, SIEMPRE usar la carpeta local de Pipeta
+    if (checkLocalWorkerRunning() || localWorkerPid) {
+        return path.join(__dirname, '../_SYNC_CACHE');
+    }
+
+    // 0.1 Si worker_status.json en la caché local tiene un heartbeat reciente (< 45s) de un local_worker
+    try {
+        const localStatus = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+        if (fs.existsSync(localStatus)) {
+            const data = fs.readJsonSync(localStatus);
+            const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+            if (diff < 45 && data.workerId && data.workerId.includes('local_worker')) {
+                return path.join(__dirname, '../_SYNC_CACHE');
+            }
+        }
+    } catch(e) {}
+
+    // 0.2 Si estamos en un equipo externo / remoto, usar inmediatamente el cache local de Pipeta
+    if (global.isExternalMachine || cachedEnvState?.isExternalMachine) {
+        return path.join(__dirname, '../_SYNC_CACHE');
+    }
+
+    // 1. Si Z:/_SYNC_CACHE tiene un heartbeat activo o reciente (< 45s) de un Worker central, usar Z:/
     try {
         const zStatus = path.join('Z:/_SYNC_CACHE', 'worker_status.json');
         if (fs.existsSync(zStatus)) {
             const data = fs.readJsonSync(zStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
-            if (diff < 45) return 'Z:/_SYNC_CACHE';
+            if (diff < 45 && !data.workerId?.includes('local_worker')) return 'Z:/_SYNC_CACHE';
         }
     } catch (e) {}
 
@@ -451,6 +563,34 @@ function getOrdersDir() {
     return path.join(getCentralCacheDir(), 'requests');
 }
 
+function getAllOrdersCandidateDirs() {
+    const primaryDir = getOrdersDir();
+    const dirs = [primaryDir];
+    const localDir = path.join(__dirname, '../_SYNC_CACHE/requests');
+    if (path.resolve(primaryDir).toLowerCase() !== path.resolve(localDir).toLowerCase()) {
+        dirs.push(localDir);
+    }
+    const zDir = 'Z:/_SYNC_CACHE/requests';
+    if (fs.existsSync(zDir) && !dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(zDir).toLowerCase())) {
+        dirs.push(zDir);
+    }
+    return dirs;
+}
+
+function saveOrderInCandidateDirs(orderId, orderData) {
+    const candidateDirs = getAllOrdersCandidateDirs();
+    let primaryFile = null;
+    for (const dir of candidateDirs) {
+        try {
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            const p = path.join(dir, `${orderId}.json`);
+            fs.writeFileSync(p, JSON.stringify(orderData, null, 2), 'utf8');
+            if (!primaryFile) primaryFile = p;
+        } catch (e) {}
+    }
+    return primaryFile || path.join(getOrdersDir(), `${orderId}.json`);
+}
+
 app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
     try {
         const { project, path: folderPath, type: reqType } = req.body;
@@ -461,6 +601,7 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
         const safeP = folderPath.replace(/\\/g, '/');
         const isServer = reqType === 'server';
         const catType = isServer ? 'server' : 'drive';
+        const isExternal = !!(global.isExternalMachine || cachedEnvState?.isExternalMachine);
 
         // Invalidar caché en memoria del servidor
         if (typeof serverDirCache !== 'undefined') {
@@ -470,15 +611,20 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             catalogGenerator.clearMemoryCaches();
         }
 
-        // 1. Si es Server Y este puesto tiene Z como Servidor Real físico, ejecutar de forma local
-        if (catType === 'server' && cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
-            try {
-                const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
-                if (modularRes && modularRes.success) {
-                    return res.json(modularRes);
+        // 1. Si es Server:
+        if (catType === 'server') {
+            if (isExternal) {
+                return res.status(404).json({ success: false, isExternal: true, error: 'Catálogo de servidor no disponible en modo remoto' });
+            }
+            if (cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
+                try {
+                    const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
+                    if (modularRes && modularRes.success) {
+                        return res.json(modularRes);
+                    }
+                } catch (localModularErr) {
+                    console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
                 }
-            } catch (localModularErr) {
-                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
             }
         }
 
@@ -502,12 +648,17 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                         return res.json(result);
                     }
                 } catch (localErr) {
-                    console.warn("[CATALOG REFRESH FOLDER] Falló ejecución local rclone, delegando a Worker:", localErr.message);
+                    console.warn("[CATALOG REFRESH FOLDER] Falló ejecución local rclone:", localErr.message);
                 }
             }
         }
 
-        // 3. Si la máquina no tiene internet o no tiene las unidades montadas, delegar al Worker central
+        // 3. Si es máquina externa y falló lo anterior, responder de inmediato sin esperar al worker central
+        if (isExternal) {
+            return res.status(500).json({ success: false, error: 'No se pudo refrescar la carpeta en modo remoto (verifique conexión o ejecute worker local)' });
+        }
+
+        // 4. En red de estudio, delegar al Worker central en servidor
         console.log(`[CATALOG REFRESH FOLDER] Delegando consulta de '${folderPath}' (${catType}) al Worker central en servidor...`);
         const ordersDir = getOrdersDir();
         if (!fs.existsSync(ordersDir)) {
@@ -834,8 +985,7 @@ app.post('/api/sync/request-download', async (req, res) => {
             items
         };
 
-        const filePath = path.join(ordersDir, `${orderId}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+        const filePath = saveOrderInCandidateDirs(orderId, orderData);
 
         if (isServer) {
             console.log(`[SYNC ORDER] Orden de descarga de SERVIDOR iniciada localmente: ${orderId} (${items.length} items)`);
@@ -845,6 +995,7 @@ app.post('/api/sync/request-download', async (req, res) => {
             res.json({ success: true, orderId, count: items.length, status: 'processing' });
         } else {
             console.log(`[SYNC ORDER] Orden de descarga de DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project}`);
+            ensureSyncWorkerRunning();
             res.json({ success: true, orderId, count: items.length, status: 'pending' });
         }
     } catch (err) {
@@ -877,8 +1028,7 @@ app.post('/api/sync/request-upload', async (req, res) => {
             items
         };
 
-        const filePath = path.join(ordersDir, `${orderId}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+        const filePath = saveOrderInCandidateDirs(orderId, orderData);
 
         if (isServer) {
             console.log(`[SYNC ORDER] Orden de subida a SERVIDOR iniciada localmente: ${orderId} (${items.length} items)`);
@@ -888,6 +1038,7 @@ app.post('/api/sync/request-upload', async (req, res) => {
             res.json({ success: true, orderId, count: items.length, status: 'processing' });
         } else {
             console.log(`[SYNC ORDER] Orden de subida a DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project}`);
+            ensureSyncWorkerRunning();
             res.json({ success: true, orderId, count: items.length, status: 'pending' });
         }
     } catch (err) {
@@ -896,42 +1047,394 @@ app.post('/api/sync/request-upload', async (req, res) => {
     }
 });
 
+let localWorkerProcess = null;
+let localWorkerPid = null;
+
+function checkLocalWorkerRunning() {
+    if (localWorkerPid) {
+        try {
+            process.kill(localWorkerPid, 0);
+            return true;
+        } catch (e) {
+            localWorkerProcess = null;
+            localWorkerPid = null;
+        }
+    }
+    // Fallback: verificar si existe un worker_status.json reciente de local_worker
+    try {
+        const localStatus = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+        if (fs.existsSync(localStatus)) {
+            const data = fs.readJsonSync(localStatus);
+            const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+            if (diff < 20 && data.workerId && data.workerId.includes('local_worker')) {
+                return true;
+            }
+        }
+    } catch(e) {}
+    return false;
+}
+
+function isCentralWorkerAlive() {
+    try {
+        const candidates = ['Z:/_SYNC_CACHE/worker_status.json', path.join(UNC_CACHE, 'worker_status.json')];
+        for (const p of candidates) {
+            if (fs.existsSync(p)) {
+                const data = fs.readJsonSync(p);
+                const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+                if (diff < 45 && !data.workerId?.includes('local_worker')) {
+                    return true;
+                }
+            }
+        }
+    } catch(e) {}
+    return false;
+}
+
+function startLocalWorkerBackground() {
+    if (checkLocalWorkerRunning()) {
+        return { success: true, pid: localWorkerPid, message: 'Worker local ya está en ejecución' };
+    }
+
+    const nodeExe = process.execPath;
+    const workerScript = path.join(__dirname, 'sync_worker.js');
+
+    const logDir = path.join(__dirname, '../_SYNC_CACHE');
+    try { fs.ensureDirSync(logDir); } catch(e){}
+    const logFile = path.join(logDir, 'local_worker.log');
+    let outStream = 'ignore';
+    try {
+        const outFd = fs.openSync(logFile, 'a');
+        outStream = outFd;
+    } catch (e) {}
+
+    const child = spawn(nodeExe, [workerScript, '--local'], {
+        detached: true,
+        stdio: ['ignore', outStream, outStream],
+        windowsHide: true,
+        cwd: path.join(__dirname, '..'),
+        env: {
+            ...process.env,
+            PIPETA_LOCAL_WORKER: '1'
+        }
+    });
+
+    child.on('exit', (code, signal) => {
+        console.log(`[SYNC WORKER] Local Worker finalizó (código: ${code}, señal: ${signal})`);
+        localWorkerProcess = null;
+        localWorkerPid = null;
+    });
+
+    child.unref();
+    localWorkerProcess = child;
+    localWorkerPid = child.pid;
+
+    console.log(`[SYNC WORKER] Local Worker iniciado en segundo plano (PID: ${localWorkerPid})`);
+    return { success: true, pid: localWorkerPid, message: 'Worker local iniciado con éxito en segundo plano' };
+}
+
+function stopLocalWorker() {
+    if (localWorkerPid) {
+        try {
+            process.kill(localWorkerPid);
+            console.log(`[SYNC WORKER] Local Worker detenido por cambio de modo (PID: ${localWorkerPid})`);
+        } catch (e) {}
+        localWorkerProcess = null;
+        localWorkerPid = null;
+    }
+}
+
+
+function ensureSyncWorkerRunning() {
+    // REGLA ESTRICTA: Solo para equipos externos (Home Office / Remoto).
+    // En las oficinas del estudio o sedes conectadas a la red interna,
+    // NUNCA debe auto-iniciarse un worker local; las transferencias las atiende el Worker Central (VM 105).
+    const isExternal = !!(global.isExternalMachine || cachedEnvState?.isExternalMachine);
+    if (!isExternal) {
+        return; // Nunca auto-iniciar en puestos de oficina / sedes
+    }
+
+    if (isCentralWorkerAlive()) return;
+    if (checkLocalWorkerRunning()) return;
+    console.log('[SYNC WORKER] Equipo externo (Home Office) detectado sin worker central. Iniciando Worker Local automáticamente...');
+    startLocalWorkerBackground();
+}
+
 app.get('/api/sync/orders', (req, res) => {
     try {
-        const ordersDir = getOrdersDir();
-        if (!fs.existsSync(ordersDir)) {
-            return res.json({ success: true, orders: [] });
-        }
-        const files = fs.readdirSync(ordersDir).filter(f => f.endsWith('.json'));
-        const orders = [];
-        for (const f of files) {
-            try {
-                const content = JSON.parse(fs.readFileSync(path.join(ordersDir, f), 'utf8'));
-                orders.push(content);
-            } catch(e){}
+        const { user, role, onlyMyTasks } = req.query;
+        const candidateDirs = getAllOrdersCandidateDirs();
+        const seenOrders = new Set();
+        let orders = [];
+
+        for (const dir of candidateDirs) {
+            if (!fs.existsSync(dir)) continue;
+            let files = [];
+            try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')); } catch(e){ continue; }
+            for (const f of files) {
+                try {
+                    const content = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                    if (content && content.id && !seenOrders.has(content.id)) {
+                        seenOrders.add(content.id);
+                        orders.push(content);
+                    }
+                } catch(e){}
+            }
         }
         orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        const isAdmin = role === 'admin' || role === 'administrator' || role === 'superuser' || role === 'lead';
+        if (user && !isAdmin && onlyMyTasks !== 'false') {
+            const reqUser = user.toLowerCase();
+            orders = orders.filter(o => {
+                const oUser = (o.user || '').toLowerCase();
+                return oUser === reqUser || oUser === 'artista' || oUser === 'user' || oUser === 'unknown' || !oUser;
+            });
+        } else if (user && isAdmin && onlyMyTasks === 'true') {
+            const reqUser = user.toLowerCase();
+            orders = orders.filter(o => {
+                const oUser = (o.user || '').toLowerCase();
+                return oUser === reqUser || oUser === 'artista' || oUser === 'user' || oUser === 'unknown' || !oUser;
+            });
+        }
+
         res.json({ success: true, orders: orders.slice(0, 50) });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-app.get('/api/sync/worker-status', (req, res) => {
+app.post('/api/sync/orders/cancel', (req, res) => {
     try {
-        const statusFile = path.join(getCentralCacheDir(), 'worker_status.json');
-        if (fs.existsSync(statusFile)) {
-            const status = fs.readJsonSync(statusFile);
-            const diffSeconds = (Date.now() - new Date(status.lastPing).getTime()) / 1000;
-            status.isAlive = diffSeconds < 20;
-            status.diffSeconds = Math.round(diffSeconds);
-            return res.json({ success: true, status });
+        const { orderId, user, role } = req.body;
+        if (!orderId) {
+            return res.status(400).json({ success: false, error: 'orderId es requerido' });
         }
-        res.json({ success: true, status: { isAlive: false, message: 'Worker no detectado' } });
+        const candidateDirs = getAllOrdersCandidateDirs();
+        let found = false;
+        for (const dir of candidateDirs) {
+            const filePath = path.join(dir, `${orderId}.json`);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const orderData = fs.readJsonSync(filePath);
+                    const isAdmin = role === 'admin' || role === 'administrator' || role === 'superuser' || role === 'lead';
+                    if (user && !isAdmin && orderData.user && orderData.user.toLowerCase() !== user.toLowerCase() && orderData.user !== 'artista') {
+                        return res.status(403).json({ success: false, error: 'No tienes permisos para cancelar esta tarea' });
+                    }
+                    orderData.status = 'cancelled';
+                    orderData.cancelledAt = new Date().toISOString();
+                    orderData.cancelledBy = user || 'user';
+                    fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    found = true;
+                } catch(e){}
+            }
+        }
+        if (!found) {
+            return res.status(404).json({ success: false, error: 'Orden no encontrada' });
+        }
+
+        console.log(`[SYNC ORDER] Orden ${orderId} marcada como CANCELADA por '${user || 'user'}'`);
+        res.json({ success: true, message: 'Orden cancelada exitosamente', status: 'cancelled' });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
+app.post('/api/sync/orders/clear-history', (req, res) => {
+    try {
+        const { user, role } = req.body;
+        const candidateDirs = getAllOrdersCandidateDirs();
+        const isAdmin = role === 'admin' || role === 'administrator' || role === 'superuser' || role === 'lead';
+        const finishedStatuses = ['completed', 'completed_with_errors', 'failed', 'cancelled'];
+        let clearedCount = 0;
+
+        for (const dir of candidateDirs) {
+            if (!fs.existsSync(dir)) continue;
+            let files = [];
+            try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')); } catch(e){ continue; }
+            for (const f of files) {
+                const filePath = path.join(dir, f);
+                try {
+                    const data = fs.readJsonSync(filePath);
+                    if (finishedStatuses.includes(data.status)) {
+                        if (!user || isAdmin || (data.user && (data.user.toLowerCase() === user.toLowerCase() || data.user === 'artista'))) {
+                            fs.removeSync(filePath);
+                            clearedCount++;
+                        }
+                    }
+                } catch(e){}
+            }
+        }
+        console.log(`[SYNC ORDER] Historial limpiado: ${clearedCount} órdenes eliminadas por '${user || 'user'}'`);
+        res.json({ success: true, clearedCount });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/worker/local-status', (req, res) => {
+    try {
+        const isRunning = checkLocalWorkerRunning();
+        let heartbeatAlive = false;
+        let diffSeconds = 999;
+        let workerHostname = null;
+
+        try {
+            const statusFile = path.join(getCentralCacheDir(), 'worker_status.json');
+            if (fs.existsSync(statusFile)) {
+                const data = fs.readJsonSync(statusFile);
+                diffSeconds = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
+                heartbeatAlive = diffSeconds < 25 && (data.workerId?.includes('local_worker') || data.hostname === os.hostname());
+                workerHostname = data.hostname;
+            }
+        } catch(e){}
+
+        const active = isRunning || heartbeatAlive;
+        res.json({
+            success: true,
+            isRunning: active,
+            pid: localWorkerPid || null,
+            hostname: workerHostname || os.hostname(),
+            diffSeconds: Math.round(diffSeconds)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/worker/start-local', (req, res) => {
+    try {
+        const result = startLocalWorkerBackground();
+        res.json(result);
+    } catch (err) {
+        console.error('[SYNC WORKER] Error iniciando worker local:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/worker/stop-local', (req, res) => {
+    try {
+        let killed = false;
+        if (localWorkerPid) {
+            try {
+                execSync(`taskkill /PID ${localWorkerPid} /T /F`, { stdio: 'ignore' });
+                killed = true;
+            } catch (e) {
+                try { process.kill(localWorkerPid, 'SIGKILL'); killed = true; } catch (err) {}
+            }
+            localWorkerProcess = null;
+            localWorkerPid = null;
+        }
+
+        // Limpiar worker_status.json si era local
+        try {
+            const statusFile = path.join(getCentralCacheDir(), 'worker_status.json');
+            if (fs.existsSync(statusFile)) {
+                const data = fs.readJsonSync(statusFile);
+                if (data.workerId && data.workerId.includes('local_worker')) {
+                    fs.removeSync(statusFile);
+                }
+            }
+            const localStatusFile = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+            if (fs.existsSync(localStatusFile)) {
+                fs.removeSync(localStatusFile);
+            }
+        } catch(e){}
+
+        console.log(`[SYNC WORKER] Local Worker detenido`);
+        res.json({ success: true, message: killed ? 'Worker local detenido exitosamente' : 'No había worker activo' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/sync/worker/logs', (req, res) => {
+    try {
+        const logFile = path.join(getCentralCacheDir(), 'local_worker.log');
+        const fallbackLog = path.join(__dirname, '../_SYNC_CACHE', 'local_worker.log');
+        const target = fs.existsSync(logFile) ? logFile : (fs.existsSync(fallbackLog) ? fallbackLog : null);
+        if (!target) {
+            return res.json({ success: true, logs: 'No hay registros del worker aún.' });
+        }
+        const content = fs.readFileSync(target, 'utf8');
+        const lines = content.split('\n');
+        const lastLines = lines.slice(-80).join('\n');
+        res.json({ success: true, logs: lastLines });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
+app.get('/api/sync/worker-status', (req, res) => {
+    try {
+        const isLocalRunning = checkLocalWorkerRunning();
+
+        // 1. Primero chequear si hay un Worker Local activo o con latido reciente (< 25s)
+        try {
+            const localStatusFile = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+            if (fs.existsSync(localStatusFile)) {
+                const localData = fs.readJsonSync(localStatusFile);
+                const diffSeconds = (Date.now() - new Date(localData.lastPing).getTime()) / 1000;
+                if (diffSeconds < 25 && (localData.workerId?.includes('local_worker') || isLocalRunning)) {
+                    localData.isAlive = true;
+                    localData.diffSeconds = Math.round(diffSeconds);
+                    localData.isLocal = true;
+                    return res.json({ success: true, status: localData, isLocalWorkerRunning: true });
+                }
+            }
+        } catch(e) {}
+
+        // 2. Si no hay worker local, chequear el worker central en la red
+        const centralCache = getCentralCacheDir();
+        const statusFile = path.join(centralCache, 'worker_status.json');
+        if (fs.existsSync(statusFile)) {
+            const status = fs.readJsonSync(statusFile);
+            const diffSeconds = (Date.now() - new Date(status.lastPing).getTime()) / 1000;
+            status.isAlive = diffSeconds < 45;
+            status.diffSeconds = Math.round(diffSeconds);
+            const isLocal = isLocalRunning || (status.workerId && status.workerId.includes('local_worker')) || status.hostname === os.hostname();
+            status.isLocal = isLocal;
+            return res.json({ success: true, status, isLocalWorkerRunning: isLocalRunning || (isLocal && status.isAlive) });
+        }
+
+        res.json({ 
+            success: true, 
+            status: { isAlive: false, message: 'Worker no detectado' },
+            isLocalWorkerRunning: isLocalRunning
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Supervisor de órdenes pendientes: SOLO para equipos externos (Home Office)
+setInterval(() => {
+    try {
+        const isExternal = !!(global.isExternalMachine || cachedEnvState?.isExternalMachine);
+        if (!isExternal) return; // NUNCA supervisar ni auto-iniciar en oficinas del estudio / sedes
+
+        const candidateDirs = getAllOrdersCandidateDirs();
+        let hasPending = false;
+        for (const d of candidateDirs) {
+            if (!fs.existsSync(d)) continue;
+            let files = [];
+            try { files = fs.readdirSync(d).filter(f => f.endsWith('.json')); } catch(e){ continue; }
+            for (const f of files) {
+                try {
+                    const data = fs.readJsonSync(path.join(d, f));
+                    if (data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
+                        hasPending = true;
+                        break;
+                    }
+                } catch(e) {}
+            }
+            if (hasPending) break;
+        }
+        if (hasPending) {
+            ensureSyncWorkerRunning();
+        }
+    } catch(e) {}
+}, 5000);
 
 // Caché en memoria para listados de directorios en red (SMB) y Rclone
 const serverDirCache = new Map();
@@ -955,6 +1458,9 @@ app.get('/api/fs/list', (req, res) => {
 
             // 0. Si se solicita expresamente origen del Servidor Central para una ruta Z:
             if ((localSource === 'server_catalog' || source === 'server') && (lowerSafeP.startsWith('z:/') || lowerSafeP === 'z:')) {
+                if (cachedEnvState && cachedEnvState.isExternalMachine) {
+                    return res.json({ path: safeP, items: [], exists: false, isServer: false, isExternal: true });
+                }
                 let serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
                     ? catalogGenerator.listFromModularCatalog(safeP, 'server')
                     : null;
@@ -1552,9 +2058,12 @@ app.post('/api/templates/findReference', async (req, res) => {
 app.post('/api/system/package-dist', async (req, res) => {
     let targetDir = req.body?.targetDir || 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS';
     targetDir = targetDir.replace(/\//g, '\\');
+    const includeRamon = req.body?.includeRamon === true || req.body?.includeRamon === 'true';
+    const includeDriveCache = req.body?.includeDriveCache === true || req.body?.includeDriveCache === 'true';
+    const includeServerCache = req.body?.includeServerCache === true || req.body?.includeServerCache === 'true';
 
     const pipetaRoot = path.resolve(__dirname, '..');
-    const zipName = `Pipeta_${VERSION}.zip`;
+    const zipName = includeRamon ? `Pipeta_${VERSION}_Ramon.zip` : `Pipeta_${VERSION}.zip`;
     const destZip = path.join(targetDir, zipName);
     const destBat = path.join(targetDir, 'Instalar_o_Actualizar_Pipeta_Local.bat');
 
@@ -1565,6 +2074,9 @@ $source = "${pipetaRoot.replace(/\\/g, '\\\\')}"
 $destDir = "${targetDir.replace(/\\/g, '\\\\')}"
 $destZip = "${destZip.replace(/\\/g, '\\\\')}"
 $destBat = "${destBat.replace(/\\/g, '\\\\')}"
+$includeRamon = ${includeRamon ? '$true' : '$false'}
+$includeDriveCache = ${includeDriveCache ? '$true' : '$false'}
+$includeServerCache = ${includeServerCache ? '$true' : '$false'}
 $tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "Pipeta_Pkg_" + [System.Guid]::NewGuid().ToString())
 $pkgRoot = [System.IO.Path]::Combine($tempDir, "Pipeta")
 
@@ -1573,9 +2085,64 @@ try {
     New-Item -ItemType Directory -Path $pkgRoot -Force | Out-Null
     
     # 1. Copiar base completa de Pipeta hacia la subcarpeta 'Pipeta'
-    robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+    # Excluir siempre .git, .gemini, logs, node_modules\\.cache y _SYNC_CACHE
+    $pythonDir = Join-Path $source "bin\python"
+    if ($includeRamon) {
+        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+    } else {
+        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE "$pythonDir" python /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+        $pkgPython = Join-Path $pkgRoot "bin\python"
+        if (Test-Path $pkgPython) { Remove-Item -Recurse -Force $pkgPython }
+    }
+
+    # 1.1 Inclusión selectiva de cachés de sincronización
+    $destCache = Join-Path $pkgRoot "_SYNC_CACHE"
+    $srcCache = Join-Path $source "_SYNC_CACHE"
+    New-Item -ItemType Directory -Path $destCache -Force | Out-Null
+
+    if (($includeDriveCache -or $includeServerCache) -and (Test-Path $srcCache)) {
+        if ($includeDriveCache) {
+            # Catálogos monolíticos de Drive
+            Get-ChildItem -Path $srcCache -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object { 
+                $_.Name -notlike "server_*" -and $_.Name -ne "worker_status.json" 
+            } | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination (Join-Path $destCache $_.Name) -Force
+            }
+            # Catálogos modulares de Drive (projects/*/drive)
+            $srcProjects = Join-Path $srcCache "projects"
+            if (Test-Path $srcProjects) {
+                Get-ChildItem -Path $srcProjects -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                    $projDriveSrc = Join-Path $_.FullName "drive"
+                    if (Test-Path $projDriveSrc) {
+                        $projDriveDest = Join-Path $destCache "projects\$($_.Name)\drive"
+                        New-Item -ItemType Directory -Path $projDriveDest -Force | Out-Null
+                        robocopy "$projDriveSrc" "$projDriveDest" /E /NFL /NDL /NJH /NJS /R:0 /W:0 | Out-Null
+                    }
+                }
+            }
+        }
+
+        if ($includeServerCache) {
+            # Catálogos monolíticos de Server (server_*.json)
+            Get-ChildItem -Path $srcCache -Filter "server_*.json" -File -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination (Join-Path $destCache $_.Name) -Force
+            }
+            # Catálogos modulares de Server (projects/*/server)
+            $srcProjects = Join-Path $srcCache "projects"
+            if (Test-Path $srcProjects) {
+                Get-ChildItem -Path $srcProjects -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                    $projServerSrc = Join-Path $_.FullName "server"
+                    if (Test-Path $projServerSrc) {
+                        $projServerDest = Join-Path $destCache "projects\$($_.Name)\server"
+                        New-Item -ItemType Directory -Path $projServerDest -Force | Out-Null
+                        robocopy "$projServerSrc" "$projServerDest" /E /NFL /NDL /NJH /NJS /R:0 /W:0 | Out-Null
+                    }
+                }
+            }
+        }
+    }
     
-    # 2. Asegurar que los presets locales más recientes se incluyan en Pipeta\presets
+    # 2. Asegurar que los presets locales más recientes se incluyan en Pipeta\\presets
     $localPresets = "C:\\TOOLS\\APPS\\Pipeta\\presets"
     if (Test-Path $localPresets) {
         robocopy "$localPresets" "$pkgRoot\\presets" /E /NFL /NDL /NJH /NJS /R:0 /W:0
@@ -1607,8 +2174,10 @@ echo.
 
 set "TARGET_DIR=C:\\TOOLS\\APPS"
 set "PIPETA_DIR=C:\\TOOLS\\APPS\\Pipeta"
-set "ZIP_FILE=%~dp0Pipeta_${VERSION}.zip"
+set "ZIP_FILE=%~dp0${zipName}"
 
+if not exist "%ZIP_FILE%" set "ZIP_FILE=%~dp0Pipeta_${VERSION}_Ramon.zip"
+if not exist "%ZIP_FILE%" set "ZIP_FILE=%~dp0Pipeta_${VERSION}.zip"
 if not exist "%ZIP_FILE%" (
     for %%f in ("%~dp0Pipeta_*.zip") do set "ZIP_FILE=%%f"
 )
@@ -2126,22 +2695,31 @@ app.get('/api/system/diskUsage', async (req, res) => {
 });
 
 // --- DIRECTORY SIZE ---
+const dirSizeMemoryCache = new Map();
 app.get('/api/fs/dirSize', (req, res) => {
     const dirPath = req.query.path;
     if (!dirPath) return res.status(400).json({ error: 'Missing path' });
+
+    const norm = (dirPath || '').replace(/\\/g, '/').toLowerCase();
+
+    // 0. Cache en memoria (5 minutos de TTL) para evitar llamadas repetidas a PowerShell
+    const cachedSize = dirSizeMemoryCache.get(norm);
+    if (cachedSize && (Date.now() - cachedSize.time < 300000)) {
+        return res.json({ path: dirPath, size: cachedSize.size, fromCache: true });
+    }
 
     // 1. Intentar resolver el tamaño instantáneamente desde el catálogo (0 ms)
     try {
         if (typeof catalogGenerator.getDirSizeFromCatalog === 'function') {
             const catSize = catalogGenerator.getDirSizeFromCatalog(dirPath);
             if (catSize !== null) {
+                dirSizeMemoryCache.set(norm, { size: catSize, time: Date.now() });
                 return res.json({ path: dirPath, size: catSize, fromCatalog: true });
             }
         }
     } catch (e) {}
 
     // 2. Si es una ruta de red/servidor (UNC, etc.) y no está en el catálogo, retornar 0 sin bloquear
-    const norm = (dirPath || '').replace(/\\/g, '/').toLowerCase();
     if (norm.startsWith('//') || norm.startsWith('\\\\')) {
         return res.json({ path: dirPath, size: 0, fromCatalog: false });
     }
@@ -2154,6 +2732,7 @@ app.get('/api/fs/dirSize', (req, res) => {
             return res.json({ path: dirPath, size: 0, error: err.message });
         }
         const size = parseInt((stdout || '').trim()) || 0;
+        dirSizeMemoryCache.set(norm, { size, time: Date.now() });
         res.json({ path: dirPath, size });
     });
 });
@@ -3379,7 +3958,14 @@ function runRamonBridge(args, timeoutMs = 30000) {
 
         pyProc.on('close', (code) => {
             if (code !== 0 && !stdout.trim()) {
-                let errMsg = stderr.trim() || `Proceso Ramon salio con codigo ${code}`;
+                let errMsg = stderr.trim();
+                if (!errMsg) {
+                    if (code === null) {
+                        errMsg = `Tiempo de espera agotado (${Math.round(timeoutMs / 1000)}s) al comunicar con el servidor de Ramón. Verifica la conexión a la red o internet.`;
+                    } else {
+                        errMsg = `Proceso Ramón salió con código ${code}`;
+                    }
+                }
                 if (errMsg.includes('Microsoft Store') || errMsg.includes('No se encontró Python') || errMsg.includes('No se encontr')) {
                     detectedPythonBin = null;
                     errMsg = "No se encontró un intérprete de Python en el equipo ni en la red (Z:/S:). Asegúrate de tener acceso a Z:\\INTERNO\\TOOLS\\... o Python instalado.";
@@ -3390,20 +3976,20 @@ function runRamonBridge(args, timeoutMs = 30000) {
                 const parsed = JSON.parse(stdout.trim());
                 resolve(parsed);
             } catch (e) {
-                resolve({ success: false, error: `Respuesta invalida de Ramon: ${stdout || stderr}` });
+                resolve({ success: false, error: `Respuesta inválida de Ramón: ${stdout || stderr}` });
             }
         });
 
         pyProc.on('error', (err) => {
             detectedPythonBin = null;
-            resolve({ success: false, error: `Error ejecutando Python para Ramon (${pyBin}): ${err.message}` });
+            resolve({ success: false, error: `Error ejecutando Python para Ramón (${pyBin}): ${err.message}` });
         });
     });
 }
 
 app.get('/api/ramon/status', async (req, res) => {
     try {
-        const result = await runRamonBridge(['ping'], 10000);
+        const result = await runRamonBridge(['ping'], 12000);
         res.json(result);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -3414,10 +4000,10 @@ app.post('/api/ramon/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) {
-            return res.status(400).json({ success: false, error: "Usuario y contrasena requeridos" });
+            return res.status(400).json({ success: false, error: "Usuario y contraseña requeridos" });
         }
 
-        const authResult = await runRamonBridge(['login', username, password], 15000);
+        const authResult = await runRamonBridge(['login', username, password], 25000);
         if (!authResult.success) {
             return res.status(401).json(authResult);
         }
@@ -3460,6 +4046,17 @@ app.post('/api/ramon/login', async (req, res) => {
             }
         } catch(syncErr) {
             console.warn("[RAMON] Error asociando usuario local:", syncErr);
+        }
+
+        if (authResult.server) {
+            const isRemoteRamon = authResult.server.includes('8075') || authResult.server.includes('https://');
+            if (cachedEnvState) {
+                cachedEnvState.ramonHost = authResult.server;
+                cachedEnvState.isExternalMachine = isRemoteRamon;
+                cachedEnvState.isStudioNetwork = !isRemoteRamon;
+            }
+            global.isExternalMachine = isRemoteRamon;
+            global.isStudioNetworkDetected = !isRemoteRamon;
         }
 
         res.json(authResult);
@@ -3506,6 +4103,38 @@ app.get('/api/ramon/tasks', async (req, res) => {
     }
 });
 
+// Cache en memoria para tareas completas de proyectos en Ramón
+const ramonProjectTasksCache = new Map();
+
+app.get('/api/ramon/project-tasks', async (req, res) => {
+    try {
+        const project = (req.query.project || '').trim();
+        const force = req.query.force === 'true' || req.query.refresh === 'true';
+
+        if (!project) {
+            return res.status(400).json({ success: false, error: "Parametro 'project' requerido" });
+        }
+
+        const cacheKey = project.toLowerCase();
+        if (!force && ramonProjectTasksCache.has(cacheKey)) {
+            const cached = ramonProjectTasksCache.get(cacheKey);
+            return res.json({ ...cached.data, cached: true, cachedAt: cached.cachedAt });
+        }
+
+        const args = ['project_tasks', project];
+        const result = await runRamonBridge(args, 45000);
+        if (result && result.success) {
+            ramonProjectTasksCache.set(cacheKey, {
+                cachedAt: new Date().toISOString(),
+                data: result
+            });
+        }
+        res.json({ ...result, cached: false });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Invalida el caché de tareas (para forzar refresh cuando una tool lo requiera)
 app.post('/api/ramon/tasks/invalidate', (req, res) => {
     try {
@@ -3519,6 +4148,7 @@ app.post('/api/ramon/tasks/invalidate', (req, res) => {
         } else {
             ramonTasksCache.clear();
         }
+        ramonProjectTasksCache.clear();
         res.json({ success: true, message: "Cache de Ramon invalidado" });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

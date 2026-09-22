@@ -1,0 +1,87 @@
+{
+  "id": "media/_Auxiliar",
+  "project": "estupidamente_tuyo",
+  "type": "drive",
+  "category": "media",
+  "prefix": "_Auxiliar",
+  "file": "media/_Auxiliar.json",
+  "stats": {
+    "itemCount": 6,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_media_7874",
+      "category": "media",
+      "name": "_Auxiliar",
+      "relPath": "_Auxiliar",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:25.982Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar"
+    },
+    {
+      "id": "sync_media_28213",
+      "category": "media",
+      "name": "Grillas_Distorsion",
+      "relPath": "_Auxiliar/Grillas_Distorsion",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:27.220Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar/Grillas_Distorsion",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar/Grillas_Distorsion"
+    },
+    {
+      "id": "sync_media_28214",
+      "category": "media",
+      "name": "Galeria",
+      "relPath": "_Auxiliar/Galeria",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:27.034Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar/Galeria",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar/Galeria"
+    },
+    {
+      "id": "sync_media_28216",
+      "category": "media",
+      "name": "STMaps",
+      "relPath": "_Auxiliar/Grillas_Distorsion/STMaps",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:28.160Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar/Grillas_Distorsion/STMaps",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar/Grillas_Distorsion/STMaps"
+    },
+    {
+      "id": "sync_media_28217",
+      "category": "media",
+      "name": "Curdo_Camara",
+      "relPath": "_Auxiliar/Grillas_Distorsion/Curdo_Camara",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:27.789Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar/Grillas_Distorsion/Curdo_Camara",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar/Grillas_Distorsion/Curdo_Camara"
+    },
+    {
+      "id": "sync_media_28218",
+      "category": "media",
+      "name": "Export_Exr",
+      "relPath": "_Auxiliar/Grillas_Distorsion/Export_Exr",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-27T18:03:27.784Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/_Auxiliar/Grillas_Distorsion/Export_Exr",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/_Auxiliar/Grillas_Distorsion/Export_Exr"
+    }
+  ]
+}

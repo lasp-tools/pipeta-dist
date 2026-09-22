@@ -1,0 +1,87 @@
+{
+  "id": "episodios/E00",
+  "project": "estupidamente_tuyo",
+  "type": "server",
+  "category": "work",
+  "prefix": "episodios/E00",
+  "file": "episodios/E00.json",
+  "stats": {
+    "itemCount": 6,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_work_539",
+      "category": "work",
+      "name": "E00",
+      "relPath": "episodios/E00",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.704Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00"
+    },
+    {
+      "id": "server_work_540",
+      "category": "work",
+      "name": "secuencias",
+      "relPath": "episodios/E00/secuencias",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.706Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias"
+    },
+    {
+      "id": "server_work_541",
+      "category": "work",
+      "name": "E00",
+      "relPath": "episodios/E00/secuencias/E00",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.708Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00"
+    },
+    {
+      "id": "server_work_542",
+      "category": "work",
+      "name": "shots",
+      "relPath": "episodios/E00/secuencias/E00/shots",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.711Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots"
+    },
+    {
+      "id": "server_work_543",
+      "category": "work",
+      "name": "ET_E00_E00_010",
+      "relPath": "episodios/E00/secuencias/E00/shots/ET_E00_E00_010",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.713Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots/ET_E00_E00_010",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots/ET_E00_E00_010"
+    },
+    {
+      "id": "server_work_544",
+      "category": "work",
+      "name": "Compo",
+      "relPath": "episodios/E00/secuencias/E00/shots/ET_E00_E00_010/Compo",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-27T14:48:59.713Z",
+      "serverPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots/ET_E00_E00_010/Compo",
+      "targetLocalPath": "Z:/netflix/estupidamente_tuyo/episodios/E00/secuencias/E00/shots/ET_E00_E00_010/Compo"
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "id": "media/templates",
+  "project": "estupidamente_tuyo",
+  "type": "drive",
+  "category": "media",
+  "prefix": "templates",
+  "file": "media/templates.json",
+  "stats": {
+    "itemCount": 4,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_media_7866",
+      "category": "media",
+      "name": "templates",
+      "relPath": "templates",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:45:15.317Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/templates",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates"
+    },
+    {
+      "id": "sync_media_7878",
+      "category": "media",
+      "name": "ESTY_A01_Exx_xxx",
+      "relPath": "templates/ESTY_A01_Exx_xxx",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:45:15.968Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/templates/ESTY_A01_Exx_xxx",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx"
+    },
+    {
+      "id": "sync_media_7894",
+      "category": "media",
+      "name": "nuke",
+      "relPath": "templates/ESTY_A01_Exx_xxx/nuke",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:45:17.535Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/templates/ESTY_A01_Exx_xxx/nuke",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke"
+    },
+    {
+      "id": "sync_media_7901",
+      "category": "media",
+      "name": "mov",
+      "relPath": "templates/ESTY_A01_Exx_xxx/nuke/mov",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:45:18.195Z",
+      "onlinePath": "G:/Unidades compartidas/estupidamente_tuyo_media/templates/ESTY_A01_Exx_xxx/nuke/mov",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo/templates/ESTY_A01_Exx_xxx/nuke/mov"
+    }
+  ]
+}

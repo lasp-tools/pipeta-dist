@@ -9,6 +9,9 @@ async function fetchDir(path, options = {}) {
     if ((!options || !options.localSource) && window.viewLocationMode === 'server') {
         url += `&local_source=server_catalog`;
     }
+    if ((!options || !options.onlineEngine) && (window.viewLocationMode === 'drive' || window.viewLocationMode === 'online')) {
+        url += `&online_engine=catalog`;
+    }
     try {
         const res = await fetch(url);
         return await res.json();
@@ -197,6 +200,11 @@ const API = {
         getProjects: async (force = false) => {
             let url = `/api/ramon/projects`;
             if (force) url += `?force=true`;
+            return fetch(url).then(r => r.json());
+        },
+        getProjectTasks: async (project, force = false) => {
+            let url = `/api/ramon/project-tasks?project=${encodeURIComponent(project)}`;
+            if (force) url += `&force=true`;
             return fetch(url).then(r => r.json());
         }
     },

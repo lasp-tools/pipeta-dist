@@ -1,0 +1,87 @@
+{
+  "id": "media/thumbnails",
+  "project": "aqee",
+  "type": "server",
+  "category": "media",
+  "prefix": "thumbnails",
+  "file": "media/thumbnails.json",
+  "stats": {
+    "itemCount": 6,
+    "fileCount": 5,
+    "byteCount": 462877
+  },
+  "flatList": [
+    {
+      "id": "server_media_18803",
+      "category": "media",
+      "name": "thumbnails",
+      "relPath": "thumbnails",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-16T19:50:14.879Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails"
+    },
+    {
+      "id": "server_media_18804",
+      "category": "media",
+      "name": "AQEE2_206_614A_010.jpg",
+      "relPath": "thumbnails/AQEE2_206_614A_010.jpg",
+      "ext": ".jpg",
+      "isDir": false,
+      "size": 72097,
+      "modTime": "2026-09-10T15:23:21.162Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_206_614A_010.jpg",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_206_614A_010.jpg"
+    },
+    {
+      "id": "server_media_18805",
+      "category": "media",
+      "name": "AQEE2_206_624_010.jpg",
+      "relPath": "thumbnails/AQEE2_206_624_010.jpg",
+      "ext": ".jpg",
+      "isDir": false,
+      "size": 114081,
+      "modTime": "2026-09-10T15:23:21.164Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_206_624_010.jpg",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_206_624_010.jpg"
+    },
+    {
+      "id": "server_media_18806",
+      "category": "media",
+      "name": "AQEE2_207_731_010.jpg",
+      "relPath": "thumbnails/AQEE2_207_731_010.jpg",
+      "ext": ".jpg",
+      "isDir": false,
+      "size": 150638,
+      "modTime": "2026-09-16T19:50:14.880Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_731_010.jpg",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_731_010.jpg"
+    },
+    {
+      "id": "server_media_18807",
+      "category": "media",
+      "name": "AQEE2_207_742_010.jpg",
+      "relPath": "thumbnails/AQEE2_207_742_010.jpg",
+      "ext": ".jpg",
+      "isDir": false,
+      "size": 57090,
+      "modTime": "2026-09-16T19:50:14.879Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_742_010.jpg",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_742_010.jpg"
+    },
+    {
+      "id": "server_media_18808",
+      "category": "media",
+      "name": "AQEE2_207_742_020.jpg",
+      "relPath": "thumbnails/AQEE2_207_742_020.jpg",
+      "ext": ".jpg",
+      "isDir": false,
+      "size": 68971,
+      "modTime": "2026-09-16T19:50:14.879Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_742_020.jpg",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/aqee/thumbnails/AQEE2_207_742_020.jpg"
+    }
+  ]
+}

@@ -426,6 +426,18 @@
     color: #14161a;
 }
 
+.sync-badge-pending-folder {
+    background: rgba(235, 203, 139, 0.22);
+    border: 1px dashed #ebcb8b;
+    color: #ebcb8b;
+    letter-spacing: 0.2px;
+}
+
+.sync-badge-pending-folder:hover {
+    background: #ebcb8b;
+    color: #14161a;
+}
+
 .sync-badge-ok {
     color: #a3be8c;
     font-size: 0.72rem;

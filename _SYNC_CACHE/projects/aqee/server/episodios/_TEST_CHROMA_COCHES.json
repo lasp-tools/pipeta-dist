@@ -1,0 +1,135 @@
+{
+  "id": "episodios/_TEST_CHROMA_COCHES",
+  "project": "aqee",
+  "type": "server",
+  "category": "work",
+  "prefix": "episodios/_TEST_CHROMA_COCHES",
+  "file": "episodios/_TEST_CHROMA_COCHES.json",
+  "stats": {
+    "itemCount": 10,
+    "fileCount": 9,
+    "byteCount": 3614640
+  },
+  "flatList": [
+    {
+      "id": "server_work_624",
+      "category": "work",
+      "name": "_TEST_CHROMA_COCHES",
+      "relPath": "episodios/_TEST_CHROMA_COCHES",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-31T08:54:00.315Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES"
+    },
+    {
+      "id": "server_work_625",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v001.nk",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 140102,
+      "modTime": "2026-04-22T17:23:28.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk"
+    },
+    {
+      "id": "server_work_626",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v001.nk~",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk~",
+      "ext": ".nk~",
+      "isDir": false,
+      "size": 140205,
+      "modTime": "2026-04-22T16:40:24.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk~",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v001.nk~"
+    },
+    {
+      "id": "server_work_627",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v002.nk",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 458501,
+      "modTime": "2026-04-22T17:12:40.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk"
+    },
+    {
+      "id": "server_work_628",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v002.nk~",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk~",
+      "ext": ".nk~",
+      "isDir": false,
+      "size": 461576,
+      "modTime": "2026-04-22T16:35:34.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk~",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v002.nk~"
+    },
+    {
+      "id": "server_work_629",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v003.nk",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 477090,
+      "modTime": "2026-04-22T17:23:12.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk"
+    },
+    {
+      "id": "server_work_630",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v003.nk~",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk~",
+      "ext": ".nk~",
+      "isDir": false,
+      "size": 477204,
+      "modTime": "2026-04-22T16:34:59.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk~",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v003.nk~"
+    },
+    {
+      "id": "server_work_631",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v004.nk",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v004.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 485453,
+      "modTime": "2026-04-23T09:48:25.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v004.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v004.nk"
+    },
+    {
+      "id": "server_work_632",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v005.nk",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk",
+      "ext": ".nk",
+      "isDir": false,
+      "size": 488985,
+      "modTime": "2026-04-23T11:38:23.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk"
+    },
+    {
+      "id": "server_work_633",
+      "category": "work",
+      "name": "AQEE2_814-22AB_test_chroma_coches_v005.nk~",
+      "relPath": "episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk~",
+      "ext": ".nk~",
+      "isDir": false,
+      "size": 485524,
+      "modTime": "2026-04-23T10:09:32.000Z",
+      "serverPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk~",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios/_TEST_CHROMA_COCHES/AQEE2_814-22AB_test_chroma_coches_v005.nk~"
+    }
+  ]
+}

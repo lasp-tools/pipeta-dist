@@ -11,42 +11,74 @@ const tabs = {
 // --- DYNAMIC HEADER TOOLS ---
 const headerToolsTemplates = {
     'view-home': () => `<!-- No tools for home -->`,
-    'view-shot-navigator': () => `
-        <div class="toolbar-section-group" title="Filtros Rápidos">
-            <span class="toolbar-section-label">Filtros</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn ${typeof ShotNavigator !== 'undefined' && ShotNavigator.onlyMyShots ? 'active' : ''}" onclick="ShotNavigator.toggleOnlyMyShots()" title="Filtrar únicamente mis shots asignados">
-                    <span style="font-size:1rem;">👤</span>
-                </button>
-                <button class="tool-btn" onclick="ShotNavigator.loadWorkflow().then(() => ShotNavigator.render())" title="Recargar Workflow y Planos">
-                    <img src="icons/refresh.svg" class="btn-icon-svg">
-                </button>
+    'view-shot-navigator': () => {
+        const isRamon = typeof ShotNavigator !== 'undefined' && typeof ShotNavigator.isRamonMode === 'function' && ShotNavigator.isRamonMode();
+        const onlyMine = typeof ShotNavigator !== 'undefined' && ShotNavigator.onlyMyShots;
+
+        if (isRamon) {
+            return `
+                <div class="toolbar-section-group" title="Filtros Ramón">
+                    <span class="toolbar-section-label">Filtros</span>
+                    <div class="toolbar-section-content">
+                        <button class="tool-btn ${onlyMine ? 'active' : ''}" onclick="ShotNavigator.toggleOnlyMyShots()" title="Filtrar únicamente mis tareas asignadas (Ramón)">
+                            <img src="icons/ramon.png" style="width:16px; height:16px; object-fit:contain; filter: ${onlyMine ? 'drop-shadow(0 0 3px #00e5ff)' : 'none'}; vertical-align:middle;">
+                        </button>
+                        <button class="tool-btn" onclick="ShotNavigator.refreshWorkflow(true)" title="Sincronizar y recargar tareas de Ramón">
+                            <img src="icons/refresh.svg" class="btn-icon-svg">
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tool-space-small"></div>
+
+                <div class="toolbar-section-group" title="Acciones de Planos Seleccionados">
+                    <span class="toolbar-section-label">Workflow</span>
+                    <div class="toolbar-section-content">
+                        <button class="tool-btn" onclick="ShotNavigator.ensureMissingFoldersForSelected()" title="Crear carpetas faltantes en disco para los shots seleccionados">
+                            <span style="font-size:0.95rem;">📁➕</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="toolbar-section-group" title="Filtros Rápidos">
+                <span class="toolbar-section-label">Filtros</span>
+                <div class="toolbar-section-content">
+                    <button class="tool-btn ${onlyMine ? 'active' : ''}" onclick="ShotNavigator.toggleOnlyMyShots()" title="Filtrar únicamente mis shots asignados">
+                        <span style="font-size:1rem;">👤</span>
+                    </button>
+                    <button class="tool-btn" onclick="ShotNavigator.refreshWorkflow(true)" title="Recargar Workflow y Planos">
+                        <img src="icons/refresh.svg" class="btn-icon-svg">
+                    </button>
+                </div>
             </div>
-        </div>
 
-        <div class="tool-space-small"></div>
+            <div class="tool-space-small"></div>
 
-        <div class="toolbar-section-group" title="Acciones de Planos Seleccionados">
-            <span class="toolbar-section-label">Workflow</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn" onclick="ShotNavigator.ensureMissingFoldersForSelected()" title="Crear carpetas faltantes para los shots seleccionados">
-                    <span style="font-size:0.95rem;">📁➕</span>
-                </button>
+            <div class="toolbar-section-group" title="Acciones de Planos Seleccionados">
+                <span class="toolbar-section-label">Workflow</span>
+                <div class="toolbar-section-content">
+                    <button class="tool-btn" onclick="ShotNavigator.ensureMissingFoldersForSelected()" title="Crear carpetas faltantes para los shots seleccionados">
+                        <span style="font-size:0.95rem;">📁➕</span>
+                    </button>
+                </div>
             </div>
-        </div>
 
-        <div class="tool-space-small"></div>
+            <div class="tool-space-small"></div>
 
-        <div class="toolbar-section-group" title="Herramientas de Administración">
-            <span class="toolbar-section-label">Admin Tools</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn" onclick="ShotNavigator.exportMyTasksFile()" title="Exportar Archivo de Tareas Asignadas (.json)">
-                    <img src="icons/copy.svg" class="btn-icon-svg">
-                    <span style="font-size:0.75rem; font-weight:bold; margin-left:4px;">Exportar Tareas</span>
-                </button>
+            <div class="toolbar-section-group" title="Herramientas de Administración">
+                <span class="toolbar-section-label">Admin Tools</span>
+                <div class="toolbar-section-content">
+                    <button class="tool-btn" onclick="ShotNavigator.exportMyTasksFile()" title="Exportar Archivo de Tareas Asignadas (.json)">
+                        <img src="icons/copy.svg" class="btn-icon-svg">
+                        <span style="font-size:0.75rem; font-weight:bold; margin-left:4px;">Exportar Tareas</span>
+                    </button>
+                </div>
             </div>
-        </div>
-    `,
+        `;
+    },
     'view-asset-designer': () => `
         <div class="toolbar-section-group" title="Añadir Elementos al Árbol">
             <span class="toolbar-section-label">Add Nodes</span>
@@ -110,15 +142,15 @@ const headerToolsTemplates = {
                     
                     <div style="width:2px"></div>
                     
-                    <!-- Location Switcher: LOCAL | DRIVE | SERVER (si Z: no es el servidor SMB) -->
+                    <!-- Location Switcher: LOCAL | DRIVE | SERVER (solo habilitado si la máquina tiene acceso a red interna de estudio) -->
                     <div style="display:flex; background:#0e141f; border-radius:3px; padding:1px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
                         <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1;"
-                                onclick="switchViewLocation('local')" title="${(typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)'}">LOCAL</button>
+                                onclick="switchViewLocation('local')" title="${(typeof isExternalMachine === 'function' && isExternalMachine()) ? 'Disco Z Local' : ((typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)')}">LOCAL</button>
                         <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
                                 onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
-                        ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                        ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                         <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
                                 onclick="switchViewLocation('server')" title="Servidor Central del Estudio (Catálogo Central / Worker)">SERVER</button>
@@ -185,7 +217,7 @@ const headerToolsTemplates = {
                 <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
                         style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
                         onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Clic para activar/desactivar)">☁️ DRIVE</button>
-                ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
                         style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
                         onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">🗄️ SERVER</button>
@@ -504,6 +536,13 @@ function handleFilterContextMenu(e) {
 function updateHeaderTools(viewId) {
     const container = document.getElementById('headerContextTools');
     if (!container) return;
+
+    if (!viewId) {
+        const activeBtn = document.querySelector('.mode-btn.active');
+        if (activeBtn) {
+            viewId = tabs[activeBtn.getAttribute('title')];
+        }
+    }
 
     // Get template generator
     const generator = headerToolsTemplates[viewId] || headerToolsTemplates['default'];
@@ -844,6 +883,16 @@ window.handleHeaderUserSwitch = async (userVal) => {
             Ramon.applySessionToHeader();
         }
         await applyRolePermissionsToUI();
+        if (typeof updateHeaderTools === 'function') {
+            updateHeaderTools();
+        }
+        if (typeof ShotNavigator !== 'undefined' && ShotNavigator.initialized) {
+            await ShotNavigator.loadDependencies(true);
+            if (ShotNavigator.isRamonMode()) {
+                await ShotNavigator.loadWorkflow(true);
+            }
+            ShotNavigator.render();
+        }
     } catch(e) {
         console.error("Error switching user:", e);
         alert("Error al cambiar usuario: " + e.message);

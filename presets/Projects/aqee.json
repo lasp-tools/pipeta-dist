@@ -1,0 +1,23 @@
+{
+  "id": "proj_1789740831660",
+  "name": "aqee",
+  "client": "atresmedia",
+  "projectCode": "AQEE2",
+  "roots": {
+    "work": "Z:/atresmedia/aqee",
+    "media": "Z:/INTERNO/MEDIA/atresmedia/aqee",
+    "onlineWork": "G:/Unidades compartidas/aqee",
+    "onlineMedia": "G:/Unidades compartidas/aqee_media"
+  },
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  },
+  "isBase": false
+}

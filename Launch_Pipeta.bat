@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.10"
+set "APP_VERSION=v1.1.19"
 set "APP_PORT=3002"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
@@ -16,18 +16,29 @@ set "PIPETA_SUPERVISED=1"
 
 title %APP_NAME% %APP_VERSION% Manager
 
-:: Si Pipeta ya esta corriendo en segundo plano, abrir directamente el navegador y salir
+:: Si Pipeta ya esta corriendo en segundo plano, verificar que coincida la version exacta
 if not exist "%RESTART_FLAG%" (
     curl.exe -s -f -m 1 http://localhost:%APP_PORT%/api/version >nul 2>&1
     if !errorlevel! equ 0 (
-        echo ====================================================
-        echo   %APP_NAME% - %APP_VERSION%
-        echo ====================================================
-        echo [INFO] Pipeta ya se encuentra en ejecucion en segundo plano.
-        echo [INFO] Abriendo aplicacion en el navegador...
-        start "" "http://localhost:%APP_PORT%"
-        ping 127.0.0.1 -n 2 >nul
-        exit
+        for /f "tokens=*" %%v in ('curl.exe -s -m 1 http://localhost:%APP_PORT%/api/version 2^>nul') do (
+            echo "%%v" | findstr /c:"\"%APP_VERSION%\"" >nul 2>&1
+            if !errorlevel! equ 0 (
+                echo ====================================================
+                echo   %APP_NAME% - %APP_VERSION%
+                echo ====================================================
+                echo [INFO] Pipeta %APP_VERSION% ya se encuentra en ejecucion en segundo plano.
+                echo [INFO] Abriendo aplicacion en el navegador...
+                start "" "http://localhost:%APP_PORT%"
+                ping 127.0.0.1 -n 2 >nul
+                exit
+            ) else (
+                echo [INFO] Detectada version anterior en ejecucion. Cerrando para actualizar a %APP_VERSION%...
+                for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":%APP_PORT% *LISTENING"') do (
+                    taskkill /F /PID %%a >nul 2>&1
+                )
+                timeout /t 1 >nul
+            )
+        )
     )
 )
 
@@ -46,7 +57,7 @@ robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE /
 
 if exist "%~dp0presets" (
     if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
-    robocopy "%~dp0presets" "%LOCAL_DIR%\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+    robocopy "%~dp0presets" "%LOCAL_DIR%\presets" /E /XO /NFL /NDL /NJH /NJS /R:0 /W:0
 )
 
 echo [INFO] Sincronizacion completada.

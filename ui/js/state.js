@@ -5,21 +5,94 @@ window.explorerOnlyMyTasks = false;
 window.explorerSearchQuery = '';
 window.viewLocationMode = 'local'; // 'local', 'drive' or 'server'
 
-// Devuelve un Set con los nombres y códigos de planos/assets asignados al usuario en el proyecto actual
-window.getExplorerAssignedTaskNames = function() {
-    let currentProj = '';
-    if (typeof settings !== 'undefined' && settings.currentProject) {
-        currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
+// Helper universal para determinar si una tarea de Ramón corresponde al proyecto activo de Pipeta
+window.isRamonTaskInCurrentProject = function(task, specificProj = null) {
+    if (!task) return false;
+    const tProj = (task.project || '').toLowerCase().trim();
+    if (!tProj) return true; // Si la tarea no tiene proyecto especificado, permitirla
+
+    const candidates = [];
+    if (specificProj) {
+        if (typeof specificProj === 'string') {
+            candidates.push(specificProj);
+        } else if (typeof specificProj === 'object') {
+            candidates.push(specificProj.name, specificProj.projectCode, specificProj.code, specificProj.id);
+        }
+    } else if (typeof settings !== 'undefined' && settings.currentProject) {
+        const p = settings.currentProject;
+        candidates.push(p.name, p.projectCode, p.code, p.id);
+        if (p.roots?.work) {
+            const lastPart = p.roots.work.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+            if (lastPart) candidates.push(lastPart);
+        }
+        if (p.roots?.media) {
+            const lastPart = p.roots.media.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+            if (lastPart) candidates.push(lastPart);
+        }
+    } else {
+        return true;
     }
 
-    const tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
+    const tProjNorm = tProj.replace(/[^a-z0-9]/g, '');
+
+    for (const rawCandidate of candidates) {
+        if (!rawCandidate) continue;
+        const c = String(rawCandidate).toLowerCase().trim();
+        const cNorm = c.replace(/[^a-z0-9]/g, '');
+        if (!cNorm) continue;
+
+        // Coincidencia exacta directa o normalizada
+        if (tProj === c || tProjNorm === cNorm) return true;
+
+        // Si empieza con prefijo 'proj_', comparar sin prefijo
+        const cClean = cNorm.replace(/^proj/, '');
+        if (cClean && (tProjNorm === cClean || tProj === cClean)) return true;
+
+        // Contención o prefijos si tienen suficiente longitud (ej: 'surf' y 'surf_love', 'prpr' y 'pride_and_prejudice')
+        if (cClean.length >= 3 && tProjNorm.length >= 3) {
+            if (tProjNorm.startsWith(cClean) || cClean.startsWith(tProjNorm)) return true;
+            if (tProjNorm.includes(cClean) || cClean.includes(tProjNorm)) return true;
+        }
+    }
+
+    return false;
+};
+
+// Devuelve un Set con los nombres y códigos de planos/assets asignados al usuario en el proyecto actual
+window.getExplorerAssignedTaskNames = function() {
+    let tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
+
+    // Si aún no se han cargado en Ramon.tasks en memoria pero hay sesión activa, leer de sessionStorage
+    if (tasks.length === 0 && typeof Ramon !== 'undefined' && Ramon.session?.user) {
+        const uLogin = Ramon.session.user.login || Ramon.session.user.username;
+        if (uLogin) {
+            try {
+                const cacheRaw = sessionStorage.getItem(`pipeta_ramon_tasks_${uLogin.toLowerCase()}`);
+                if (cacheRaw) {
+                    const parsed = JSON.parse(cacheRaw);
+                    if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+                        Ramon.tasks = parsed.tasks;
+                        tasks = Ramon.tasks;
+                    }
+                }
+            } catch(e) {}
+        }
+    }
+
     const assigned = new Set();
 
     for (const t of tasks) {
-        if (!currentProj || !t.project || t.project.toLowerCase() === currentProj.toLowerCase()) {
+        const matchesProject = typeof window.isRamonTaskInCurrentProject === 'function'
+            ? window.isRamonTaskInCurrentProject(t)
+            : true;
+
+        if (matchesProject) {
             if (t.name) assigned.add(t.name.toLowerCase().trim());
             if (t.code) assigned.add(t.code.toLowerCase().trim());
             if (t.search_code) assigned.add(t.search_code.toLowerCase().trim());
+            if (t.item_code) assigned.add(t.item_code.toLowerCase().trim());
+            if (t.shot_code) assigned.add(t.shot_code.toLowerCase().trim());
+            if (t.asset_code) assigned.add(t.asset_code.toLowerCase().trim());
         }
     }
     return assigned;
@@ -47,88 +120,131 @@ window.filterExplorerItems = function(items, containerId, dirPath, allDiskItems)
 
     // 2. My Tasks Filter (window.explorerOnlyMyTasks)
     if (window.explorerOnlyMyTasks) {
-        let currentProj = '';
-        if (typeof settings !== 'undefined' && settings.currentProject) {
-            currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
-        }
-
-        const userTasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks))
-            ? Ramon.tasks.filter(t => !currentProj || !t.project || t.project.toLowerCase() === currentProj.toLowerCase())
-            : [];
-
         const assignedTasks = typeof window.getExplorerAssignedTaskNames === 'function' 
             ? Array.from(window.getExplorerAssignedTaskNames()) 
             : [];
         
-        if (assignedTasks.length > 0) {
-            const taskTokens = new Set();
-            for (const t of assignedTasks) {
-                const parts = t.toLowerCase().replace(/[^a-z0-9]/g, '_').split('_');
-                for (const p of parts) {
-                    if (p.length >= 2) taskTokens.add(p);
-                }
-            }
-
-            // Determinar dinámicamente si el usuario tiene planos o assets asignados
-            let hasShotTasks = false;
-            let hasAssetTasks = false;
-
-            if (userTasks.length > 0) {
-                for (const t of userTasks) {
-                    const it = (t.item_type || '').toLowerCase();
-                    const st = (t.search_type || '').toLowerCase();
-                    const nm = (t.name || '').toLowerCase();
-                    if (it.includes('plano') || it.includes('shot') || st.includes('plano') || /_b\d+_/i.test(nm)) {
-                        hasShotTasks = true;
-                    } else if (it.includes('asset') || st.includes('asset')) {
-                        hasAssetTasks = true;
-                    } else {
-                        if (/_b\d+_/i.test(nm) || /b\d+/i.test(nm)) {
-                            hasShotTasks = true;
-                        } else {
-                            hasAssetTasks = true;
-                        }
-                    }
-                }
-            } else {
-                hasShotTasks = assignedTasks.some(t => /_b\d+_/i.test(t) || /b\d+/i.test(t));
-                hasAssetTasks = assignedTasks.some(t => !/_b\d+_/i.test(t) && !/b\d+/i.test(t));
-            }
-
-            const SHOT_CONTAINERS = new Set(['episodios', 'secuencias', 'shots', 'planos']);
-            const ASSET_CONTAINERS = new Set(['assets', '3d', '2d', 'props', 'characters', 'char', 'prop', 'env', 'environments', 'assets2d', 'assets3d']);
-
-            result = result.filter(item => {
-                const nameLower = (item.name || '').toLowerCase();
-                const pathLower = (item.path || '').replace(/\\/g, '/').toLowerCase();
-
-                // A. Adentro de la carpeta de la tarea asignada: mostrar todo
-                for (const t of assignedTasks) {
-                    if (pathLower.includes('/' + t + '/') || pathLower.endsWith('/' + t)) {
-                        return true;
-                    }
-                }
-
-                // B. Coincidencia directa o prefijo
-                for (const t of assignedTasks) {
-                    if (nameLower === t || nameLower.startsWith(t + '_') || nameLower.startsWith(t + '.')) {
-                        return true;
-                    }
-                    if (nameLower.includes(t)) {
-                        return true;
-                    }
-                }
-
-                // C. Carpetas estructurales universales (solo si el usuario tiene tareas asignadas en esa rama)
-                if (hasShotTasks && SHOT_CONTAINERS.has(nameLower)) return true;
-                if (hasAssetTasks && ASSET_CONTAINERS.has(nameLower)) return true;
-
-                // D. Tokens de la tarea (ej: 'b01', '003')
-                if (taskTokens.has(nameLower)) return true;
-
-                return false;
-            });
+        // Si el filtro está activo pero el usuario NO tiene tareas asignadas en este proyecto,
+        // no mostrar nada (evita la falla de mostrar todo el proyecto sin filtrar)
+        if (assignedTasks.length === 0) {
+            return [];
         }
+
+        const normDirPath = (dirPath || '').replace(/\\/g, '/').toLowerCase();
+
+        // Si ya estamos adentro de la carpeta de una tarea asignada, permitir todo su contenido (renders, scripts, compo, etc.)
+        const isInsideAssignedFolder = assignedTasks.some(t => normDirPath.includes('/' + t + '/') || normDirPath.endsWith('/' + t));
+        if (isInsideAssignedFolder) {
+            return result;
+        }
+
+        const isShotsDir = normDirPath.endsWith('/shots') || normDirPath.endsWith('/planos');
+
+        // Extraer tokens que identifican exclusivamente las carpetas intermedias (episodios, secuencias, categorías)
+        // Ignoramos el identificador del proyecto y el número final del shot
+        const projectCandidates = (typeof settings !== 'undefined' && settings.currentProject)
+            ? [settings.currentProject.name, settings.currentProject.projectCode, settings.currentProject.code].filter(Boolean).map(s => s.toLowerCase().trim())
+            : [];
+
+        const ancestorTokens = new Set();
+        for (const t of assignedTasks) {
+            const parts = t.toLowerCase().replace(/[^a-z0-9]/g, '_').split('_').filter(Boolean);
+            for (let idx = 0; idx < parts.length; idx++) {
+                const p = parts[idx];
+                if (p.length < 2) continue;
+                // Excluir código del proyecto para evitar matchear carpetas o archivos que solo compartan el prefijo del proyecto
+                if (projectCandidates.some(c => c === p || (c.length >= 3 && (p.startsWith(c) || c.startsWith(p))))) {
+                    continue;
+                }
+                // Excluir el número final del plano (ej: '0020', '010') para no matchear carpetas de otros planos
+                if (idx === parts.length - 1 && /^\d+$/.test(p)) {
+                    continue;
+                }
+                ancestorTokens.add(p);
+            }
+        }
+
+        const userTasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks))
+            ? Ramon.tasks.filter(t => typeof window.isRamonTaskInCurrentProject === 'function' ? window.isRamonTaskInCurrentProject(t) : true)
+            : [];
+
+        // Determinar dinámicamente si el usuario tiene planos o assets asignados
+        let hasShotTasks = false;
+        let hasAssetTasks = false;
+
+        if (userTasks.length > 0) {
+            for (const t of userTasks) {
+                const it = (t.item_type || '').toLowerCase();
+                const st = (t.search_type || '').toLowerCase();
+                const nm = (t.name || '').toLowerCase();
+                if (it.includes('plano') || it.includes('shot') || st.includes('plano') || /_b\d+_/i.test(nm)) {
+                    hasShotTasks = true;
+                } else if (it.includes('asset') || st.includes('asset')) {
+                    hasAssetTasks = true;
+                } else {
+                    if (/_b\d+_/i.test(nm) || /b\d+/i.test(nm)) {
+                        hasShotTasks = true;
+                    } else {
+                        hasAssetTasks = true;
+                    }
+                }
+            }
+        } else {
+            hasShotTasks = assignedTasks.some(t => /_b\d+_/i.test(t) || /b\d+/i.test(t));
+            hasAssetTasks = assignedTasks.some(t => !/_b\d+_/i.test(t) && !/b\d+/i.test(t));
+        }
+
+        const SHOT_CONTAINERS = new Set(['episodios', 'secuencias', 'shots', 'planos']);
+        const ASSET_CONTAINERS = new Set(['assets', '3d', '2d', 'props', 'characters', 'char', 'prop', 'env', 'environments', 'assets2d', 'assets3d']);
+
+        result = result.filter(item => {
+            const nameLower = (item.name || '').toLowerCase();
+            const pathLower = (item.path || '').replace(/\\/g, '/').toLowerCase();
+
+            // A. Adentro de la carpeta de la tarea asignada: mostrar todo
+            for (const t of assignedTasks) {
+                if (pathLower.includes('/' + t + '/') || pathLower.endsWith('/' + t)) {
+                    return true;
+                }
+            }
+
+            // B. Coincidencia directa o prefijo del ítem asignado (el plano o asset mismo)
+            for (const t of assignedTasks) {
+                if (nameLower === t || nameLower.startsWith(t + '_') || nameLower.startsWith(t + '.')) {
+                    return true;
+                }
+                if (nameLower.includes(t)) {
+                    return true;
+                }
+            }
+
+            // Si estamos dentro de la carpeta 'shots' o 'planos', los hijos son planos individuales.
+            // Si no coincidió directamente con assignedTasks en la regla B, NO debe mostrarse (evita planos hermanos no asignados)
+            if (isShotsDir) {
+                return false;
+            }
+
+            // Si el ítem tiene formato de plano completo (ej: SURF_B01_003_0010), tampoco debe matchear por tokens de ancestro
+            const parts = nameLower.split('_').filter(Boolean);
+            const isFullShotFormat = parts.length >= 3 && /^\d{3,5}$/.test(parts[parts.length - 1]);
+            if (isFullShotFormat) {
+                return false;
+            }
+
+            // C. Carpetas estructurales universales (solo si el usuario tiene tareas asignadas en esa rama)
+            if (hasShotTasks && SHOT_CONTAINERS.has(nameLower)) return true;
+            if (hasAssetTasks && ASSET_CONTAINERS.has(nameLower)) return true;
+
+            // D. Tokens de carpetas intermedias (ej: carpeta 'b01', carpeta '003', o 'ep_b01', 'seq_003')
+            if (ancestorTokens.has(nameLower)) return true;
+            for (const tok of ancestorTokens) {
+                if (nameLower === `ep_${tok}` || nameLower === `seq_${tok}` || nameLower === `sq_${tok}` || nameLower === `secuencia_${tok}` || nameLower === `episodio_${tok}`) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 
     // 3. Search Query Filter (window.explorerSearchQuery)
@@ -153,45 +269,62 @@ window.togglePipetaFilter = function() {
 window.toggleExplorerOnlyMyTasks = async function() {
     window.explorerOnlyMyTasks = !window.explorerOnlyMyTasks;
     if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
-    
-    // Refresco INSTANTÁNEO de la vista (0 ms de espera)
+
+    // Si tenemos sesión de Ramón y no hay tareas en memoria, intentar cargar desde caché antes de refrescar
+    if (window.explorerOnlyMyTasks && typeof Ramon !== 'undefined') {
+        if ((!Ramon.tasks || Ramon.tasks.length === 0) && Ramon.session?.user) {
+            const uLogin = Ramon.session.user.login || Ramon.session.user.username;
+            if (uLogin) {
+                try {
+                    const cacheRaw = sessionStorage.getItem(`pipeta_ramon_tasks_${uLogin.toLowerCase()}`);
+                    if (cacheRaw) {
+                        const parsed = JSON.parse(cacheRaw);
+                        if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+                            Ramon.tasks = parsed.tasks;
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+    }
+
+    // Refresco INSTANTÁNEO de la vista
     refreshCurrentView();
 
     if (window.explorerOnlyMyTasks) {
-        let currentProj = '';
-        if (typeof settings !== 'undefined' && settings.currentProject) {
-            currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
-        }
-
         const assigned = typeof window.getExplorerAssignedTaskNames === 'function' 
             ? window.getExplorerAssignedTaskNames() 
             : new Set();
 
+        const projName = settings?.currentProject?.name || 'este proyecto';
+
         if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
             if (assigned.size > 0) {
-                settings.showToast(`Filtro Mis Tareas: ${assigned.size} ítems asignados`, 'success', 2);
+                settings.showToast(`Filtro Ramón: ${assigned.size} ítem${assigned.size === 1 ? '' : 's'} asignado${assigned.size === 1 ? '' : 's'} en ${projName}`, 'success', 2.5);
             } else {
-                settings.showToast('Mis Tareas activado (sincronizando con Ramón...)', 'info', 2);
+                settings.showToast(`Filtro Ramón activo: No hay tareas asignadas en ${projName}`, 'warning', 2.5);
             }
         }
 
-        // Si tenemos sesión de Ramón, sincronizar en background sin congelar la interfaz
+        // Si tenemos sesión de Ramón, sincronizar en background sin congelar la interfaz (usando 'ALL' para no truncar la consulta con un projectCode incompatible)
         if (typeof Ramon !== 'undefined' && Ramon.session?.user && typeof Ramon.fetchTasks === 'function') {
-            Ramon.fetchTasks(currentProj || null, false).then((updatedTasks) => {
+            Ramon.fetchTasks('ALL', false).then((updatedTasks) => {
                 if (window.explorerOnlyMyTasks) {
                     const newAssigned = typeof window.getExplorerAssignedTaskNames === 'function'
                         ? window.getExplorerAssignedTaskNames()
                         : new Set();
-                    if (newAssigned.size > 0 && typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                        settings.showToast(`Filtro Mis Tareas: ${newAssigned.size} ítems asignados`, 'success', 2);
+                    if (newAssigned.size !== assigned.size) {
+                        if (newAssigned.size > 0 && typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                            settings.showToast(`Filtro Ramón: ${newAssigned.size} ítem${newAssigned.size === 1 ? '' : 's'} asignado${newAssigned.size === 1 ? '' : 's'} en ${projName}`, 'success', 2.5);
+                        }
+                        refreshCurrentView();
                     }
-                    refreshCurrentView();
                 }
             }).catch(() => {});
         }
     } else {
         if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-            settings.showToast('Filtro Mis Tareas desactivado', 'info', 1.5);
+            settings.showToast('Filtro Ramón desactivado (mostrando todo)', 'info', 1.5);
         }
     }
 };
@@ -262,10 +395,14 @@ function switchBrowserMode(mode) {
 }
 
 async function refreshCurrentView(forceCatalog = false) {
-    // Invalida caché en memoria del backend de directorios de red
-    try {
-        await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
-    } catch(e) {}
+    window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
+
+    // Invalida caché en memoria del backend de directorios de red SOLO si se fuerza explícitamente
+    if (forceCatalog) {
+        try {
+            await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
+        } catch(e) {}
+    }
 
     // Visual feedback
     const btn = document.querySelector('.tool-btn[title*="Refrescar"]') || document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
@@ -275,6 +412,7 @@ async function refreshCurrentView(forceCatalog = false) {
         setTimeout(() => btn.style.transform = "none", 500);
     }
 
+    const compMode = window.syncComparisonMode || 'off';
     if (forceCatalog && typeof loadActiveProjectSyncCatalog === 'function') {
         try {
             await loadActiveProjectSyncCatalog(true);
@@ -288,14 +426,6 @@ async function refreshCurrentView(forceCatalog = false) {
     }
 }
 
-window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || 'local';
-if (typeof isZRealServer === 'function' && isZRealServer() && window.viewLocationMode === 'server') {
-    window.viewLocationMode = 'local';
-}
-window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'drive';
-if (typeof isZRealServer === 'function' && isZRealServer() && window.syncComparisonMode === 'server') {
-    window.syncComparisonMode = 'drive';
-}
 window.zEnvOverride = localStorage.getItem('pipeta_z_env_override') || 'auto'; // 'auto' | 'force_real' | 'force_fake'
 
 // Cargar entorno previamente guardado de forma instantánea
@@ -306,6 +436,48 @@ try {
     window.pipetaSystemEnv = null;
 }
 
+function isZRealServer() {
+    const override = window.zEnvOverride || 'auto';
+    if (override === 'force_real') return true;
+    if (override === 'force_fake') return false;
+    // Si aún no se completó la detección, en el estudio por defecto Z: es el Servidor Real
+    if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return true;
+    return !!window.pipetaSystemEnv.zInfo.isRealServer;
+}
+
+function isExternalMachine() {
+    if (window.pipetaSystemEnv && typeof window.pipetaSystemEnv.isExternalMachine === 'boolean') {
+        return window.pipetaSystemEnv.isExternalMachine;
+    }
+    if (typeof Ramon !== 'undefined' && Ramon.session?.server) {
+        const s = Ramon.session.server;
+        if (s.includes('8075') || s.includes('https://') || s.includes('ramon.lasp.co')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function canUseServerMode() {
+    // En máquinas externas (casa de artistas sin VPN / WAN), el Servidor Central SMB y catálogos de red NO existen
+    if (isExternalMachine()) return false;
+    // En el estudio: solo se muestra el botón SERVER si Z: NO es el servidor real (ej: puesto Dev VM con S: o catálogos)
+    return (typeof isZRealServer === 'function' && !isZRealServer());
+}
+
+window.isZRealServer = isZRealServer;
+window.isExternalMachine = isExternalMachine;
+window.canUseServerMode = canUseServerMode;
+
+window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || 'local';
+if (!canUseServerMode() && window.viewLocationMode === 'server') {
+    window.viewLocationMode = 'local';
+}
+window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'drive';
+if (!canUseServerMode() && window.syncComparisonMode === 'server') {
+    window.syncComparisonMode = 'drive';
+}
+
 async function detectSystemEnvironment(force = false) {
     try {
         const url = '/api/sync/detect-env' + (force ? '?force=true' : '');
@@ -313,7 +485,20 @@ async function detectSystemEnvironment(force = false) {
         if (res && res.success) {
             window.pipetaSystemEnv = res;
             try { localStorage.setItem('pipeta_system_env', JSON.stringify(res)); } catch(e){}
-            console.log('[ENV DETECT] Estado:', res.hasInternet ? 'Online' : 'Offline', 'Unidades:', res.zInfo, res.sInfo);
+            console.log('[ENV DETECT] Estado:', res.hasInternet ? 'Online' : 'Offline', 'Externa:', res.isExternalMachine, 'Unidades:', res.zInfo, res.sInfo);
+            
+            // Si la máquina es externa o Z es servidor real, apagar modos de servidor
+            if (!canUseServerMode()) {
+                if (window.viewLocationMode === 'server') {
+                    window.viewLocationMode = 'local';
+                    try { localStorage.setItem('pipeta_view_location_mode', 'local'); } catch(e){}
+                }
+                if (window.syncComparisonMode === 'server') {
+                    window.syncComparisonMode = 'drive';
+                    try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}
+                }
+            }
+
             if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
             return res;
         }
@@ -326,21 +511,13 @@ async function detectSystemEnvironment(force = false) {
 // Ejecutar detección en segundo plano (usará caché del equipo si ya se detectó)
 detectSystemEnvironment();
 
-function isZRealServer() {
-    const override = window.zEnvOverride || 'auto';
-    if (override === 'force_real') return true;
-    if (override === 'force_fake') return false;
-    // Si aún no se completó la detección, en el estudio por defecto Z: es el Servidor Real
-    if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return true;
-    return !!window.pipetaSystemEnv.zInfo.isRealServer;
-}
-
 function getZEnvStatusLabel() {
     const override = window.zEnvOverride || 'auto';
     if (override === 'force_real') return 'Forzado: Z Real (Servidor)';
     if (override === 'force_fake') return 'Forzado: Z Local (Falso)';
     if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return 'Detectando...';
     const z = window.pipetaSystemEnv.zInfo;
+    if (isExternalMachine()) return `Z: Disco Local (${z.type || 'Externo'})`;
     if (z.isRealServer) return `Z: Servidor de Red (${z.target || 'LAN'})`;
     if (z.type === 'subst') return `Z: Local Virtual (${z.target || 'vsubst'})`;
     return `Z: Disco Local (${z.type})`;
@@ -353,6 +530,9 @@ function toggleSyncComparisonMode(targetMode) {
 window.toggleSyncComparisonMode = toggleSyncComparisonMode;
 
 async function setSyncComparisonMode(mode) {
+    if (mode === 'server' && (typeof canUseServerMode === 'function' && !canUseServerMode())) {
+        mode = 'drive';
+    }
     window.syncComparisonMode = mode;
     localStorage.setItem('pipeta_sync_comparison_mode', mode);
 
@@ -366,10 +546,6 @@ async function setSyncComparisonMode(mode) {
         PipetaConsole.log('sync', `Modo de comparación: ${modeLabels[mode] || mode.toUpperCase()}`, 'info');
     }
 
-    if (mode === 'drive' && typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog();
-    }
-
     if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
     refreshCurrentView();
 }
@@ -381,7 +557,8 @@ async function refreshSyncCatalogManual() {
 
     const viewMode = window.viewLocationMode || 'local';
     const compMode = window.syncComparisonMode || 'drive';
-    const isServerTarget = (viewMode === 'server') || (compMode === 'server');
+    const canServer = (typeof canUseServerMode === 'function') ? canUseServerMode() : false;
+    const isServerTarget = canServer && ((viewMode === 'server') || (compMode === 'server'));
     const targetType = isServerTarget ? 'server' : 'drive';
 
     if (typeof PipetaConsole !== 'undefined') {
@@ -431,11 +608,11 @@ async function refreshSyncCatalogManual() {
     if (typeof loadActiveProjectSyncCatalog === 'function') {
         await loadActiveProjectSyncCatalog(true);
     }
-    refreshCurrentView();
+    refreshCurrentView(true);
 }
 
 async function switchViewLocation(mode) {
-    if (typeof isZRealServer === 'function' && isZRealServer() && mode === 'server') {
+    if (mode === 'server' && (typeof canUseServerMode === 'function' && !canUseServerMode())) {
         mode = 'local';
     }
     window.viewLocationMode = mode;
@@ -451,11 +628,7 @@ async function switchViewLocation(mode) {
         PipetaConsole.log('system', `Ubicación de visualización cambiada a: ${modeLabels[mode] || mode}`, 'info');
     }
 
-    // Cargar catálogo si vamos a explorar DRIVE o SERVER y no está en memoria
-    if ((mode === 'drive' || mode === 'server') && typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog();
-    }
-
+    // Actualización inmediata de toolbar con 0 ms de latencia
     if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
     refreshCurrentView();
 }
@@ -466,15 +639,19 @@ function getCurrentRoots() {
 
     if (proj && proj.roots) {
         if (mode === 'drive' || mode === 'online') {
+            const rawWork = proj.roots.onlineWork || `G:/Unidades compartidas/${proj.name || proj.projectCode}`;
+            const rawMedia = proj.roots.onlineMedia || `G:/Unidades compartidas/${proj.name || proj.projectCode}_media`;
             return {
-                work: proj.roots.onlineWork || `G:/Unidades compartidas/${proj.name || proj.projectCode}`,
-                media: proj.roots.onlineMedia || `G:/Unidades compartidas/${proj.name || proj.projectCode}_media`
+                work: rawWork.replace(/\\/g, '/'),
+                media: rawMedia.replace(/\\/g, '/')
             };
         }
         // En modos 'local' y 'server', las rutas conceptuales del proyecto son siempre Z:/
+        const rawWork = proj.roots.work || 'Z:/';
+        const rawMedia = proj.roots.media || 'Z:/';
         return {
-            work: proj.roots.work || 'Z:/',
-            media: proj.roots.media || 'Z:/'
+            work: rawWork.replace(/\\/g, '/'),
+            media: rawMedia.replace(/\\/g, '/')
         };
     }
     // Fallback if settings not loaded yet

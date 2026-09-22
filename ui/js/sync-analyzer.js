@@ -817,7 +817,7 @@ class SyncAnalyzer {
         const projLower = (currentProj || '').toLowerCase().trim();
 
         const tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
-        const relevantTasks = tasks.filter(t => !projLower || !t.project || t.project.toLowerCase() === projLower);
+        const relevantTasks = tasks.filter(t => typeof window.isRamonTaskInCurrentProject === 'function' ? window.isRamonTaskInCurrentProject(t) : (!projLower || !t.project || t.project.toLowerCase() === projLower));
 
         const fullTaskNames = new Set();
         const shotCodes = new Set();
@@ -1645,7 +1645,9 @@ class SyncAnalyzer {
 
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
                     <button onclick="syncAnalyzer.hideOverlay()" style="padding:8px 18px; background:#2a2a2a; color:#ccc; border:1px solid #444; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">Cancelar</button>
+                    ${(window.syncQueueUI && window.syncQueueUI.workerStatus && window.syncQueueUI.workerStatus.alive) ? `
                     <button onclick="syncAnalyzer.enqueueWorkerSync('${direction}')" style="padding:8px 16px; background:#ff9800; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;" title="Enviar lote al Worker de la VM 105 para procesar en segundo plano">⚡ Encolar en Worker</button>
+                    ` : ''}
                     <button onclick="syncAnalyzer.proceedSync('${direction}')" style="padding:8px 24px; background:${accentColor}; color:#000; border:none; border-radius:4px; font-weight:bold; font-size:0.85rem; cursor:pointer;">CONFIRMAR DIRECTO</button>
                 </div>
             </div>
@@ -1664,7 +1666,7 @@ class SyncAnalyzer {
         if (relevant.length === 0) return;
 
         const proj = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'proyecto';
-        const user = (typeof settings !== 'undefined' && settings?.usersData?.activeUser) ? settings.usersData.activeUser : 'artista';
+        const user = (typeof getPipetaCurrentUser === 'function') ? getPipetaCurrentUser() : 'artista';
 
         const orderItems = relevant.map(d => {
             const fileName = d.name || d.relativePath.split('/').pop();

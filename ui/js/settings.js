@@ -313,6 +313,9 @@ const settings = {
     // --- PERSISTENCE ---
     loadProjects: async () => {
         settings.projects = [];
+        const loadedProjects = [];
+        const filesToDelete = [];
+
         try {
             if (window.API && API.fs && API.fs.mkdir) {
                 await API.fs.mkdir(settings.projectsPath);
@@ -330,23 +333,121 @@ const settings = {
                                 proj.id = 'proj_base';
                                 proj.name = 'Proyecto Base';
                             }
-                            if (!proj.id) proj.id = 'proj_' + Math.random().toString(36).substr(2, 9);
-                            settings.projects.push(proj);
+                            proj._sourceFile = f;
+
+                            // Auto-sanitización de rutas corruptas (ej: si estupidamente_tuyo tiene roots.work apuntando a surf_love)
+                            const pNameClean = (proj.name || '').toLowerCase().trim();
+                            if (proj.roots && proj.roots.work && !proj.isBase && proj.id !== 'proj_base') {
+                                const normW = proj.roots.work.replace(/\\/g, '/').toLowerCase();
+                                if (pNameClean && pNameClean !== 'surf_love' && normW.includes('surf_love')) {
+                                    console.warn(`[PROJECT SANITIZE] Corrigiendo ruta desfasada en ${proj.name}: ${proj.roots.work}`);
+                                    const client = proj.client || 'cliente';
+                                    proj.roots.work = `Z:/${client}/${proj.name}`;
+                                    proj.roots.media = `Z:/INTERNO/MEDIA/${client}/${proj.name}`;
+                                    if (proj.roots.onlineWork) proj.roots.onlineWork = `G:/Unidades compartidas/${proj.name}`;
+                                    if (proj.roots.onlineMedia) proj.roots.onlineMedia = `G:/Unidades compartidas/${proj.name}_media`;
+                                    if (window.API && API.fs && API.fs.writeFile) {
+                                        API.fs.writeFile(settings.projectsPath + "\\" + f, JSON.stringify(proj, null, 2)).catch(() => {});
+                                    }
+                                }
+                            }
+
+                            loadedProjects.push(proj);
                         } catch (e) { console.error("Error parsing proj", f, e); }
                     }
                 }
             }
+
+            // Deduplicación inteligente:
+            // "aquee" manda sobre "aqee" (typo)
+            // "pride_and_prejudice" manda sobre "prpr" (nick)
+            const dedupMap = new Map();
+
+            for (const proj of loadedProjects) {
+                if (proj.isBase || proj.id === 'proj_base') {
+                    dedupMap.set('proj_base', proj);
+                    continue;
+                }
+
+                const rawName = (proj.name || '').toLowerCase().trim();
+                let matchKey = null;
+
+                for (const [key, existing] of dedupMap.entries()) {
+                    if (key === 'proj_base') continue;
+                    const exName = (existing.name || '').toLowerCase().trim();
+
+                    if (existing.id === proj.id) {
+                        matchKey = key;
+                        break;
+                    }
+                    if ((rawName === 'aqee' || rawName === 'aquee') && (exName === 'aqee' || exName === 'aquee')) {
+                        matchKey = key;
+                        break;
+                    }
+                    if ((rawName === 'prpr' || rawName === 'pride_and_prejudice') && (exName === 'prpr' || exName === 'pride_and_prejudice')) {
+                        matchKey = key;
+                        break;
+                    }
+                }
+
+                if (!matchKey) {
+                    dedupMap.set(proj.id, proj);
+                } else {
+                    const existing = dedupMap.get(matchKey);
+                    console.warn(`[PROJECTS] Duplicado detectado entre '${existing.name}' (${existing._sourceFile}) y '${proj.name}' (${proj._sourceFile})`);
+
+                    let winner = existing;
+                    let loser = proj;
+
+                    const exName = (existing.name || '').toLowerCase();
+                    const pName = (proj.name || '').toLowerCase();
+
+                    if (exName === 'aquee' && pName === 'aqee') {
+                        winner = proj;
+                        loser = existing;
+                    } else if (exName === 'aqee' && pName === 'aquee') {
+                        winner = existing;
+                        loser = proj;
+                    } else if (exName === 'prpr' && pName === 'pride_and_prejudice') {
+                        winner = proj;
+                        loser = existing;
+                    } else if (pName === 'aqee' && exName !== 'aqee') {
+                        winner = proj;
+                        loser = existing;
+                    } else if (pName === 'pride_and_prejudice' && exName !== 'pride_and_prejudice') {
+                        winner = proj;
+                        loser = existing;
+                    }
+
+                    dedupMap.set(matchKey, winner);
+                    if (loser._sourceFile && loser._sourceFile !== winner._sourceFile) {
+                        filesToDelete.push(loser._sourceFile);
+                    }
+                }
+            }
+
+            settings.projects = Array.from(dedupMap.values());
+
+            // Eliminar archivos obsoletos/duplicados en segundo plano
+            for (const staleFile of filesToDelete) {
+                try {
+                    console.log(`[PROJECTS] Limpiando archivo duplicado en disco: ${staleFile}`);
+                    await API.fs.deleteFile(settings.projectsPath + "\\" + staleFile);
+                } catch (err) {
+                    console.warn(`[PROJECTS] No se pudo borrar ${staleFile}:`, err);
+                }
+            }
+
         } catch (e) {
             console.error("loadProjects error:", e);
         }
 
-        // Asegurar que el Proyecto Base siempre exista
+        // Asegurar que el Proyecto Base siempre exista y esté primero
         let baseProj = settings.projects.find(p => p.id === 'proj_base' || p.isBase);
         if (!baseProj) {
             baseProj = JSON.parse(JSON.stringify(CANONICAL_BASE_PRESETS));
             settings.projects.unshift(baseProj);
         } else {
-            // Reubicar al inicio
             settings.projects = settings.projects.filter(p => p.id !== 'proj_base' && !p.isBase);
             settings.projects.unshift(baseProj);
         }
@@ -358,6 +459,7 @@ const settings = {
                 name: "surf_love",
                 client: "atresmedia",
                 projectCode: "surf_love",
+                _sourceFile: "surf_love.json",
                 roots: {
                     work: "Z:/atresmedia/surf_love",
                     media: "Z:/INTERNO/MEDIA/atresmedia/surf_love",
@@ -386,6 +488,14 @@ const settings = {
             const result = await API.fs.writeFile(filePath, content);
             if (result && result.success) {
                 console.log("Proyecto guardado:", fileName);
+                // Si el nombre cambió y existía un archivo previo, borrar el viejo
+                if (settings.currentProject._sourceFile && settings.currentProject._sourceFile !== fileName) {
+                    try {
+                        await API.fs.deleteFile(settings.projectsPath + "\\" + settings.currentProject._sourceFile);
+                        console.log("Archivo previo eliminado tras renombrar:", settings.currentProject._sourceFile);
+                    } catch (e) {}
+                }
+                settings.currentProject._sourceFile = fileName;
             } else {
                 alert("Error al guardar proyecto: " + (result?.error || "Unknown"));
             }
@@ -452,7 +562,7 @@ const settings = {
             confirmColor: '#f44336',
             confirmTextColor: '#fff',
             onConfirm: async () => {
-                const fileName = settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json";
+                const fileName = settings.currentProject._sourceFile || (settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
                 const filePath = settings.projectsPath + "\\" + fileName;
 
                 try {
@@ -476,6 +586,7 @@ const settings = {
         copy.id = 'proj_' + Date.now();
         copy.isBase = false;
         copy.name += " (Copia)";
+        delete copy._sourceFile;
         settings.projects.push(copy);
         settings.currentProject = copy;
         settings.render();
@@ -512,7 +623,7 @@ const settings = {
         });
     },
 
-    selectHeaderProject: (id) => {
+    selectHeaderProject: async (id) => {
         const proj = settings.projects.find(p => p.id === id);
         if (proj) {
             settings.currentProject = proj;
@@ -524,7 +635,24 @@ const settings = {
                 }
             }
             settings.updateHeaderProjectSelector();
-            if (typeof initBrowser !== 'undefined') initBrowser();
+
+            // Limpieza exhaustiva de cachés de catálogo y árbol para cambio limpio de proyecto
+            if (typeof expandedPaths !== 'undefined' && expandedPaths.clear) expandedPaths.clear();
+            window.pipetaSyncCatalog = null;
+            window.pipetaServerCatalog = null;
+            window.pipetaSyncCatalogLookup = null;
+            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+
+            if (typeof loadActiveProjectSyncCatalog === 'function') {
+                await loadActiveProjectSyncCatalog(true);
+            }
+
+            if (typeof initBrowser !== 'undefined') {
+                await initBrowser();
+            } else if (typeof refreshCurrentView === 'function') {
+                await refreshCurrentView(true);
+            }
+
             if (typeof refreshIaHierarchy === 'function') refreshIaHierarchy();
             if (typeof updateIaResolution === 'function') updateIaResolution();
 
@@ -955,6 +1083,9 @@ const settings = {
             console.error("Error loading sync environment:", e);
         } finally {
             settings.isLoadingSyncEnv = false;
+            if (settings.currentCategory === 'sincronizacion') {
+                settings.render();
+            }
         }
     },
 
@@ -976,6 +1107,37 @@ const settings = {
             settings.render();
         }
     },
+
+    setLocationMode: async (mode) => {
+        settings.isLoadingSyncEnv = true;
+        settings.render();
+        try {
+            const res = await fetch('/api/sync/set-location-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode })
+            });
+            const data = await res.json();
+            if (data.success && data.env) {
+                settings.syncEnvData = data.env;
+                window.pipetaSystemEnv = data.env;
+                try { localStorage.setItem('pipeta_location_mode', mode); } catch(e){}
+                const label = mode === 'studio' ? '🏢 ESTUDIO / SEDE' : (mode === 'home' ? '🏠 HOME OFFICE' : '🤖 AUTO-DETECTAR');
+                if (typeof settings.showToast === 'function') {
+                    settings.showToast(`Modo configurado: ${label}`, 'success', 3);
+                }
+            }
+        } catch (e) {
+            console.error('Error setting location mode:', e);
+            if (typeof settings.showToast === 'function') {
+                settings.showToast('Error al cambiar modo de ubicación', 'error', 3);
+            }
+        } finally {
+            settings.isLoadingSyncEnv = false;
+            settings.render();
+        }
+    },
+
 
     generateProjectCatalogNow: async (projectName) => {
         if (!projectName) return;
@@ -1157,6 +1319,7 @@ const settings = {
                 const catalogs = settings.syncCatalogsData || [];
                 const projects = settings.projects || [];
                 const worker = settings.syncWorkerStatus;
+                const locMode = env?.locationMode || localStorage.getItem('pipeta_location_mode') || 'auto';
 
                 return `
                     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
@@ -1172,6 +1335,45 @@ const settings = {
                         <button class="btn" onclick="settings.reDetectSyncEnvironment()" style="background:#222; border:1px solid #444; color:#4fc3f7; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
                             <span>🔄</span> <span>${settings.isLoadingSyncEnv ? 'Analizando...' : 'Re-detectar Entorno'}</span>
                         </button>
+                    </div>
+
+                    <!-- SELECTOR DE PERFIL / MODO DE UBICACIÓN (ESTUDIO vs HOME) -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #384252; border-radius:8px; padding:12px 16px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <div style="font-weight:bold; color:#fff; font-size:0.88rem; display:flex; align-items:center; gap:8px;">
+                                <span>📍 PERFIL DE UBICACIÓN:</span>
+                                <span style="color:${locMode === 'studio' ? '#4caf50' : (locMode === 'home' ? '#ff9800' : 'var(--accent)')}; font-weight:bold;">
+                                    ${locMode === 'studio' ? '🏢 Estudio / Sede' : (locMode === 'home' ? '🏠 Home Office' : '🤖 Detección Automática')}
+                                </span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#888; margin-top:3px;">
+                                ${locMode === 'studio' 
+                                    ? 'Modo Estudio/Sede forzado: transferencias a cargo de la red (no auto-inicia Worker local).' 
+                                    : (locMode === 'home' 
+                                        ? 'Modo Home Office forzado: auto-inicia el Worker Local para subidas y descargas de Drive.' 
+                                        : 'Detección automática por presencia de red local del estudio central.')}
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:6px; background:#111; padding:4px; border-radius:6px; border:1px solid #282828;">
+                            <button type="button" class="btn" onclick="settings.setLocationMode('studio')"
+                                    style="padding:7px 15px; font-size:0.8rem; font-weight:bold; border-radius:4px; border:1px solid ${locMode === 'studio' ? '#4caf50' : 'transparent'}; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.15s;
+                                    background:${locMode === 'studio' ? 'rgba(76,175,80,0.2)' : 'transparent'};
+                                    color:${locMode === 'studio' ? '#81c784' : '#888'};">
+                                <span>🏢</span> <span>ESTUDIO</span>
+                            </button>
+                            <button type="button" class="btn" onclick="settings.setLocationMode('home')"
+                                    style="padding:7px 15px; font-size:0.8rem; font-weight:bold; border-radius:4px; border:1px solid ${locMode === 'home' ? '#ff9800' : 'transparent'}; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.15s;
+                                    background:${locMode === 'home' ? 'rgba(255,152,0,0.2)' : 'transparent'};
+                                    color:${locMode === 'home' ? '#ffb74d' : '#888'};">
+                                <span>🏠</span> <span>HOME</span>
+                            </button>
+                            <button type="button" class="btn" onclick="settings.setLocationMode('auto')"
+                                    style="padding:7px 12px; font-size:0.8rem; font-weight:bold; border-radius:4px; border:1px solid ${locMode === 'auto' ? '#4fc3f7' : 'transparent'}; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;
+                                    background:${locMode === 'auto' ? 'rgba(79,195,247,0.15)' : 'transparent'};
+                                    color:${locMode === 'auto' ? '#4fc3f7' : '#888'};">
+                                <span>🤖</span> <span>AUTO</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- 1. DIAGNOSTICO EN TIEMPO REAL -->
@@ -1211,17 +1413,15 @@ const settings = {
                                     ${env?.zInfo?.isRealServer ? `● Servidor Real (${env.zInfo.target})` : (env?.zInfo?.type === 'subst' ? `● Virtual (${env.zInfo.target})` : (env?.zInfo ? `● Local (${env.zInfo.type})` : 'Consultando...'))}
                                 </div>
                             </div>
-                            ${(!env?.zInfo?.isRealServer) ? `
                             <div style="background:#111; border:1px solid #282828; border-radius:6px; padding:10px;">
-                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">🗄️ Servidor Central (Estudio)</div>
-                                <div style="font-size:0.88rem; font-weight:bold; color:#4caf50;">
-                                    ● Modo Habilitado (Catálogo Central)
+                                <div style="font-size:0.75rem; color:#888; margin-bottom:3px;">📍 Modo Operativo</div>
+                                <div style="font-size:0.88rem; font-weight:bold; color:${env?.isExternalMachine ? '#ff9800' : '#4caf50'};">
+                                    ${env?.isExternalMachine ? '● Home Office (Worker Local)' : '● Estudio / Sede (Red Central)'}
                                 </div>
                                 <div style="font-size:0.7rem; color:#666; margin-top:2px;">
-                                    Z: es local/virtual en este equipo
+                                    ${locMode !== 'auto' ? `Forzado manualmente (${locMode.toUpperCase()})` : (env?.isExternalMachine ? 'Detectado: conexión remota' : 'Detectado: red de estudio')}
                                 </div>
                             </div>
-                            ` : ''}
                         </div>
                     </div>
 
@@ -2241,7 +2441,7 @@ const settings = {
                                     onchange="settings.defaultViewMode = 'drive'; try { localStorage.setItem('pipeta_view_location_mode', 'drive'); } catch(e){}">
                                 <span>Drive (G:)</span>
                             </label>
-                            ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                            ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultViewMode" value="server" 
                                     ${curViewMode === 'server' ? 'checked' : ''}
@@ -2287,7 +2487,7 @@ const settings = {
                                     onchange="settings.defaultSyncComparisonMode = 'drive'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}">
                                 <span>Google Drive (G:)</span>
                             </label>
-                            ${(typeof isZRealServer === 'function' && !isZRealServer()) ? `
+                            ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
                                 <input type="radio" name="defaultSyncComparisonMode" value="server" 
                                     ${curCompMode === 'server' ? 'checked' : ''}
@@ -2574,14 +2774,14 @@ const settings = {
                     <div style="background:rgba(0,188,212,0.04); padding:18px; border-radius:8px; border:1px solid #00bcd444; margin-bottom:20px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <div style="font-weight:bold; color:#00bcd4; font-size:0.95rem; display:flex; align-items:center; gap:8px;">
-                                <span>📦 Empaquetar Versión Portable Completa (.zip)</span>
+                                <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.05'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.13'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Genera un archivo comprimido <code>Pipeta_vX.XX.zip</code> autocontenido con el runtime de Node.js, todas las interfaces, el lanzador y los presets de configuración. Cualquier usuario puede descomprimirlo en cualquier máquina o disco (<code>C:</code>, <code>D:</code>, pendrive) y ejecutarlo de inmediato sin instalaciones previas ni dependencias de red.
+                            Genera un archivo comprimido <code>Pipeta_vX.XX.zip</code> (o <code>Pipeta_vX.XX_Ramon.zip</code>) autocontenido con el runtime de Node.js, todas las interfaces, el lanzador y los presets de configuración. Cualquier usuario puede descomprimirlo en cualquier máquina o disco (<code>C:</code>, <code>D:</code>, pendrive) y ejecutarlo de inmediato sin instalaciones previas ni dependencias de red.
                         </p>
 
                         <div style="margin-bottom:14px;">
@@ -2602,6 +2802,45 @@ const settings = {
                             </div>
                         </div>
 
+                        <!-- CHECKBOX INCLUIR RAMON Y DEPENDENCIAS -->
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:#eee;">
+                                <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
+                                <span>
+                                    <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.19'}_Ramon.zip</code> (~35 MB extra)</span>
+                                </span>
+                            </label>
+                            <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.19'}.zip</code>).
+                            </div>
+                        </div>
+
+                        <!-- OPCIONES DE CACHÉ LOCAL Y RED (_SYNC_CACHE) -->
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px 14px; margin-bottom:14px;">
+                            <div style="font-size:0.85rem; font-weight:bold; color:#eee; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                                <span>⚡ Cachés de Catálogos (<code>_SYNC_CACHE</code>)</span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#888; margin-bottom:10px; line-height:1.4;">
+                                Por defecto <b>no se incluyen cachés</b> para que el .ZIP sea ultra-liviano (~40–70 MB). Si se omiten, Pipeta generará los catálogos automáticamente en la máquina donde se ejecute.
+                            </div>
+
+                            <div style="display:flex; flex-direction:column; gap:8px; margin-left:4px;">
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:#ccc;">
+                                    <input type="checkbox" id="pkgIncludeDriveCache" style="width:15px; height:15px; cursor:pointer;">
+                                    <span>
+                                        <b>Incluir Caché de Google Drive</b> (Catálogos y metadatos de proyectos Drive en la nube)
+                                    </span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:#ccc;">
+                                    <input type="checkbox" id="pkgIncludeServerCache" style="width:15px; height:15px; cursor:pointer;">
+                                    <span>
+                                        <b>Incluir Caché del Servidor Central</b> (Catálogos <code>server_*.json</code> de red LAN del estudio)
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <div id="pkgStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
                             <button id="pkgGenerateBtn" class="btn" onclick="settings.executePackageZip()" 
@@ -2616,7 +2855,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.10'}
+                            ${window.APP_VERSION || 'v1.1.19'}
                         </span>
                     </h3>
 
@@ -2628,8 +2867,92 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.10 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.19 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Insignia de Sincronización Pendiente en Carpetas Contenedoras (*):</b> Todas las carpetas que contengan archivos faltantes o desactualizados en niveles inferiores ahora muestran una insignia visual explícita (<code>⬇️* Bajar (N)</code> o <code>⬆️* Subir</code>) con el conteo de archivos pendientes, evitando falsos vistos verdes (✓) antes de desplegar la jerarquía completa.</li>
+                                    <li><b>Cálculo Instantáneo de Tamaños de Raíces y Caché en Memoria (0 ms):</b> Se integraron las estadísticas de manifiestos modulares y una memoria caché para consultas de tamaño de directorios (<code>/api/fs/dirSize</code>), eliminando por completo las ejecuciones recursivas y repetitivas de PowerShell que ralentizaban la navegación y el cambio entre vistas LOCAL, DRIVE y SERVER.</li>
+                                    <li><b>Propagación Precisa de Estados en Vista LOCAL vs DRIVE:</b> Corregida la sincronización de estados entre el catálogo en caché y el explorador del disco local, permitiendo disparar la descarga de carpetas completas directamente desde cualquier nivel contenedor.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.18</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Optimización Total del Switch de Vistas (LOCAL / DRIVE / SERVER):</b> Eliminada la descarga y parseo de catálogos monolíticos pesados al alternar ubicaciones. Las consultas de carpetas en DRIVE y SERVER se resuelven de forma modular y bajo demanda en milisegundos.</li>
+                                    <li><b>Respuesta Visual Inmediata y Tokens de Renderizado Anti-Carrera:</b> La barra de herramientas responde al instante (0 ms) y se implementaron tokens de cancelación de render para evitar parpadeos, pantallas en negro o solapamientos al alternar rápidamente entre modos de exploración.</li>
+                                    <li><b>Normalización Universal de Rutas de Proyectos:</b> Se garantiza el formateo canónico de barras (slashes) en raíces locales, de red y de Google Drive para evitar discordancias en árboles de directorios de cualquier proyecto.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.17</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Selector de Perfil de Ubicación (Estudio vs Home Office):</b> Se incorporó en la pestaña Sincronización un selector directo con opciones <code>[ ESTUDIO ]</code>, <code>[ HOME ]</code> y <code>[ AUTO ]</code> para fijar el comportamiento de cada puesto independientemente de la subred o VPN de cada sede.</li>
+                                    <li><b>Protección y Auto-Sanitización de Presets de Proyectos:</b> Se corrigió la sincronización de presets entre red y disco local (removiendo exclusiones agresivas en robocopy) e implementando auto-sanitización de rutas para impedir que presets desfasados apunten a carpetas incorrectas.</li>
+                                    <li><b>Refresco Reactivo de Diagnósticos de Red:</b> Se eliminaron bloqueos en la interfaz de sincronización asegurando que los estados de conectividad, Z y worker se rendericen inmediatamente al concluir el diagnóstico.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.16</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Auto-Activación y Supervisión Continua del Worker:</b> Al enviar cualquier orden de descarga o subida a Google Drive, si el Worker Central de red no está activo, Pipeta lanza automáticamente el Worker Local en segundo plano sin requerir que el usuario lo abra manualmente. Además, un supervisor periódico levanta el worker local automáticamente si detecta transferencias pendientes.</li>
+                                    <li><b>Blindaje Anti-Cierre del Worker Local:</b> Se agregaron controladores de excepciones no capturadas y promesas rechazadas a nivel de proceso en <code>sync_worker.js</code>, impidiendo cierres inesperados durante transferencias complejas o actualizaciones de catálogos.</li>
+                                    <li><b>Prioridad de Estado Local en Sync Queue:</b> La interfaz de la cola reporta inmediatamente el estado activo del Worker Local sin enmascararse por estados inactivos remotos.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.15</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Worker Local en Segundo Plano para Equipos Externos:</b> Permite iniciar o detener con un solo clic un Sync Worker local en segundo plano directamente desde la cola de transferencias (Sync Queue ⚡). El worker local se auto-configura con Rclone local sin necesidad de acceder a la red del estudio ni a la VM 105.</li>
+                                    <li><b>Cancelación y Eliminación de Tareas en Vivo:</b> Ahora es posible cancelar tareas activas o en cola en cualquier momento mediante el botón <code>✕ Cancelar</code>. El worker interrumpe la transferencia de Rclone de inmediato y libera los recursos.</li>
+                                    <li><b>Limpieza de Historial:</b> Se agregó el botón <code>🗑️ Limpiar Historial</code> para purgar fácilmente registros de tareas completadas, fallidas o canceladas.</li>
+                                    <li><b>Filtrado Estricto de Tareas por Usuario:</b> Cada usuario visualiza únicamente sus propias descargas y subidas garantizando total privacidad. Los administradores disponen de un selector para alternar entre "Mis Tareas" y la vista global.</li>
+                                    <li><b>Eliminación de Timeouts y Bloqueos SMB en Remoto:</b> Se blindó la lectura de catálogos y sub-catálogos de Google Drive para evitar cualquier intento de sondeo a rutas UNC o Z: inexistentes en máquinas externas, logrando una navegación instantánea.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.14</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Aislamiento y Modo Exclusivo para Equipos Externos (Home / WAN):</b> En máquinas remotas o de artistas en casa (detectadas por ausencia de LAN del estudio o inicio de sesión en Ramón WAN), Pipeta oculta y deshabilita automáticamente el modo Servidor Central (S:) y sus comparaciones. El equipo trabaja exclusivamente en modo <code>LOCAL</code> y <code>GOOGLE DRIVE</code>, eliminando por completo intentos de lectura o bloqueos por catálogos centrales de red.</li>
+                                    <li><b>Compatibilidad Total con Puestos del Estudio:</b> Los puestos locales del estudio y máquinas virtuales de desarrollo (donde Z: es una unidad virtual o subst pero existe conectividad interna LAN) conservan intacta la funcionalidad completa de Servidor Central (S:) y catálogos centrales.</li>
+                                    <li><b>Detección Instantánea No Bloqueante:</b> La comprobación de entorno de red y Ramón remoto se ejecuta mediante sondeo directo ultra-rápido en backend y se sincroniza en tiempo real al iniciar sesión sin requerir recargar la página.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.13</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Soporte Multi-Servidor WAN/LAN de Ramón (Acceso Remoto sin VPN):</b> Se incorporó soporte nativo para el endpoint seguro remoto <code>https://ramon.lasp.co:8075/</code> utilizado en el pipeline del estudio. Ahora los artistas que trabajen desde sus casas o equipos remotos sin conexión VPN pueden iniciar sesión y consultar tareas en Ramón directamente.</li>
+                                    <li><b>Detección Ultra-Rápida de Conexión (Fast Probe):</b> Se implementó sondeo preventivo de sockets con timeout corto (1.5s) y caché persistente de servidor en disco, eliminando los bloqueos por WinError 10060 de Windows y previniendo cierres de proceso por timeout ("código null").</li>
+                                    <li><b>Reintentos Autónomos y Tolerancia a Fallos:</b> Si cambia el entorno de red (ej. de casa al estudio), Pipeta invalida la caché automáticamente y descubre el nuevo endpoint disponible de forma transparente.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.12</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Corrección del Filtro de Ramón en el Explorador:</b> Se resolvió la discrepancia entre códigos de proyecto (ej. <code>SURF</code> vs <code>surf_love</code>, <code>PRPR</code> vs <code>pride_and_prejudice</code>), asegurando que el botón de Mis Tareas de la barra superior filtre de manera instantánea y precisa las carpetas del proyecto según los planos y assets asignados al usuario en Ramón.</li>
+                                    <li><b>Aislamiento Estricto de Planos Hermanos:</b> Se restringió el matcheo dentro de la carpeta de shots/planos para que únicamente se muestre el plano asignado (ej. <code>SURF_B01_003_0020</code>) descartando planos hermanos que compartan secuencia o prefijo (como <code>0010</code>, <code>0030</code>, <code>0040</code>).</li>
+                                    <li><b>Auto-despliegue del Árbol de Tareas:</b> En la vista dividida (Split View), al activar el filtro de Ramón las carpetas intermedias se despliegan automáticamente guiando la vista hasta el plano o asset asignado.</li>
+                                    <li><b>Feedback Visual Claro en Vistas:</b> Se añadieron estados informativos cuando no existen tareas asignadas en el proyecto actual tanto en Split View como en Miller Columns, evitando que la vista permanezca sin filtrar.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.11</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li><b>Empaquetador con Selector de Dependencias de Ramón:</b> Ahora se puede elegir si el <code>.zip</code> portable incluye o no las dependencias de Ramón (Python 3.10 portable y librería cliente de TACTIC). Si se incluye, genera <code>Pipeta_v1.1.11_Ramon.zip</code> listo para usuarios externos; si no, genera <code>Pipeta_v1.1.11.zip</code> ligero para actualizaciones de rutina.</li>
+                                    <li><b>Rclone Autónomo en Versión Portable:</b> Se incluyó la configuración maestra de Google Drive (<code>tools/rclone/rclone.conf</code>) dentro del paquete para permitir transferencias directas de subida y bajada a Drive sin requerir unidad G: montada.</li>
+                                    <li><b>Soporte Autónomo de TACTIC Client:</b> Se incorporó <code>tactic_client_lib</code> localmente en Pipeta, permitiendo conexiones directas a <code>ramon.lasp.co</code> sin mapeo de red del estudio.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.10</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
                                     <li><b>Detección Inteligente de Python para Ramón:</b> Pipeta ahora detecta y utiliza de forma transparente el intérprete de Python del estudio (<code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\python\python.exe</code>), instalaciones locales estándar o Python Launcher, eliminando el fallo por alias de Microsoft Store en puestos nuevos. Se integró la librería <code>six.py</code> de forma nativa en el puente de Ramón.</li>
                                     <li><b>Inicio de Sesión de Ramón en Selector de Cabecera:</b> Se incorporó la opción <code>🌐 + Iniciar Sesión con Ramón...</code> directamente en el desplegable de usuarios y se aseguró su visibilidad permanente en el menú de usuario para poder conectar múltiples cuentas de red del estudio con total fluidez.</li>
                                     <li><b>Blindaje de Usuario Admin Local:</b> El administrador del sistema queda protegido de forma estricta como usuario local, previniendo etiquetas o modos erróneos de Ramón.</li>
@@ -2977,23 +3300,39 @@ const settings = {
             return;
         }
 
+        const includeRamon = document.getElementById('pkgIncludeRamon')?.checked || false;
+        const includeDriveCache = document.getElementById('pkgIncludeDriveCache')?.checked || false;
+        const includeServerCache = document.getElementById('pkgIncludeServerCache')?.checked || false;
+
         const btn = document.getElementById('pkgGenerateBtn');
         const statusMsg = document.getElementById('pkgStatusMsg');
 
+        let cacheDesc = 'sin cachés (ligero)';
+        if (includeDriveCache && includeServerCache) cacheDesc = 'con caché Drive + Server';
+        else if (includeDriveCache) cacheDesc = 'con caché Drive';
+        else if (includeServerCache) cacheDesc = 'con caché Server';
+
         if (btn) {
             btn.disabled = true;
-            btn.innerHTML = '<span>⏳ Comprimiendo Pipeta...</span>';
+            btn.innerHTML = includeRamon 
+                ? '<span>⏳ Comprimiendo Pipeta con Ramón...</span>' 
+                : '<span>⏳ Comprimiendo Pipeta...</span>';
             btn.style.opacity = '0.7';
         }
         if (statusMsg) {
-            statusMsg.innerHTML = '<span style="color:#00bcd4;">⏳ Empaquetando Pipeta completa con todos los presets y runtime (esto puede tomar 15-30 segundos)...</span>';
+            statusMsg.innerHTML = `<span style="color:#00bcd4;">⏳ Empaquetando Pipeta ${includeRamon ? '+ Ramón' : 'estándar'} [${cacheDesc}] (esto puede tomar 15-30 segundos)...</span>`;
         }
 
         try {
             const res = await fetch('/api/system/package-dist', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ targetDir: targetDir })
+                body: JSON.stringify({ 
+                    targetDir: targetDir, 
+                    includeRamon: includeRamon,
+                    includeDriveCache: includeDriveCache,
+                    includeServerCache: includeServerCache
+                })
             });
 
             const data = await res.json();

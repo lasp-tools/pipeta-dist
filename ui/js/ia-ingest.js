@@ -92,16 +92,15 @@ function updateIaMyTasksButtonUI() {
 }
 
 function getIaAssignedShots() {
-    let currentProj = '';
-    if (typeof settings !== 'undefined' && settings.currentProject) {
-        currentProj = settings.currentProject.code || settings.currentProject.projectCode || settings.currentProject.name || '';
-    }
-
     const tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
     const assignedShots = [];
 
     for (const t of tasks) {
-        if (!currentProj || !t.project || t.project.toLowerCase() === currentProj.toLowerCase()) {
+        const matchesProject = typeof window.isRamonTaskInCurrentProject === 'function'
+            ? window.isRamonTaskInCurrentProject(t)
+            : true;
+
+        if (matchesProject) {
             const it = (t.item_type || '').toLowerCase();
             const st = (t.search_type || '').toLowerCase();
             const nm = (t.name || '').trim();

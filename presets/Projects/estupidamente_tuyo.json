@@ -1,0 +1,23 @@
+{
+  "id": "proj_1789667977953",
+  "name": "estupidamente_tuyo",
+  "client": "netflix",
+  "projectCode": "ESTY",
+  "roots": {
+    "work": "Z:/netflix/estupidamente_tuyo",
+    "media": "Z:/INTERNO/MEDIA/netflix/estupidamente_tuyo",
+    "onlineWork": "G:/Unidades compartidas/estupidamente_tuyo",
+    "onlineMedia": "G:/Unidades compartidas/estupidamente_tuyo_media"
+  },
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  },
+  "isBase": false
+}

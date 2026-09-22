@@ -31,9 +31,30 @@ class SyncQueueUI {
         this.isInitialFetchDone = false;
         this.isMaximized = false; // Por defecto siempre ventana flotante al abrir Pipeta
         this.prevBounds = null;
+        this.onlyMyTasks = true;
 
         window.syncQueueUI = this;
         this.init();
+    }
+
+    getCurrentUser() {
+        const username = (typeof getPipetaCurrentUser === 'function') ? getPipetaCurrentUser() : 'user';
+        let role = 'user';
+        let isAdmin = false;
+        if (typeof Ramon !== 'undefined' && Ramon.session?.user) {
+            const u = Ramon.session.user;
+            role = u.role || (u.is_admin ? 'admin' : 'user');
+            isAdmin = !!(u.is_admin || role === 'admin' || role === 'administrator' || username === 'admin');
+        } else if (username === 'admin') {
+            role = 'admin';
+            isAdmin = true;
+        }
+        return { username, role, isAdmin };
+    }
+
+    toggleAdminFilter() {
+        this.onlyMyTasks = !this.onlyMyTasks;
+        this.fetchStatus();
     }
 
     init() {
@@ -55,8 +76,14 @@ class SyncQueueUI {
                 this.workerStatus = resWorker.status;
             }
 
-            // 2. Orders list
-            const resOrders = await fetch('/api/sync/orders').then(r => r.json()).catch(() => null);
+            // 2. Orders list (filtradas con privacidad por usuario)
+            const userInfo = this.getCurrentUser();
+            const query = new URLSearchParams();
+            if (userInfo.username) query.set('user', userInfo.username);
+            if (userInfo.role) query.set('role', userInfo.role);
+            if (userInfo.isAdmin) query.set('onlyMyTasks', this.onlyMyTasks ? 'true' : 'false');
+
+            const resOrders = await fetch(`/api/sync/orders?${query.toString()}`).then(r => r.json()).catch(() => null);
             if (resOrders && resOrders.success) {
                 this.orders = resOrders.orders || [];
             }
@@ -201,17 +228,94 @@ class SyncQueueUI {
         }
     }
 
+    async cancelOrder(orderId) {
+        if (!confirm(`¿Deseas cancelar la orden #${orderId.slice(-6)}?`)) return;
+        const userInfo = this.getCurrentUser();
+        try {
+            const res = await fetch('/api/sync/orders/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId, user: userInfo.username, role: userInfo.role })
+            }).then(r => r.json());
+            if (res.success) {
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast('🛑 Cancelación solicitada', 'warn', 2);
+                }
+                this.fetchStatus();
+            } else {
+                alert(res.error || 'No se pudo cancelar la orden');
+            }
+        } catch (e) {
+            alert('Error al cancelar: ' + e.message);
+        }
+    }
+
+    async clearHistory() {
+        if (!confirm('¿Deseas limpiar el historial de transferencias finalizadas?')) return;
+        const userInfo = this.getCurrentUser();
+        try {
+            const res = await fetch('/api/sync/orders/clear-history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: userInfo.username, role: userInfo.role })
+            }).then(r => r.json());
+            if (res.success) {
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast(`🗑️ Historial limpio (${res.clearedCount} eliminadas)`, 'info', 2);
+                }
+                this.fetchStatus();
+            }
+        } catch (e) {
+            alert('Error al limpiar historial: ' + e.message);
+        }
+    }
+
+    async startLocalWorker() {
+        try {
+            const btn = document.getElementById('btnStartLocalWorker');
+            if (btn) btn.innerHTML = '⏳ Iniciando...';
+            const res = await fetch('/api/sync/worker/start-local', { method: 'POST' }).then(r => r.json());
+            if (res.success) {
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast('🚀 Worker Local iniciado en segundo plano', 'success', 3);
+                }
+                setTimeout(() => this.fetchStatus(), 800);
+            } else {
+                alert(res.error || 'No se pudo iniciar el worker local');
+                if (btn) btn.innerHTML = '🟢 Iniciar Worker Local';
+            }
+        } catch (e) {
+            alert('Error al iniciar worker local: ' + e.message);
+        }
+    }
+
+    async stopLocalWorker() {
+        if (!confirm('¿Deseas detener el Worker Local en segundo plano?')) return;
+        try {
+            const res = await fetch('/api/sync/worker/stop-local', { method: 'POST' }).then(r => r.json());
+            if (res.success) {
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast('⏹ Worker Local detenido', 'info', 2);
+                }
+                setTimeout(() => this.fetchStatus(), 500);
+            }
+        } catch (e) {
+            alert('Error al detener worker local: ' + e.message);
+        }
+    }
+
     updateHeaderBadge() {
         const dot = document.getElementById('headerSyncWorkerDot');
         const badge = document.getElementById('headerTransferCountBadge');
         const btn = document.getElementById('sidebarTransferQueueBtn') || document.getElementById('headerTransferQueueBtn');
 
         const isAlive = this.workerStatus && this.workerStatus.isAlive;
+        const isLocal = this.workerStatus && this.workerStatus.isLocal;
         if (dot) {
-            dot.style.background = isAlive ? '#4caf50' : '#f44336';
+            dot.style.background = isAlive ? (isLocal ? '#00e5ff' : '#4caf50') : '#f44336';
             dot.title = isAlive 
-                ? `Worker VM 105 En Línea (${this.workerStatus.hostname || 'OK'})`
-                : 'Worker VM 105 Desconectado';
+                ? `${isLocal ? 'Worker Local' : 'Worker Central VM 105'} (${this.workerStatus.hostname || 'OK'})`
+                : 'Worker Desconectado';
         }
 
         const activeCount = this.orders.filter(o => o.status === 'processing' || o.status === 'pending').length;
@@ -418,21 +522,26 @@ class SyncQueueUI {
         const workerInfo = document.getElementById('sync-queue-worker-info');
         const summary = document.getElementById('sync-queue-summary');
         const isAlive = this.workerStatus && this.workerStatus.isAlive;
+        const isLocal = !!(this.workerStatus && this.workerStatus.isLocal);
 
         if (workerInfo) {
             if (isAlive) {
                 const isBusy = this.workerStatus.status === 'processing';
+                const dotColor = isLocal ? '#00e5ff' : '#4caf50';
                 workerInfo.innerHTML = `
-                    <span style="width:8px; height:8px; border-radius:50%; background:#4caf50; display:inline-block;"></span>
-                    <span style="color:#4caf50; font-weight:bold;">Worker en Línea:</span>
-                    <span style="color:#fff; font-family:monospace;">${this.workerStatus.hostname || 'VM 105'}</span>
-                    <span style="color:#888; font-size:0.72rem;">(${isBusy ? '⚡ Procesando tarea' : '💤 En espera'} • ping hace ${this.workerStatus.diffSeconds || 0}s)</span>
+                    <span style="width:8px; height:8px; border-radius:50%; background:${dotColor}; display:inline-block;"></span>
+                    <span style="color:${dotColor}; font-weight:bold;">${isLocal ? 'Worker Local' : 'Worker Central'}:</span>
+                    <span style="color:#fff; font-family:monospace;">${this.workerStatus.hostname || 'OK'}</span>
+                    <span style="color:#888; font-size:0.72rem;">(${isBusy ? '⚡ Procesando' : '💤 En espera'} • ping hace ${this.workerStatus.diffSeconds || 0}s)</span>
+                    ${isLocal ? `<button onclick="window.syncQueueUI.stopLocalWorker()" title="Detener Worker Local" style="background:rgba(244,67,54,0.15); border:1px solid #f44336; color:#ff8a80; border-radius:3px; padding:1px 6px; font-size:0.7rem; cursor:pointer; margin-left:6px;">⏹ Detener</button>` : ''}
                 `;
             } else {
                 workerInfo.innerHTML = `
                     <span style="width:8px; height:8px; border-radius:50%; background:#f44336; display:inline-block;"></span>
-                    <span style="color:#f44336; font-weight:bold;">Worker Desconectado</span>
-                    <span style="color:#888; font-size:0.72rem;">(Ejecute Launch_Pipeta_Worker.bat en VM 105)</span>
+                    <span style="color:#f44336; font-weight:bold;">Worker Inactivo</span>
+                    <button id="btnStartLocalWorker" onclick="window.syncQueueUI.startLocalWorker()" title="Iniciar un worker en segundo plano en esta máquina para procesar transferencias con Rclone" style="background:#2e7d32; border:1px solid #4caf50; color:#fff; border-radius:3px; padding:2px 8px; font-size:0.72rem; cursor:pointer; font-weight:bold; margin-left:6px; display:inline-flex; align-items:center; gap:4px;">
+                        🟢 Iniciar Worker Local
+                    </button>
                 `;
             }
         }
@@ -440,8 +549,20 @@ class SyncQueueUI {
         const activeOrders = this.orders.filter(o => o.status === 'processing' || o.status === 'pending');
         const historyOrders = this.orders.filter(o => o.status !== 'processing' && o.status !== 'pending');
 
+        const userInfo = this.getCurrentUser();
         if (summary) {
-            summary.innerHTML = `<b>${activeOrders.length}</b> activas • <b>${historyOrders.length}</b> en historial`;
+            summary.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    ${userInfo.isAdmin ? `
+                        <button onclick="window.syncQueueUI.toggleAdminFilter()" title="Alternar entre ver solo tus tareas o las de todos" style="background:#1a222d; border:1px solid #324156; color:#4fc3f7; border-radius:3px; padding:2px 6px; font-size:0.7rem; cursor:pointer;">
+                            ${this.onlyMyTasks ? '👤 Mis Tareas' : '👥 Todas las Tareas'}
+                        </button>
+                    ` : `
+                        <span style="color:#81d4fa; font-size:0.72rem; background:rgba(0,229,255,0.08); padding:2px 6px; border-radius:3px; border:1px solid rgba(0,229,255,0.2);">👤 <b>${userInfo.username}</b></span>
+                    `}
+                    <span style="color:#888; font-size:0.75rem;"><b>${activeOrders.length}</b> activas • <b>${historyOrders.length}</b> en historial</span>
+                </div>
+            `;
         }
 
         const body = document.getElementById('sync-queue-body');
@@ -506,16 +627,22 @@ class SyncQueueUI {
             const etaStr = (progress && progress.etaSeconds > 0) ? formatQueueEta(progress.etaSeconds) : '';
             const currentFile = (progress && progress.currentFile) ? progress.currentFile : '';
 
+            const isLocalExecution = order.worker && order.worker.includes('local_');
             const engineBadge = isProcessing
                 ? (isServerTransfer
                     ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(171,71,188,0.15); border:1px solid #ab47bc; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ce93d8; font-weight:bold;">
                         <span class="spinner-mini" style="width:8px; height:8px;"></span>
                         <span>Copia en red LAN...</span>
                        </div>`
-                    : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
-                        <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                        <span>Transfiriendo en VM 105...</span>
-                       </div>`)
+                    : (isLocalExecution
+                        ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#00e5ff; font-weight:bold;">
+                            <span class="spinner-mini" style="width:8px; height:8px;"></span>
+                            <span>Worker Local (Rclone)...</span>
+                           </div>`
+                        : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
+                            <span class="spinner-mini" style="width:8px; height:8px;"></span>
+                            <span>Transfiriendo en VM 105...</span>
+                           </div>`))
                 : `<span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>`;
 
             return `
@@ -530,6 +657,9 @@ class SyncQueueUI {
                         </div>
                         <div style="display:flex; align-items:center; gap:6px;">
                             ${engineBadge}
+                            <button onclick="window.syncQueueUI.cancelOrder('${order.id}')" title="Cancelar esta tarea" style="background:rgba(244,67,54,0.15); border:1px solid rgba(244,67,54,0.4); color:#ff8a80; border-radius:4px; padding:2px 8px; font-size:0.72rem; cursor:pointer; font-weight:bold; transition:all 0.2s;" onmouseover="this.style.background='#f44336'; this.style.color='#fff';" onmouseout="this.style.background='rgba(244,67,54,0.15)'; this.style.color='#ff8a80';">
+                                ✕ Cancelar
+                            </button>
                         </div>
                     </div>
 
@@ -602,8 +732,20 @@ class SyncQueueUI {
     }
 
     renderHistoryTab(container, historyOrders) {
+        const topBarHtml = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:0 2px;">
+                <span style="font-size:0.75rem; color:#888;">Historial de transferencias finalizadas</span>
+                ${historyOrders.length > 0 ? `
+                    <button onclick="window.syncQueueUI.clearHistory()" style="background:#1a202c; border:1px solid #2d3748; color:#aaa; border-radius:4px; padding:3px 8px; font-size:0.72rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" onmouseover="this.style.color='#fff'; this.style.borderColor='#4fc3f7';" onmouseout="this.style.color='#aaa'; this.style.borderColor='#2d3748';">
+                        🗑️ Limpiar Historial
+                    </button>
+                ` : ''}
+            </div>
+        `;
+
         if (historyOrders.length === 0) {
             container.innerHTML = `
+                ${topBarHtml}
                 <div style="color:#666; text-align:center; padding:40px; font-size:0.85rem;">
                     No hay transferencias finalizadas aún en el historial.
                 </div>
@@ -611,7 +753,8 @@ class SyncQueueUI {
             return;
         }
 
-        container.innerHTML = historyOrders.map(order => {
+        const itemsHtml = historyOrders.map(order => {
+            const isCancelled = order.status === 'cancelled';
             const isOk = order.status === 'completed';
             const isPartial = order.status === 'completed_with_errors';
             
@@ -621,8 +764,8 @@ class SyncQueueUI {
             else if (order.type === 'server_download') typeLabel = '📥 Descarga Server';
             else if (order.type === 'server_upload') typeLabel = '📤 Subida Server';
 
-            const statusColor = isOk ? '#4caf50' : (isPartial ? '#ff9800' : '#f44336');
-            const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló');
+            const statusColor = isOk ? '#4caf50' : (isCancelled ? '#9e9e9e' : (isPartial ? '#ff9800' : '#f44336'));
+            const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isCancelled ? `🛑 Cancelada (${order.cancelledBy || 'usuario'})` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló'));
 
             return `
                 <div style="background:#12151b; border:1px solid #202732; border-radius:6px; padding:10px; font-size:0.8rem;">
@@ -647,6 +790,8 @@ class SyncQueueUI {
                 </div>
             `;
         }).join('');
+
+        container.innerHTML = topBarHtml + itemsHtml;
     }
 
     startDrag(e) {

@@ -41,6 +41,69 @@ const ShotNavigator = {
     _cachedUserOptionsHtml: '',
     _cachedStatusOptionsHtml: '',
     _cachedProcOptionsHtml: '',
+
+    // Canonical Ramón Statuses Palette (10 estados canónicos)
+    RAMON_STATUSES: [
+        { id: 'PENDIENTE', name: 'Pendiente', color: '#757575', icon: '⚪' },
+        { id: 'ASIGNADO', name: 'Asignado', color: '#2196f3', icon: '🔵' },
+        { id: 'PROCESO', name: 'En Proceso', color: '#ff9800', icon: '🟠' },
+        { id: 'REVISAR', name: 'Revisar', color: '#9c27b0', icon: '🟣' },
+        { id: 'INT APROBADO', name: 'Int. Aprobado', color: '#8bc34a', icon: '🟢' },
+        { id: 'AJUSTAR', name: 'Ajustar', color: '#ff5722', icon: '🔴' },
+        { id: 'APROBADO', name: 'Aprobado', color: '#4caf50', icon: '🟢' },
+        { id: 'STAND BY', name: 'Stand By', color: '#ffc107', icon: '🟡' },
+        { id: 'CANCELADO', name: 'Cancelado', color: '#f44336', icon: '🔴' },
+        { id: 'ELIMINADO', name: 'Eliminado', color: '#f44336', icon: '🔴' }
+    ],
+
+    isRamonMode: () => {
+        if (typeof Ramon !== 'undefined' && Ramon.session) {
+            if (Ramon.session.mode === 'ramon') return true;
+        }
+        const act = (ShotNavigator.activeUser || '').toLowerCase().trim();
+        if (act && (act.startsWith('lasp-') || act.includes('pastorino'))) {
+            return true;
+        }
+        const userObj = ShotNavigator.getActiveUserObj ? ShotNavigator.getActiveUserObj() : null;
+        if (userObj && (userObj.authSource === 'ramon' || (userObj.laspUser && userObj.laspUser.startsWith('lasp-')))) {
+            return true;
+        }
+        return false;
+    },
+
+    resolveRamonProjectCode: async () => {
+        if (!ShotNavigator.project) return null;
+        const p = ShotNavigator.project;
+        const candidates = [p.name, p.projectCode, p.code, p.id];
+        if (p.roots?.work) {
+            const lastPart = p.roots.work.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+            if (lastPart) candidates.push(lastPart);
+        }
+
+        try {
+            const res = await API.ramon.getProjects();
+            if (res && res.success && Array.isArray(res.projects)) {
+                for (const rProj of res.projects) {
+                    const rCode = (rProj.code || '').toLowerCase().trim();
+                    const rTitle = (rProj.title || '').toLowerCase().trim();
+                    for (const c of candidates) {
+                        if (!c) continue;
+                        const cNorm = String(c).toLowerCase().trim();
+                        if (rCode === cNorm || rTitle === cNorm) return rProj.code;
+                        const rCodeNorm = rCode.replace(/[^a-z0-9]/g, '');
+                        const cClean = cNorm.replace(/[^a-z0-9]/g, '').replace(/^proj/, '');
+                        if (cClean && (rCodeNorm === cClean || rCodeNorm.startsWith(cClean) || cClean.startsWith(rCodeNorm))) {
+                            return rProj.code;
+                        }
+                    }
+                }
+            }
+        } catch(e) {
+            console.warn("[ShotNav] Error fetching Ramón projects list:", e);
+        }
+
+        return (p.name || p.projectCode || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    },
     
     init: async (force = false) => {
         ShotNavigator.container = document.getElementById('view-shot-navigator');
@@ -75,17 +138,24 @@ const ShotNavigator = {
             ShotNavigator.users = ShotNavigator._cachedUsers;
         }
 
-        // 3. Statuses (Cached)
-        if (force || !ShotNavigator._cachedStatuses) {
-            try {
-                const sData = await API.statuses.get();
-                ShotNavigator.statuses = sData.statuses || [];
-                ShotNavigator._cachedStatuses = ShotNavigator.statuses;
-            } catch(e) {
-                console.error("[ShotNav] Error loading statuses:", e);
+        // 3. Statuses (Modo Ramón Híbrido vs Modo Local)
+        if (ShotNavigator.isRamonMode()) {
+            ShotNavigator.statuses = ShotNavigator.RAMON_STATUSES;
+            if (typeof Ramon !== 'undefined' && Ramon.session?.user) {
+                ShotNavigator.activeUser = Ramon.session.user.login || Ramon.session.user.username || ShotNavigator.activeUser;
             }
         } else {
-            ShotNavigator.statuses = ShotNavigator._cachedStatuses;
+            if (force || !ShotNavigator._cachedStatuses) {
+                try {
+                    const sData = await API.statuses.get();
+                    ShotNavigator.statuses = sData.statuses || [];
+                    ShotNavigator._cachedStatuses = ShotNavigator.statuses;
+                } catch(e) {
+                    console.error("[ShotNav] Error loading statuses:", e);
+                }
+            } else {
+                ShotNavigator.statuses = ShotNavigator._cachedStatuses;
+            }
         }
 
         // 4. Extract processes dynamically from the active project's Shot Designer preset (Cached)
@@ -247,38 +317,319 @@ const ShotNavigator = {
             console.error("[ShotNav] Error loading shot tracker:", e);
         }
 
-        // Real-time scan of physical disk folders ONLY on forced refresh or initial empty database
-        if (force || Object.keys(ShotNavigator.trackerData.shots || {}).length === 0) {
-            await ShotNavigator.discoverShotsFromDisk();
-        }
+        // Branching: MODO RAMON HIBRIDO vs MODO LOCAL
+        if (ShotNavigator.isRamonMode()) {
+            await ShotNavigator.syncRamonWorkflow(force);
+        } else {
+            // Real-time scan of physical disk folders ONLY on forced refresh or initial empty database
+            if (force || Object.keys(ShotNavigator.trackerData.shots || {}).length === 0) {
+                await ShotNavigator.discoverShotsFromDisk();
+            }
 
-        // Poner estado 'none' a todas las compos que estuvieran en 'in_progress' por defecto
-        if (ShotNavigator.trackerData && ShotNavigator.trackerData.shots) {
-            let updated = false;
-            for (const sh of Object.values(ShotNavigator.trackerData.shots)) {
-                if (sh.processes) {
-                    for (const [pId, pData] of Object.entries(sh.processes)) {
-                        if (pId.toLowerCase() === 'compo' && pData.status === 'in_progress' && (!pData.assignedUsers || pData.assignedUsers.length === 0)) {
-                            pData.status = 'none';
-                            updated = true;
+            // Poner estado 'none' a todas las compos que estuvieran en 'in_progress' por defecto
+            if (ShotNavigator.trackerData && ShotNavigator.trackerData.shots) {
+                let updated = false;
+                for (const sh of Object.values(ShotNavigator.trackerData.shots)) {
+                    if (sh.processes) {
+                        for (const [pId, pData] of Object.entries(sh.processes)) {
+                            if (pId.toLowerCase() === 'compo' && pData.status === 'in_progress' && (!pData.assignedUsers || pData.assignedUsers.length === 0)) {
+                                pData.status = 'none';
+                                updated = true;
+                            }
                         }
                     }
                 }
-            }
-            if (updated) {
-                await ShotNavigator.saveTracker();
+                if (updated) {
+                    await ShotNavigator.saveTracker();
+                }
             }
         }
 
         ShotNavigator.workflowLoaded = true;
     },
 
-    refreshWorkflow: async () => {
-        ShotNavigator.showToast('🔄 Escaneando y actualizando estado...', 'info');
-        await ShotNavigator.loadDependencies(true);
-        await ShotNavigator.loadWorkflow(true);
+    refreshWorkflow: async (force = true) => {
+        const isR = ShotNavigator.isRamonMode();
+        ShotNavigator.showToast(isR ? '🔄 Sincronizando planos y tareas desde Ramón...' : '🔄 Escaneando y actualizando estado...', 'info');
+        await ShotNavigator.loadDependencies(force);
+        await ShotNavigator.loadWorkflow(force);
         ShotNavigator.render();
-        ShotNavigator.showToast('✅ Workflow actualizado con éxito', 'success');
+        const count = Object.keys(ShotNavigator.trackerData.shots || {}).length;
+        const msg = isR ? `✅ Ramón sincronizado con éxito (${count} planos)` : '✅ Workflow actualizado con éxito';
+        ShotNavigator.showToast(msg, 'success');
+    },
+
+    scanDiskShots: async () => {
+        if (!ShotNavigator.project) return {};
+        const projectWork = (ShotNavigator.project.roots?.work || '').replace(/\//g, '\\');
+        if (!projectWork) return {};
+
+        const map = {};
+        try {
+            const scanDir = async (dirPath) => {
+                try {
+                    return await API.fs.fetchDir(dirPath);
+                } catch(e) { return null; }
+            };
+
+            let epDir = pathJoin(projectWork, 'episodios');
+            let epList = await scanDir(epDir);
+            if (!epList || !epList.items) {
+                epDir = projectWork;
+                epList = await scanDir(epDir);
+            }
+
+            if (epList && epList.items) {
+                const episodes = epList.items.filter(i => i.isDirectory && !i.name.startsWith('_') && !i.name.startsWith('.'));
+                for (const ep of episodes) {
+                    const epPath = pathJoin(epDir, ep.name);
+                    let seqDir = pathJoin(epPath, 'secuencias');
+                    let seqList = await scanDir(seqDir);
+                    if (!seqList || !seqList.items) {
+                        seqDir = epPath;
+                        seqList = await scanDir(seqDir);
+                    }
+
+                    if (seqList && seqList.items) {
+                        const scenes = seqList.items.filter(i => i.isDirectory && !i.name.startsWith('_') && !i.name.startsWith('.'));
+                        for (const sc of scenes) {
+                            const scPath = pathJoin(seqDir, sc.name);
+                            let shotsDir = pathJoin(scPath, 'shots');
+                            let shotsList = await scanDir(shotsDir);
+                            if (!shotsList || !shotsList.items) {
+                                shotsDir = scPath;
+                                shotsList = await scanDir(shotsDir);
+                            }
+
+                            if (shotsList && shotsList.items) {
+                                const shots = shotsList.items.filter(i => i.isDirectory && !i.name.startsWith('_') && !i.name.startsWith('.'));
+                                for (const sh of shots) {
+                                    const shotPath = pathJoin(shotsDir, sh.name);
+                                    const shotKey = `${ep.name}_${sc.name}_${sh.name}`;
+                                    
+                                    const diskItems = await scanDir(shotPath);
+                                    const existingFolders = new Set(
+                                        (diskItems && diskItems.items) 
+                                            ? diskItems.items.filter(i => i.isDirectory).map(i => i.name.toLowerCase().trim())
+                                            : []
+                                    );
+
+                                    map[sh.name.toUpperCase()] = {
+                                        id: shotKey,
+                                        name: sh.name,
+                                        episode: ep.name,
+                                        scene: sc.name,
+                                        path: shotPath,
+                                        existingProcessFolders: existingFolders
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch(e) {
+            console.error("[ShotNav] Error scanning disk shots:", e);
+        }
+        return map;
+    },
+
+    syncRamonWorkflow: async (force = false) => {
+        const pWork = (ShotNavigator.project?.roots?.work || '').replace(/\//g, '\\');
+        const rProjCode = await ShotNavigator.resolveRamonProjectCode();
+        if (!rProjCode) {
+            console.warn("[ShotNav] No se encontró código de proyecto en Ramón para", ShotNavigator.project?.name);
+            ShotNavigator.showToast(`⚠️ No se encontró proyecto en Ramón para "${ShotNavigator.project?.name}". Modo disco local activo.`, 'error');
+            await ShotNavigator.discoverShotsFromDisk();
+            return;
+        }
+
+        let ramonData = null;
+        try {
+            ramonData = await API.ramon.getProjectTasks(rProjCode, force);
+        } catch(e) {
+            console.error("[ShotNav] Error consultando tareas de Ramón:", e);
+        }
+
+        if (!ramonData || !ramonData.success) {
+            ShotNavigator.showToast(`⚠️ Error conectando con Ramón: ${ramonData?.error || 'Sin respuesta'}. Modo local activo.`, 'error');
+            await ShotNavigator.discoverShotsFromDisk();
+            return;
+        }
+
+        // 1. Escaneo de carpetas físicas en disco
+        const diskMap = await ShotNavigator.scanDiskShots();
+
+        // 2. Indexar tareas por nombre de plano y por search_code
+        const tasksByShotName = new Map();
+        const tasksBySearchCode = new Map();
+        (ramonData.tasks || []).forEach(t => {
+            if (t.name) {
+                const k = t.name.toUpperCase().trim();
+                if (!tasksByShotName.has(k)) tasksByShotName.set(k, []);
+                tasksByShotName.get(k).push(t);
+            }
+            if (t.search_code) {
+                const k = t.search_code.toUpperCase().trim();
+                if (!tasksBySearchCode.has(k)) tasksBySearchCode.set(k, []);
+                tasksBySearchCode.get(k).push(t);
+            }
+        });
+
+        // 3. Registrar procesos dinámicos encontrados en Ramón
+        const seenProcs = new Set(ShotNavigator.availableProcesses.map(p => p.id.toLowerCase()));
+        (ramonData.tasks || []).forEach(t => {
+            if (t.process) {
+                const pId = t.process.toLowerCase().trim();
+                if (!seenProcs.has(pId)) {
+                    seenProcs.add(pId);
+                    ShotNavigator.availableProcesses.push({
+                        id: pId,
+                        name: t.process.toUpperCase().trim()
+                    });
+                }
+            }
+        });
+        ShotNavigator.rebuildOptionCaches();
+
+        // 4. Mapear cada plano de Ramón
+        const processedDiskShotKeys = new Set();
+        const existingShots = ShotNavigator.trackerData.shots || {};
+
+        (ramonData.shots || []).forEach(rShot => {
+            const sName = (rShot.name || rShot.code).trim();
+            const sNameUpper = sName.toUpperCase();
+            const diskInfo = diskMap[sNameUpper];
+
+            let ep = 'EP01';
+            let sc = '001';
+            let shotPath = '';
+
+            if (diskInfo) {
+                ep = diskInfo.episode;
+                sc = diskInfo.scene;
+                shotPath = diskInfo.path;
+                processedDiskShotKeys.add(sNameUpper);
+            } else {
+                const parts = sName.split('_');
+                if (parts.length >= 4) {
+                    ep = parts[1];
+                    sc = parts[2];
+                } else if (parts.length === 3) {
+                    ep = parts[0];
+                    sc = parts[1];
+                }
+                shotPath = pathJoin(pWork, 'episodios', ep, 'secuencias', sc, 'shots', sName);
+            }
+
+            const shotKey = `${ep}_${sc}_${sName}`;
+            const existingShot = existingShots[shotKey] || {};
+
+            // Encontrar tareas para este shot
+            const shotTasks = tasksBySearchCode.get((rShot.code || '').toUpperCase()) || 
+                              tasksByShotName.get(sNameUpper) || [];
+
+            const processesObj = {};
+
+            shotTasks.forEach(t => {
+                const rawProc = t.process || 'compo';
+                const pId = rawProc.toLowerCase().trim();
+                const pStatus = (t.status || 'PENDIENTE').toUpperCase().trim();
+                const pAssigned = t.assigned ? [t.assigned] : [];
+                const pFolderExists = diskInfo ? (diskInfo.existingProcessFolders.has(pId) || (pId === 'compo' && diskInfo.existingProcessFolders.has('comp'))) : false;
+                
+                const prevProc = existingShot.processes ? existingShot.processes[pId] : null;
+
+                processesObj[pId] = {
+                    assignedUsers: pAssigned,
+                    status: prevProc?.statusOverride || pStatus,
+                    statusRamon: pStatus,
+                    folderExists: pFolderExists,
+                    notes: prevProc?.notes || t.description || '',
+                    ramonTaskId: t.id,
+                    bid_start: t.bid_start || '',
+                    bid_end: t.bid_end || '',
+                    bid_duration: t.bid_duration,
+                    supervisor: t.supervisor || ''
+                };
+            });
+
+            // Si hay carpetas de procesos existentes en disco que no están en Ramón, agregarlas
+            if (diskInfo) {
+                diskInfo.existingProcessFolders.forEach(folderName => {
+                    const matchedProcId = (folderName === 'comp') ? 'compo' : folderName;
+                    if (!processesObj[matchedProcId]) {
+                        const prevProc = existingShot.processes ? existingShot.processes[matchedProcId] : null;
+                        processesObj[matchedProcId] = {
+                            assignedUsers: prevProc?.assignedUsers || [],
+                            status: prevProc?.status || 'PENDIENTE',
+                            folderExists: true,
+                            notes: prevProc?.notes || '',
+                            isLocalOnly: true
+                        };
+                    }
+                });
+            }
+
+            ShotNavigator.trackerData.shots[shotKey] = {
+                id: shotKey,
+                name: sName,
+                ramonCode: rShot.code,
+                episode: ep,
+                scene: sc,
+                path: shotPath,
+                folderExists: !!diskInfo,
+                frame_in: rShot.frame_in,
+                frame_out: rShot.frame_out,
+                processes: processesObj,
+                status: existingShot.status || 'PENDIENTE',
+                notes: existingShot.notes || rShot.description || '',
+                isRamon: true,
+                updatedAt: new Date().toISOString()
+            };
+
+            // Calcular estado raíz automático
+            ShotNavigator.trackerData.shots[shotKey].status = ShotNavigator.computeShotAutomaticStatus(ShotNavigator.trackerData.shots[shotKey]).id;
+        });
+
+        // 5. Preservar planos locales en disco que no figuren en Ramón
+        Object.values(diskMap).forEach(dInfo => {
+            if (!processedDiskShotKeys.has(dInfo.name.toUpperCase())) {
+                const shotKey = dInfo.id;
+                const existingShot = existingShots[shotKey] || {};
+                
+                const processesObj = {};
+                dInfo.existingProcessFolders.forEach(folderName => {
+                    const matchedProcId = (folderName === 'comp') ? 'compo' : folderName;
+                    const prevProc = existingShot.processes ? existingShot.processes[matchedProcId] : null;
+                    processesObj[matchedProcId] = {
+                        assignedUsers: prevProc?.assignedUsers || [],
+                        status: prevProc?.status || 'PENDIENTE',
+                        folderExists: true,
+                        notes: prevProc?.notes || '',
+                        isLocalOnly: true
+                    };
+                });
+
+                ShotNavigator.trackerData.shots[shotKey] = {
+                    id: shotKey,
+                    name: dInfo.name,
+                    episode: dInfo.episode,
+                    scene: dInfo.scene,
+                    path: dInfo.path,
+                    folderExists: true,
+                    processes: processesObj,
+                    status: existingShot.status || 'PENDIENTE',
+                    notes: existingShot.notes || '',
+                    isLocalOnly: true,
+                    updatedAt: new Date().toISOString()
+                };
+                ShotNavigator.trackerData.shots[shotKey].status = ShotNavigator.computeShotAutomaticStatus(ShotNavigator.trackerData.shots[shotKey]).id;
+            }
+        });
+
+        // 6. Guardar snapshot local
+        await ShotNavigator.saveTracker();
     },
 
     discoverShotsFromDisk: async () => {
@@ -484,48 +835,78 @@ const ShotNavigator = {
         const procs = Object.entries(sh.processes || {}).filter(([pId, pData]) => {
             const isKnown = ShotNavigator.availableProcesses.some(p => p.id.toLowerCase() === pId.toLowerCase());
             const users = pData.assignedUsers || (pData.assignedUser ? [pData.assignedUser] : []);
-            return isKnown || users.length > 0 || pData.folderExists || (pData.status && pData.status !== 'none' && pData.status !== 'not_started');
+            return isKnown || users.length > 0 || pData.folderExists || (pData.status && pData.status !== 'none' && pData.status !== 'not_started' && pData.status !== 'PENDIENTE');
         });
 
+        // --- MODO RAMON HIBRIDO (10 estados canónicos) ---
+        if (ShotNavigator.isRamonMode()) {
+            if (procs.length === 0) {
+                return ShotNavigator.statuses.find(s => s.id === 'PENDIENTE') || { id: 'PENDIENTE', name: 'Pendiente', color: '#757575', icon: '⚪' };
+            }
+
+            const statuses = procs.map(([_, pData]) => (pData.status || 'PENDIENTE').toUpperCase().trim());
+            const uniqueStatuses = Array.from(new Set(statuses));
+            if (uniqueStatuses.length === 1) {
+                const stId = uniqueStatuses[0];
+                return ShotNavigator.statuses.find(s => s.id === stId) || { id: stId, name: stId, color: '#757575', icon: '⚪' };
+            }
+
+            if (statuses.every(s => s === 'APROBADO')) {
+                return ShotNavigator.statuses.find(s => s.id === 'APROBADO') || { id: 'APROBADO', name: 'Aprobado', color: '#4caf50', icon: '🟢' };
+            }
+            if (statuses.some(s => s === 'CANCELADO' || s === 'ELIMINADO')) {
+                return ShotNavigator.statuses.find(s => s.id === 'CANCELADO') || { id: 'CANCELADO', name: 'Cancelado', color: '#f44336', icon: '🔴' };
+            }
+            if (statuses.some(s => s === 'AJUSTAR')) {
+                return ShotNavigator.statuses.find(s => s.id === 'AJUSTAR') || { id: 'AJUSTAR', name: 'Ajustar', color: '#ff5722', icon: '🔴' };
+            }
+            if (statuses.some(s => s === 'REVISAR')) {
+                return ShotNavigator.statuses.find(s => s.id === 'REVISAR') || { id: 'REVISAR', name: 'Revisar', color: '#9c27b0', icon: '🟣' };
+            }
+            if (statuses.some(s => s === 'INT APROBADO')) {
+                return ShotNavigator.statuses.find(s => s.id === 'INT APROBADO') || { id: 'INT APROBADO', name: 'Int. Aprobado', color: '#8bc34a', icon: '🟢' };
+            }
+            if (statuses.some(s => s === 'PROCESO' || s === 'APROBADO')) {
+                return ShotNavigator.statuses.find(s => s.id === 'PROCESO') || { id: 'PROCESO', name: 'En Proceso', color: '#ff9800', icon: '🟠' };
+            }
+            if (statuses.some(s => s === 'STAND BY')) {
+                return ShotNavigator.statuses.find(s => s.id === 'STAND BY') || { id: 'STAND BY', name: 'Stand By', color: '#ffc107', icon: '🟡' };
+            }
+            if (statuses.some(s => s === 'ASIGNADO')) {
+                return ShotNavigator.statuses.find(s => s.id === 'ASIGNADO') || { id: 'ASIGNADO', name: 'Asignado', color: '#2196f3', icon: '🔵' };
+            }
+
+            return ShotNavigator.statuses.find(s => s.id === 'PENDIENTE') || { id: 'PENDIENTE', name: 'Pendiente', color: '#757575', icon: '⚪' };
+        }
+
+        // --- MODO LOCAL ORIGINAL ---
         if (procs.length === 0) {
             return ShotNavigator.statuses.find(s => s.id === 'none') || { id: 'none', name: 'Ninguno', color: '#757575', icon: '⚪' };
         }
 
         const statuses = procs.map(([_, pData]) => pData.status || 'none');
 
-        // 1. Si todos tienen el mismo estado exacto
         const uniqueStatuses = Array.from(new Set(statuses));
         if (uniqueStatuses.length === 1) {
             const stId = uniqueStatuses[0];
             return ShotNavigator.statuses.find(s => s.id === stId) || { id: stId, name: stId, color: '#757575', icon: '⚪' };
         }
 
-        // 2. Si todos están aprobados
         if (statuses.every(s => s === 'approved')) {
             return ShotNavigator.statuses.find(s => s.id === 'approved') || { id: 'approved', name: 'Aprobado', color: '#4caf50', icon: '🟢' };
         }
-
-        // 3. Si alguno está cancelado
         if (statuses.some(s => s === 'canceled')) {
             return ShotNavigator.statuses.find(s => s.id === 'canceled') || { id: 'canceled', name: 'Cancelado', color: '#f44336', icon: '🔴' };
         }
-
-        // 4. Si alguno está en review
         if (statuses.some(s => s === 'review')) {
             return ShotNavigator.statuses.find(s => s.id === 'review') || { id: 'review', name: 'Review', color: '#9c27b0', icon: '🟣' };
         }
-
-        // 5. Si hay mezcla (algunos aprobados y otros asignados o en proceso) o alguno está en in_progress -> 'in_progress'
         if (statuses.some(s => s === 'in_progress' || s === 'approved')) {
             return ShotNavigator.statuses.find(s => s.id === 'in_progress') || { id: 'in_progress', name: 'En Proceso', color: '#ff9800', icon: '🟠' };
         }
-
-        // 6. Si alguno está en hold
         if (statuses.some(s => s === 'hold')) {
             return ShotNavigator.statuses.find(s => s.id === 'hold') || { id: 'hold', name: 'En Pausa / Hold', color: '#ffc107', icon: '🟡' };
         }
-
-        // 7. Si alguno está asignado
         if (statuses.some(s => s === 'assigned')) {
             return ShotNavigator.statuses.find(s => s.id === 'assigned') || { id: 'assigned', name: 'Asignado', color: '#2196f3', icon: '🔵' };
         }
@@ -534,26 +915,130 @@ const ShotNavigator = {
     },
 
     getShotRootStatus: (sh) => {
+        const defaultFallback = ShotNavigator.isRamonMode() ? 'PENDIENTE' : 'none';
         const mode = ShotNavigator.rootStatusMode || 'auto';
         if (mode === 'general') {
-            return ShotNavigator.statuses.find(s => s.id === sh.status) || { id: sh.status, name: sh.status || 'Ninguno', color: '#757575', icon: '⚪' };
+            return ShotNavigator.statuses.find(s => s.id === sh.status) || { id: sh.status, name: sh.status || defaultFallback, color: '#757575', icon: '⚪' };
         }
         if (mode === 'auto') {
             return ShotNavigator.computeShotAutomaticStatus(sh);
         }
-        // Modo por proceso específico (ej: 'compo')
-        const pData = sh.processes ? sh.processes[mode] : null;
+        const pData = sh.processes ? (sh.processes[mode] || sh.processes[mode.toLowerCase()]) : null;
         if (!pData) {
             return { id: 'none', name: 'No creado', color: '#555', icon: '—' };
         }
-        const stId = pData.status || 'none';
+        const stId = pData.status || defaultFallback;
         return ShotNavigator.statuses.find(s => s.id === stId) || { id: stId, name: stId, color: '#757575', icon: '⚪' };
+    },
+
+    isShotApproved: (sh) => {
+        if (!sh) return false;
+        const st = ShotNavigator.getShotRootStatus(sh);
+        return st.id === 'approved' || st.id === 'APROBADO';
+    },
+
+    getActiveUserIdentifier: () => {
+        if (ShotNavigator.isRamonMode() && typeof Ramon !== 'undefined' && Ramon.session?.user) {
+            return Ramon.session.user.login || Ramon.session.user.username || '';
+        }
+        return ShotNavigator.activeUser || '';
+    },
+
+    isShotAssignedToActiveUser: (sh) => {
+        if (!sh) return false;
+
+        // 1. Si estamos en modo Ramón o tenemos tareas de Ramón en memoria
+        if (ShotNavigator.isRamonMode() || (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks) && Ramon.tasks.length > 0)) {
+            // Comprobar contra el Set oficial de tareas de Ramón (el mismo que usa el Explorer)
+            if (typeof window.getExplorerAssignedTaskNames === 'function') {
+                const assignedSet = window.getExplorerAssignedTaskNames();
+                if (assignedSet && assignedSet.size > 0) {
+                    const sNameNorm = (sh.name || '').toLowerCase().trim();
+                    const rCodeNorm = (sh.ramonCode || '').toLowerCase().trim();
+                    if (sNameNorm && assignedSet.has(sNameNorm)) return true;
+                    if (rCodeNorm && assignedSet.has(rCodeNorm)) return true;
+                    for (const item of assignedSet) {
+                        if (sNameNorm && (item === sNameNorm || sNameNorm.includes(item) || item.includes(sNameNorm))) return true;
+                    }
+                }
+            }
+        }
+
+        // 2. Construir lista exhaustiva de identificadores y alias del usuario activo
+        const candidates = new Set();
+
+        if (typeof Ramon !== 'undefined' && Ramon.session?.user) {
+            const ru = Ramon.session.user;
+            if (ru.login) candidates.add(ru.login.toLowerCase().trim());
+            if (ru.username) candidates.add(ru.username.toLowerCase().trim());
+            if (ru.display_name) candidates.add(ru.display_name.toLowerCase().trim());
+            if (ru.name) candidates.add(ru.name.toLowerCase().trim());
+            if (ru.first_name && ru.last_name) {
+                candidates.add(`${ru.first_name} ${ru.last_name}`.toLowerCase().trim());
+            }
+        }
+
+        if (ShotNavigator.activeUser) {
+            const au = ShotNavigator.activeUser.toLowerCase().trim();
+            candidates.add(au);
+            candidates.add(au.replace(/^lasp-/, ''));
+        }
+
+        if (Array.isArray(ShotNavigator.users)) {
+            for (const u of ShotNavigator.users) {
+                const uLasp = (u.laspUser || '').toLowerCase().trim();
+                const uUser = (u.username || u.user || '').toLowerCase().trim();
+                const uName = (u.name || u.displayName || '').toLowerCase().trim();
+                const uFull = (u.firstName && u.lastName) ? `${u.firstName} ${u.lastName}`.toLowerCase().trim() : '';
+
+                const isMatch = Array.from(candidates).some(c => 
+                    c === uLasp || c === uUser || c === uName || c === uFull ||
+                    c.replace(/^lasp-/, '') === uLasp.replace(/^lasp-/, '') ||
+                    c.replace(/^lasp-/, '') === uUser.replace(/^lasp-/, '')
+                );
+
+                if (isMatch) {
+                    if (uLasp) { candidates.add(uLasp); candidates.add(uLasp.replace(/^lasp-/, '')); }
+                    if (uUser) { candidates.add(uUser); candidates.add(uUser.replace(/^lasp-/, '')); }
+                    if (uName) candidates.add(uName);
+                    if (uFull) candidates.add(uFull);
+                }
+            }
+        }
+
+        if (candidates.size === 0) return false;
+
+        // 3. Evaluar cada proceso del plano
+        return Object.values(sh.processes || {}).some(p => {
+            const users = p.assignedUsers || (p.assignedUser ? [p.assignedUser] : []);
+            return users.some(u => {
+                if (!u) return false;
+                const uNorm = u.toLowerCase().trim();
+                const uClean = uNorm.replace(/^lasp-/, '');
+
+                for (const cand of candidates) {
+                    const candClean = cand.replace(/^lasp-/, '');
+                    if (uNorm === cand || uClean === candClean) return true;
+                    if (cand.includes(' ') && uClean.length > 2 && cand.includes(uClean)) return true;
+                    if (uNorm.includes(' ') && candClean.length > 2 && uNorm.includes(candClean)) return true;
+                }
+                return false;
+            });
+        });
     },
 
     // --- FILTERS & QUERY ---
     toggleOnlyMyShots: () => {
         ShotNavigator.onlyMyShots = !ShotNavigator.onlyMyShots;
-        ShotNavigator.updateTableOnly();
+        if (ShotNavigator.onlyMyShots) {
+            // Si el episodio actual no contiene planos asignados al usuario, restablecer a ALL
+            const filtered = ShotNavigator.getFilteredShots();
+            if (filtered.length === 0 && ShotNavigator.selectedEpisode !== 'ALL') {
+                ShotNavigator.selectedEpisode = 'ALL';
+                ShotNavigator.selectedScene = 'ALL';
+            }
+        }
+        ShotNavigator.render();
         if (typeof updateHeaderTools === 'function') updateHeaderTools('view-shot-navigator');
     },
 
@@ -600,12 +1085,9 @@ const ShotNavigator = {
                 const proc = sh.processes && (sh.processes[ShotNavigator.selectedProcess] || sh.processes[ShotNavigator.selectedProcess.toLowerCase()]);
                 if (!proc || (proc.status === 'not_started' && (!proc.assignedUsers || proc.assignedUsers.length === 0) && !proc.folderExists)) return false;
             }
-            // "Only My Shots" filter
-            if (ShotNavigator.onlyMyShots && ShotNavigator.activeUser) {
-                const isAssigned = Object.values(sh.processes || {}).some(p => 
-                    (p.assignedUsers && p.assignedUsers.includes(ShotNavigator.activeUser)) || p.assignedUser === ShotNavigator.activeUser
-                );
-                if (!isAssigned) return false;
+            // "Only My Shots" filter (compatible con login local y Ramón)
+            if (ShotNavigator.onlyMyShots) {
+                if (!ShotNavigator.isShotAssignedToActiveUser(sh)) return false;
             }
             // Search query
             if (ShotNavigator.searchQuery) {
@@ -632,6 +1114,9 @@ const ShotNavigator = {
         ShotNavigator.selectedShotKeys.forEach(sKey => {
             const sh = ShotNavigator.trackerData.shots[sKey];
             if (sh && sh.path) {
+                if (!sh.folderExists) {
+                    foldersToCreate.push(sh.path);
+                }
                 for (const [pId, pData] of Object.entries(sh.processes || {})) {
                     if (!pData.folderExists) {
                         foldersToCreate.push(pathJoin(sh.path, pId));
@@ -719,6 +1204,9 @@ const ShotNavigator = {
     },
 
     getActiveUserRole: () => {
+        if (ShotNavigator.isRamonMode()) {
+            return { id: 'ramon_user', name: 'Usuario Ramón', permissions: { assignAllShots: true, workflow_edit_statuses: true } };
+        }
         const userObj = ShotNavigator.getActiveUserObj();
         if (userObj) {
             return (ShotNavigator.roles || []).find(r => r.id === userObj.role);
@@ -861,23 +1349,40 @@ const ShotNavigator = {
         const shot = ShotNavigator.trackerData.shots[shotKey];
         if (!shot) return;
         if (!shot.processes[processId]) {
-            shot.processes[processId] = { assignedUsers: [], status: 'none', folderExists: false };
+            shot.processes[processId] = { assignedUsers: [], status: statusId, folderExists: false };
+        } else {
+            shot.processes[processId].status = statusId;
         }
-        shot.processes[processId].status = statusId;
+        if (ShotNavigator.isRamonMode()) {
+            shot.processes[processId].statusOverride = statusId;
+        }
         shot.updatedAt = new Date().toISOString();
         
-        const procs = Object.values(shot.processes);
-        if (procs.length > 0 && procs.every(p => p.status === 'approved')) {
-            shot.status = 'approved';
-        } else if (procs.some(p => p.status === 'canceled' || p.status === 'retake')) {
-            shot.status = 'canceled';
-        } else if (procs.some(p => p.status === 'in_progress')) {
-            shot.status = 'in_progress';
-        }
+        // Recalcular estado de la raíz del plano automáticamente
+        shot.status = ShotNavigator.computeShotAutomaticStatus(shot).id;
         
         ShotNavigator.saveTracker(); // Background async
         ShotNavigator.updateTableOnly();
         ShotNavigator.updateInspectorOnly();
+        if (ShotNavigator.isRamonMode()) {
+            ShotNavigator.showToast(`💾 Estado cambiado localmente a "${statusId}" (Solo lectura en Ramón)`, 'info');
+        }
+    },
+
+    setShotNotes: (shotId, notes) => {
+        const shot = ShotNavigator.trackerData.shots[shotId];
+        if (!shot) return;
+        shot.notes = notes;
+        shot.updatedAt = new Date().toISOString();
+        ShotNavigator.saveTracker();
+    },
+
+    setProcessNotes: (shotId, processId, notes) => {
+        const shot = ShotNavigator.trackerData.shots[shotId];
+        if (!shot || !shot.processes[processId]) return;
+        shot.processes[processId].notes = notes;
+        shot.updatedAt = new Date().toISOString();
+        ShotNavigator.saveTracker();
     },
 
     openAssignProcessModal: (shotId) => {
@@ -1050,12 +1555,18 @@ const ShotNavigator = {
                          onclick="ShotNavigator.setEpisodeFilter('ALL')"
                          style="padding:8px 10px; border-radius:4px; cursor:pointer; margin-bottom:4px; font-weight:bold; font-size:0.85rem; display:flex; justify-content:space-between; color:${ShotNavigator.selectedEpisode === 'ALL' ? 'var(--accent)' : '#ccc'}; background:${ShotNavigator.selectedEpisode === 'ALL' ? 'rgba(255,152,0,0.12)' : 'transparent'};">
                         <span>🌐 Todos</span>
-                        <span style="color:#666; font-size:0.75rem;">(${Object.keys(ShotNavigator.trackerData.shots || {}).length})</span>
+                        <span style="color:#666; font-size:0.75rem;">(${filteredShots.length})</span>
                     </div>
 
                     ${episodes.map(ep => {
-                        const epShots = Object.values(ShotNavigator.trackerData.shots || {}).filter(s => s.episode === ep);
-                        const approvedCount = epShots.filter(s => s.status === 'approved').length;
+                        const allEpShots = Object.values(ShotNavigator.trackerData.shots || {}).filter(s => s.episode === ep);
+                        const epShots = ShotNavigator.onlyMyShots 
+                            ? allEpShots.filter(s => ShotNavigator.isShotAssignedToActiveUser(s))
+                            : allEpShots;
+                        
+                        if (ShotNavigator.onlyMyShots && epShots.length === 0) return '';
+
+                        const approvedCount = epShots.filter(s => ShotNavigator.isShotApproved(s)).length;
                         const pct = epShots.length > 0 ? Math.round((approvedCount / epShots.length) * 100) : 0;
                         const isSelected = ShotNavigator.selectedEpisode === ep;
 
@@ -1077,6 +1588,7 @@ const ShotNavigator = {
                                         </div>
                                         ${scenes.map(sc => {
                                             const scShots = epShots.filter(s => s.scene === sc);
+                                            if (ShotNavigator.onlyMyShots && scShots.length === 0) return '';
                                             const isScSelected = ShotNavigator.selectedScene === sc;
                                             return `
                                                 <div class="shot-nav-tree-subitem ${isScSelected ? 'active' : ''}"
@@ -1103,9 +1615,9 @@ const ShotNavigator = {
                     <!-- Input de Búsqueda -->
                     <div style="position:relative; flex:1; min-width:200px; max-width:280px;">
                         <input type="text" placeholder="🔍 Buscar plano, escena, usuario..." 
-                               value="${ShotNavigator.searchQuery}" 
-                               oninput="ShotNavigator.setSearchQuery(this.value)"
-                               style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; font-size:0.82rem; outline:none;">
+                                value="${ShotNavigator.searchQuery}" 
+                                oninput="ShotNavigator.setSearchQuery(this.value)"
+                                style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; font-size:0.82rem; outline:none;">
                     </div>
 
                     <!-- Filtro: Modo de Estado Root -->
@@ -1145,10 +1657,10 @@ const ShotNavigator = {
                         <span>${filteredShots.length > 0 && filteredShots.every(s => ShotNavigator.expandedShotKeys.has(s.id)) ? '⊟ Colapsar Todo' : '⊞ Expandir Todo'}</span>
                     </button>
 
-                    <!-- Botón Refrescar -->
-                    <button class="tool-btn" onclick="ShotNavigator.refreshWorkflow()" title="Refrescar estado real de procesos en disco" 
-                            style="background:#1c222d; border:1px solid #2e3846; color:#4fc3f7; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; gap:4px;">
-                        <span>↻ Refrescar</span>
+                    <!-- Botón Refrescar / Sincronizar -->
+                    <button class="tool-btn" onclick="ShotNavigator.refreshWorkflow(true)" title="${ShotNavigator.isRamonMode() ? 'Sincronizar tareas y planos con Ramón' : 'Refrescar estado real de procesos en disco'}" 
+                            style="background:#1c222d; border:1px solid #2e3846; color:${ShotNavigator.isRamonMode() ? '#64b5f6' : '#4fc3f7'}; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; gap:4px;">
+                        <span>↻ ${ShotNavigator.isRamonMode() ? 'Sincronizar Ramón' : 'Refrescar'}</span>
                     </button>
 
                     <div style="flex:1;"></div>
@@ -1434,6 +1946,18 @@ const ShotNavigator = {
                         <span style="color:#888;">Jerarquía:</span>
                         <span style="color:#eee; font-weight:bold;">${shot.episode} / ${shot.scene}</span>
                     </div>
+                    ${shot.ramonCode ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                            <span style="color:#888;">Código Ramón:</span>
+                            <span style="color:#4fc3f7; font-family:monospace; font-weight:bold;">${shot.ramonCode}</span>
+                        </div>
+                    ` : ''}
+                    ${shot.frame_in !== undefined && shot.frame_out !== undefined ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                            <span style="color:#888;">Frames (In/Out):</span>
+                            <span style="color:#aaa; font-family:monospace;">${shot.frame_in} - ${shot.frame_out}</span>
+                        </div>
+                    ` : ''}
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="color:#888;">Estado General:</span>
                         <select onchange="ShotNavigator.setShotGeneralStatus('${shot.id}', this.value)" 
@@ -1443,6 +1967,14 @@ const ShotNavigator = {
                             `).join('')}
                         </select>
                     </div>
+                </div>
+
+                <!-- Notas del Plano (Local) -->
+                <div style="background:#11151c; padding:10px; border-radius:6px; border:1px solid #232a35; margin-bottom:14px; font-size:0.8rem;">
+                    <div style="color:#ccc; font-weight:bold; font-size:0.75rem; margin-bottom:4px;">📝 Notas del Plano (Local):</div>
+                    <textarea onchange="ShotNavigator.setShotNotes('${shot.id}', this.value)" 
+                              placeholder="Escribe notas locales para este plano..." 
+                              style="width:100%; height:55px; background:#181d26; border:1px solid #28303d; border-radius:4px; padding:6px; color:#eee; font-size:0.75rem; resize:vertical; outline:none;">${shot.notes || ''}</textarea>
                 </div>
 
                 <!-- Botón Abrir Carpeta -->
@@ -1501,6 +2033,12 @@ const ShotNavigator = {
                                         </div>
                                     </div>
 
+                                    ${pData.ramonTaskId ? `
+                                        <div style="font-size:0.68rem; color:#78909c; font-family:monospace; margin-bottom:4px;">
+                                            ID Ramón: #${pData.ramonTaskId}${pData.supervisor ? ' | Sup: ' + pData.supervisor : ''}
+                                        </div>
+                                    ` : ''}
+
                                     <!-- Lista de Usuarios Asignados (Multi-Usuario con Tags) -->
                                     <div style="font-size:0.75rem; margin-top:6px;">
                                         <div style="color:#888; margin-bottom:4px;">Usuarios Asignados:</div>
@@ -1517,7 +2055,7 @@ const ShotNavigator = {
                                         <!-- Selector para Añadir Usuario -->
                                         ${canAssign ? `
                                             <select onchange="if(this.value) { ShotNavigator.toggleUserOnProcess('${shot.id}', '${pId}', this.value); this.value=''; }"
-                                                    style="width:100%; background:#1c222d; color:#eee; border:1px solid #2e3846; border-radius:4px; font-size:0.72rem; padding:4px;">
+                                                    style="width:100%; background:#1c222d; color:#eee; border:1px solid #2e3846; border-radius:4px; font-size:0.72rem; padding:4px; margin-bottom:6px;">
                                                 <option value="">+ Añadir Usuario...</option>
                                                 ${ShotNavigator.users.filter(u => !assignedUsers.includes(ShotNavigator.getUserIdentifier(u))).map(u => {
                                                     const uid = ShotNavigator.getUserIdentifier(u);
@@ -1526,6 +2064,14 @@ const ShotNavigator = {
                                                 }).join('')}
                                             </select>
                                         ` : ''}
+
+                                        <!-- Nota del Proceso -->
+                                        <div>
+                                            <input type="text" value="${pData.notes || ''}" 
+                                                   placeholder="Nota de proceso (local)..." 
+                                                   onchange="ShotNavigator.setProcessNotes('${shot.id}', '${pId}', this.value)"
+                                                   style="width:100%; background:#181d26; border:1px solid #28303d; border-radius:3px; padding:3px 6px; color:#ccc; font-size:0.7rem; outline:none;">
+                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -1543,6 +2089,9 @@ const ShotNavigator = {
         ShotNavigator.saveTracker();
         ShotNavigator.updateTableOnly();
         ShotNavigator.updateInspectorOnly();
+        if (ShotNavigator.isRamonMode()) {
+            ShotNavigator.showToast(`💾 Estado general cambiado localmente a "${statusId}" (Solo lectura en Ramón)`, 'info');
+        }
     }
 };
 

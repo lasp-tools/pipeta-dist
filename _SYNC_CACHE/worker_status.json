@@ -1,0 +1,10 @@
+{
+  "workerId": "local_worker_lasp-vm_21052",
+  "hostname": "lasp-vm",
+  "platform": "win32",
+  "status": "idle",
+  "activeTask": null,
+  "lastPing": "2026-09-21T19:29:02.054Z",
+  "rcloneAvailable": true,
+  "rcloneConf": "Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/Pipeta/tools/rclone/rclone.conf"
+}

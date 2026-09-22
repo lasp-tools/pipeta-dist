@@ -1,0 +1,27 @@
+{
+  "id": "episodios/_root",
+  "project": "aqee",
+  "type": "drive",
+  "category": "work",
+  "prefix": "episodios",
+  "file": "episodios/_root.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_work_2",
+      "category": "work",
+      "name": "episodios",
+      "relPath": "episodios",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-29T09:34:06.818Z",
+      "onlinePath": "G:/Unidades compartidas/aqee/episodios",
+      "targetLocalPath": "Z:/atresmedia/aqee/episodios"
+    }
+  ]
+}
