@@ -1,10 +1,10 @@
 {
   "project": "surf_love",
-  "projectCode": "surf_love",
+  "projectCode": "SURF",
   "client": "atresmedia",
   "type": "drive",
   "version": "2.0-modular",
-  "generatedAt": "2026-09-16T17:59:38.738Z",
+  "generatedAt": "2026-09-25T20:46:31.765Z",
   "roots": {
     "work": {
       "local": "Z:/atresmedia/surf_love",
@@ -16,13 +16,13 @@
     }
   },
   "stats": {
-    "totalFiles": 42399,
-    "totalFolders": 1993,
-    "totalBytes": 2297993777455,
-    "workFiles": 822,
-    "workBytes": 876172762760,
-    "mediaFiles": 41577,
-    "mediaBytes": 1421821014695
+    "totalFiles": 53875,
+    "totalFolders": 2175,
+    "totalBytes": 2557008180541,
+    "workFiles": 1167,
+    "workBytes": 884859403534,
+    "mediaFiles": 52706,
+    "mediaBytes": 1671859837739
   },
   "subCatalogs": {
     "misc": {
@@ -30,18 +30,18 @@
       "file": "misc.json",
       "category": "work",
       "prefix": "COMPRESSOR",
-      "itemCount": 635,
-      "fileCount": 555,
-      "byteCount": 869824432506
+      "itemCount": 1689,
+      "fileCount": 1168,
+      "byteCount": 885144078918
     },
     "assets2D": {
       "id": "assets2D",
       "file": "assets2D.json",
       "category": "work",
       "prefix": "assets2D",
-      "itemCount": 95,
-      "fileCount": 57,
-      "byteCount": 5476777641
+      "itemCount": 98,
+      "fileCount": 58,
+      "byteCount": 5384382404
     },
     "assets3D": {
       "id": "assets3D",
@@ -66,27 +66,27 @@
       "file": "episodios/B02.json",
       "category": "work",
       "prefix": "episodios/B02",
-      "itemCount": 42,
-      "fileCount": 16,
-      "byteCount": 71267468
+      "itemCount": 46,
+      "fileCount": 17,
+      "byteCount": 355942752
     },
     "episodios/B03": {
       "id": "episodios/B03",
       "file": "episodios/B03.json",
       "category": "work",
       "prefix": "episodios/B03",
-      "itemCount": 151,
-      "fileCount": 55,
-      "byteCount": 271249464
+      "itemCount": 292,
+      "fileCount": 186,
+      "byteCount": 2208956978
     },
     "episodios/B04": {
       "id": "episodios/B04",
       "file": "episodios/B04.json",
       "category": "work",
       "prefix": "episodios/B04",
-      "itemCount": 186,
-      "fileCount": 69,
-      "byteCount": 391759106
+      "itemCount": 252,
+      "fileCount": 133,
+      "byteCount": 1940926516
     },
     "episodios/XXX": {
       "id": "episodios/XXX",
@@ -102,27 +102,27 @@
       "file": "episodios/templates.json",
       "category": "work",
       "prefix": "episodios/templates",
-      "itemCount": 10,
+      "itemCount": 9,
       "fileCount": 8,
-      "byteCount": 34583759
+      "byteCount": 34583859
     },
     "episodios/VFX-Edits": {
       "id": "episodios/VFX-Edits",
       "file": "episodios/VFX-Edits.json",
       "category": "work",
       "prefix": "episodios/VFX-Edits",
-      "itemCount": 2,
-      "fileCount": 1,
-      "byteCount": 284012
+      "itemCount": 3,
+      "fileCount": 2,
+      "byteCount": 409068
     },
     "episodios/B01": {
       "id": "episodios/B01",
       "file": "episodios/B01.json",
       "category": "work",
       "prefix": "episodios/B01",
-      "itemCount": 133,
-      "fileCount": 62,
-      "byteCount": 267720284
+      "itemCount": 261,
+      "fileCount": 184,
+      "byteCount": 4820317617
     },
     "media/thumbnails": {
       "id": "media/thumbnails",
@@ -147,45 +147,45 @@
       "file": "media/B03.json",
       "category": "media",
       "prefix": "B03",
-      "itemCount": 11650,
-      "fileCount": 11219,
-      "byteCount": 364262664032
+      "itemCount": 15940,
+      "fileCount": 15412,
+      "byteCount": 462598562651
     },
     "media/B02": {
       "id": "media/B02",
       "file": "media/B02.json",
       "category": "media",
       "prefix": "B02",
-      "itemCount": 6044,
-      "fileCount": 5893,
-      "byteCount": 229023217599
+      "itemCount": 6048,
+      "fileCount": 5897,
+      "byteCount": 229051622733
     },
     "media/B04": {
       "id": "media/B04",
       "file": "media/B04.json",
       "category": "media",
       "prefix": "B04",
-      "itemCount": 9110,
-      "fileCount": 8778,
-      "byteCount": 312197111543
+      "itemCount": 10016,
+      "fileCount": 9656,
+      "byteCount": 339850481854
     },
     "media/B01": {
       "id": "media/B01",
       "file": "media/B01.json",
       "category": "media",
       "prefix": "B01",
-      "itemCount": 14471,
-      "fileCount": 13960,
-      "byteCount": 487573854896
+      "itemCount": 20372,
+      "fileCount": 19830,
+      "byteCount": 611657842166
     },
     "media/_gsdata_": {
       "id": "media/_gsdata_",
       "file": "media/_gsdata_.json",
       "category": "media",
       "prefix": "_gsdata_",
-      "itemCount": 256,
-      "fileCount": 255,
-      "byteCount": 1967194
+      "itemCount": 445,
+      "fileCount": 444,
+      "byteCount": 2625065
     },
     "media/XXX": {
       "id": "media/XXX",
@@ -219,7 +219,7 @@
       "file": "media/_InPost.json",
       "category": "media",
       "prefix": "_InPost",
-      "itemCount": 4,
+      "itemCount": 5,
       "fileCount": 0,
       "byteCount": 0
     },
@@ -246,7 +246,7 @@
       "file": "media/VFX-Edits.json",
       "category": "media",
       "prefix": "VFX-Edits",
-      "itemCount": 7,
+      "itemCount": 8,
       "fileCount": 1,
       "byteCount": 125883964
     }

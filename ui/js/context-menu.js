@@ -190,17 +190,19 @@ class ContextMenu {
             PipetaConsole.log('sync', `Refrescando carpeta: '${folderName}' (Modo: ${compMode.toUpperCase()})`, 'pending');
         }
 
-        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-            settings.showToast(`Refrescando "${folderName}"...`, 'info', 4);
-        }
-
         try {
             const viewMode = window.viewLocationMode || 'local';
             const isServer = (viewMode === 'server') || (compMode === 'server');
             const isDrive = (viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:');
             const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
+            const targetLabel = targetType === 'server' ? 'Servidor' : 'Drive';
 
             if (targetType) {
+                if (window.CatalogRefreshStepper) {
+                    window.CatalogRefreshStepper.show(folderName, targetLabel);
+                    window.CatalogRefreshStepper.setStep('scan');
+                }
+
                 // Escaneo y actualización scoped ultra-rápida del sub-catálogo en Servidor o Google Drive
                 const res = await fetch('/api/sync/catalog/refresh-folder', {
                     method: 'POST',
@@ -208,24 +210,36 @@ class ContextMenu {
                     body: JSON.stringify({ project: projName, path: folderPath, type: targetType })
                 }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
 
-                const targetLabel = targetType === 'server' ? 'Servidor' : 'Drive';
                 if (res && res.success) {
+                    if (window.CatalogRefreshStepper) window.CatalogRefreshStepper.setStep('sync');
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
                     if (typeof PipetaConsole !== 'undefined') {
                         PipetaConsole.log('sync', `✓ Carpeta '${folderName}' actualizada (${res.itemsCount || 0} items en ${targetLabel})`, 'ok');
                     }
-                    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                        settings.showToast(`✅ "${folderName}" actualizada (${res.itemsCount || 0} items en ${targetLabel})`, 'success', 3);
+                    if (window.CatalogRefreshStepper) {
+                        window.CatalogRefreshStepper.setStep('refresh');
+                    }
+                    if (typeof refreshCurrentView === 'function') {
+                        await refreshCurrentView();
+                    }
+                    if (window.CatalogRefreshStepper) {
+                        window.CatalogRefreshStepper.finish(`✅ "${folderName}" al día (${res.itemsCount || 0} items en ${targetLabel})`);
                     }
                 } else {
                     console.warn(`[REFRESH FOLDER] Fallback ${targetLabel}:`, res?.error);
+                    if (window.CatalogRefreshStepper) {
+                        window.CatalogRefreshStepper.fail(res?.error || `No se pudo refrescar en ${targetLabel}`);
+                    }
                     if (typeof PipetaConsole !== 'undefined') {
                         PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en ${targetLabel}: ${res?.error || 'Error desconocido'}`, 'error');
                     }
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
+                    }
+                    if (typeof refreshCurrentView === 'function') {
+                        await refreshCurrentView();
                     }
                 }
             } else {
@@ -235,13 +249,13 @@ class ContextMenu {
                 if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(`✅ "${folderName}" refrescada`, 'success', 2);
                 }
-            }
-
-            if (typeof refreshCurrentView === 'function') {
-                refreshCurrentView();
+                if (typeof refreshCurrentView === 'function') {
+                    await refreshCurrentView();
+                }
             }
         } catch(err) {
             console.error("Error refreshing folder:", err);
+            if (window.CatalogRefreshStepper) window.CatalogRefreshStepper.fail(err.message);
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', `❌ Error refrescando carpeta '${folderName}': ${err.message}`, 'error');
             }

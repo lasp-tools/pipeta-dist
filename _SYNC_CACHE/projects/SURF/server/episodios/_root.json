@@ -1,0 +1,27 @@
+{
+  "id": "episodios/_root",
+  "project": "surf_love",
+  "type": "server",
+  "category": "work",
+  "prefix": "episodios",
+  "file": "episodios/_root.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_work_413",
+      "category": "work",
+      "name": "episodios",
+      "relPath": "episodios",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T20:54:31.974Z",
+      "serverPath": "Z:/atresmedia/surf_love/episodios",
+      "targetLocalPath": "Z:/atresmedia/surf_love/episodios"
+    }
+  ]
+}

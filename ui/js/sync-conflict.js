@@ -203,17 +203,18 @@
     /**
      * Resuelve los datos de un elemento en el catálogo de Google Drive
      */
-    function findDriveCatalogItem(localPath) {
+    async function findDriveCatalogItem(localPath, isDir) {
         if (!localPath) return null;
-        const norm = localPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+        const norm = localPath.replace(/\\/g, '/').replace(/\/+$/, '');
+        const normLower = norm.toLowerCase();
         
         if (window.pipetaSyncCatalogLookup) {
             // 1. Buscar coincidencia exacta de archivo en índice
-            const byLocal = window.pipetaSyncCatalogLookup.byLocalPath?.get(norm);
+            const byLocal = window.pipetaSyncCatalogLookup.byLocalPath?.get(normLower);
             if (byLocal) return byLocal;
 
-            // 2. Si es una carpeta, comprobar si contiene hijos en el catálogo
-            const children = window.pipetaSyncCatalogLookup.byParentLocalPath?.get(norm);
+            // 2. Si es una carpeta, comprobar si contiene hijos en el catálogo en memoria
+            const children = window.pipetaSyncCatalogLookup.byParentLocalPath?.get(normLower);
             if (children && children.length > 0) {
                 const totalSize = children.reduce((acc, c) => acc + (c.size || 0), 0);
                 const firstOnline = children[0].onlinePath || '';
@@ -235,11 +236,91 @@
             if (window.pipetaSyncCatalog && Array.isArray(window.pipetaSyncCatalog.items)) {
                 const found = window.pipetaSyncCatalog.items.find(i => {
                     const iLocal = (i.targetLocalPath || i.localPath || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-                    return iLocal === norm;
+                    return iLocal === normLower;
                 });
                 if (found) return found;
             }
         }
+
+        // 4. Fallback modular: Consultar API de catálogo en servidor
+        try {
+            const lastSlash = norm.lastIndexOf('/');
+            const parentDir = lastSlash !== -1 ? norm.substring(0, lastSlash) : null;
+            const itemName = lastSlash !== -1 ? norm.substring(lastSlash + 1) : norm;
+            const itemNameLower = itemName.toLowerCase();
+
+            if (parentDir) {
+                const pRes = await fetch(`/api/fs/list?path=${encodeURIComponent(parentDir)}&local_source=drive_catalog`);
+                if (pRes.ok) {
+                    const pData = await pRes.json();
+                    if (pData && pData.exists && Array.isArray(pData.items)) {
+                        const directMatch = pData.items.find(i => (i.name || '').toLowerCase() === itemNameLower);
+                        if (directMatch) {
+                            if (directMatch.isDirectory || directMatch.isDir) {
+                                // Es un directorio: intentar obtener sus hijos para calcular size e itemCount
+                                let totalSize = directMatch.size || 0;
+                                let count = directMatch.itemCount || directMatch.pendingCount || 0;
+                                const cRes = await fetch(`/api/fs/list?path=${encodeURIComponent(localPath)}&local_source=drive_catalog`);
+                                if (cRes.ok) {
+                                    const cData = await cRes.json();
+                                    if (cData && cData.exists && Array.isArray(cData.items)) {
+                                        count = cData.items.length;
+                                        totalSize = cData.items.reduce((acc, c) => acc + (c.size || 0), 0);
+                                    }
+                                }
+                                return {
+                                    ...directMatch,
+                                    name: directMatch.name || itemName,
+                                    isDir: true,
+                                    isDirectory: true,
+                                    size: totalSize,
+                                    itemCount: count,
+                                    onlinePath: directMatch.path || directMatch.onlinePath,
+                                    targetLocalPath: localPath
+                                };
+                            } else {
+                                // Es un archivo
+                                return {
+                                    ...directMatch,
+                                    name: directMatch.name || itemName,
+                                    isDir: false,
+                                    isDirectory: false,
+                                    onlinePath: directMatch.path || directMatch.onlinePath,
+                                    targetLocalPath: localPath
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback si la carpeta fue consultada directamente
+            if (isDir) {
+                const cRes = await fetch(`/api/fs/list?path=${encodeURIComponent(localPath)}&local_source=drive_catalog`);
+                if (cRes.ok) {
+                    const cData = await cRes.json();
+                    if (cData && cData.exists && Array.isArray(cData.items) && cData.items.length > 0) {
+                        const totalSize = cData.items.reduce((acc, c) => acc + (c.size || 0), 0);
+                        const firstOnline = cData.items[0].onlinePath || cData.items[0].path || '';
+                        const slashIdx = firstOnline.lastIndexOf('/');
+                        const onlineFolder = slashIdx !== -1 ? firstOnline.substring(0, slashIdx) : null;
+                        return {
+                            name: itemName,
+                            isDir: true,
+                            isDirectory: true,
+                            size: totalSize,
+                            itemCount: cData.items.length,
+                            modTime: null,
+                            onlinePath: onlineFolder,
+                            targetLocalPath: localPath
+                        };
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[SyncConflict] Error resolviendo catálogo modular de Drive:', e);
+        }
+
         return null;
     }
 
@@ -296,7 +377,7 @@
                     exists: serverStat.exists
                 };
             } else if (targetType === 'drive') {
-                const catItem = findDriveCatalogItem(localPath);
+                const catItem = await findDriveCatalogItem(localPath, isDir);
                 const destOnlinePath = catItem?.onlinePath || `Google Drive (${proj})/${itemName}`;
 
                 targetInfo = {
@@ -335,7 +416,7 @@
                     exists: serverStat.exists
                 };
             } else if (targetType === 'drive') {
-                const catItem = findDriveCatalogItem(localPath);
+                const catItem = await findDriveCatalogItem(localPath, isDir);
                 const srcOnlinePath = catItem?.onlinePath || `Google Drive (${proj})/${itemName}`;
 
                 sourceInfo = {
@@ -435,7 +516,7 @@
         } else if (targetType === 'drive') {
             // ==================== OPERACIÓN GOOGLE DRIVE (WORKER) ====================
             const endpoint = action === 'upload' ? '/api/sync/request-upload' : '/api/sync/request-download';
-            const catItem = findDriveCatalogItem(localPath);
+            const catItem = await findDriveCatalogItem(localPath, isDir);
 
             let payloadItem = {};
             if (action === 'upload') {

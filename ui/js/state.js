@@ -394,35 +394,45 @@ function switchBrowserMode(mode) {
     }
 }
 
+let _isRefreshingView = false;
 async function refreshCurrentView(forceCatalog = false) {
-    window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
-
-    // Invalida caché en memoria del backend de directorios de red SOLO si se fuerza explícitamente
-    if (forceCatalog) {
-        try {
-            await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
-        } catch(e) {}
+    if (_isRefreshingView) {
+        return;
     }
+    _isRefreshingView = true;
 
-    // Visual feedback
-    const btn = document.querySelector('.tool-btn[title*="Refrescar"]') || document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
-    if (btn) {
-        btn.style.transform = "rotate(360deg)";
-        btn.style.transition = "transform 0.5s";
-        setTimeout(() => btn.style.transform = "none", 500);
-    }
+    try {
+        window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
 
-    const compMode = window.syncComparisonMode || 'off';
-    if (forceCatalog && typeof loadActiveProjectSyncCatalog === 'function') {
-        try {
-            await loadActiveProjectSyncCatalog(true);
-        } catch(e) {}
-    }
+        // Invalida caché en memoria del backend de directorios de red SOLO si se fuerza explícitamente
+        if (forceCatalog) {
+            try {
+                await fetch('/api/sync/catalog/clear-cache', { method: 'POST' });
+            } catch(e) {}
+        }
 
-    if (currentBrowserMode === 'split') {
-        if (typeof initBrowser === 'function') await initBrowser();
-    } else {
-        if (typeof initPipetaView === 'function') await initPipetaView();
+        // Visual feedback
+        const btn = document.querySelector('.tool-btn[title*="Refrescar"]') || document.querySelector('.tool-btn[title="Refrescar Carpeta"]');
+        if (btn) {
+            btn.style.transform = "rotate(360deg)";
+            btn.style.transition = "transform 0.5s";
+            setTimeout(() => btn.style.transform = "none", 500);
+        }
+
+        const compMode = window.syncComparisonMode || 'off';
+        if (forceCatalog && typeof loadActiveProjectSyncCatalog === 'function') {
+            try {
+                await loadActiveProjectSyncCatalog(true);
+            } catch(e) {}
+        }
+
+        if (currentBrowserMode === 'split') {
+            if (typeof initBrowser === 'function') await initBrowser();
+        } else {
+            if (typeof initPipetaView === 'function') await initPipetaView();
+        }
+    } finally {
+        _isRefreshingView = false;
     }
 }
 
@@ -523,6 +533,29 @@ function getZEnvStatusLabel() {
     return `Z: Disco Local (${z.type})`;
 }
 
+window.deepCompareMode = localStorage.getItem('pipeta_deep_compare') === 'true';
+
+function toggleDeepCompareMode() {
+    window.deepCompareMode = !window.deepCompareMode;
+    localStorage.setItem('pipeta_deep_compare', window.deepCompareMode ? 'true' : 'false');
+
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('sync', `Modo de comparación profunda (Deep Compare): ${window.deepCompareMode ? 'ACTIVADO (Compara tamaño y fecha)' : 'DESACTIVADO (Fast Scan)'}`, 'info');
+    }
+    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+        settings.showToast(window.deepCompareMode ? '🔬 Deep Compare activado (tamaño y fecha)' : '⚡ Fast Scan activado (modo rápido)', 'info', 2);
+    }
+
+    if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
+    const deepCb = document.getElementById('sync-deep-compare-cb');
+    if (deepCb) deepCb.checked = window.deepCompareMode;
+    refreshCurrentView();
+    if (window.syncAnalyzer && typeof window.syncAnalyzer.renderResults === 'function') {
+        window.syncAnalyzer.renderResults();
+    }
+}
+window.toggleDeepCompareMode = toggleDeepCompareMode;
+
 function toggleSyncComparisonMode(targetMode) {
     const nextMode = (window.syncComparisonMode === targetMode) ? 'off' : targetMode;
     setSyncComparisonMode(nextMode);
@@ -550,6 +583,103 @@ async function setSyncComparisonMode(mode) {
     refreshCurrentView();
 }
 
+window.CatalogRefreshStepper = {
+    card: null,
+    steps: [
+        { id: 'request', label: 'Enviando orden al Worker central...' },
+        { id: 'scan', label: 'Escaneando cambios en {target}...' },
+        { id: 'sync', label: 'Sincronizando catálogo a tu PC...' },
+        { id: 'refresh', label: 'Actualizando vista en pantalla...' }
+    ],
+    show(folderName, targetLabel = 'Drive') {
+        if (this.card) this.card.remove();
+        const card = document.createElement('div');
+        card.id = 'catalog-refresh-stepper';
+        card.className = 'catalog-stepper-card';
+        card.innerHTML = `
+            <div class="catalog-stepper-header">
+                <span style="font-size:1.1rem;">🔄</span>
+                <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    Refrescando: <span style="color:#00e5ff;">${folderName || 'Carpeta'}</span>
+                </div>
+            </div>
+            <div class="catalog-stepper-steps">
+                ${this.steps.map((s, idx) => `
+                    <div class="catalog-stepper-step ${idx === 0 ? 'active' : ''}" data-step-id="${s.id}">
+                        <span class="catalog-stepper-icon ${idx === 0 ? 'spinning' : ''}">${idx === 0 ? '' : '○'}</span>
+                        <span>${s.label.replace('{target}', targetLabel)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        document.body.appendChild(card);
+        this.card = card;
+    },
+    setStep(stepId) {
+        if (!this.card) return;
+        let passed = true;
+        this.card.querySelectorAll('.catalog-stepper-step').forEach(el => {
+            const currentId = el.getAttribute('data-step-id');
+            const icon = el.querySelector('.catalog-stepper-icon');
+            if (currentId === stepId) {
+                el.className = 'catalog-stepper-step active';
+                icon.className = 'catalog-stepper-icon spinning';
+                icon.textContent = '';
+                passed = false;
+            } else if (passed) {
+                el.className = 'catalog-stepper-step done';
+                icon.className = 'catalog-stepper-icon';
+                icon.textContent = '✓';
+            } else {
+                el.className = 'catalog-stepper-step';
+                icon.className = 'catalog-stepper-icon';
+                icon.textContent = '○';
+            }
+        });
+    },
+    finish(msg = '¡Catálogo al día!') {
+        if (!this.card) return;
+        this.card.querySelectorAll('.catalog-stepper-step').forEach(el => {
+            el.className = 'catalog-stepper-step done';
+            const icon = el.querySelector('.catalog-stepper-icon');
+            icon.className = 'catalog-stepper-icon';
+            icon.textContent = '✓';
+        });
+        const header = this.card.querySelector('.catalog-stepper-header');
+        if (header) {
+            header.innerHTML = `<span style="font-size:1.1rem;">✅</span><span style="color:#a3be8c; font-weight:bold;">${msg}</span>`;
+        }
+        setTimeout(() => {
+            if (this.card) {
+                this.card.style.opacity = '0';
+                this.card.style.transform = 'translateY(12px)';
+                this.card.style.transition = 'all 0.3s ease';
+                setTimeout(() => {
+                    if (this.card) this.card.remove();
+                    this.card = null;
+                }, 300);
+            }
+        }, 1300);
+    },
+    fail(errorMsg = 'Error al actualizar') {
+        if (!this.card) return;
+        const header = this.card.querySelector('.catalog-stepper-header');
+        if (header) {
+            header.innerHTML = `<span style="font-size:1.1rem;">❌</span><span style="color:#ff6b6b; font-weight:bold;">${errorMsg}</span>`;
+        }
+        setTimeout(() => {
+            if (this.card) {
+                this.card.style.opacity = '0';
+                this.card.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => {
+                    if (this.card) this.card.remove();
+                    this.card = null;
+                }, 300);
+            }
+        }, 3500);
+    }
+};
+
 async function refreshSyncCatalogManual() {
     const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
         ? settings.currentProject.name 
@@ -560,13 +690,7 @@ async function refreshSyncCatalogManual() {
     const canServer = (typeof canUseServerMode === 'function') ? canUseServerMode() : false;
     const isServerTarget = canServer && ((viewMode === 'server') || (compMode === 'server'));
     const targetType = isServerTarget ? 'server' : 'drive';
-
-    if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', `Solicitando refresco de catálogo (${targetType.toUpperCase()}) para '${projName}' al Worker...`, 'pending');
-    }
-    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-        settings.showToast(`Actualizando catálogo de ${targetType === 'server' ? 'Servidor' : 'Drive'}...`, 'info', 10);
-    }
+    const targetLabel = isServerTarget ? 'Servidor' : 'Drive';
 
     // Identificar carpeta seleccionada o raíz activa
     let currentFolder = '';
@@ -580,7 +704,17 @@ async function refreshSyncCatalogManual() {
         currentFolder = roots.work || `Z:/atresmedia/${projName}`;
     }
 
+    const folderName = currentFolder.split(/[\\/]/).pop() || currentFolder;
+
+    if (typeof PipetaConsole !== 'undefined') {
+        PipetaConsole.log('sync', `Solicitando refresco de catálogo (${targetType.toUpperCase()}) para '${folderName}' al Worker...`, 'pending');
+    }
+
+    // Iniciar Stepper flotante continuo
+    CatalogRefreshStepper.show(folderName, targetLabel);
+
     try {
+        CatalogRefreshStepper.setStep('scan');
         const res = await fetch('/api/sync/catalog/refresh-folder', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -592,23 +726,25 @@ async function refreshSyncCatalogManual() {
         }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
 
         if (res && res.success) {
+            CatalogRefreshStepper.setStep('sync');
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', `✓ Catálogo (${targetType.toUpperCase()}) actualizado (${res.itemsCount || 0} items)`, 'ok');
             }
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                settings.showToast('Catálogo actualizado', 'success', 3);
+            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+            if (typeof loadActiveProjectSyncCatalog === 'function') {
+                await loadActiveProjectSyncCatalog(true);
             }
+
+            CatalogRefreshStepper.setStep('refresh');
+            await refreshCurrentView(true);
+            CatalogRefreshStepper.finish(`✅ "${folderName}" al día (${res.itemsCount || 0} items)`);
+        } else {
+            CatalogRefreshStepper.fail(res?.error || 'No se pudo actualizar el catálogo');
         }
     } catch (e) {
         console.warn('[REFRESH CATALOG] Error:', e);
+        CatalogRefreshStepper.fail(e.message);
     }
-
-    // Invalida caché y fuerza recarga
-    fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
-    if (typeof loadActiveProjectSyncCatalog === 'function') {
-        await loadActiveProjectSyncCatalog(true);
-    }
-    refreshCurrentView(true);
 }
 
 async function switchViewLocation(mode) {
@@ -763,9 +899,49 @@ window.collapseImageSequences = function(items) {
         const endStr = String(last.frameNum).padStart(pad, '0');
         const seqDisplayName = `${seqData.prefix}[${startStr}-${endStr}]${seqData.ext} (${frames.length} frames)`;
 
-        const sample = first.item;
+        const ghostFrames = frames.filter(f => f.item.isGhost || (f.item.syncStatus && f.item.syncStatus.startsWith('ghost')));
+        const localFrames = frames.filter(f => !f.item.isGhost && (!f.item.syncStatus || !f.item.syncStatus.startsWith('ghost')));
+        const uploadFrames = frames.filter(f => f.item.syncStatus && f.item.syncStatus.startsWith('upload'));
+        const mismatchFrames = frames.filter(f => f.item.syncStatus && (f.item.syncStatus.startsWith('mismatch') || f.item.syncStatus.startsWith('outdated')));
+
+        const targetType = (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server') ? 'server' : 'drive';
+
+        let calculatedSyncStatus = 'matched_' + targetType;
+        let isGhost = false;
+        let isPartial = false;
+        let missingFrames = [];
+
+        if (ghostFrames.length === frames.length) {
+            // Todos los frames son remotos / fantasmas (faltan por completo en local)
+            calculatedSyncStatus = 'ghost_' + targetType;
+            isGhost = true;
+            missingFrames = frames.map(f => f.item);
+        } else if (uploadFrames.length === frames.length) {
+            // Todos los frames están exclusivamente en local
+            calculatedSyncStatus = 'upload_' + targetType;
+            isGhost = false;
+        } else if (ghostFrames.length > 0) {
+            // SECUENCIA PARCIAL: Faltan frames en local (gaps)
+            calculatedSyncStatus = 'partial_' + targetType;
+            isPartial = true;
+            isGhost = false;
+            missingFrames = ghostFrames.map(f => f.item);
+        } else if (mismatchFrames.length > 0) {
+            // Algunos frames difieren en peso o son de 0 bytes (detectado por Deep Compare)
+            calculatedSyncStatus = 'mismatch_' + targetType;
+            isPartial = true;
+            isGhost = false;
+            missingFrames = mismatchFrames.map(f => f.item);
+        } else {
+            // Todos los frames existen localmente y están sincronizados
+            calculatedSyncStatus = 'matched_' + targetType;
+            isGhost = false;
+        }
+
+        const representative = localFrames[0]?.item || first.item;
+
         result.push({
-            ...sample,
+            ...representative,
             name: seqDisplayName,
             isDirectory: false,
             isDir: false,
@@ -774,11 +950,15 @@ window.collapseImageSequences = function(items) {
             startFrame: first.frameNum,
             endFrame: last.frameNum,
             size: totalSize,
-            path: sample.path,
-            serverPath: sample.serverPath,
-            onlinePath: sample.onlinePath,
-            targetLocalPath: sample.targetLocalPath,
-            syncStatus: sample.syncStatus,
+            path: representative.path,
+            serverPath: representative.serverPath,
+            onlinePath: representative.onlinePath,
+            targetLocalPath: representative.targetLocalPath,
+            syncStatus: calculatedSyncStatus,
+            isGhost: isGhost,
+            isPartialSequence: isPartial,
+            missingFramesCount: missingFrames.length,
+            missingFrames: missingFrames,
             items: frames.map(f => f.item)
         });
     }

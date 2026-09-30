@@ -19,58 +19,103 @@ function syncLocalCacheFromNetwork(projectName = null) {
     if (global.isExternalMachine) return;
     try {
         fs.ensureDirSync(LOCAL_CACHE_DIR);
-        const centralRoots = ['Z:/_SYNC_CACHE', UNC_CACHE, CACHE_ROOT]
-            .filter((r, idx, arr) => {
-                try {
-                    return fs.existsSync(r) && path.resolve(r).toLowerCase() !== path.resolve(LOCAL_CACHE_DIR).toLowerCase() && arr.indexOf(r) === idx;
-                } catch (e) { return false; }
-            });
 
-        for (const centralRoot of centralRoots) {
-            let files = [];
+        function isZDriveLocalSubst() {
             try {
-                files = fs.readdirSync(centralRoot).filter(f => f.endsWith('.json'));
-            } catch (e) { continue; }
+                const substOut = execSync('subst', { encoding: 'utf8', timeout: 500 });
+                return /Z:\\: =>/i.test(substOut);
+            } catch (e) { return false; }
+        }
 
-            for (const f of files) {
-                if (projectName && !f.toLowerCase().includes(projectName.toLowerCase()) && f !== 'worker_status.json') {
-                    continue;
+        const isSubst = isZDriveLocalSubst();
+        const candidateRoots = ['S:/_SYNC_CACHE', UNC_CACHE];
+        if (!isSubst) {
+            candidateRoots.push('Z:/_SYNC_CACHE');
+        } else if (fs.existsSync('Z:/_SYNC_CACHE')) {
+            // Si es subst, solo considerar Z: si tiene un heartbeat muy reciente (< 45s) de un worker
+            try {
+                const zSt = path.join('Z:/_SYNC_CACHE', 'worker_status.json');
+                if (fs.existsSync(zSt)) {
+                    const stData = fs.readJsonSync(zSt);
+                    const diff = (Date.now() - new Date(stData.lastPing).getTime()) / 1000;
+                    if (diff < 45) candidateRoots.push('Z:/_SYNC_CACHE');
                 }
-                const srcPath = path.join(centralRoot, f);
-                const dstPath = path.join(LOCAL_CACHE_DIR, f);
+            } catch(e) {}
+        }
 
-                let needsCopy = false;
-                if (!fs.existsSync(dstPath)) {
-                    needsCopy = true;
-                } else {
+        const centralRoots = candidateRoots.filter((r, idx, arr) => {
+            try {
+                return fs.existsSync(r) && path.resolve(r).toLowerCase() !== path.resolve(LOCAL_CACHE_DIR).toLowerCase() && arr.indexOf(r) === idx;
+            } catch (e) { return false; }
+        });
+
+        function copyNewerOnly(src, dst) {
+            if (!fs.existsSync(src)) return;
+            const srcStat = fs.statSync(src);
+            if (srcStat.isDirectory()) {
+                fs.ensureDirSync(dst);
+                const items = fs.readdirSync(src);
+                for (const it of items) {
+                    copyNewerOnly(path.join(src, it), path.join(dst, it));
+                }
+            } else {
+                let needsCopy = true;
+                if (fs.existsSync(dst)) {
                     try {
-                        const srcStat = fs.statSync(srcPath);
-                        const dstStat = fs.statSync(dstPath);
-                        if (srcStat.mtimeMs > dstStat.mtimeMs) {
-                            needsCopy = true;
-                        }
-                    } catch (e) {
-                        needsCopy = true;
-                    }
+                        const dstStat = fs.statSync(dst);
+                        needsCopy = srcStat.mtimeMs > dstStat.mtimeMs;
+                    } catch (e) { needsCopy = true; }
                 }
-
                 if (needsCopy) {
                     try {
-                        fs.copySync(srcPath, dstPath, { overwrite: true });
-                        console.log(`[LOCAL CACHE] ✓ Sincronizado a disco local SSD: ${f}`);
-                    } catch (e) {
-                        console.warn(`[LOCAL CACHE] Error copiando ${f} a local:`, e.message);
-                    }
+                        fs.copySync(src, dst, { overwrite: true });
+                    } catch (e) {}
                 }
             }
+        }
 
-            // Sincronizar también la carpeta modular projects/ si existe en la red
+        for (const centralRoot of centralRoots) {
+            // Sincronizar archivos esenciales de control (worker_status, last_project)
+            const controlFiles = ['worker_status.json', 'last_project.json'];
+            for (const f of controlFiles) {
+                copyNewerOnly(path.join(centralRoot, f), path.join(LOCAL_CACHE_DIR, f));
+            }
+
+            // Sincronizar directorio modular projects/
             const centralProjects = path.join(centralRoot, 'projects');
             const localProjects = path.join(LOCAL_CACHE_DIR, 'projects');
             if (fs.existsSync(centralProjects)) {
-                try {
-                    fs.copySync(centralProjects, localProjects, { overwrite: true, errorOnExist: false });
-                } catch (e) {}
+                fs.ensureDirSync(localProjects);
+                if (projectName) {
+                    const namesToTry = [projectName];
+                    const cfg = typeof getProjectConfig === 'function' ? getProjectConfig(projectName) : null;
+                    if (cfg) {
+                        if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
+                        if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
+                    }
+
+                    for (const name of namesToTry) {
+                        const srcProjDir = path.join(centralProjects, name);
+                        const dstProjDir = path.join(localProjects, name);
+                        if (fs.existsSync(srcProjDir)) {
+                            copyNewerOnly(srcProjDir, dstProjDir);
+                        }
+                    }
+
+                    // Asegurar que si existe projectCode (alias ej: SURF), se mantenga sincronizado con projectName (ej: surf_love)
+                    if (cfg && cfg.name && cfg.projectCode && cfg.name !== cfg.projectCode) {
+                        const dirMain = path.join(localProjects, cfg.name);
+                        const dirCode = path.join(localProjects, cfg.projectCode);
+                        if (fs.existsSync(dirMain) && fs.existsSync(dirCode)) {
+                            copyNewerOnly(dirMain, dirCode);
+                            copyNewerOnly(dirCode, dirMain);
+                        } else if (fs.existsSync(dirMain) && !fs.existsSync(dirCode)) {
+                            try { fs.copySync(dirMain, dirCode); } catch(e){}
+                        } else if (fs.existsSync(dirCode) && !fs.existsSync(dirMain)) {
+                            try { fs.copySync(dirCode, dirMain); } catch(e){}
+                        }
+                    }
+                }
             }
         }
     } catch (err) {
@@ -611,42 +656,21 @@ async function generateProjectCatalog(projectName, options = {}) {
         tree: tree
     };
 
-    // Asegurar directorio destino en Z:\_SYNC_CACHE
-    await fs.ensureDir(CACHE_ROOT);
-    const targetCatalogPath = path.join(CACHE_ROOT, `${projectName}.json`);
-
-    await fs.writeJson(targetCatalogPath, catalogData, { spaces: 2 });
-    console.log(`[CATALOG] Catálogo guardado con éxito en: ${targetCatalogPath} (${totalFiles} archivos, ${totalFolders} carpetas, ${(totalBytes / (1024 * 1024)).toFixed(2)} MB)`);
-
-    // Si tiene un código de proyecto distinto al nombre (ej. PRPR vs pride_and_prejudice), guardar copia con ese alias también
-    if (config.projectCode && config.projectCode.toLowerCase() !== projectName.toLowerCase()) {
-        try {
-            await fs.writeJson(path.join(CACHE_ROOT, `${config.projectCode}.json`), catalogData, { spaces: 2 });
-        } catch(e) {}
-    }
-
-    // Particionar automáticamente en sub-catálogos modulares
+    // Guardar exclusivamente en arquitectura modular y generar manifest.json
+    let manifestData = null;
     try {
-        partitionCatalog(catalogData, 'drive');
+        manifestData = partitionCatalog(catalogData, 'drive');
+        console.log(`[CATALOG] Catálogo modular de Drive generado con éxito para: ${projectName} (${totalFiles} archivos, ${totalFolders} carpetas, ${(totalBytes / (1024 * 1024)).toFixed(2)} MB)`);
     } catch(e) {
-        console.warn(`[CATALOG] Advertencia al generar sub-catálogos modulares de drive:`, e.message);
-    }
-
-    // Replicar a Z:/_SYNC_CACHE si estamos guardando en C: pero Z: existe
-    if (fs.existsSync('Z:/_SYNC_CACHE') && path.resolve(CACHE_ROOT).toLowerCase() !== path.resolve('Z:/_SYNC_CACHE').toLowerCase()) {
-        try {
-            await fs.copy(targetCatalogPath, path.join('Z:/_SYNC_CACHE', `${projectName}.json`));
-            if (config.projectCode && config.projectCode.toLowerCase() !== projectName.toLowerCase()) {
-                await fs.copy(targetCatalogPath, path.join('Z:/_SYNC_CACHE', `${config.projectCode}.json`));
-            }
-        } catch (e) {}
+        console.warn(`[CATALOG] Error al generar sub-catálogos modulares de drive:`, e.message);
     }
 
     return {
         success: true,
-        catalogPath: targetCatalogPath,
+        catalogPath: path.join(MODULAR_PROJECTS_DIR, projectName, 'drive', 'manifest.json'),
         stats: catalogData.stats,
-        project: projectName
+        project: projectName,
+        manifest: manifestData
     };
 }
 
@@ -675,6 +699,11 @@ async function loadProjectCatalog(projectName) {
     }
 
     if (candidates.length === 0) {
+        // Fallback a manifiesto modular de Drive
+        if (typeof getModularManifest === 'function') {
+            const modManifest = getModularManifest(projectName, 'drive');
+            if (modManifest) return modManifest;
+        }
         return null;
     }
 
@@ -698,34 +727,74 @@ async function loadProjectCatalog(projectName) {
 }
 
 /**
- * Lista todos los proyectos que tienen catálogo generado en Z:\_SYNC_CACHE
+ * Lista todos los proyectos que tienen catálogo generado (modular o residual)
  */
 async function listAvailableCatalogs() {
-    if (!fs.existsSync(CACHE_ROOT)) {
-        return [];
+    const catalogs = [];
+    const seen = new Set();
+
+    const candidateBases = [
+        path.join(CACHE_ROOT, 'projects'),
+        path.join(LOCAL_CACHE_DIR, 'projects'),
+        'Z:/_SYNC_CACHE/projects'
+    ];
+
+    for (const base of candidateBases) {
+        if (!fs.existsSync(base)) continue;
+        try {
+            const dirs = await fs.readdir(base);
+            for (const d of dirs) {
+                const low = d.toLowerCase();
+                if (seen.has(low)) continue;
+                const dManifest = path.join(base, d, 'drive', 'manifest.json');
+                const sManifest = path.join(base, d, 'server', 'manifest.json');
+                let targetM = fs.existsSync(dManifest) ? dManifest : (fs.existsSync(sManifest) ? sManifest : null);
+                if (targetM) {
+                    try {
+                        const mData = await fs.readJson(targetM);
+                        const stat = await fs.stat(targetM);
+                        catalogs.push({
+                            project: mData.project || d,
+                            fileName: `projects/${d}`,
+                            path: targetM,
+                            generatedAt: mData.generatedAt || stat.mtime.toISOString(),
+                            stats: mData.stats || null,
+                            roots: mData.roots || null,
+                            isModular: true
+                        });
+                        seen.add(low);
+                    } catch(e) {}
+                }
+            }
+        } catch(e) {}
     }
 
-    const files = await fs.readdir(CACHE_ROOT);
-    const catalogs = [];
-
-    for (const file of files) {
-        if (file.endsWith('.json') && !file.startsWith('worker_') && !file.startsWith('catalog_refresh_')) {
-            const fullPath = path.join(CACHE_ROOT, file);
-            try {
-                const stat = await fs.stat(fullPath);
-                const data = await fs.readJson(fullPath);
-                catalogs.push({
-                    project: data.project || path.basename(file, '.json'),
-                    fileName: file,
-                    path: fullPath,
-                    generatedAt: data.generatedAt || stat.mtime.toISOString(),
-                    stats: data.stats || null,
-                    roots: data.roots || null
-                });
-            } catch (e) {
-                console.warn(`[CATALOG] Archivo corrupto en cache: ${file}`);
+    // Compatibilidad retroactiva con cualquier archivo monolítico residual
+    if (fs.existsSync(CACHE_ROOT)) {
+        try {
+            const files = await fs.readdir(CACHE_ROOT);
+            for (const file of files) {
+                if (file.endsWith('.json') && !file.startsWith('worker_') && !file.startsWith('last_') && !file.startsWith('catalog_refresh_')) {
+                    const projName = path.basename(file, '.json').replace(/^server_/i, '');
+                    if (!seen.has(projName.toLowerCase())) {
+                        const fullPath = path.join(CACHE_ROOT, file);
+                        try {
+                            const stat = await fs.stat(fullPath);
+                            const data = await fs.readJson(fullPath);
+                            catalogs.push({
+                                project: data.project || projName,
+                                fileName: file,
+                                path: fullPath,
+                                generatedAt: data.generatedAt || stat.mtime.toISOString(),
+                                stats: data.stats || null,
+                                roots: data.roots || null
+                            });
+                            seen.add(projName.toLowerCase());
+                        } catch (e) {}
+                    }
+                }
             }
-        }
+        } catch(e) {}
     }
 
     return catalogs;
@@ -909,6 +978,27 @@ function partitionCatalog(monolithicData, type) {
     fs.writeJsonSync(manifestPath, manifestData, { spaces: 2 });
     manifestMemoryCache.set(manifestPath, { mtime: Date.now(), data: manifestData });
 
+    // Replicar también a la red central Z:/_SYNC_CACHE/projects si corresponde
+    try {
+        if (fs.existsSync('Z:/_SYNC_CACHE') && path.resolve(LOCAL_CACHE_DIR).toLowerCase() !== path.resolve('Z:/_SYNC_CACHE').toLowerCase()) {
+            const centralOutDir = path.join('Z:/_SYNC_CACHE/projects', projectName, type);
+            fs.copySync(outDir, centralOutDir, { overwrite: true });
+        }
+    } catch(e) {}
+
+    // Si tiene un alias de código de proyecto distinto (ej. PRPR vs pride_and_prejudice), replicar modularmente
+    const alias = monolithicData.projectCode;
+    if (alias && alias.toLowerCase() !== projectName.toLowerCase()) {
+        try {
+            const aliasOutDir = path.join(MODULAR_PROJECTS_DIR, alias, type);
+            fs.copySync(outDir, aliasOutDir, { overwrite: true });
+            if (fs.existsSync('Z:/_SYNC_CACHE') && path.resolve(LOCAL_CACHE_DIR).toLowerCase() !== path.resolve('Z:/_SYNC_CACHE').toLowerCase()) {
+                const centralAliasDir = path.join('Z:/_SYNC_CACHE/projects', alias, type);
+                fs.copySync(outDir, centralAliasDir, { overwrite: true });
+            }
+        } catch(e) {}
+    }
+
     console.log(`[MODULAR CATALOG] Guardado ${projectName} (${type}) con ${subCatalogs.size} sub-catálogos en ${outDir}`);
     return manifestData;
 }
@@ -974,14 +1064,18 @@ function getModularManifest(projectName, type) {
 function findProjectManifestForPath(requestedPath, type) {
     if (type === 'server' && global.isExternalMachine) return null;
     const norm = normalizeSlash(requestedPath).toLowerCase();
+    const stripDrive = s => (s || '').replace(/^[a-zA-Z]:/, '');
+    const normNoDrive = stripDrive(norm);
+
     const candidateBases = [
         path.join(CACHE_ROOT, 'projects'),
         MODULAR_PROJECTS_DIR
     ];
     if (!global.isExternalMachine) {
         candidateBases.push(
-            'Z:/_SYNC_CACHE/projects',
-            path.join(UNC_CACHE, 'projects')
+            'S:/_SYNC_CACHE/projects',
+            path.join(UNC_CACHE, 'projects'),
+            'Z:/_SYNC_CACHE/projects'
         );
     }
     const projectBases = candidateBases.filter((b, idx, arr) => {
@@ -994,22 +1088,38 @@ function findProjectManifestForPath(requestedPath, type) {
         let projectDirs = [];
         try { projectDirs = fs.readdirSync(base); } catch(e) { continue; }
 
+        // Priorizar nombres canónicos largos (ej. surf_love) sobre códigos de proyecto cortos (ej. SURF)
+        projectDirs.sort((a, b) => b.length - a.length);
+
         for (const p of projectDirs) {
             if (seenProjects.has(p.toLowerCase())) continue;
             seenProjects.add(p.toLowerCase());
 
             const manifest = getModularManifest(p, type);
             if (!manifest) continue;
+            const pName = manifest.project || p;
+
             let rootWork = '';
             let rootMedia = '';
             if (type === 'server') {
                 rootWork = normalizeSlash(manifest.roots?.work?.server || '').toLowerCase().replace(/^s:/i, 'z:');
                 rootMedia = normalizeSlash(manifest.roots?.media?.server || '').toLowerCase().replace(/^s:/i, 'z:');
+                
                 if (rootWork && (norm === rootWork || norm.startsWith(rootWork + '/'))) {
-                    return { manifest, projectName: p, category: 'work', rootPath: rootWork };
+                    return { manifest, projectName: pName, category: 'work', rootPath: rootWork };
                 }
                 if (rootMedia && (norm === rootMedia || norm.startsWith(rootMedia + '/'))) {
-                    return { manifest, projectName: p, category: 'media', rootPath: rootMedia };
+                    return { manifest, projectName: pName, category: 'media', rootPath: rootMedia };
+                }
+                const rootWorkNoDrive = stripDrive(rootWork);
+                if (rootWorkNoDrive && (normNoDrive === rootWorkNoDrive || normNoDrive.startsWith(rootWorkNoDrive + '/'))) {
+                    const rootPath = norm.substring(0, norm.length - (normNoDrive.length - rootWorkNoDrive.length));
+                    return { manifest, projectName: pName, category: 'work', rootPath };
+                }
+                const rootMediaNoDrive = stripDrive(rootMedia);
+                if (rootMediaNoDrive && (normNoDrive === rootMediaNoDrive || normNoDrive.startsWith(rootMediaNoDrive + '/'))) {
+                    const rootPath = norm.substring(0, norm.length - (normNoDrive.length - rootMediaNoDrive.length));
+                    return { manifest, projectName: pName, category: 'media', rootPath };
                 }
             } else {
                 const onlineWork = normalizeSlash(manifest.roots?.work?.online || `G:/Unidades compartidas/${p}`).toLowerCase();
@@ -1018,16 +1128,28 @@ function findProjectManifestForPath(requestedPath, type) {
                 const localMedia = normalizeSlash(manifest.roots?.media?.local || `Z:/INTERNO/MEDIA/atresmedia/${p}`).toLowerCase();
 
                 if (onlineWork && (norm === onlineWork || norm.startsWith(onlineWork + '/'))) {
-                    return { manifest, projectName: p, category: 'work', rootPath: onlineWork };
+                    return { manifest, projectName: pName, category: 'work', rootPath: onlineWork };
                 }
                 if (onlineMedia && (norm === onlineMedia || norm.startsWith(onlineMedia + '/'))) {
-                    return { manifest, projectName: p, category: 'media', rootPath: onlineMedia };
+                    return { manifest, projectName: pName, category: 'media', rootPath: onlineMedia };
                 }
                 if (localWork && (norm === localWork || norm.startsWith(localWork + '/'))) {
-                    return { manifest, projectName: p, category: 'work', rootPath: localWork };
+                    return { manifest, projectName: pName, category: 'work', rootPath: localWork };
                 }
                 if (localMedia && (norm === localMedia || norm.startsWith(localMedia + '/'))) {
-                    return { manifest, projectName: p, category: 'media', rootPath: localMedia };
+                    return { manifest, projectName: pName, category: 'media', rootPath: localMedia };
+                }
+
+                // Comparación independiente de la letra de unidad (C:, Z:, S:, etc.)
+                const localWorkNoDrive = stripDrive(localWork);
+                if (localWorkNoDrive && (normNoDrive === localWorkNoDrive || normNoDrive.startsWith(localWorkNoDrive + '/'))) {
+                    const rootPath = norm.substring(0, norm.length - (normNoDrive.length - localWorkNoDrive.length));
+                    return { manifest, projectName: pName, category: 'work', rootPath };
+                }
+                const localMediaNoDrive = stripDrive(localMedia);
+                if (localMediaNoDrive && (normNoDrive === localMediaNoDrive || normNoDrive.startsWith(localMediaNoDrive + '/'))) {
+                    const rootPath = norm.substring(0, norm.length - (normNoDrive.length - localMediaNoDrive.length));
+                    return { manifest, projectName: pName, category: 'media', rootPath };
                 }
             }
         }
@@ -1154,6 +1276,15 @@ function buildSubCatalogIndex(subCatalog) {
                         parentMap.set(localParentKey, localArr);
                     }
                     localArr.push(entryObj);
+                }
+                const strippedLocalKey = localParentKey.replace(/^[a-zA-Z]:/, '');
+                if (strippedLocalKey && strippedLocalKey !== localParentKey) {
+                    let stripArr = parentMap.get(strippedLocalKey);
+                    if (!stripArr) {
+                        stripArr = [];
+                        parentMap.set(strippedLocalKey, stripArr);
+                    }
+                    stripArr.push(entryObj);
                 }
             }
         }
@@ -1288,8 +1419,9 @@ function listFromModularCatalog(requestedPath, type = 'server') {
     ];
     if (!global.isExternalMachine) {
         candidateList.push(
-            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile),
-            path.join(UNC_CACHE, 'projects', projectName, type, subFile)
+            path.join('S:/_SYNC_CACHE/projects', projectName, type, subFile),
+            path.join(UNC_CACHE, 'projects', projectName, type, subFile),
+            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile)
         );
     }
     const subCandidates = candidateList.filter((sc, idx, arr) => {
@@ -1315,8 +1447,9 @@ function listFromModularCatalog(requestedPath, type = 'server') {
             ];
             if (!global.isExternalMachine) {
                 rootSubCandidates.push(
-                    path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'episodios/_root.json'),
-                    path.join(UNC_CACHE, 'projects', projectName, type, 'episodios/_root.json')
+                    path.join('S:/_SYNC_CACHE/projects', projectName, type, 'episodios/_root.json'),
+                    path.join(UNC_CACHE, 'projects', projectName, type, 'episodios/_root.json'),
+                    path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'episodios/_root.json')
                 );
             }
             if (rootSubCandidates.some(p => { try { return fs.existsSync(p); } catch(e) { return false; } })) return [];
@@ -1341,7 +1474,19 @@ function listFromModularCatalog(requestedPath, type = 'server') {
     }
 
     if (!cacheEntry || !cacheEntry.parentIndex) return null;
-    const children = cacheEntry.parentIndex.get(lowerNorm) || cacheEntry.parentIndex.get(lowerNorm + '/');
+    const lowerNormStripped = lowerNorm.replace(/^[a-zA-Z]:/, '');
+    const zVariant = lowerNorm.replace(/^[a-zA-Z]:/, 'z:');
+    const cVariant = lowerNorm.replace(/^[a-zA-Z]:/, 'c:');
+
+    const children = cacheEntry.parentIndex.get(lowerNorm)
+        || cacheEntry.parentIndex.get(lowerNorm + '/')
+        || cacheEntry.parentIndex.get(lowerNormStripped)
+        || cacheEntry.parentIndex.get(lowerNormStripped + '/')
+        || cacheEntry.parentIndex.get(zVariant)
+        || cacheEntry.parentIndex.get(zVariant + '/')
+        || cacheEntry.parentIndex.get(cVariant)
+        || cacheEntry.parentIndex.get(cVariant + '/');
+
     if (!children) return [];
 
     return children.map(c => {
@@ -1783,7 +1928,7 @@ function listFromCatalog(requestedPath) {
     const lowerNorm = norm.toLowerCase();
 
     // Sincronizar catálogo a local si aún no existe en el SSD local
-    if (!fs.existsSync(LOCAL_CACHE_DIR) || fs.readdirSync(LOCAL_CACHE_DIR).filter(f => !f.startsWith('server_') && f.endsWith('.json')).length === 0) {
+    if (!fs.existsSync(path.join(LOCAL_CACHE_DIR, 'projects'))) {
         syncLocalCacheFromNetwork();
     }
 
@@ -1794,7 +1939,29 @@ function listFromCatalog(requestedPath) {
         const seen = new Set();
         for (const r of activeRoots) {
             try {
-                const files = fs.readdirSync(r).filter(f => f.endsWith('.json') && !f.startsWith('server_') && !f.startsWith('worker_'));
+                const pDir = path.join(r, 'projects');
+                if (fs.existsSync(pDir)) {
+                    for (const proj of fs.readdirSync(pDir)) {
+                        if (!seen.has(proj.toLowerCase())) {
+                            seen.add(proj.toLowerCase());
+                            roots.push({
+                                name: proj,
+                                isDirectory: true,
+                                path: `G:/Unidades compartidas/${proj}`,
+                                size: 0,
+                                fromCatalog: true
+                            });
+                            roots.push({
+                                name: `${proj}_media`,
+                                isDirectory: true,
+                                path: `G:/Unidades compartidas/${proj}_media`,
+                                size: 0,
+                                fromCatalog: true
+                            });
+                        }
+                    }
+                }
+                const files = fs.readdirSync(r).filter(f => f.endsWith('.json') && !f.startsWith('server_') && !f.startsWith('worker_') && !f.startsWith('last_'));
                 for (const f of files) {
                     const proj = path.basename(f, '.json');
                     if (!seen.has(proj.toLowerCase())) {
@@ -2090,46 +2257,21 @@ async function generateServerCatalog(projectName, options = {}) {
         flatList: flatList
     };
 
-    await fs.ensureDir(CACHE_ROOT);
-    const targetCatalogPath = path.join(CACHE_ROOT, `server_${projectName}.json`);
-    await fs.writeJson(targetCatalogPath, catalogData, { spaces: 2 });
-    console.log(`[SERVER CATALOG] Catálogo guardado con éxito en: ${targetCatalogPath} (${totalFiles} archivos, ${totalFolders} carpetas)`);
-
-    // Si tiene un código de proyecto distinto al nombre (ej. PRPR vs pride_and_prejudice), guardar copia con ese alias también
-    if (config.projectCode && config.projectCode.toLowerCase() !== projectName.toLowerCase()) {
-        try {
-            await fs.writeJson(path.join(CACHE_ROOT, `server_${config.projectCode}.json`), catalogData, { spaces: 2 });
-        } catch(e) {}
-    }
-
-    // Particionar automáticamente en sub-catálogos modulares
+    // Guardar exclusivamente en arquitectura modular y generar manifest.json
+    let manifestData = null;
     try {
-        partitionCatalog(catalogData, 'server');
+        manifestData = partitionCatalog(catalogData, 'server');
+        console.log(`[SERVER CATALOG] Catálogo modular de Servidor generado con éxito para: ${projectName} (${totalFiles} archivos, ${totalFolders} carpetas)`);
     } catch(e) {
-        console.warn(`[SERVER CATALOG] Advertencia al generar sub-catálogos modulares de server:`, e.message);
-    }
-
-    // Asegurar que si existe Z:/_SYNC_CACHE (máquina local), se replique también allí
-    if (fs.existsSync('Z:/_SYNC_CACHE') && path.resolve(CACHE_ROOT).toLowerCase() !== path.resolve('Z:/_SYNC_CACHE').toLowerCase()) {
-        try {
-            await fs.copy(targetCatalogPath, path.join('Z:/_SYNC_CACHE', `server_${projectName}.json`));
-            if (config.projectCode && config.projectCode.toLowerCase() !== projectName.toLowerCase()) {
-                await fs.copy(targetCatalogPath, path.join('Z:/_SYNC_CACHE', `server_${config.projectCode}.json`));
-            }
-            const centralProjDir = path.join('Z:/_SYNC_CACHE/projects', projectName, 'server');
-            const localProjDir = path.join(MODULAR_PROJECTS_DIR, projectName, 'server');
-            if (fs.existsSync(localProjDir)) {
-                fs.copySync(localProjDir, centralProjDir, { overwrite: true });
-            }
-            console.log(`[SERVER CATALOG] Catálogo replicado a Z:/_SYNC_CACHE/server_${projectName}.json`);
-        } catch(e) {}
+        console.warn(`[SERVER CATALOG] Error al generar sub-catálogos modulares de server:`, e.message);
     }
 
     return {
         success: true,
-        catalogPath: targetCatalogPath,
+        catalogPath: path.join(MODULAR_PROJECTS_DIR, projectName, 'server', 'manifest.json'),
         stats: catalogData.stats,
-        project: projectName
+        project: projectName,
+        manifest: manifestData
     };
 }
 
@@ -2155,7 +2297,13 @@ async function loadServerCatalog(projectName) {
         }
     }
 
-    if (candidates.length === 0) return null;
+    if (candidates.length === 0) {
+        if (typeof getModularManifest === 'function') {
+            const modManifest = getModularManifest(projectName, 'server');
+            if (modManifest) return modManifest;
+        }
+        return null;
+    }
 
     let bestPath = candidates[0];
     let bestMtime = 0;
@@ -2252,7 +2400,7 @@ function listFromServerCatalog(requestedPath) {
     const searchKey = lowerNorm.replace(/\/+$/, '');
 
     // Sincronizar catálogo a local si aún no existe en el SSD local
-    if (!fs.existsSync(LOCAL_CACHE_DIR) || fs.readdirSync(LOCAL_CACHE_DIR).filter(f => f.startsWith('server_') && f.endsWith('.json')).length === 0) {
+    if (!fs.existsSync(path.join(LOCAL_CACHE_DIR, 'projects'))) {
         syncLocalCacheFromNetwork();
     }
 

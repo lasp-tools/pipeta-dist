@@ -23,9 +23,11 @@ const isLocalMode = process.argv.includes('--local') || process.env.PIPETA_LOCAL
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 const CACHE_ROOT = isLocalMode 
     ? path.join(__dirname, '../_SYNC_CACHE')
-    : (fs.existsSync('Z:/_SYNC_CACHE') 
-        ? 'Z:/_SYNC_CACHE' 
-        : (fs.existsSync(UNC_CACHE) ? UNC_CACHE : path.join(__dirname, '../_SYNC_CACHE')));
+    : (fs.existsSync('S:/_SYNC_CACHE')
+        ? 'S:/_SYNC_CACHE'
+        : (fs.existsSync('Z:/_SYNC_CACHE') 
+            ? 'Z:/_SYNC_CACHE' 
+            : (fs.existsSync(UNC_CACHE) ? UNC_CACHE : path.join(__dirname, '../_SYNC_CACHE'))));
 
 const ORDERS_DIR = path.join(CACHE_ROOT, 'requests');
 const STATUS_FILE = path.join(CACHE_ROOT, 'worker_status.json');
@@ -36,6 +38,7 @@ function findRcloneExe() {
         path.join(__dirname, '../tools/rclone/rclone.exe'),
         'C:/TOOLS/APPS/Pipeta/tools/rclone/rclone.exe',
         'Z:/INTERNO/TOOLS/Instaladores/rclone/rclone.exe',
+        'S:/INTERNO/TOOLS/Instaladores/rclone/rclone.exe',
         'C:/Program Files/rclone/rclone.exe'
     ];
     for (const c of candidates) {
@@ -49,6 +52,7 @@ function findRcloneConf() {
         path.join(__dirname, '../tools/rclone/rclone.conf'),
         'C:/TOOLS/APPS/Pipeta/tools/rclone/rclone.conf',
         'Z:/INTERNO/TOOLS/Instaladores/rclone.conf',
+        'S:/INTERNO/TOOLS/Instaladores/rclone.conf',
         '//192.168.206.116/Z/INTERNO/TOOLS/Instaladores/rclone.conf',
         path.join(process.env.APPDATA || '', 'rclone/rclone.conf'),
         path.join(os.homedir(), '.config/rclone/rclone.conf'),
@@ -66,6 +70,10 @@ function getCandidateOrdersDirs() {
     const localDir = path.join(__dirname, '../_SYNC_CACHE/requests');
     if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(localDir).toLowerCase()) && fs.existsSync(localDir)) {
         dirs.push(localDir);
+    }
+    const sDir = 'S:/_SYNC_CACHE/requests';
+    if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(sDir).toLowerCase()) && fs.existsSync(sDir)) {
+        dirs.push(sDir);
     }
     const zDir = 'Z:/_SYNC_CACHE/requests';
     if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(zDir).toLowerCase()) && fs.existsSync(zDir)) {
@@ -157,27 +165,100 @@ function resolveLocalPathForWorker(p) {
     return p.replace(/\\/g, '/');
 }
 
+const WORKERS_DIR = path.join(CACHE_ROOT, 'workers');
+
+function getPrimaryIPv4() {
+    try {
+        const nets = os.networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    if (net.address.startsWith('192.168.') || net.address.startsWith('10.')) {
+                        return net.address;
+                    }
+                }
+            }
+        }
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    return net.address;
+                }
+            }
+        }
+    } catch(e) {}
+    return '127.0.0.1';
+}
+
+const WORKER_IP = getPrimaryIPv4();
+
 /**
- * Actualiza el archivo de latido (heartbeat) para que Pipeta UI conozca el estado del Worker
+ * Actualiza el archivo de latido (heartbeat) para que Pipeta UI y Pipeta Server conozcan el estado del Worker
  */
 function updateHeartbeat(status = 'idle', activeTask = null) {
     try {
         fs.ensureDirSync(CACHE_ROOT);
+        fs.ensureDirSync(WORKERS_DIR);
         const data = {
             workerId: WORKER_ID,
             hostname: os.hostname(),
+            ip: WORKER_IP,
+            pid: process.pid,
             platform: os.platform(),
             status,
             activeTask,
             lastPing: new Date().toISOString(),
             rcloneAvailable: fs.existsSync(RCLONE_EXE),
-            rcloneConf: RCLONE_CONF
+            rcloneConf: RCLONE_CONF,
+            system: {
+                totalMem: os.totalmem(),
+                freeMem: os.freemem(),
+                uptime: Math.round(os.uptime())
+            }
         };
-        fs.writeJsonSync(STATUS_FILE, data, { spaces: 2 });
+
+        // 1. Archivo individual de nodo en workers/
+        const workerNodeFile = path.join(WORKERS_DIR, `${WORKER_ID}.json`);
+        fs.writeJsonSync(workerNodeFile, data, { spaces: 2 });
+
+        // 2. Archivo heredado para clientes anteriores de Pipeta:
+        // Solo actualizar si somos el worker propietario o si el archivo no existe o el worker anterior no emite ping (< 20s)
+        let canUpdateLegacyStatus = true;
+        try {
+            if (fs.existsSync(STATUS_FILE)) {
+                const cur = fs.readJsonSync(STATUS_FILE);
+                if (cur && cur.workerId && cur.workerId !== WORKER_ID) {
+                    const diff = (Date.now() - new Date(cur.lastPing).getTime()) / 1000;
+                    if (diff < 20) {
+                        canUpdateLegacyStatus = false;
+                    }
+                }
+            }
+        } catch(e) {}
+
+        // No sobreescribir STATUS_FILE de produccion (S:) desde la maquina de desarrollo (LASP-VM)
+        if (canUpdateLegacyStatus && !(CACHE_ROOT.toUpperCase().startsWith('S:') && os.hostname().toLowerCase().includes('vm'))) {
+            fs.writeJsonSync(STATUS_FILE, data, { spaces: 2 });
+        }
     } catch (e) {
         // Silenciar errores de heartbeat
     }
 }
+
+function cleanupWorkerNode() {
+    try {
+        const workerNodeFile = path.join(WORKERS_DIR, `${WORKER_ID}.json`);
+        if (fs.existsSync(workerNodeFile)) {
+            const data = fs.readJsonSync(workerNodeFile);
+            data.status = 'stopped';
+            data.stoppedAt = new Date().toISOString();
+            fs.writeJsonSync(workerNodeFile, data, { spaces: 2 });
+        }
+    } catch(e) {}
+}
+
+process.on('SIGINT', () => { cleanupWorkerNode(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupWorkerNode(); process.exit(0); });
 
 function formatBytes(bytes) {
     if (!bytes || bytes <= 0) return '0 B';
@@ -423,6 +504,20 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
             ];
             await runRcloneWithProgress(args, onProgress);
         }
+    } else if (type === 'higgsfield_ingest') {
+        const hfApi = require('./higgsfield_api');
+        log(`⚡ [HIGGSFIELD WORKER] Ingestando: ${item.canonicalName || item.jobId}`);
+        await hfApi.processHiggsfieldIngest({
+            ...item,
+            createLedger: item.createLedger !== false,
+            downloadRefs: !!item.downloadRefs,
+            preserveOriginal: item.preserveOriginal !== false,
+            targetSubfolders: item.targetSubfolders || ['wip'],
+            userName: orderData.user || 'Worker'
+        });
+        if (onProgress) {
+            onProgress({ percentage: 100 });
+        }
     } else {
         throw new Error(`Tipo de operación desconocido: ${type}`);
     }
@@ -433,6 +528,13 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
  */
 async function processQueue() {
     if (isProcessing) return;
+
+    // Verificar si la cola global está pausada
+    const pauseFlag = path.join(CACHE_ROOT, 'queue_paused.flag');
+    if (fs.existsSync(pauseFlag)) {
+        updateHeartbeat('paused', null);
+        return;
+    }
 
     const candidateDirs = getCandidateOrdersDirs();
     const seenOrders = new Set();
@@ -463,11 +565,48 @@ async function processQueue() {
 
     if (pendingOrders.length === 0) return;
 
-    // Buscar la orden pendiente más antigua (FIFO)
-    pendingOrders.sort((a, b) => new Date(a.data.createdAt) - new Date(b.data.createdAt));
-    const selected = pendingOrders[0];
-    let orderData = selected.data;
-    let pendingOrderFile = selected.fullPath;
+    // Ordenar por prioridad DESC y desempate FIFO por createdAt ASC
+    pendingOrders.sort((a, b) => {
+        const getPriority = (d) => {
+            if (Number.isFinite(d.priority)) return d.priority;
+            if (d.type === 'higgsfield_ingest' || d.type === 'refresh_folder') return 80;
+            return 50;
+        };
+        const pA = getPriority(a.data);
+        const pB = getPriority(b.data);
+        if (pB !== pA) return pB - pA;
+        return new Date(a.data.createdAt) - new Date(b.data.createdAt);
+    });
+
+    // Reclamar atómicamente la primera orden libre (seguro ante múltiples workers concurrentes)
+    let selected = null;
+    let orderData = null;
+    let pendingOrderFile = null;
+
+    for (const cand of pendingOrders) {
+        try {
+            const fresh = fs.readJsonSync(cand.fullPath);
+            if (fresh && fresh.status === 'pending') {
+                fresh.status = 'processing';
+                fresh.worker = WORKER_ID;
+                fresh.workerHostname = os.hostname();
+                fresh.startedAt = new Date().toISOString();
+                saveOrderDataAcrossCandidates(fresh, cand.fullPath);
+
+                const check = fs.readJsonSync(cand.fullPath);
+                if (check && check.worker === WORKER_ID && check.status === 'processing') {
+                    selected = cand;
+                    orderData = check;
+                    pendingOrderFile = cand.fullPath;
+                    break;
+                }
+            }
+        } catch (claimErr) {
+            continue;
+        }
+    }
+
+    if (!selected || !orderData) return;
 
     isProcessing = true;
     currentOrder = orderData.id;
@@ -500,6 +639,42 @@ async function processQueue() {
             log(`✅ Refresco de carpeta '${orderData.path}' (${targetType.toUpperCase()}) completado por Worker (${res.itemsCount || 0} items)`);
         } catch (err) {
             log(`❌ Error al refrescar carpeta '${orderData.path}': ${err.message}`);
+            orderData.status = 'failed';
+            orderData.error = err.message;
+            orderData.completedAt = new Date().toISOString();
+            orderData.processedBy = WORKER_ID;
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+        } finally {
+            isProcessing = false;
+            currentOrder = null;
+            updateHeartbeat('idle', null);
+        }
+        return;
+    }
+
+    // Petición de consulta de metadata de Higgsfield para clientes offline
+    if (orderData.type === 'query_higgsfield_job') {
+        const jobId = orderData.jobId;
+        log(`⚡ [HIGGSFIELD WORKER] Petición de consulta de Job recibida: ${jobId} (Usuario: ${orderData.user})`);
+        orderData.status = 'processing';
+        orderData.worker = WORKER_ID;
+        orderData.startedAt = new Date().toISOString();
+        saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+
+        updateHeartbeat('querying_higgsfield', { jobId });
+
+        try {
+            const hfApi = require('./higgsfield_api');
+            const details = await hfApi.fetchJobDetails(jobId);
+            orderData.result = details;
+            orderData.status = (details && details.success) ? 'completed' : 'failed';
+            orderData.completedAt = new Date().toISOString();
+            orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+            orderData.processedBy = WORKER_ID;
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            log(`✅ [HIGGSFIELD WORKER] Consulta de Job ${jobId} completada con éxito`);
+        } catch (err) {
+            log(`❌ [HIGGSFIELD WORKER] Error al consultar Job ${jobId}: ${err.message}`);
             orderData.status = 'failed';
             orderData.error = err.message;
             orderData.completedAt = new Date().toISOString();
@@ -735,16 +910,34 @@ async function checkCatalogTriggers() {
 }
 
 const RESTART_FILE = path.join(CACHE_ROOT, 'restart_worker.flag');
+const HOST_RESTART_FILE = path.join(CACHE_ROOT, `restart_${os.hostname().toLowerCase()}.flag`);
+const WORKER_RESTART_FILE = path.join(CACHE_ROOT, `restart_${WORKER_ID}.flag`);
 
 /**
  * Ciclo principal del Worker
  */
 async function runLoop() {
     try {
-        if (!isProcessing && fs.existsSync(RESTART_FILE)) {
-            log(`🔄 Bandera de reinicio detectada (${RESTART_FILE}). Saliendo limpiamente para auto-reinicio...`);
-            try { fs.removeSync(RESTART_FILE); } catch(e){}
-            process.exit(0);
+        if (!isProcessing) {
+            let shouldRestart = false;
+            let flagToRemove = null;
+            if (fs.existsSync(WORKER_RESTART_FILE)) {
+                shouldRestart = true;
+                flagToRemove = WORKER_RESTART_FILE;
+            } else if (fs.existsSync(HOST_RESTART_FILE)) {
+                shouldRestart = true;
+                flagToRemove = HOST_RESTART_FILE;
+            } else if (fs.existsSync(RESTART_FILE)) {
+                shouldRestart = true;
+                flagToRemove = RESTART_FILE;
+            }
+
+            if (shouldRestart) {
+                log(`🔄 Bandera de reinicio detectada (${flagToRemove}). Saliendo limpiamente para auto-reinicio...`);
+                updateHeartbeat('restarting', null);
+                try { if (flagToRemove && fs.existsSync(flagToRemove)) fs.removeSync(flagToRemove); } catch(e){}
+                process.exit(0);
+            }
         }
         updateHeartbeat(isProcessing ? 'processing' : 'idle', currentOrder);
         await checkCatalogTriggers();
@@ -804,39 +997,39 @@ async function startupCheck() {
     log(`📋 Verificando catálogos de proyectos activos (${allProjects.join(', ')})...`);
 
     for (const proj of allProjects) {
-        const driveCatalog = path.join(CACHE_ROOT, `${proj}.json`);
+        const driveManifest = path.join(CACHE_ROOT, 'projects', proj, 'drive', 'manifest.json');
         const conf = catalogGenerator.getProjectConfig ? catalogGenerator.getProjectConfig(proj) : null;
-        const aliasCatalog = (conf && conf.projectCode) ? path.join(CACHE_ROOT, `${conf.projectCode}.json`) : null;
+        const aliasDriveManifest = (conf && conf.projectCode) ? path.join(CACHE_ROOT, 'projects', conf.projectCode, 'drive', 'manifest.json') : null;
 
-        if (!fs.existsSync(driveCatalog) && (!aliasCatalog || !fs.existsSync(aliasCatalog))) {
-            log(`ℹ️ No se detectó catálogo offline de Google Drive para '${proj}'. Generándolo automáticamente por primera vez...`);
+        if (!fs.existsSync(driveManifest) && (!aliasDriveManifest || !fs.existsSync(aliasDriveManifest))) {
+            log(`ℹ️ No se detectó catálogo modular de Google Drive para '${proj}'. Generándolo automáticamente por primera vez...`);
             try {
                 updateHeartbeat('initializing_catalog', { project: proj });
                 await catalogGenerator.generateProjectCatalog(proj, { mode: 'auto' });
-                log(`✅ Catálogo offline de '${proj}' generado exitosamente.`);
+                log(`✅ Catálogo modular offline de '${proj}' generado exitosamente.`);
             } catch (e) {
-                log(`⚠️ No se pudo generar catálogo inicial de ${proj}: ${e.message}`);
+                log(`⚠️ No se pudo generar catálogo modular inicial de ${proj}: ${e.message}`);
             }
         } else {
-            log(`✓ Catálogo offline de '${proj}' disponible en cache.`);
+            log(`✓ Catálogo modular offline de '${proj}' disponible en cache.`);
         }
 
-        const serverCatalog = path.join(CACHE_ROOT, `server_${proj}.json`);
-        const aliasServerCatalog = (conf && conf.projectCode) ? path.join(CACHE_ROOT, `server_${conf.projectCode}.json`) : null;
+        const serverManifest = path.join(CACHE_ROOT, 'projects', proj, 'server', 'manifest.json');
+        const aliasServerManifest = (conf && conf.projectCode) ? path.join(CACHE_ROOT, 'projects', conf.projectCode, 'server', 'manifest.json') : null;
 
-        if (!fs.existsSync(serverCatalog) && (!aliasServerCatalog || !fs.existsSync(aliasServerCatalog))) {
-            log(`ℹ️ No se detectó catálogo del servidor para '${proj}'. Generándolo automáticamente por primera vez...`);
+        if (!fs.existsSync(serverManifest) && (!aliasServerManifest || !fs.existsSync(aliasServerManifest))) {
+            log(`ℹ️ No se detectó catálogo modular del servidor para '${proj}'. Generándolo automáticamente por primera vez...`);
             try {
                 updateHeartbeat('initializing_server_catalog', { project: proj });
                 if (typeof catalogGenerator.generateServerCatalog === 'function') {
                     await catalogGenerator.generateServerCatalog(proj);
                 }
-                log(`✅ Catálogo de servidor de '${proj}' generado exitosamente.`);
+                log(`✅ Catálogo modular de servidor de '${proj}' generado exitosamente.`);
             } catch (e) {
-                log(`⚠️ No se pudo generar catálogo inicial de servidor para ${proj}: ${e.message}`);
+                log(`⚠️ No se pudo generar catálogo modular inicial de servidor para ${proj}: ${e.message}`);
             }
         } else {
-            log(`✓ Catálogo de servidor de '${proj}' disponible en cache.`);
+            log(`✓ Catálogo modular de servidor de '${proj}' disponible en cache.`);
         }
     }
 

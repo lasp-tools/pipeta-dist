@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.1.19</span>
+                <span class="app-version" id="appVersion">v1.1.26</span>
             </div>
         </div>
 
@@ -499,7 +499,15 @@
                     <!-- Panel Derecho: Builder Modular de Tokens (Soporta Personalización Manual) -->
                     <div style="flex:1; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. NAME BUILDER</div>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. NAME BUILDER</div>
+                                <button type="button" id="iaHfItemToggleBtn" class="tool-btn" 
+                                        style="width:26px; height:26px; padding:0; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; background:#222; border:1px solid #444; color:#888; cursor:pointer;" 
+                                        onclick="toggleHiggsfieldOnSelectedItem()" 
+                                        title="Higgsfield AI: Clic para forzar o alternar modo Higgsfield en este archivo">
+                                    <img src="icons/higgsfield.png" style="width:16px; height:16px; border-radius:2px; pointer-events:none;">
+                                </button>
+                            </div>
                             <div style="font-size:0.75rem; color:#888;" id="iaMultiSelectNotice">Selecciona ítems abajo para editar en lote</div>
                         </div>
 
@@ -522,8 +530,12 @@
                                     <input type="checkbox" id="tokMotorToggle" checked onchange="updateIaPreview()">
                                 </div>
                                 <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaMotorChange(this.value)">
+                                    <option value="auto">📐 Auto (Preset del Proyecto)</option>
+                                    <option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>
                                     <option value="SD2">SD2 (Seedance v2.0)</option>
                                     <option value="SD25">SD25 (Seedance v2.5)</option>
+                                    <option value="SD5P">SD5P (Seedream v5 Pro)</option>
+                                    <option value="HFMC">HFMC (Motion Control)</option>
                                     <option value="VEO3">VEO3 (Google Veo v3.0)</option>
                                     <option value="VO31">VO31 (Google Veo v3.1)</option>
                                     <option value="GOMN">GOMN (Gemini / Veo Omni)</option>
@@ -538,14 +550,11 @@
                             <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                     <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">RESOLUCIÓN</span>
-                                    <div style="display:flex; align-items:center; gap:6px;">
-                                        <label style="font-size:0.68rem; color:#4caf50; cursor:pointer;" title="Lee automáticamente el ancho x alto en píxeles de la metadata de la imagen o video">
-                                            <input type="checkbox" id="iaAutoDetectResCheck" checked onchange="triggerResolutionAutoDetect()"> 📐 Auto
-                                        </label>
-                                        <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
-                                    </div>
+                                    <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
                                 </div>
-                                <select id="tokResSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                <select id="tokResSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaResChange(this.value)">
+                                    <option value="auto">📐 Auto (Detección General / Píxeles)</option>
+                                    <option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>
                                     <option value="FHD">FHD (1920x1080)</option>
                                     <option value="UHD">UHD (3840x2160)</option>
                                     <option value="HD">HD (1280x720)</option>
@@ -556,7 +565,7 @@
                                     <option value="2206x946">2206x946</option>
                                     <option value="custom">✍️ Manual / Otro...</option>
                                 </select>
-                                <input id="tokResCustom" class="prop-input" placeholder="Manual (ej: 1920x1200)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                                <input id="tokResCustom" class="prop-input" placeholder="Manual (ej: 1920x1200)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaResCustomChange(this.value)">
                             </div>
 
                             <!-- Token Framing -->
@@ -565,12 +574,12 @@
                                     <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">FRAMING</span>
                                     <input type="checkbox" id="tokFramingToggle" checked onchange="updateIaPreview()">
                                 </div>
-                                <select id="tokFramingSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="updateIaPreview()">
+                                <select id="tokFramingSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaFramingChange(this.value)">
                                     <option value="FLL">FLL (Full / Canvas)</option>
                                     <option value="CRP">CRP (Crop / Parche)</option>
                                     <option value="custom">✍️ Manual / Otro...</option>
                                 </select>
-                                <input id="tokFramingCustom" class="prop-input" placeholder="Manual (ej: PAN)" style="padding:3px; font-size:0.8rem; display:none;" oninput="updateIaPreview()">
+                                <input id="tokFramingCustom" class="prop-input" placeholder="Manual (ej: PAN)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaFramingCustomChange(this.value)">
                             </div>
 
                             <!-- Token Tag / Role -->
@@ -580,7 +589,7 @@
                                     <input type="checkbox" id="tokTagToggle" checked onchange="updateIaPreview()">
                                 </div>
                                 <div style="display:flex; gap:4px; margin-bottom:4px;">
-                                    <select id="tokTagALevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                    <select id="tokTagALevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagAChange(this.value)">
                                         <option value="">- Nivel A (Ref) -</option>
                                         <option value="start1001">start1001</option>
                                         <option value="end1100">end1100</option>
@@ -588,7 +597,7 @@
                                         <option value="ref">ref</option>
                                         <option value="custom">✍️ Manual</option>
                                     </select>
-                                    <select id="tokTagBLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                    <select id="tokTagBLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagBChange(this.value)">
                                         <option value="">- Nivel B (Compo) -</option>
                                         <option value="inp">inp (Inpaint)</option>
                                         <option value="ups">ups (Upscale)</option>
@@ -597,7 +606,7 @@
                                         <option value="elem">elem (Elemento)</option>
                                         <option value="custom">✍️ Manual</option>
                                     </select>
-                                    <select id="tokTagCLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="updateIaPreview()">
+                                    <select id="tokTagCLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagCChange(this.value)">
                                         <option value="">- Nivel C (Proceso) -</option>
                                         <option value="i2v" selected>i2v</option>
                                         <option value="t2i">t2i</option>
@@ -609,9 +618,9 @@
                                     </select>
                                 </div>
                                 <div style="display:flex; gap:4px;">
-                                    <input id="tokTagACustom" class="prop-input" placeholder="Manual A" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
-                                    <input id="tokTagBCustom" class="prop-input" placeholder="Manual B" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
-                                    <input id="tokTagCCustom" class="prop-input" placeholder="Manual C" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="updateIaPreview()">
+                                    <input id="tokTagACustom" class="prop-input" placeholder="Manual A" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagACustomChange(this.value)">
+                                    <input id="tokTagBCustom" class="prop-input" placeholder="Manual B" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagBCustomChange(this.value)">
+                                    <input id="tokTagCCustom" class="prop-input" placeholder="Manual C" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagCCustomChange(this.value)">
                                 </div>
                             </div>
 
@@ -651,7 +660,7 @@
                                     📷 Selecciona o arrastra un archivo en la lista para ver su vista previa (Imagen / Video MP4)
                                 </div>
                                 <img id="iaImagePreview" style="max-height:100%; max-width:100%; object-fit:contain; display:none;" />
-                                <video id="iaVideoPreview" controls autoplay loop muted style="max-height:100%; max-width:100%; object-fit:contain; display:none;"></video>
+                                <video id="iaVideoPreview" controls playsinline preload="metadata" style="max-height:100%; max-width:100%; object-fit:contain; display:none;"></video>
                             </div>
 
                             <div id="iaCanonicalOutputDisplay" style="font-family:monospace; font-size:1.05rem; color:var(--accent); font-weight:bold; word-break:break-all;">
@@ -689,9 +698,10 @@
                             <span style="font-size:0.8rem; color:#aaa;" id="iaQueueTotalInfo">(0 archivos en lista)</span>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <button class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(true)">✔ Marcar Todos</button>
-                            <button class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(false)">✖ Desmarcar Todos</button>
-                            <button class="tool-btn danger" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaClearCompletedBatch()">🧹 Limpiar Completados</button>
+                            <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem; color:#ffb74d; border-color:#ffb74d;" onclick="handleForceHiggsfieldOnSelected()" title="Forzar consulta de metadata de Higgsfield para los elementos seleccionados">⚡ Forzar Higgsfield</button>
+                            <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(true)">✔ Marcar Todos</button>
+                            <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(false)">✖ Desmarcar Todos</button>
+                            <button type="button" class="tool-btn danger" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaClearCompletedBatch()">🧹 Limpiar Completados</button>
                         </div>
                     </div>
 

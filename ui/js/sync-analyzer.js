@@ -373,6 +373,10 @@ class SyncAnalyzer {
                                 <input type="checkbox" id="sync-folders-only" ${this.onlyFolders ? 'checked' : ''} onchange="syncAnalyzer.toggleOnlyFolders(this.checked)">
                                 <span>Solo carpetas</span>
                             </label>
+                            <label style="font-size:0.75rem; color:#ccc; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;" title="Deep Compare: compara tamaño y fecha de modificación para detectar archivos corruptos, incompletos o modificados">
+                                <input type="checkbox" id="sync-deep-compare-cb" ${window.deepCompareMode ? 'checked' : ''} onchange="if (typeof toggleDeepCompareMode === 'function') toggleDeepCompareMode(); else { window.deepCompareMode = this.checked; }">
+                                <span style="color:#d08770; font-weight:bold;">🔬 Deep Compare</span>
+                            </label>
                         </div>
                     </div>
 
@@ -393,6 +397,9 @@ class SyncAnalyzer {
                         </button>
                         <button class="sync-filter-tab" data-filter="online-only" onclick="syncAnalyzer.setFilter('online-only', this)">
                             Solo Online <span id="sync-count-online" class="sync-badge" style="background:#81c784; color:#000;">0</span>
+                        </button>
+                        <button class="sync-filter-tab" data-filter="mismatch" onclick="syncAnalyzer.setFilter('mismatch', this)">
+                            Diferencias <span id="sync-count-mismatch" class="sync-badge" style="background:#d08770; color:#fff;">0</span>
                         </button>
                     </div>
 
@@ -1369,6 +1376,41 @@ class SyncAnalyzer {
                 // Both exist — if both are directories, recurse
                 if (localItem.isDirectory && onlineItem.isDirectory) {
                     await this._compareDirs(localItem.path, onlineItem.path, relPath, depth + 1);
+                } else if (window.deepCompareMode && !localItem.isDirectory && !onlineItem.isDirectory) {
+                    const lSize = Number(localItem.size) || 0;
+                    const oSize = Number(onlineItem.size) || 0;
+                    const isZero = lSize === 0 && oSize > 0;
+                    const sizeMismatch = (oSize > 0 && Math.abs(lSize - oSize) > 0);
+
+                    let isOutdatedLocal = false;
+                    let isOutdatedOnline = false;
+                    if (localItem.mtime && onlineItem.modTime) {
+                        const lTime = new Date(localItem.mtime).getTime();
+                        const oTime = new Date(onlineItem.modTime).getTime();
+                        if (oTime - lTime > 3000) isOutdatedLocal = true;
+                        else if (lTime - oTime > 3000) isOutdatedOnline = true;
+                    }
+
+                    if (isZero || sizeMismatch || isOutdatedLocal || isOutdatedOnline) {
+                        let diffReason = 'size_diff';
+                        if (isZero) diffReason = 'zero_size';
+                        else if (isOutdatedLocal) diffReason = 'newer_online';
+                        else if (isOutdatedOnline) diffReason = 'newer_local';
+
+                        this.differences.push({
+                            name: name,
+                            relativePath: relPath,
+                            type: 'mismatch',
+                            diffReason: diffReason,
+                            isDirectory: false,
+                            size: Math.max(lSize, oSize),
+                            localSize: lSize,
+                            onlineSize: oSize,
+                            localPath: localItem.path,
+                            onlinePath: onlineItem.path,
+                            selected: false
+                        });
+                    }
                 }
             }
         }
@@ -1433,6 +1475,8 @@ class SyncAnalyzer {
         document.getElementById('sync-count-all').innerText = effectiveDiffs.length;
         document.getElementById('sync-count-local').innerText = effectiveDiffs.filter(d => d.type === 'local-only').length;
         document.getElementById('sync-count-online').innerText = effectiveDiffs.filter(d => d.type === 'online-only').length;
+        const mismatchBadge = document.getElementById('sync-count-mismatch');
+        if (mismatchBadge) mismatchBadge.innerText = effectiveDiffs.filter(d => d.type === 'mismatch').length;
         document.getElementById('sync-count-label').innerText = `${effectiveDiffs.length} diffs`;
 
         if (filtered.length === 0) {
@@ -1468,9 +1512,26 @@ class SyncAnalyzer {
             const isCollapsed = this.collapsedFolders && this.collapsedFolders.has(diff.relativePath);
 
             const icon = diff.isDirectory ? (hasKids ? (isCollapsed ? '📁' : '📂') : '📁') : '📄';
-            const typeColor = diff.type === 'local-only' ? '#4fc3f7' : '#81c784';
-            const typeLabel = diff.type === 'local-only' ? 'Solo Local' : 'Solo Online';
-            const typeArrow = diff.type === 'local-only' ? '⬆️' : '⬇️';
+            let typeColor = diff.type === 'local-only' ? '#4fc3f7' : '#81c784';
+            let typeLabel = diff.type === 'local-only' ? 'Solo Local' : 'Solo Online';
+            let typeArrow = diff.type === 'local-only' ? '⬆️' : '⬇️';
+
+            if (diff.type === 'mismatch') {
+                typeColor = '#d08770';
+                if (diff.diffReason === 'zero_size') {
+                    typeLabel = '0 Bytes';
+                    typeArrow = '⚠️';
+                } else if (diff.diffReason === 'newer_online') {
+                    typeLabel = 'Más nuevo Online';
+                    typeArrow = '⬇️*';
+                } else if (diff.diffReason === 'newer_local') {
+                    typeLabel = 'Más nuevo Local';
+                    typeArrow = '⬆️*';
+                } else {
+                    typeLabel = 'Peso difiere';
+                    typeArrow = '⚠️';
+                }
+            }
 
             const toggleArrow = hasKids 
                 ? `<span style="cursor:pointer; display:inline-block; width:14px; text-align:center; color:#ff9800; font-size:0.7rem; user-select:none; margin-right:4px;" onclick="event.stopPropagation(); syncAnalyzer.toggleCollapse('${escapeHtml(diff.relativePath)}')" title="${isCollapsed ? 'Expandir contenido' : 'Colapsar contenido'}">${isCollapsed ? '▶' : '▼'}</span>`
@@ -1478,10 +1539,13 @@ class SyncAnalyzer {
 
             const baseName = diff.name || diff.relativePath.split('/').pop();
             const parentPath = diff.relativePath.includes('/') ? diff.relativePath.substring(0, diff.relativePath.lastIndexOf('/')) : '';
-            const sizeStr = this._formatSize(diff.size);
+            let sizeStr = this._formatSize(diff.size);
+            if (diff.type === 'mismatch' && diff.localSize !== undefined && diff.onlineSize !== undefined) {
+                sizeStr = `${this._formatSize(diff.localSize)} vs ${this._formatSize(diff.onlineSize)}`;
+            }
 
             html += `
-                <div class="sync-result-row" style="display:grid; grid-template-columns:26px 1fr 75px 85px; align-items:center; padding:4px 6px; padding-left:${indentPx + 6}px; border-bottom:1px solid #1a1a1a; font-size:0.78rem; background:${diff.selected ? 'rgba(79,195,247,0.08)' : 'transparent'};">
+                <div class="sync-result-row" style="display:grid; grid-template-columns:26px 1fr 100px 105px; align-items:center; padding:4px 6px; padding-left:${indentPx + 6}px; border-bottom:1px solid #1a1a1a; font-size:0.78rem; background:${diff.selected ? 'rgba(79,195,247,0.08)' : 'transparent'};">
                     <input type="checkbox" ${diff.selected ? 'checked' : ''} onchange="syncAnalyzer.toggleItem(${globalIdx}, this.checked)">
                     <div style="overflow:hidden; display:flex; align-items:center;">
                         ${toggleArrow}
@@ -1490,10 +1554,10 @@ class SyncAnalyzer {
                             ${parentPath ? `<span style="color:#666; font-size:0.72rem;">${escapeHtml(parentPath)}/</span>` : ''}<b style="color:${diff.isDirectory ? '#fff' : '#ccc'};">${escapeHtml(baseName)}</b>
                         </span>
                     </div>
-                    <span style="font-family:monospace; font-size:0.72rem; color:${diff.isDirectory ? '#bbb' : '#888'}; text-align:right; padding-right:6px; white-space:nowrap;" title="${diff.isDirectory ? 'Peso acumulado de la carpeta' : 'Peso del archivo'}">
+                    <span style="font-family:monospace; font-size:0.70rem; color:${diff.isDirectory ? '#bbb' : '#888'}; text-align:right; padding-right:6px; white-space:nowrap;" title="${diff.isDirectory ? 'Peso acumulado de la carpeta' : (diff.type === 'mismatch' ? `Local: ${this._formatSize(diff.localSize)} ≠ Online: ${this._formatSize(diff.onlineSize)}` : 'Peso del archivo')}">
                         ${sizeStr}
                     </span>
-                    <span style="color:${typeColor}; font-size:0.68rem; padding:1px 5px; background:${typeColor}18; border-radius:3px; white-space:nowrap; text-align:right;">
+                    <span style="color:${typeColor}; font-size:0.68rem; padding:1px 5px; background:${typeColor}18; border-radius:3px; white-space:nowrap; text-align:right;" title="${diff.diffReason || ''}">
                         ${typeArrow} ${typeLabel}
                     </span>
                 </div>
@@ -1568,21 +1632,21 @@ class SyncAnalyzer {
     _updateButtons() {
         const effectiveDiffs = this._getEffectiveDiffs();
 
-        const selectedLocal = effectiveDiffs.filter(d => d.selected && d.type === 'local-only');
-        const selectedOnline = effectiveDiffs.filter(d => d.selected && d.type === 'online-only');
+        const selectedPush = effectiveDiffs.filter(d => d.selected && (d.type === 'local-only' || d.type === 'mismatch'));
+        const selectedPull = effectiveDiffs.filter(d => d.selected && (d.type === 'online-only' || d.type === 'mismatch'));
 
         const pushBtn = document.getElementById('sync-btn-push');
         const pullBtn = document.getElementById('sync-btn-pull');
 
-        pushBtn.disabled = selectedLocal.length === 0;
-        pushBtn.style.background = selectedLocal.length > 0 ? '#4fc3f7' : '#444';
-        pushBtn.style.color = selectedLocal.length > 0 ? '#000' : '#888';
-        pushBtn.innerText = `⬆️ Upload (${selectedLocal.length})`;
+        pushBtn.disabled = selectedPush.length === 0;
+        pushBtn.style.background = selectedPush.length > 0 ? '#4fc3f7' : '#444';
+        pushBtn.style.color = selectedPush.length > 0 ? '#000' : '#888';
+        pushBtn.innerText = `⬆️ Upload (${selectedPush.length})`;
 
-        pullBtn.disabled = selectedOnline.length === 0;
-        pullBtn.style.background = selectedOnline.length > 0 ? '#81c784' : '#444';
-        pullBtn.style.color = selectedOnline.length > 0 ? '#000' : '#888';
-        pullBtn.innerText = `⬇️ Download (${selectedOnline.length})`;
+        pullBtn.disabled = selectedPull.length === 0;
+        pullBtn.style.background = selectedPull.length > 0 ? '#81c784' : '#444';
+        pullBtn.style.color = selectedPull.length > 0 ? '#000' : '#888';
+        pullBtn.innerText = `⬇️ Download (${selectedPull.length})`;
     }
 
     // --- SYNC ACTIONS ---
@@ -1592,8 +1656,8 @@ class SyncAnalyzer {
         const items = effectiveDiffs.filter(d => d.selected);
         const dirLabel = direction === 'push' ? 'Online (G:)' : 'Local (Z:)';
         const relevant = direction === 'push'
-            ? items.filter(d => d.type === 'local-only')
-            : items.filter(d => d.type === 'online-only');
+            ? items.filter(d => d.type === 'local-only' || d.type === 'mismatch')
+            : items.filter(d => d.type === 'online-only' || d.type === 'mismatch');
 
         if (relevant.length === 0) {
             this.showOverlay(`
@@ -1660,8 +1724,8 @@ class SyncAnalyzer {
 
         const items = effectiveDiffs.filter(d => d.selected);
         const relevant = direction === 'push'
-            ? items.filter(d => d.type === 'local-only')
-            : items.filter(d => d.type === 'online-only');
+            ? items.filter(d => d.type === 'local-only' || d.type === 'mismatch')
+            : items.filter(d => d.type === 'online-only' || d.type === 'mismatch');
 
         if (relevant.length === 0) return;
 

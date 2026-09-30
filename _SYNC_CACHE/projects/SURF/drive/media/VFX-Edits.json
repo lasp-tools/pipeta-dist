@@ -1,0 +1,111 @@
+{
+  "id": "media/VFX-Edits",
+  "project": "surf_love",
+  "type": "drive",
+  "category": "media",
+  "prefix": "VFX-Edits",
+  "file": "media/VFX-Edits.json",
+  "stats": {
+    "itemCount": 8,
+    "fileCount": 1,
+    "byteCount": 125883964
+  },
+  "flatList": [
+    {
+      "id": "sync_media_1700",
+      "category": "media",
+      "name": "VFX-Edits",
+      "relPath": "VFX-Edits",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2024-03-21T14:41:01.659Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits"
+    },
+    {
+      "id": "sync_media_1737",
+      "category": "media",
+      "name": "260916",
+      "relPath": "VFX-Edits/260916",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-16T14:45:36.085Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260916",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260916"
+    },
+    {
+      "id": "sync_media_1738",
+      "category": "media",
+      "name": "260911",
+      "relPath": "VFX-Edits/260911",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-11T21:45:32.843Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260911",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260911"
+    },
+    {
+      "id": "sync_media_1740",
+      "category": "media",
+      "name": "260909",
+      "relPath": "VFX-Edits/260909",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-09T21:45:34.485Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260909",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260909"
+    },
+    {
+      "id": "sync_media_1741",
+      "category": "media",
+      "name": "260908",
+      "relPath": "VFX-Edits/260908",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:48:45.003Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260908",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260908"
+    },
+    {
+      "id": "sync_media_1742",
+      "category": "media",
+      "name": "260903",
+      "relPath": "VFX-Edits/260903",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-08T23:48:43.580Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260903",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260903"
+    },
+    {
+      "id": "sync_media_1744",
+      "category": "media",
+      "name": "260826",
+      "relPath": "VFX-Edits/260826",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-26T13:54:37.605Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260826",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260826"
+    },
+    {
+      "id": "sync_media_1975",
+      "category": "media",
+      "name": "SURF_B01_003_v001.mov",
+      "relPath": "VFX-Edits/260826/SURF_B01_003_v001.mov",
+      "ext": ".mov",
+      "isDir": false,
+      "size": 125883964,
+      "modTime": "2026-08-26T13:52:14.788Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/VFX-Edits/260826/SURF_B01_003_v001.mov",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits/260826/SURF_B01_003_v001.mov"
+    }
+  ]
+}

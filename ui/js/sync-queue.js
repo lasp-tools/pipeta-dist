@@ -29,6 +29,7 @@ class SyncQueueUI {
         this.prevWorkerAlive = null;
         this.processedCompletedOrderIds = new Set();
         this.isInitialFetchDone = false;
+        this.sessionStartTime = Date.now();
         this.isMaximized = false; // Por defecto siempre ventana flotante al abrir Pipeta
         this.prevBounds = null;
         this.onlyMyTasks = true;
@@ -108,8 +109,8 @@ class SyncQueueUI {
             }
             this.prevWorkerAlive = isAlive;
 
-            // Si es el primer ciclo de fetch, inicializar órdenes ya terminadas para no disparar refrescos masivos del pasado
-            if (!this.isInitialFetchDone) {
+            // Si es el primer ciclo de fetch exitoso, inicializar órdenes ya terminadas para no disparar refrescos masivos del pasado
+            if (!this.isInitialFetchDone && resOrders && resOrders.success) {
                 for (const o of this.orders) {
                     if (o.status === 'completed' || o.status === 'completed_with_errors' || o.status === 'failed') {
                         this.processedCompletedOrderIds.add(o.id);
@@ -126,7 +127,9 @@ class SyncQueueUI {
 
                 if (isFinished && !this.processedCompletedOrderIds.has(order.id)) {
                     this.processedCompletedOrderIds.add(order.id);
-                    this.triggerOrderCompletionRefresh(order);
+                    const completedTime = order.completedAt ? new Date(order.completedAt).getTime() : 0;
+                    const isStartupOrder = !this.isInitialFetchDone || (completedTime > 0 && completedTime < this.sessionStartTime) || (Date.now() - this.sessionStartTime < 4000);
+                    this.triggerOrderCompletionRefresh(order, isStartupOrder);
                 }
 
                 if (prev && prev !== order.status) {
@@ -154,7 +157,7 @@ class SyncQueueUI {
         }
     }
 
-    async triggerOrderCompletionRefresh(order) {
+    async triggerOrderCompletionRefresh(order, isStartupOrder = false) {
         try {
             const shortId = order.id.slice(-6);
             const itemsCount = Array.isArray(order.items) ? order.items.length : 1;
@@ -162,7 +165,7 @@ class SyncQueueUI {
             const typeLabel = isDownload ? 'Descarga' : 'Subida';
             const proj = order.project || ((typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love');
 
-            if (typeof PipetaConsole !== 'undefined') {
+            if (typeof PipetaConsole !== 'undefined' && !isStartupOrder) {
                 PipetaConsole.log('sync', `✓ ${typeLabel} #${shortId} completada (${itemsCount} items en ${order.durationSeconds || 0}s). Actualizando vista de carpeta local...`, 'ok');
             }
 
@@ -203,9 +206,13 @@ class SyncQueueUI {
                 } catch(e) {}
             }
 
-            // 5. Refrescar la vista actual de carpetas locales
-            if (typeof refreshCurrentView === 'function') {
-                await refreshCurrentView(true);
+            // 5. Refrescar la vista actual de carpetas locales de forma dirigida in-place
+            let domUpdated = false;
+            if (typeof window.updateTransferredItemsInDOM === 'function') {
+                domUpdated = await window.updateTransferredItemsInDOM(order);
+            }
+            if (!domUpdated && typeof refreshCurrentView === 'function') {
+                await refreshCurrentView(false);
             }
 
             // 6. Si Sync Analyzer está abierto, refrescar también su escaneo si aplica
@@ -215,8 +222,15 @@ class SyncQueueUI {
                 } catch (e) {}
             }
 
-            // 7. Notificación toast sutil
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            // 7. Notificación: si es orden previa de inicio, va a consola; si es durante el trabajo activo, mostrar toast
+            if (isStartupOrder) {
+                if (typeof PipetaConsole !== 'undefined') {
+                    const firstItemName = order.items?.[0]?.name || 'elemento';
+                    const more = (order.items?.length || 1) - 1;
+                    const nameStr = more > 0 ? `${firstItemName} (+${more})` : firstItemName;
+                    PipetaConsole.log('sync', `[Inicio] Estado previo sincronizado: ${typeLabel} #${shortId} (${nameStr})`, 'ok');
+                }
+            } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 const firstItemName = order.items?.[0]?.name || 'elemento';
                 const more = (order.items?.length || 1) - 1;
                 const nameStr = more > 0 ? `${firstItemName} (+${more})` : firstItemName;
@@ -614,6 +628,10 @@ class SyncQueueUI {
                 typeIcon = '📤';
                 typeColor = '#ff9800';
                 isServerTransfer = true;
+            } else if (order.type === 'higgsfield_ingest') {
+                typeLabel = 'INGESTA HIGGSFIELD';
+                typeIcon = '⚡';
+                typeColor = '#c6ff00';
             }
 
             const progress = order.progress;
@@ -675,6 +693,8 @@ class SyncQueueUI {
                                 pathInfoHtml = `<span style="color:#ab47bc;">🏢 Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">💾 Destino (Local):</span> ${it.targetLocalPath || it.path}`;
                             } else if (order.type === 'server_upload') {
                                 pathInfoHtml = `<span style="color:#4caf50;">💾 Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">🏢 Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
+                            } else if (order.type === 'higgsfield_ingest') {
+                                pathInfoHtml = `<span style="color:#c6ff00;">⚡ Origen (Higgsfield):</span> ${it.sourceUrl || it.jobId || 'CloudFront'}<br><span style="color:#4caf50;">💾 Destino (Shot):</span> ${it.targetShotFolder || it.canonicalName || it.path}`;
                             }
 
                             return `

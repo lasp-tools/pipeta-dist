@@ -1,0 +1,510 @@
+{
+  "project": "surf_love",
+  "projectCode": "SURF",
+  "client": "atresmedia",
+  "type": "server",
+  "version": "2.0-modular",
+  "generatedAt": "2026-09-23T17:54:49.497Z",
+  "roots": {
+    "work": {
+      "server": "Z:/atresmedia/surf_love",
+      "local": "Z:/atresmedia/surf_love"
+    },
+    "media": {
+      "server": "Z:/INTERNO/MEDIA/atresmedia/surf_love",
+      "local": "Z:/INTERNO/MEDIA/atresmedia/surf_love"
+    }
+  },
+  "stats": {
+    "totalFiles": 60993,
+    "totalFolders": 2038,
+    "totalBytes": 2590804015749,
+    "workFiles": 1751,
+    "workBytes": 732685136772,
+    "mediaFiles": 59242,
+    "mediaBytes": 1858118878977
+  },
+  "subCatalogs": {
+    "misc": {
+      "id": "misc",
+      "file": "misc.json",
+      "category": "work",
+      "prefix": "pre",
+      "itemCount": 762,
+      "fileCount": 693,
+      "byteCount": 697661745034
+    },
+    "episodios/_root": {
+      "id": "episodios/_root",
+      "file": "episodios/_root.json",
+      "category": "work",
+      "prefix": "episodios",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/B04": {
+      "id": "episodios/B04",
+      "file": "episodios/B04.json",
+      "category": "work",
+      "prefix": "episodios/B04",
+      "itemCount": 499,
+      "fileCount": 361,
+      "byteCount": 6597108058
+    },
+    "episodios/B03": {
+      "id": "episodios/B03",
+      "file": "episodios/B03.json",
+      "category": "work",
+      "prefix": "episodios/B03",
+      "itemCount": 447,
+      "fileCount": 322,
+      "byteCount": 9804814465
+    },
+    "episodios/XXX": {
+      "id": "episodios/XXX",
+      "file": "episodios/XXX.json",
+      "category": "work",
+      "prefix": "episodios/XXX",
+      "itemCount": 21,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "episodios/B02": {
+      "id": "episodios/B02",
+      "file": "episodios/B02.json",
+      "category": "work",
+      "prefix": "episodios/B02",
+      "itemCount": 52,
+      "fileCount": 22,
+      "byteCount": 444613872
+    },
+    "episodios/templates": {
+      "id": "episodios/templates",
+      "file": "episodios/templates.json",
+      "category": "work",
+      "prefix": "episodios/templates",
+      "itemCount": 16,
+      "fileCount": 15,
+      "byteCount": 52210928
+    },
+    "episodios/VFX-Edits": {
+      "id": "episodios/VFX-Edits",
+      "file": "episodios/VFX-Edits.json",
+      "category": "work",
+      "prefix": "episodios/VFX-Edits",
+      "itemCount": 3,
+      "fileCount": 2,
+      "byteCount": 409068
+    },
+    "episodios/B01": {
+      "id": "episodios/B01",
+      "file": "episodios/B01.json",
+      "category": "work",
+      "prefix": "episodios/B01",
+      "itemCount": 371,
+      "fileCount": 281,
+      "byteCount": 16007048340
+    },
+    "assets2D": {
+      "id": "assets2D",
+      "file": "assets2D.json",
+      "category": "work",
+      "prefix": "assets2D",
+      "itemCount": 96,
+      "fileCount": 55,
+      "byteCount": 2117187007
+    },
+    "assets3D": {
+      "id": "assets3D",
+      "file": "assets3D.json",
+      "category": "work",
+      "prefix": "assets3D",
+      "itemCount": 42,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/B04": {
+      "id": "media/B04",
+      "file": "media/B04.json",
+      "category": "media",
+      "prefix": "B04",
+      "itemCount": 9007,
+      "fileCount": 8684,
+      "byteCount": 314063500646
+    },
+    "media/B00": {
+      "id": "media/B00",
+      "file": "media/B00.json",
+      "category": "media",
+      "prefix": "B00",
+      "itemCount": 4,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/_gsdata_": {
+      "id": "media/_gsdata_",
+      "file": "media/_gsdata_.json",
+      "category": "media",
+      "prefix": "_gsdata_",
+      "itemCount": 441,
+      "fileCount": 440,
+      "byteCount": 1967066
+    },
+    "media/Preeditados": {
+      "id": "media/Preeditados",
+      "file": "media/Preeditados.json",
+      "category": "media",
+      "prefix": "Preeditados",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/thumbnails": {
+      "id": "media/thumbnails",
+      "file": "media/thumbnails.json",
+      "category": "media",
+      "prefix": "thumbnails",
+      "itemCount": 184,
+      "fileCount": 183,
+      "byteCount": 15201488
+    },
+    "media/B03": {
+      "id": "media/B03",
+      "file": "media/B03.json",
+      "category": "media",
+      "prefix": "B03",
+      "itemCount": 21003,
+      "fileCount": 20559,
+      "byteCount": 521988834157
+    },
+    "media/XXX": {
+      "id": "media/XXX",
+      "file": "media/XXX.json",
+      "category": "media",
+      "prefix": "XXX",
+      "itemCount": 24,
+      "fileCount": 8,
+      "byteCount": 0
+    },
+    "media/B02": {
+      "id": "media/B02",
+      "file": "media/B02.json",
+      "category": "media",
+      "prefix": "B02",
+      "itemCount": 5373,
+      "fileCount": 5234,
+      "byteCount": 214557437570
+    },
+    "media/Wrap": {
+      "id": "media/Wrap",
+      "file": "media/Wrap.json",
+      "category": "media",
+      "prefix": "Wrap",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/_Auxiliar": {
+      "id": "media/_Auxiliar",
+      "file": "media/_Auxiliar.json",
+      "category": "media",
+      "prefix": "_Auxiliar",
+      "itemCount": 2167,
+      "fileCount": 2133,
+      "byteCount": 110226546042
+    },
+    "media/VFX-Edits": {
+      "id": "media/VFX-Edits",
+      "file": "media/VFX-Edits.json",
+      "category": "media",
+      "prefix": "VFX-Edits",
+      "itemCount": 13,
+      "fileCount": 6,
+      "byteCount": 798033186
+    },
+    "media/_OutPost": {
+      "id": "media/_OutPost",
+      "file": "media/_OutPost.json",
+      "category": "media",
+      "prefix": "_OutPost",
+      "itemCount": 1,
+      "fileCount": 0,
+      "byteCount": 0
+    },
+    "media/B01": {
+      "id": "media/B01",
+      "file": "media/B01.json",
+      "category": "media",
+      "prefix": "B01",
+      "itemCount": 22492,
+      "fileCount": 21990,
+      "byteCount": 696465981723
+    },
+    "media/_InPost": {
+      "id": "media/_InPost",
+      "file": "media/_InPost.json",
+      "category": "media",
+      "prefix": "_InPost",
+      "itemCount": 10,
+      "fileCount": 5,
+      "byteCount": 1377099
+    }
+  },
+  "rootChildren": {
+    "work": [
+      {
+        "name": "pre",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/pre",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "episodios",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/episodios",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "COMPRESSOR",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/COMPRESSOR",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "COMPRESIONES_PRESENTACIONES",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/COMPRESIONES_PRESENTACIONES",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "workflow",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/workflow",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "assets2D",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/assets2D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "logs",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/logs",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_Out",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/_Out",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "assets3D",
+        "isDirectory": true,
+        "path": "Z:/atresmedia/surf_love/assets3D",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      }
+    ],
+    "media": [
+      {
+        "name": "B04",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B04",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "B00",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_gsdata_",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_gsdata_",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "Preeditados",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Preeditados",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "thumbnails",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/thumbnails",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "B03",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B03",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "XXX",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/XXX",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "B02",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B02",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "Wrap",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Wrap",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_Auxiliar",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_Auxiliar",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "VFX-Edits",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/VFX-Edits",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_OutPost",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_OutPost",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "B01",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B01",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      },
+      {
+        "name": "_InPost",
+        "isDirectory": true,
+        "path": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost",
+        "size": 0,
+        "fromCatalog": true,
+        "isServer": true
+      }
+    ]
+  },
+  "episodiosChildren": [
+    {
+      "name": "B04",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/B04",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "B03",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/B03",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "XXX",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/XXX",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "B02",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/B02",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "templates",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/templates",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "VFX-Edits",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/VFX-Edits",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    },
+    {
+      "name": "B01",
+      "isDirectory": true,
+      "path": "Z:/atresmedia/surf_love/episodios/B01",
+      "size": 0,
+      "fromCatalog": true,
+      "isServer": true
+    }
+  ]
+}

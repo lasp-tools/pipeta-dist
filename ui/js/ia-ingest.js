@@ -4,6 +4,367 @@ let iaSelectedIds = new Set();
 let iaBaseVersionNum = 1;
 let iaCurrentResolvedIaPath = '';
 
+// --- HIGGSFIELD AI INTEGRATION STATE & HELPERS ---
+window.hfOptions = {
+    createLedger: localStorage.getItem('pipeta_hf_create_ledger') !== 'false',
+    preserveOriginal: localStorage.getItem('pipeta_hf_preserve_original') !== 'false',
+    downloadRefs: localStorage.getItem('pipeta_hf_download_refs') === 'true',
+    forceWorker: localStorage.getItem('pipeta_hf_force_worker') === 'true'
+};
+
+let hfExecutor = window.hfOptions.forceWorker ? 'worker' : 'local';
+const HF_JOB_UUID_REGEX = /([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
+window.hfToolbarOpen = localStorage.getItem('pipeta_hf_toolbar_open') === 'true';
+
+function toggleHfToolbarSuite() {
+    window.hfToolbarOpen = !(window.hfToolbarOpen === true || localStorage.getItem('pipeta_hf_toolbar_open') === 'true');
+    localStorage.setItem('pipeta_hf_toolbar_open', window.hfToolbarOpen);
+    const drawer = document.getElementById('hfToolbarDrawer');
+    const btn = document.getElementById('hfToolbarToggleBtn');
+    const arrow = document.getElementById('hfToolbarArrow');
+    const group = document.getElementById('hfToolbarGroup');
+    if (drawer) drawer.style.display = window.hfToolbarOpen ? 'flex' : 'none';
+    if (btn) {
+        if (window.hfToolbarOpen) {
+            btn.classList.add('active');
+            btn.style.background = 'rgba(198,255,0,0.18)';
+            btn.style.borderColor = '#c6ff00';
+            btn.style.color = '#c6ff00';
+            btn.style.boxShadow = '0 0 10px rgba(198,255,0,0.3)';
+        } else {
+            btn.classList.remove('active');
+            btn.style.background = '#222';
+            btn.style.borderColor = '#444';
+            btn.style.color = '#aaa';
+            btn.style.boxShadow = 'none';
+        }
+    }
+    if (arrow) arrow.innerText = window.hfToolbarOpen ? '◀' : '▶';
+    if (group) {
+        group.style.borderColor = window.hfToolbarOpen ? '#556b2f' : '#333';
+        group.style.background = window.hfToolbarOpen ? 'rgba(20,25,18,0.7)' : 'rgba(20,20,20,0.5)';
+    }
+}
+
+function updateIaHfToggleBtnUI() {
+    const btn = document.getElementById('iaHfItemToggleBtn');
+    if (!btn) return;
+
+    const activeItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id)) || (iaSelectedIds.size === 0 ? iaBatchQueue[0] : null);
+    if (!activeItem) {
+        btn.style.opacity = '0.5';
+        btn.style.background = '#222';
+        btn.style.borderColor = '#444';
+        btn.style.color = '#888';
+        btn.style.boxShadow = 'none';
+        btn.title = 'Higgsfield AI: Selecciona un archivo para ver o forzar Higgsfield';
+        return;
+    }
+
+    btn.style.opacity = '1';
+    if (activeItem.isHiggsfield) {
+        btn.style.background = 'rgba(198, 255, 0, 0.18)';
+        btn.style.borderColor = '#c6ff00';
+        btn.style.color = '#c6ff00';
+        btn.style.boxShadow = '0 0 10px rgba(198, 255, 0, 0.35)';
+        btn.title = `✓ Higgsfield AI DETECTADO/ACTIVO para este archivo (Job: ${activeItem.hfJobId || 'Custom'}). Clic para desactivar o re-vincular.`;
+    } else {
+        btn.style.background = '#222';
+        btn.style.borderColor = '#444';
+        btn.style.color = '#888';
+        btn.style.boxShadow = 'none';
+        btn.title = 'Higgsfield AI: Inactivo para este archivo. Clic para forzar interpretación Higgsfield.';
+    }
+}
+
+async function toggleHiggsfieldOnSelectedItem() {
+    const targetItems = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : (iaBatchQueue.length > 0 ? [iaBatchQueue[0]] : []);
+
+    if (targetItems.length === 0) {
+        showIaAlert("⚠️ No hay ningún archivo en la cola", "#ff9800");
+        return;
+    }
+
+    if (iaSelectedIds.size === 0 && targetItems.length > 0) {
+        iaSelectedIds.add(targetItems[0].id);
+    }
+
+    for (const item of targetItems) {
+        if (item.isHiggsfield) {
+            item.isHiggsfield = false;
+            item.motorChoice = 'auto';
+            item.resChoice = 'auto';
+            showIaAlert(`Modo Higgsfield desactivado para "${item.originalName}"`, "#ff9800");
+        } else {
+            let jobId = extractHfJobId(item.originalName) || extractHfJobId(item.originalPath) || extractHfJobId(item.sourceUrl);
+            const directInputVal = document.getElementById('hfDirectInput')?.value.trim();
+            if (!jobId && directInputVal) {
+                jobId = extractHfJobId(directInputVal);
+                if (jobId && !item.sourceUrl && directInputVal.startsWith('http')) {
+                    item.sourceUrl = directInputVal;
+                }
+            }
+
+            if (!jobId) {
+                const entered = prompt(`Ingresa la URL de CloudFront o el Job ID de Higgsfield para:\n"${item.originalName}"`, directInputVal || "");
+                if (entered) {
+                    jobId = extractHfJobId(entered);
+                    if (jobId && entered.startsWith('http')) {
+                        item.sourceUrl = entered;
+                    }
+                }
+            }
+
+            item.isHiggsfield = true;
+            item.motorChoice = 'auto_hf';
+            item.resChoice = 'auto_hf';
+            if (jobId) {
+                item.hfJobId = jobId;
+                showIaAlert(`⏳ Consultando Job ${jobId.substring(0, 8)} en Higgsfield...`, "#2196f3");
+                await enrichItemWithHiggsfield(item, jobId);
+            } else {
+                item.motor = item.motor || 'SD25';
+                showIaAlert(`⚡ Higgsfield forzado para "${item.originalName}"`, "#4caf50");
+            }
+        }
+    }
+
+    syncBuilderControlsWithSelection();
+    updateIaPreview();
+}
+
+function saveHfOption(key, val) {
+    if (!window.hfOptions) window.hfOptions = {};
+    window.hfOptions[key] = val;
+    const storageKey = 'pipeta_hf_' + key.replace(/([A-Z])/g, '_$1').toLowerCase();
+    localStorage.setItem(storageKey, val);
+    if (key === 'forceWorker') {
+        hfExecutor = val ? 'worker' : 'local';
+        updateHfForceWorkerUI();
+    }
+}
+
+function toggleHfForceWorker() {
+    const next = !window.hfOptions.forceWorker;
+    saveHfOption('forceWorker', next);
+    updateHfForceWorkerUI();
+}
+
+function updateHfForceWorkerUI() {
+    const btn = document.getElementById('hfForceWorkerBtn');
+    if (!btn) return;
+    const isWorker = !!window.hfOptions.forceWorker;
+    btn.innerText = 'Use worker';
+    if (isWorker) {
+        btn.classList.add('active');
+        btn.style.background = '#ff9800';
+        btn.style.borderColor = '#ff9800';
+        btn.style.color = '#000';
+        btn.style.fontWeight = 'bold';
+        btn.title = 'Use worker: ACTIVO (Envía las descargas al Worker central de red). Clic para usar Pipeta Local.';
+    } else {
+        btn.classList.remove('active');
+        btn.style.background = '#222';
+        btn.style.borderColor = '#444';
+        btn.style.color = '#aaa';
+        btn.style.fontWeight = 'normal';
+        btn.title = 'Use worker: APAGADO (Se procesa localmente en Pipeta). Clic para usar Worker de red.';
+    }
+}
+
+function extractHfJobId(str) {
+    if (!str || typeof str !== 'string') return null;
+    const m = str.match(HF_JOB_UUID_REGEX);
+    return m ? m[1].toLowerCase() : null;
+}
+
+async function fetchHiggsfieldJobMetadata(jobId) {
+    const cleanId = extractHfJobId(jobId);
+    if (!cleanId) throw new Error("ID de Job inválido");
+    const res = await fetch(`/api/higgsfield/job/${cleanId}`);
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
+}
+
+async function enrichItemWithHiggsfield(item, forceJobId = null) {
+    const targetId = forceJobId || extractHfJobId(item.originalName) || extractHfJobId(item.originalPath) || extractHfJobId(item.sourceUrl);
+    if (!targetId) return false;
+
+    item.isHiggsfield = true;
+    item.hfJobId = targetId;
+    item.isFetchingHf = true;
+    renderIaBatchTable();
+
+    try {
+        const data = await fetchHiggsfieldJobMetadata(targetId);
+        item.isFetchingHf = false;
+        item.higgsfieldData = data;
+        
+        // Mapear automáticamente los tokens oficiales
+        if (data.motorCanonical) {
+            item.motorChoice = 'auto_hf';
+            item.motor = data.motorCanonical;
+        }
+        if (data.resCanonical) {
+            item.resChoice = 'auto_hf';
+            item.autoResTag = data.resCanonical;
+        }
+        if (data.framingCanonical) {
+            item.framingChoice = data.framingCanonical;
+            item.framing = data.framingCanonical;
+        } else {
+            item.framingChoice = 'FLL';
+            item.framing = 'FLL';
+        }
+        if (data.roleCanonical) {
+            item.tagCChoice = data.roleCanonical;
+            item.hfRole = data.roleCanonical;
+        }
+        if (data.prompt) {
+            item.hfPrompt = data.prompt;
+        }
+        if (data.resultUrl) {
+            if (!item.file || !item.sourceUrl) {
+                item.sourceUrl = data.resultUrl;
+            }
+        }
+        if (data.thumbnailUrl) {
+            item.thumbnailUrl = data.thumbnailUrl;
+        }
+
+        syncBuilderControlsWithSelection();
+        updateIaPreview();
+        renderIaBatchTable();
+        return true;
+    } catch (err) {
+        item.isFetchingHf = false;
+        console.warn(`[HIGGSFIELD] Error consultando job ${targetId}:`, err.message);
+        renderIaBatchTable();
+        return false;
+    }
+}
+
+async function handleHfDirectLoad(inputVal = null) {
+    const inputEl = document.getElementById('hfDirectInput');
+    const raw = (inputVal || inputEl?.value || '').trim();
+    if (!raw) {
+        showIaAlert("⚠️ Ingresa una URL de CloudFront o el Job ID de Higgsfield", "#ff9800");
+        return;
+    }
+
+    const jobId = extractHfJobId(raw);
+    if (!jobId) {
+        showIaAlert("⚠️ No se detectó un UUID de Job válido en el texto ingresado", "#ff9800");
+        return;
+    }
+
+    showIaAlert(`⏳ Consultando Job ${jobId.substring(0, 8)} en Higgsfield...`, "#2196f3");
+    try {
+        const data = await fetchHiggsfieldJobMetadata(jobId);
+        let downloadUrl = data.resultUrl;
+        if (!downloadUrl && raw.startsWith('http')) {
+            downloadUrl = raw;
+        }
+
+        let originalName = downloadUrl ? downloadUrl.split('?')[0].split('/').pop() : `hf_${jobId}.mp4`;
+        const extIndex = originalName.lastIndexOf('.');
+        const ext = extIndex !== -1 ? originalName.substring(extIndex) : '.mp4';
+
+        const newItem = {
+            id: 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            file: null,
+            sourceUrl: downloadUrl,
+            originalName: originalName,
+            originalPath: downloadUrl || `[Higgsfield Job: ${jobId}]`,
+            ext: ext,
+            subfolder: 'root',
+            motorChoice: 'auto_hf',
+            motor: data.motorCanonical || 'SD25',
+            resChoice: 'auto_hf',
+            autoResTag: data.resCanonical || 'FHD',
+            hfRole: data.roleCanonical || 'v2v',
+            hfPrompt: data.prompt || '',
+            thumbnailUrl: data.thumbnailUrl || null,
+            isHiggsfield: true,
+            hfJobId: jobId,
+            higgsfieldData: data,
+            canonicalName: '',
+            targetFolder: '',
+            targetPath: '',
+            checked: true,
+            status: 'Pendiente'
+        };
+
+        iaSelectedIds.clear();
+        iaBatchQueue.push(newItem);
+        iaSelectedIds.add(newItem.id);
+
+        if (inputEl) inputEl.value = '';
+        document.getElementById('iaFileNameDisplay').innerText = `${iaBatchQueue.length} archivo(s) en lista`;
+        showIaAlert(`✓ Job ${jobId.substring(0, 8)} cargado (${data.motorCanonical}, ${data.resCanonical}, ${data.roleCanonical})`, "#4caf50");
+        renderIaBatchTable();
+        syncBuilderControlsWithSelection();
+        updateIaPreview();
+    } catch (err) {
+        showIaAlert(`❌ Error al consultar Higgsfield: ${err.message}`, "#f44336");
+    }
+}
+
+async function handleForceHiggsfieldOnSelected() {
+    const selectedItems = iaBatchQueue.filter(i => iaSelectedIds.has(i.id));
+    const itemsToProcess = selectedItems.length > 0 ? selectedItems : (iaBatchQueue.length === 1 ? [iaBatchQueue[0]] : []);
+    const directInputVal = (document.getElementById('hfDirectInput')?.value || '').trim();
+
+    if (itemsToProcess.length === 0) {
+        if (directInputVal) {
+            return handleHfDirectLoad(directInputVal);
+        }
+        showIaAlert("⚠️ Selecciona un archivo en la cola o ingresa la URL en 'Higgsfield media URL'", "#ff9800");
+        return;
+    }
+
+    for (const item of itemsToProcess) {
+        let jobId = extractHfJobId(item.originalName) || extractHfJobId(item.originalPath) || extractHfJobId(item.sourceUrl);
+
+        if (!jobId && directInputVal) {
+            jobId = extractHfJobId(directInputVal);
+            if (jobId && !item.sourceUrl && directInputVal.startsWith('http')) {
+                item.sourceUrl = directInputVal;
+            }
+        }
+
+        if (!jobId) {
+            const entered = prompt(`Ingresa la URL de Higgsfield o el Job ID (UUID) para forzar:\n"${item.originalName}"`, directInputVal || "");
+            if (!entered) continue;
+            jobId = extractHfJobId(entered);
+            if (jobId && entered.startsWith('http')) {
+                item.sourceUrl = entered;
+            }
+            if (!jobId) {
+                alert("El texto ingresado no contiene un UUID de Job válido.");
+                continue;
+            }
+        }
+
+        showIaAlert(`⏳ Consultando Job ${jobId.substring(0, 8)} en Higgsfield...`, "#2196f3");
+        const success = await enrichItemWithHiggsfield(item, jobId);
+        if (success) {
+            item.isHiggsfield = true;
+            item.motorChoice = 'auto_hf';
+            item.resChoice = 'auto_hf';
+            syncBuilderControlsWithSelection();
+            showIaAlert(`✓ Higgsfield forzado para "${item.originalName}" (${item.motor}, ${item.autoResTag}, ${item.hfRole || 'v2v'})`, "#4caf50");
+        } else {
+            showIaAlert(`❌ No se pudo vincular Higgsfield a "${item.originalName}"`, "#f44336");
+        }
+    }
+}
+
 function initIaResizer() {
     const splitter = document.getElementById('iaVerticalSplitter');
     const previewBox = document.getElementById('iaMediaPreviewBox');
@@ -51,6 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initIaResizer();
     initIaDropZone();
     loadCustomTokens();
+    updateHfForceWorkerUI();
     setTimeout(() => {
         refreshIaHierarchy();
     }, 200);
@@ -339,6 +701,8 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
         const iList = effective.motorsImage || [];
 
         let html = '';
+        html += `<option value="auto">📐 Auto (Preset del Proyecto)</option>`;
+        html += `<option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>`;
         if (vList.length > 0) {
             html += `<optgroup label="🎬 Motores de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
         }
@@ -350,13 +714,11 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
         }
         motorSel.innerHTML = html;
 
-        const allMotors = [...vList, ...iList];
+        const allMotors = [...vList, ...iList, 'auto', 'auto_hf'];
         if (!forceDefaults && curVal && (allMotors.includes(curVal) || curVal === 'custom')) {
             motorSel.value = curVal;
-        } else if (vList.includes(effective.defaultVideoEngine)) {
-            motorSel.value = effective.defaultVideoEngine;
-        } else if (allMotors.length > 0) {
-            motorSel.value = allMotors[0];
+        } else {
+            motorSel.value = 'auto';
         }
     }
 
@@ -684,89 +1046,105 @@ function getIaTokenValues(item = null, versionOverride = null) {
     const defaultVidMotor = effective.defaultVideoEngine || 'SD2';
     const defaultImgMotor = effective.defaultImageEngine || 'NB2P';
 
-    // Motor (Dropdown + Custom + Detección inteligente por tipo de archivo)
-    const motorSel = document.getElementById('tokMotorSelect');
-    const motorCustomEl = document.getElementById('tokMotorCustom');
-    let motor = motorSel?.value || '';
-    if (motor === 'custom') {
-        if (motorCustomEl) motorCustomEl.style.display = 'block';
-        motor = motorCustomEl?.value.trim() || '';
+    // 1. Motor
+    let motor = 'auto';
+    if (item) {
+        const choice = item.motorChoice || (item.isHiggsfield ? 'auto_hf' : 'auto');
+        if (choice === 'auto_hf') {
+            motor = item.higgsfieldData?.motorCanonical || item.motor || 'SD25';
+        } else if (choice === 'auto') {
+            const ext = (item.ext || '').toLowerCase();
+            const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+            motor = isImg ? defaultImgMotor : defaultVidMotor;
+        } else if (choice === 'custom') {
+            motor = item.customMotor || '';
+        } else {
+            motor = choice;
+        }
     } else {
-        if (motorCustomEl) motorCustomEl.style.display = 'none';
-        if (item) {
-            if (item.customMotor) {
-                motor = item.customMotor;
-            } else if (item.motor) {
-                motor = item.motor;
-            } else {
-                const ext = (item.ext || '').toLowerCase();
-                const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-                motor = isImg ? defaultImgMotor : defaultVidMotor;
-            }
+        const motorSel = document.getElementById('tokMotorSelect');
+        const motorCustomEl = document.getElementById('tokMotorCustom');
+        const choice = motorSel?.value || 'auto';
+        if (choice === 'custom') {
+            motor = motorCustomEl?.value.trim() || '';
+        } else if (choice === 'auto_hf') {
+            motor = 'SD25';
+        } else if (choice === 'auto') {
+            motor = defaultVidMotor;
+        } else {
+            motor = choice;
         }
     }
 
-    // Res (Dropdown + Custom + Autodetección individual por ítem)
-    const resSel = document.getElementById('tokResSelect');
-    const resCustomEl = document.getElementById('tokResCustom');
-    let resolution = resSel?.value || '';
-    if (resolution === 'custom') {
-        if (resCustomEl) resCustomEl.style.display = 'block';
-        resolution = resCustomEl?.value.trim() || '';
+    // 2. Resolución
+    let resolution = 'auto';
+    if (item) {
+        const choice = item.resChoice || (item.isHiggsfield ? 'auto_hf' : 'auto');
+        if (choice === 'auto_hf') {
+            resolution = item.higgsfieldData?.resCanonical || item.autoResTag || 'FHD';
+        } else if (choice === 'auto') {
+            resolution = item.autoResTag || 'FHD';
+        } else if (choice === 'custom') {
+            resolution = item.customRes || '';
+        } else {
+            resolution = choice;
+        }
     } else {
-        if (resCustomEl) resCustomEl.style.display = 'none';
-        if (item && item.autoResTag) {
-            resolution = item.autoResTag;
+        const resSel = document.getElementById('tokResSelect');
+        const resCustomEl = document.getElementById('tokResCustom');
+        const choice = resSel?.value || 'auto';
+        if (choice === 'custom') {
+            resolution = resCustomEl?.value.trim() || '';
+        } else if (choice === 'auto_hf') {
+            resolution = 'FHD';
+        } else if (choice === 'auto') {
+            resolution = 'FHD';
+        } else {
+            resolution = choice;
         }
     }
 
-    // Framing (Dropdown + Custom)
-    const framingSel = document.getElementById('tokFramingSelect');
-    const framingCustomEl = document.getElementById('tokFramingCustom');
-    let framing = framingSel?.value || '';
-    if (framing === 'custom') {
-        if (framingCustomEl) framingCustomEl.style.display = 'block';
-        framing = framingCustomEl?.value.trim() || '';
+    // 3. Framing
+    let framing = '';
+    if (item) {
+        const choice = item.framingChoice || item.framing || (document.getElementById('tokFramingSelect')?.value || 'FLL');
+        if (choice === 'custom') {
+            framing = item.customFraming || '';
+        } else {
+            framing = choice;
+        }
     } else {
-        if (framingCustomEl) framingCustomEl.style.display = 'none';
+        const framingSel = document.getElementById('tokFramingSelect');
+        const framingCustomEl = document.getElementById('tokFramingCustom');
+        const choice = framingSel?.value || 'CRP';
+        framing = choice === 'custom' ? (framingCustomEl?.value.trim() || '') : choice;
     }
 
-    // Tags Niveles A-B-C (Dropdown + Custom)
-    const tagASel = document.getElementById('tokTagALevel');
-    const tagACustomEl = document.getElementById('tokTagACustom');
-    let tagA = tagASel?.value || '';
-    if (tagA === 'custom') {
-        if (tagACustomEl) tagACustomEl.style.display = 'block';
-        tagA = tagACustomEl?.value.trim() || '';
+    // 4. Tags Niveles A-B-C
+    let tagA = '', tagB = '', tagC = '';
+    if (item) {
+        tagA = item.tagAChoice === 'custom' ? (item.customTagA || '') : (item.tagAChoice || '');
+        tagB = item.tagBChoice === 'custom' ? (item.customTagB || '') : (item.tagBChoice || '');
+        tagC = item.tagCChoice === 'custom' ? (item.customTagC || '') : (item.tagCChoice || (item.hfRole || ''));
     } else {
-        if (tagACustomEl) tagACustomEl.style.display = 'none';
-    }
+        const tagASel = document.getElementById('tokTagALevel');
+        const tagACustomEl = document.getElementById('tokTagACustom');
+        tagA = tagASel?.value === 'custom' ? (tagACustomEl?.value.trim() || '') : (tagASel?.value || '');
 
-    const tagBSel = document.getElementById('tokTagBLevel');
-    const tagBCustomEl = document.getElementById('tokTagBCustom');
-    let tagB = tagBSel?.value || '';
-    if (tagB === 'custom') {
-        if (tagBCustomEl) tagBCustomEl.style.display = 'block';
-        tagB = tagBCustomEl?.value.trim() || '';
-    } else {
-        if (tagBCustomEl) tagBCustomEl.style.display = 'none';
-    }
+        const tagBSel = document.getElementById('tokTagBLevel');
+        const tagBCustomEl = document.getElementById('tokTagBCustom');
+        tagB = tagBSel?.value === 'custom' ? (tagBCustomEl?.value.trim() || '') : (tagBSel?.value || '');
 
-    const tagCSel = document.getElementById('tokTagCLevel');
-    const tagCCustomEl = document.getElementById('tokTagCCustom');
-    let tagC = tagCSel?.value || '';
-    if (tagC === 'custom') {
-        if (tagCCustomEl) tagCCustomEl.style.display = 'block';
-        tagC = tagCCustomEl?.value.trim() || '';
-    } else {
-        if (tagCCustomEl) tagCCustomEl.style.display = 'none';
+        const tagCSel = document.getElementById('tokTagCLevel');
+        const tagCCustomEl = document.getElementById('tokTagCCustom');
+        tagC = tagCSel?.value === 'custom' ? (tagCCustomEl?.value.trim() || '') : (tagCSel?.value || '');
     }
 
     const tagRole = [tagA, tagB, tagC].filter(Boolean).join('-');
 
-    // Version base sin sufijo o forzada externamente
+    // 5. Versión
     const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
-    let version = versionOverride || verInputVal;
+    let version = versionOverride || (item?.version || verInputVal);
 
     const prefixTokens = [];
     if (shotIdOn && shotId) prefixTokens.push(shotId);
@@ -833,16 +1211,10 @@ function getTargetFolderForItem(subfolderKey) {
 }
 
 function updateIaPreview() {
-    // Determinar la subcarpeta primaria basada en los botones toggle activos
     let selectedSubfolder = 'root';
     if (iaActiveSubfolders.has('wip')) selectedSubfolder = 'root';
     else if (iaActiveSubfolders.has('ref')) selectedSubfolder = 'ref';
     else if (iaActiveSubfolders.has('export')) selectedSubfolder = 'export';
-
-    // Determinar qué ítems se deben modificar con el builder de tokens actual:
-    const targetItems = iaSelectedIds.size > 0 
-        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
-        : iaBatchQueue.filter(i => i.checked);
 
     const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
     const matchVer = verInputVal.match(/v(\d+)/i);
@@ -851,8 +1223,8 @@ function updateIaPreview() {
     // Agrupador de firmas canónicas: solo incrementa versión si el nombre base + extensión darían un duplicado exacto
     const signatureCounts = new Map();
 
-    targetItems.forEach((item) => {
-        item.subfolder = selectedSubfolder;
+    iaBatchQueue.forEach((item) => {
+        if (!item.subfolder) item.subfolder = selectedSubfolder;
         
         // Obtener tokens base sin versión
         const baseRes = getIaTokenValues(item, 'v000');
@@ -863,21 +1235,12 @@ function updateIaPreview() {
         signatureCounts.set(signature, count + 1);
 
         const itemVerNum = startNum + count;
-        const itemVerStr = 'v' + String(itemVerNum).padStart(3, '0');
+        const itemVerStr = item.version || ('v' + String(itemVerNum).padStart(3, '0'));
 
         const tokenRes = getIaTokenValues(item, itemVerStr);
         item.canonicalName = tokenRes.canonicalBase + (item.ext || '.mp4');
         item.targetFolder = getTargetFolderForItem(item.subfolder);
         item.targetPath = (item.targetFolder + '/' + item.canonicalName).replace(/\\/g, '/');
-    });
-
-    // Asegurar que la carpeta de destino esté actualizada en todos los ítems según su subcarpeta propia
-    iaBatchQueue.forEach((item) => {
-        if (!item.subfolder) item.subfolder = 'root';
-        item.targetFolder = getTargetFolderForItem(item.subfolder);
-        if (item.canonicalName) {
-            item.targetPath = (item.targetFolder + '/' + item.canonicalName).replace(/\\/g, '/');
-        }
     });
 
     renderIaBatchTable();
@@ -910,6 +1273,8 @@ function updateIaPreview() {
             countDisplay.innerText = `${checkedCount} de ${iaBatchQueue.length} listados para ingestar`;
         }
     }
+
+    updateIaHfToggleBtnUI();
 }
 
 // --- AUTODETECCIÓN DE METADATA DE RESOLUCIÓN ---
@@ -950,8 +1315,7 @@ function detectMediaDimensions(item) {
 
 async function autoDetectResolutionForActiveItem(item, force = false) {
     if (!item) return;
-    const autoCheck = document.getElementById('iaAutoDetectResCheck');
-    if (!autoCheck || !autoCheck.checked) return;
+    if (!force && item.resChoice !== 'auto') return;
 
     if ((item.autoResDetected || item.isDetectingRes) && !force) return;
     item.isDetectingRes = true;
@@ -963,7 +1327,6 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
 
         const resSelect = document.getElementById('tokResSelect');
         const resCustomInput = document.getElementById('tokResCustom');
-        if (!resSelect) return;
 
         const w = dims.width;
         const h = dims.height;
@@ -988,7 +1351,7 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
         else if (w === 1280 && h === 720) matchedVal = 'HD';
         else if (w === 1024 && h === 1024) matchedVal = 'SQ1K';
         else if (w === 2560 && h === 1080) matchedVal = 'UW2K';
-        else {
+        else if (resSelect) {
             for (let opt of resSelect.options) {
                 if (opt.value === dimStr || opt.text.includes(dimStr)) {
                     matchedVal = opt.value;
@@ -1001,35 +1364,13 @@ async function autoDetectResolutionForActiveItem(item, force = false) {
         item.autoResDetected = dimStr;
         item.autoResTag = finalTag;
 
-        if (matchedVal) {
-            let optExists = Array.from(resSelect.options).some(o => o.value === matchedVal);
-            if (!optExists) {
-                const newOpt = document.createElement('option');
-                newOpt.value = matchedVal;
-                newOpt.innerText = `${matchedVal} (${dimStr})`;
-                resSelect.appendChild(newOpt);
-            }
-            resSelect.value = matchedVal;
+        // Mantener la selección visible en 'auto' (o 'auto_hf')
+        if (item.resChoice === 'auto') {
+            if (resSelect && resSelect.value !== 'auto') resSelect.value = 'auto';
             if (resCustomInput) resCustomInput.style.display = 'none';
-        } else {
-            const isSimple = window.iaWorkMode === 'simple';
-            if (isSimple) {
-                let optExists = Array.from(resSelect.options).some(o => o.value === dimStr);
-                if (!optExists) {
-                    const newOpt = document.createElement('option');
-                    newOpt.value = dimStr;
-                    newOpt.innerText = dimStr;
-                    resSelect.appendChild(newOpt);
-                }
-                resSelect.value = dimStr;
-                if (resCustomInput) resCustomInput.style.display = 'none';
-            } else {
-                resSelect.value = 'custom';
-                if (resCustomInput) {
-                    resCustomInput.style.display = 'block';
-                    resCustomInput.value = dimStr;
-                }
-            }
+        } else if (item.resChoice === 'auto_hf') {
+            if (resSelect && resSelect.value !== 'auto_hf') resSelect.value = 'auto_hf';
+            if (resCustomInput) resCustomInput.style.display = 'none';
         }
 
         updateIaPreview();
@@ -1047,10 +1388,64 @@ function triggerResolutionAutoDetect() {
     }
 }
 
+
+
+async function openCurrentPreviewExternally() {
+    const activeItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id)) || (iaBatchQueue.length > 0 ? iaBatchQueue[0] : null);
+    if (!activeItem) return;
+    const localPath = activeItem.destination || activeItem.targetPath || activeItem.originalPath;
+
+    // Si tenemos activeItem.file en memoria y la ruta no es absoluta en disco
+    const isAbsolute = localPath && (localPath.includes(':') || localPath.startsWith('\\\\')) && !localPath.startsWith('http');
+    let fileDataBase64 = null;
+    if (!isAbsolute && activeItem.file) {
+        showIaAlert("⏳ Preparando video para abrir en Windows...", "#2196f3");
+        fileDataBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const res = reader.result;
+                const commaIdx = typeof res === 'string' ? res.indexOf(',') : -1;
+                resolve(commaIdx !== -1 ? res.substring(commaIdx + 1) : res);
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(activeItem.file);
+        });
+    }
+
+    try {
+        const payload = {
+            filePath: isAbsolute ? localPath : '',
+            fileData: fileDataBase64,
+            filename: activeItem.canonicalName || activeItem.originalName || 'preview.mp4'
+        };
+
+        const res = await fetch('/api/ia/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+            showIaAlert(`▶ Abriendo video en Windows: ${data.opened}`, "#4caf50");
+        } else {
+            showIaAlert(`❌ No se pudo abrir: ${data.error || 'Error al lanzar reproductor'}`, "#f44336");
+        }
+    } catch(e) {
+        console.error("Error al abrir archivo externamente:", e);
+        showIaAlert(`❌ Error al conectar con Pipeta: ${e.message}`, "#f44336");
+    }
+}
+window.openCurrentPreviewExternally = openCurrentPreviewExternally;
+
 function updateIaMediaPreview(activeItem) {
     const placeholder = document.getElementById('iaMediaPlaceholder');
     const imgEl = document.getElementById('iaImagePreview');
     const videoEl = document.getElementById('iaVideoPreview');
+    const controlsBar = document.getElementById('iaMediaControlsBar');
+    const btnThumb = document.getElementById('iaPreviewModeThumbBtn');
+    const btnVideo = document.getElementById('iaPreviewModeVideoBtn');
+    const openExtBtn = document.getElementById('iaOpenExternalVideoBtn');
 
     if (!activeItem) {
         if (placeholder) {
@@ -1062,6 +1457,7 @@ function updateIaMediaPreview(activeItem) {
             videoEl.style.display = 'none';
             if (typeof videoEl.pause === 'function') videoEl.pause();
         }
+        if (controlsBar) controlsBar.style.display = 'none';
         return;
     }
 
@@ -1074,29 +1470,47 @@ function updateIaMediaPreview(activeItem) {
         }
     } else if (activeItem.destination) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.destination)}`;
-    } else if (activeItem.targetPath) {
+    } else if (activeItem.targetPath && !activeItem.targetPath.startsWith('[')) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.targetPath)}`;
     } else if (activeItem.originalPath && (activeItem.originalPath.includes(':') || activeItem.originalPath.startsWith('/') || activeItem.originalPath.startsWith('\\\\'))) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
+    } else if (activeItem.sourceUrl) {
+        previewUrl = activeItem.sourceUrl;
     }
 
     const ext = (activeItem.ext || '').toLowerCase();
     const isVideo = ['.mp4', '.mov', '.webm', '.mkv'].includes(ext);
     const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+    const thumbUrl = activeItem.thumbnailUrl || activeItem.higgsfieldData?.thumbnailUrl || '';
 
-    if (previewUrl && isVideo) {
+    if (isVideo && (previewUrl || thumbUrl)) {
         placeholder.style.display = 'none';
         imgEl.style.display = 'none';
         videoEl.style.display = 'block';
-        videoEl.src = previewUrl;
-        videoEl.play().catch(e => {});
-    } else if (previewUrl && isImage) {
+
+        if (thumbUrl) {
+            videoEl.poster = thumbUrl;
+        }
+
+        const targetVideoSrc = previewUrl || activeItem.sourceUrl || '';
+        if (targetVideoSrc && videoEl.src !== targetVideoSrc) {
+            videoEl.src = targetVideoSrc;
+        }
+
+        videoEl.onerror = () => {
+            // El reproductor permanece en pantalla con su poster sin saltos ni desaparición
+            if (activeItem.sourceUrl && videoEl.src !== activeItem.sourceUrl) {
+                videoEl.src = activeItem.sourceUrl;
+            }
+        };
+    } else if (isImage && (previewUrl || thumbUrl)) {
         placeholder.style.display = 'none';
         videoEl.style.display = 'none';
         if (typeof videoEl.pause === 'function') videoEl.pause();
         imgEl.style.display = 'block';
-        imgEl.src = previewUrl;
+        imgEl.src = previewUrl || thumbUrl;
     } else {
+        if (controlsBar) controlsBar.style.display = 'none';
         placeholder.style.display = 'block';
         placeholder.innerText = `📄 ${activeItem.originalName} (${ext.toUpperCase() || 'Archivo'})`;
         imgEl.style.display = 'none';
@@ -1127,6 +1541,7 @@ function handleIaFileSelect(input) {
             const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext.toLowerCase());
             const itemMotor = isImg ? defaultImgMotor : defaultVidMotor;
 
+            const detectedHfId = extractHfJobId(file.name) || extractHfJobId(originalPath);
             const newItem = {
                 id: 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
                 file: file,
@@ -1134,7 +1549,24 @@ function handleIaFileSelect(input) {
                 originalPath: originalPath,
                 ext: ext,
                 subfolder: initialSubfolder,
+                motorChoice: detectedHfId ? 'auto_hf' : 'auto',
+                customMotor: '',
                 motor: itemMotor,
+                resChoice: detectedHfId ? 'auto_hf' : 'auto',
+                customRes: '',
+                autoResTag: 'FHD',
+                framingChoice: detectedHfId ? 'FLL' : (document.getElementById('tokFramingSelect')?.value || 'FLL'),
+                customFraming: '',
+                tagAChoice: '',
+                customTagA: '',
+                tagBChoice: '',
+                customTagB: '',
+                tagCChoice: detectedHfId ? 'v2v' : '',
+                customTagC: '',
+                version: '',
+                isHiggsfield: !!detectedHfId,
+                hfJobId: detectedHfId || null,
+                higgsfieldData: null,
                 canonicalName: '',
                 targetFolder: '',
                 targetPath: '',
@@ -1146,10 +1578,16 @@ function handleIaFileSelect(input) {
 
             // Autodetectar dimensiones para cada archivo en segundo plano
             autoDetectResolutionForActiveItem(newItem);
+
+            // Si el archivo proviene de Higgsfield (contiene UUID), consultar metadata en segundo plano
+            if (detectedHfId) {
+                enrichItemWithHiggsfield(newItem, detectedHfId);
+            }
         });
 
         document.getElementById('iaFileNameDisplay').innerText = `${iaBatchQueue.length} archivo(s) en lista`;
         document.getElementById('iaFileMetaDisplay').innerText = `Haz clic en una fila abajo para ajustarla individualmente`;
+        syncBuilderControlsWithSelection();
         updateIaPreview();
     }
 }
@@ -1193,19 +1631,36 @@ function renderIaBatchTable() {
         let statusBadge = '<span style="color:#ff9800;">⏳ Pendiente</span>';
         if (item.status === 'Ingestando...') statusBadge = '<span style="color:#2196f3; font-weight:bold;">⏳ Ingestando...</span>';
         else if (item.status === '✓ Ingestado') statusBadge = '<span style="color:#4caf50; font-weight:bold;">✓ Ingestado</span>';
+        else if (item.status === '⚡ Encolado en Worker') statusBadge = '<span style="color:#ffb74d; font-weight:bold;">⚡ Encolado Worker</span>';
         else if (item.status.startsWith('❌')) statusBadge = `<span style="color:#f44336;" title="${item.status}">${item.status}</span>`;
 
+        let newNameColHtml = '';
+        if (item.isFetchingHf) {
+            statusBadge = '<span style="color:#ff9800; font-size:0.75rem; font-weight:bold; display:inline-flex; align-items:center;"><span style="display:inline-block; width:8px; height:8px; border:2px solid #ff9800; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:4px;"></span>Obteniendo metadata...</span>';
+            newNameColHtml = `
+                <div style="display:inline-flex; align-items:center; gap:8px; color:#ff9800; font-size:0.78rem;">
+                    <span style="display:inline-block; width:12px; height:12px; border:2px solid #ff9800; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
+                    <span>⏳ Consultando Higgsfield (Job: ${escapeHtml((item.hfJobId || '').substring(0, 8))}...)...</span>
+                </div>
+            `;
+        } else {
+            newNameColHtml = `<span style="font-family:monospace; color:var(--accent); font-weight:bold;">${escapeHtml(item.canonicalName || '-')}</span>`;
+        }
+
         const originFolder = getOriginFolderOnly(item);
+        const hfBadge = item.isHiggsfield 
+            ? `<span style="background:rgba(255,183,77,0.2); color:#ffb74d; border:1px solid #ffb74d; border-radius:3px; padding:1px 4px; font-size:0.68rem; margin-right:4px;" title="Higgsfield AI Job: ${item.hfJobId || ''}">⚡ HF</span>`
+            : '';
 
         return `
-            <tr style="border-bottom:1px solid #222; background:${isSelected ? 'rgba(76,175,80,0.15)' : 'transparent'}; cursor:pointer; user-select:none;" onclick="iaSelectRowItem('${item.id}', ${idx}, event)">
+            <tr style="border-bottom:1px solid #222; background:${isSelected ? 'rgba(76,175,80,0.22)' : 'transparent'}; border-left:${isSelected ? '4px solid #4caf50' : '4px solid transparent'}; cursor:pointer; user-select:none;" onclick="iaSelectRowItem('${item.id}', ${idx}, event)">
                 <td style="padding:8px; text-align:center;" onclick="event.stopPropagation();">
                     <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="iaToggleBatchItemCheck('${item.id}', this.checked)">
                 </td>
                 <td style="padding:8px; color:#888;">${idx + 1}</td>
-                <td style="padding:8px; font-weight:bold; color:#eee;">${escapeHtml(item.originalName)}</td>
+                <td style="padding:8px; font-weight:bold; color:#eee;">${hfBadge}${escapeHtml(item.originalName)}</td>
                 <td style="padding:8px; font-family:monospace; color:#aaa;" title="${escapeHtml(originFolder)}">${escapeHtml(truncatePath(originFolder, 30))}</td>
-                <td style="padding:8px; font-family:monospace; color:var(--accent); font-weight:bold;">${escapeHtml(item.canonicalName)}</td>
+                <td style="padding:8px; font-family:monospace;">${newNameColHtml}</td>
                 <td style="padding:8px; font-family:monospace; color:#4caf50;" title="${escapeHtml(item.targetFolder)}">${truncatePath(item.targetFolder, 35)}</td>
                 <td style="padding:8px;">${statusBadge}</td>
                 <td style="padding:8px; text-align:center;" onclick="event.stopPropagation();">
@@ -1230,6 +1685,91 @@ function escapeHtml(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function syncBuilderControlsWithSelection() {
+    const noticeEl = document.getElementById('iaMultiSelectNotice');
+    const activeItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id)) || (iaBatchQueue.length > 0 ? iaBatchQueue[0] : null);
+
+    if (activeItem) {
+        if (iaSelectedIds.size > 1) {
+            if (noticeEl) noticeEl.innerText = `Editando ${iaSelectedIds.size} ítems en lote (activo: ${activeItem.originalName})`;
+        } else if (iaSelectedIds.size === 1) {
+            if (noticeEl) noticeEl.innerText = `Editando: ${activeItem.originalName}`;
+        } else {
+            if (noticeEl) noticeEl.innerText = `Mostrando: ${activeItem.originalName}`;
+        }
+
+        // Subcarpeta
+        const sub = activeItem.subfolder === 'root' ? 'wip' : (activeItem.subfolder || 'wip');
+        iaActiveSubfolders = new Set([sub]);
+        updateIaSubfolderButtonsUI();
+
+        // Motor
+        const motorSel = document.getElementById('tokMotorSelect');
+        const motorCustom = document.getElementById('tokMotorCustom');
+        const mChoice = activeItem.motorChoice || (activeItem.isHiggsfield ? 'auto_hf' : 'auto');
+        if (motorSel) motorSel.value = mChoice;
+        if (motorCustom) {
+            motorCustom.style.display = mChoice === 'custom' ? 'block' : 'none';
+            motorCustom.value = activeItem.customMotor || '';
+        }
+
+        // Res
+        const resSel = document.getElementById('tokResSelect');
+        const resCustom = document.getElementById('tokResCustom');
+        const rChoice = activeItem.resChoice || (activeItem.isHiggsfield ? 'auto_hf' : 'auto');
+        if (resSel) resSel.value = rChoice;
+        if (resCustom) {
+            resCustom.style.display = rChoice === 'custom' ? 'block' : 'none';
+            resCustom.value = activeItem.customRes || '';
+        }
+
+        // Framing
+        const framingSel = document.getElementById('tokFramingSelect');
+        const framingCustom = document.getElementById('tokFramingCustom');
+        const fChoice = activeItem.framingChoice || (activeItem.isHiggsfield ? 'FLL' : (framingSel?.value || 'FLL'));
+        if (framingSel) framingSel.value = fChoice;
+        if (framingCustom) {
+            framingCustom.style.display = fChoice === 'custom' ? 'block' : 'none';
+            framingCustom.value = activeItem.customFraming || '';
+        }
+
+        // Tags
+        const tagASel = document.getElementById('tokTagALevel');
+        const tagACustom = document.getElementById('tokTagACustom');
+        if (tagASel) tagASel.value = activeItem.tagAChoice || '';
+        if (tagACustom) {
+            tagACustom.style.display = activeItem.tagAChoice === 'custom' ? 'block' : 'none';
+            tagACustom.value = activeItem.customTagA || '';
+        }
+
+        const tagBSel = document.getElementById('tokTagBLevel');
+        const tagBCustom = document.getElementById('tokTagBCustom');
+        if (tagBSel) tagBSel.value = activeItem.tagBChoice || '';
+        if (tagBCustom) {
+            tagBCustom.style.display = activeItem.tagBChoice === 'custom' ? 'block' : 'none';
+            tagBCustom.value = activeItem.customTagB || '';
+        }
+
+        const tagCSel = document.getElementById('tokTagCLevel');
+        const tagCCustom = document.getElementById('tokTagCCustom');
+        if (tagCSel) tagCSel.value = activeItem.tagCChoice || (activeItem.hfRole || '');
+        if (tagCCustom) {
+            tagCCustom.style.display = activeItem.tagCChoice === 'custom' ? 'block' : 'none';
+            tagCCustom.value = activeItem.customTagC || '';
+        }
+
+        // Versión
+        const verInput = document.getElementById('tokVerInput');
+        if (verInput && activeItem.version) {
+            verInput.value = activeItem.version;
+        }
+    } else {
+        if (noticeEl) noticeEl.innerText = 'Selecciona ítems abajo para editar en lote';
+    }
+
+    updateIaHfToggleBtnUI();
+}
+
 function iaSelectRowItem(id, idx, e) {
     if (e && e.shiftKey && iaLastSelectedIdx !== -1) {
         const start = Math.min(iaLastSelectedIdx, idx);
@@ -1252,24 +1792,7 @@ function iaSelectRowItem(id, idx, e) {
         iaLastSelectedIdx = idx;
     }
 
-    // Sincronizar selectores del builder con el elemento seleccionado
-    if (iaSelectedIds.size === 1) {
-        const singleItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id));
-        if (singleItem) {
-            const subSelect = document.getElementById('iaSubfolderSelect');
-            if (subSelect && singleItem.subfolder) singleItem.subfolder = singleItem.subfolder;
-
-            const motorSel = document.getElementById('tokMotorSelect');
-            if (motorSel && singleItem.motor && singleItem.motor !== 'custom') {
-                motorSel.value = singleItem.motor;
-            }
-            const resSel = document.getElementById('tokResSelect');
-            if (resSel && singleItem.autoResTag && singleItem.autoResTag !== 'custom') {
-                resSel.value = singleItem.autoResTag;
-            }
-        }
-    }
-
+    syncBuilderControlsWithSelection();
     updateIaPreview();
 }
 
@@ -1282,27 +1805,239 @@ function handleIaMotorChange(val) {
     }
     const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
     
-    if (iaSelectedIds.size > 0) {
-        iaBatchQueue.forEach(item => {
-            if (iaSelectedIds.has(item.id)) {
-                item.customMotor = chosen;
-                item.motor = chosen;
-            }
-        });
-    }
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.motorChoice = val;
+        if (val === 'custom') {
+            item.customMotor = chosen;
+            item.motor = chosen;
+        } else if (val === 'auto_hf') {
+            item.motor = item.higgsfieldData?.motorCanonical || item.motor || 'SD25';
+        } else if (val === 'auto') {
+            const ext = (item.ext || '').toLowerCase();
+            const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
+            const eff = getEffectiveIaPresets();
+            item.motor = isImg ? (eff.defaultImageEngine || 'NB2P') : (eff.defaultVideoEngine || 'SD2');
+        } else {
+            item.motor = val;
+        }
+    });
+
     updateIaPreview();
 }
 
 function handleIaMotorCustomChange(val) {
     const chosen = val.trim();
-    if (iaSelectedIds.size > 0) {
-        iaBatchQueue.forEach(item => {
-            if (iaSelectedIds.has(item.id)) {
-                item.customMotor = chosen;
-                item.motor = chosen;
-            }
-        });
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.motorChoice = 'custom';
+        item.customMotor = chosen;
+        item.motor = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaResChange(val) {
+    const customEl = document.getElementById('tokResCustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
     }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.resChoice = val;
+        if (val === 'custom') {
+            item.customRes = chosen;
+            item.autoResTag = chosen;
+        } else if (val === 'auto_hf') {
+            item.autoResTag = item.higgsfieldData?.resCanonical || item.autoResTag || 'FHD';
+        } else if (val === 'auto') {
+            autoDetectResolutionForActiveItem(item);
+        } else {
+            item.autoResTag = val;
+        }
+    });
+
+    updateIaPreview();
+}
+
+function handleIaResCustomChange(val) {
+    const chosen = val.trim();
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.resChoice = 'custom';
+        item.customRes = chosen;
+        item.autoResTag = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaFramingChange(val) {
+    const customEl = document.getElementById('tokFramingCustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
+    }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.framingChoice = val;
+        if (val === 'custom') item.customFraming = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaFramingCustomChange(val) {
+    const chosen = val.trim();
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.framingChoice = 'custom';
+        item.customFraming = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagAChange(val) {
+    const customEl = document.getElementById('tokTagACustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
+    }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagAChoice = val;
+        if (val === 'custom') item.customTagA = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagACustomChange(val) {
+    const chosen = val.trim();
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagAChoice = 'custom';
+        item.customTagA = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagBChange(val) {
+    const customEl = document.getElementById('tokTagBCustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
+    }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagBChoice = val;
+        if (val === 'custom') item.customTagB = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagBCustomChange(val) {
+    const chosen = val.trim();
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagBChoice = 'custom';
+        item.customTagB = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagCChange(val) {
+    const customEl = document.getElementById('tokTagCCustom');
+    if (val === 'custom') {
+        if (customEl) customEl.style.display = 'block';
+    } else {
+        if (customEl) customEl.style.display = 'none';
+    }
+    const chosen = val === 'custom' ? (customEl?.value.trim() || '') : val;
+
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagCChoice = val;
+        if (val === 'custom') item.customTagC = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaTagCCustomChange(val) {
+    const chosen = val.trim();
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.tagCChoice = 'custom';
+        item.customTagC = chosen;
+    });
+
+    updateIaPreview();
+}
+
+function handleIaVerInputChange(val) {
+    const targets = iaSelectedIds.size > 0 
+        ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+        : iaBatchQueue.filter(i => i.checked);
+
+    targets.forEach(item => {
+        item.version = val.trim();
+    });
+
     updateIaPreview();
 }
 
@@ -1558,43 +2293,102 @@ async function executeIaIngestBatch() {
             }
 
             // Ingestar a cada una de las carpetas de destino seleccionadas
-            let allSuccess = true;
-            let lastErr = '';
+            const isHf = item.isHiggsfield || item.hfJobId || (item.sourceUrl && item.sourceUrl.includes('cloudfront'));
 
-            for (const targetDir of activeTargets) {
-                const res = await fetch('/api/ia/ingest', {
+            if (isHf) {
+                const isWorker = (window.hfOptions && window.hfOptions.forceWorker) || hfExecutor === 'worker';
+                const createLedgerVal = (window.hfOptions && typeof window.hfOptions.createLedger !== 'undefined') 
+                    ? window.hfOptions.createLedger 
+                    : (document.getElementById('hfCreateLedgerCheck')?.checked !== false);
+                const downloadRefsVal = (window.hfOptions && typeof window.hfOptions.downloadRefs !== 'undefined')
+                    ? window.hfOptions.downloadRefs
+                    : (document.getElementById('hfDownloadRefsCheck')?.checked === true);
+                const preserveOriginalVal = (window.hfOptions && typeof window.hfOptions.preserveOriginal !== 'undefined')
+                    ? window.hfOptions.preserveOriginal
+                    : (document.getElementById('hfPreserveOriginalCheck')?.checked !== false);
+
+                const hfPayload = {
+                    executor: isWorker ? 'worker' : 'local',
+                    jobId: item.hfJobId,
+                    sourceUrl: item.sourceUrl || null,
+                    sourcePath: sourceFilePath,
+                    fileData: fileDataBase64,
+                    targetShotFolder: baseIaPath,
+                    canonicalName: item.canonicalName,
+                    createLedger: createLedgerVal,
+                    downloadRefs: downloadRefsVal,
+                    preserveOriginal: preserveOriginalVal,
+                    targetSubfolders: Array.from(iaActiveSubfolders),
+                    framing: item.framingChoice || item.framing || 'FLL',
+                    role: item.tagCChoice || item.hfRole || 'v2v',
+                    jobDetails: item.higgsfieldData || null,
+                    project: (typeof currentProject !== 'undefined' && currentProject) ? currentProject.name : 'STUDIO',
+                    user: (typeof settings !== 'undefined' && settings.user) ? settings.user : 'Pipeta'
+                };
+
+                const res = await fetch('/api/higgsfield/ingest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        targetFolder: targetDir,
-                        filename: item.canonicalName,
-                        sourcePath: sourceFilePath,
-                        fileData: fileDataBase64
-                    })
+                    body: JSON.stringify(hfPayload)
                 });
 
-                const contentType = res.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) {
-                    const data = await res.json();
-                    if (!data || !data.success) {
-                        allSuccess = false;
-                        lastErr = data ? data.error : 'Error desconocido';
+                const data = await res.json();
+                if (data && data.success) {
+                    item.status = isWorker ? '⚡ Encolado en Worker' : '✓ Ingestado';
+                    if (data.targetFile) {
+                        item.destination = data.targetFile;
+                        item.targetPath = data.targetFile.replace(/\\/g, '/');
+                    }
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('ingest', ` ↳ [HIGGSFIELD INGEST] ⚡ ${item.originalName} ➡️ ${item.canonicalName} (${isWorker ? 'WORKER' : 'LOCAL'})`, 'ok');
                     }
                 } else {
-                    allSuccess = false;
-                    lastErr = `Error HTTP ${res.status}`;
-                }
-            }
-
-            if (allSuccess) {
-                item.status = '✓ Ingestado';
-                if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('ingest', ` ↳ [IA CANONICAL] 📄 ${item.name || item.originalName}  ➡️  ${item.canonicalName} (${item.motor || 'MOTOR'}, ${item.res || 'RES'}, ${item.framing || 'FRAMING'})`, 'ok');
+                    item.status = `❌ ${data?.error || 'Error en ingesta Higgsfield'}`;
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('ingest', ` ↳ [HIGGSFIELD ERROR] ❌ ${item.originalName}: ${data?.error || 'Error'}`, 'error');
+                    }
                 }
             } else {
-                item.status = `❌ ${lastErr || 'Error'}`;
-                if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('ingest', ` ↳ [IA ERROR] ❌ ${item.name || item.originalName}: ${lastErr || 'Error'}`, 'error');
+                let allSuccess = true;
+                let lastErr = '';
+
+                for (const targetDir of activeTargets) {
+                    const res = await fetch('/api/ia/ingest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            targetFolder: targetDir,
+                            filename: item.canonicalName,
+                            sourcePath: sourceFilePath,
+                            fileData: fileDataBase64
+                        })
+                    });
+
+                    const contentType = res.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await res.json();
+                        if (!data || !data.success) {
+                            allSuccess = false;
+                            lastErr = data ? data.error : 'Error desconocido';
+                        }
+                    } else {
+                        allSuccess = false;
+                        lastErr = `Error HTTP ${res.status}`;
+                    }
+                }
+
+                if (allSuccess) {
+                    item.status = '✓ Ingestado';
+                    item.destination = (activeTargets[0] + '/' + item.canonicalName).replace(/\\/g, '/');
+                    item.targetPath = item.destination;
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('ingest', ` ↳ [IA CANONICAL] 📄 ${item.name || item.originalName}  ➡️  ${item.canonicalName} (${item.motor || 'MOTOR'}, ${item.res || 'RES'}, ${item.framing || 'FRAMING'})`, 'ok');
+                    }
+                } else {
+                    item.status = `❌ ${lastErr || 'Error'}`;
+                    if (typeof PipetaConsole !== 'undefined') {
+                        PipetaConsole.log('ingest', ` ↳ [IA ERROR] ❌ ${item.name || item.originalName}: ${lastErr || 'Error'}`, 'error');
+                    }
                 }
             }
 
@@ -1615,7 +2409,13 @@ async function executeIaIngestBatch() {
         PipetaConsole.log('ingest', `[IA INGEST] ✅ Procesamiento por lote finalizado: ${okCount} de ${checkedItems.length} archivos guardados con éxito.`, okCount === checkedItems.length ? 'ok' : 'warn');
     }
 
-    showIaAlert(`✓ Procesamiento por lote completado.`, "#4caf50");
+    const workerCount = checkedItems.filter(i => i.status && i.status.includes('Worker')).length;
+    if (workerCount > 0 && window.syncQueueUI) {
+        window.syncQueueUI.fetchStatus();
+        window.syncQueueUI.open();
+    }
+
+    showIaAlert(workerCount > 0 ? `⚡ ${workerCount} orden(es) enviadas al Sync Worker.` : `✓ Procesamiento por lote completado.`, "#4caf50");
     updateIaResolution(); // Recalcular siguiente versión base
 }
 
@@ -1857,9 +2657,13 @@ function initIaDropZone() {
         if (dt && dt.files && dt.files.length > 0) {
             handleIaFileSelect({ files: dt.files });
         } else if (dt) {
-            const url = dt.getData('text/uri-list') || dt.getData('text/plain');
-            if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/'))) {
-                fetchWebOrDataUrlImage(url);
+            const url = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').trim();
+            if (url) {
+                if (extractHfJobId(url)) {
+                    handleHfDirectLoad(url);
+                } else if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
+                    fetchWebOrDataUrlImage(url);
+                }
             }
         }
     };
@@ -1869,6 +2673,7 @@ function initIaIngest() {
     initIaResizer();
     initIaDropZone();
     loadCustomTokens();
+    updateHfForceWorkerUI();
     refreshIaHierarchy();
     updateIaResolution();
 }
@@ -1883,6 +2688,27 @@ window.handleIaShotChange = handleIaShotChange;
 window.iaToggleSubfolder = iaToggleSubfolder;
 window.switchIaWorkMode = switchIaWorkMode;
 window.populateIaTokenSelectsFromProject = populateIaTokenSelectsFromProject;
+window.saveHfOption = saveHfOption;
+window.toggleHfForceWorker = toggleHfForceWorker;
+window.updateHfForceWorkerUI = updateHfForceWorkerUI;
+window.toggleHfToolbarSuite = toggleHfToolbarSuite;
+window.toggleHiggsfieldOnSelectedItem = toggleHiggsfieldOnSelectedItem;
+window.updateIaHfToggleBtnUI = updateIaHfToggleBtnUI;
+window.handleHfDirectLoad = handleHfDirectLoad;
+window.handleForceHiggsfieldOnSelected = handleForceHiggsfieldOnSelected;
+window.handleIaMotorChange = handleIaMotorChange;
+window.handleIaMotorCustomChange = handleIaMotorCustomChange;
+window.handleIaResChange = handleIaResChange;
+window.handleIaResCustomChange = handleIaResCustomChange;
+window.handleIaFramingChange = handleIaFramingChange;
+window.handleIaFramingCustomChange = handleIaFramingCustomChange;
+window.handleIaTagAChange = handleIaTagAChange;
+window.handleIaTagACustomChange = handleIaTagACustomChange;
+window.handleIaTagBChange = handleIaTagBChange;
+window.handleIaTagBCustomChange = handleIaTagBCustomChange;
+window.handleIaTagCChange = handleIaTagCChange;
+window.handleIaTagCCustomChange = handleIaTagCCustomChange;
+window.handleIaVerInputChange = handleIaVerInputChange;
 
 // Listener global para pegar imágenes directamente del portapapeles (Ctrl + V)
 window.addEventListener('paste', (e) => {

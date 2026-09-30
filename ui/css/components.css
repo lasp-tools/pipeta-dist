@@ -330,7 +330,8 @@
 
 .settings-window.maximized,
 #sync-queue-window.maximized,
-#sync-analyzer-window.maximized {
+#sync-analyzer-window.maximized,
+#file-auditor-window.maximized {
     top: 68px !important;
     left: 50px !important;
     right: auto !important;
@@ -349,7 +350,8 @@
 
 body.canvas-fullscreen .settings-window.maximized,
 body.canvas-fullscreen #sync-queue-window.maximized,
-body.canvas-fullscreen #sync-analyzer-window.maximized {
+body.canvas-fullscreen #sync-analyzer-window.maximized,
+body.canvas-fullscreen #file-auditor-window.maximized {
     top: 0 !important;
     left: 0 !important;
     width: 100vw !important;

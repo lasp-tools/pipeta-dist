@@ -1,0 +1,27 @@
+{
+  "id": "media/Preeditados",
+  "project": "surf_love",
+  "type": "server",
+  "category": "media",
+  "prefix": "Preeditados",
+  "file": "media/Preeditados.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_media_11763",
+      "category": "media",
+      "name": "Preeditados",
+      "relPath": "Preeditados",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2024-04-11T20:14:59.420Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Preeditados",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Preeditados"
+    }
+  ]
+}

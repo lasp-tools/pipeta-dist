@@ -1,0 +1,38 @@
+{
+  "id": "order_1790205994713_g5vp50",
+  "type": "download",
+  "project": "surf_love",
+  "user": "lasp-mpastorino",
+  "createdAt": "2026-09-23T23:26:34.713Z",
+  "status": "completed",
+  "items": [
+    {
+      "name": "SURF_B02_021_0740",
+      "isDir": true,
+      "relativePath": "SURF_B02_021_0740",
+      "onlinePath": "G:/Unidades compartidas/surf_love/episodios/B02/secuencias/021/shots/SURF_B02_021_0740",
+      "targetLocalPath": "Z:/atresmedia/surf_love/episodios/B02/secuencias/021/shots/SURF_B02_021_0740",
+      "size": 0
+    }
+  ],
+  "worker": "worker_lasp-vm_5832",
+  "workerHostname": "lasp-vm",
+  "startedAt": "2026-09-25T20:46:03.161Z",
+  "progress": {
+    "percentage": 100,
+    "itemPercentage": 100,
+    "transferredBytes": 284675284,
+    "totalBytes": 284675284,
+    "speedBytesPerSec": 14682830.68833301,
+    "speedFormatted": "Completado",
+    "etaSeconds": 0,
+    "currentFile": "SURF_B02_021_0740",
+    "itemIndex": 1,
+    "itemsTotal": 1
+  },
+  "completedAt": "2026-09-25T20:46:31.777Z",
+  "durationSeconds": 24,
+  "processedBy": "worker_lasp-vm_5832",
+  "priority": 95,
+  "priorityUpdatedAt": "2026-09-25T20:49:29.550Z"
+}

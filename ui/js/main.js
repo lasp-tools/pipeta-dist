@@ -222,6 +222,13 @@ const headerToolsTemplates = {
                         style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
                         onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">🗄️ SERVER</button>
                 ` : ''}
+                <button class="tool-btn ${window.deepCompareMode ? 'active' : ''}" 
+                        id="btn-deep-compare"
+                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b;' : ''}"
+                        onclick="toggleDeepCompareMode()" 
+                        title="Deep Compare: Compara peso y fecha además de nombres (Clic para activar/desactivar)">
+                    🔬 DEEP
+                </button>
                 ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
                 <button class="tool-btn" 
                         style="padding: 2px 6px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
@@ -438,7 +445,69 @@ const headerToolsTemplates = {
             </div>
         </div>
     `,
-    'view-ia-ingest': () => `
+    'view-ia-ingest': () => {
+        const hfOptions = (typeof window.hfOptions !== 'undefined') ? window.hfOptions : {
+            createLedger: localStorage.getItem('pipeta_hf_create_ledger') !== 'false',
+            preserveOriginal: localStorage.getItem('pipeta_hf_preserve_original') !== 'false',
+            downloadRefs: localStorage.getItem('pipeta_hf_download_refs') === 'true',
+            forceWorker: localStorage.getItem('pipeta_hf_force_worker') === 'true'
+        };
+        const isWorkerActive = !!hfOptions.forceWorker;
+        const isSuiteOpen = window.hfToolbarOpen === true || localStorage.getItem('pipeta_hf_toolbar_open') === 'true';
+
+        return `
+        <!-- HIGGSFIELD AI TOOLBAR SUITE (Collapsible / Expandable) -->
+        <div class="toolbar-section-group" id="hfToolbarGroup" title="Higgsfield AI Suite" style="border-color:${isSuiteOpen ? '#556b2f' : '#333'}; background:${isSuiteOpen ? 'rgba(20,25,18,0.7)' : 'rgba(20,20,20,0.5)'}; transition:all 0.2s;">
+            <div style="display:flex; align-items:center; gap:6px;">
+                <!-- Botón Toggle Principal de la Suite -->
+                <button type="button" id="hfToolbarToggleBtn" class="tool-btn ${isSuiteOpen ? 'active' : ''}" 
+                        style="width:34px; height:34px; padding:0; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; ${isSuiteOpen ? 'background:rgba(198,255,0,0.18); border:1px solid #c6ff00; color:#c6ff00; box-shadow:0 0 10px rgba(198,255,0,0.3);' : 'background:#222; border:1px solid #444; color:#aaa;'}"
+                        onclick="toggleHfToolbarSuite()" 
+                        title="Higgsfield AI Suite">
+                    <img src="icons/higgsfield.png" style="width:18px; height:18px; border-radius:2px; pointer-events:none;">
+                </button>
+
+                <!-- Subpanel Desplegable (visible solo si está abierto) -->
+                <div id="hfToolbarDrawer" style="display:${isSuiteOpen ? 'flex' : 'none'}; align-items:center; gap:8px; border-left:1px solid #333; padding-left:8px;">
+                    <!-- Columna URL + Download debajo -->
+                    <div style="display:flex; flex-direction:column; gap:2px; width:220px;">
+                        <input id="hfDirectInput" class="prop-input" placeholder="Higgsfield media URL" 
+                               style="width:100%; height:20px; box-sizing:border-box; padding:2px 6px; font-size:0.75rem; font-family:monospace; background:#0d0d0d; border:1px solid #444; border-radius:3px; color:#ffb74d;" 
+                               onkeydown="if(event.key==='Enter') handleHfDirectLoad()">
+                        
+                        <button type="button" id="hfDownloadBtn" class="tool-btn" 
+                                style="width:100%; height:20px; box-sizing:border-box; padding:0 6px; font-size:0.72rem; background:#222; border:1px solid #555; color:#ffb74d; font-weight:bold; border-radius:3px; line-height:1; display:flex; align-items:center; justify-content:center;" 
+                                onclick="handleHfDirectLoad()" title="Consultar metadata en Higgsfield y añadir a la cola de ingesta de planos">
+                            + Cargar a Cola
+                        </button>
+                    </div>
+
+                    <!-- Botón Use Worker (sin icono) -->
+                    <button type="button" id="hfForceWorkerBtn" class="tool-btn ${isWorkerActive ? 'active' : ''}" 
+                            style="height:42px; padding:0 10px; font-size:0.75rem; border-radius:4px; ${isWorkerActive ? 'background:#ff9800; color:#000; font-weight:bold; border-color:#ff9800;' : 'background:#222; color:#aaa; border-color:#444;'}" 
+                            onclick="toggleHfForceWorker()" 
+                            title="${isWorkerActive ? 'Use worker: ACTIVO (Envía las descargas al Worker central de red). Clic para usar Pipeta Local.' : 'Use worker: APAGADO (Se procesa localmente en Pipeta). Clic para usar Worker de red.'}">
+                        Use worker
+                    </button>
+
+                    <!-- Checkboxes de Metadata, Backup y Copy Refs -->
+                    <div style="display:flex; align-items:center; gap:8px; height:42px; margin-left:4px; font-size:0.72rem; color:#bbb; border-left:1px solid #333; padding-left:8px;">
+                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Genera el archivo .meta.json con prompt, seed, engine y parámetros del job">
+                            <input type="checkbox" id="hfCreateLedgerCheck" ${hfOptions.createLedger ? 'checked' : ''} onchange="saveHfOption('createLedger', this.checked)"> Metadata
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Guarda el archivo original sin renombrar dentro de IA/higgsfield/[nombre_original]/">
+                            <input type="checkbox" id="hfPreserveOriginalCheck" ${hfOptions.preserveOriginal ? 'checked' : ''} onchange="saveHfOption('preserveOriginal', this.checked)"> Backup
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Descarga las imágenes/videos de entrada usados en el job a IA/higgsfield/.../ref/ y IA/ref/">
+                            <input type="checkbox" id="hfDownloadRefsCheck" ${hfOptions.downloadRefs ? 'checked' : ''} onchange="saveHfOption('downloadRefs', this.checked)"> Copy Refs
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
         <div class="toolbar-section-group" title="Modo de Operación IA">
             <span class="toolbar-section-label">IA Mode</span>
             <div class="toolbar-section-content">
@@ -469,7 +538,8 @@ const headerToolsTemplates = {
                 </button>
             </div>
         </div>
-    `,
+        `;
+    },
     'default': () => `<span style="color:#444;">...</span>`
 };
 
@@ -578,6 +648,10 @@ function switchView(viewId) {
     if (window.syncAnalyzer && window.syncAnalyzer.isVisible && window.syncAnalyzer.isMaximized) {
         window.syncAnalyzer.close();
     }
+    // Si File Auditor está abierto (especialmente en modo maximizado canvas), cerrarlo para ver el nuevo módulo
+    if (window.fileAuditor && window.fileAuditor.isVisible && window.fileAuditor.isMaximized) {
+        window.fileAuditor.close();
+    }
 
     // 1. Update Buttons State
     document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -656,6 +730,9 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
         }
         if (btn.getAttribute('title') !== 'Sync Analyzer' && window.syncAnalyzer && window.syncAnalyzer.isVisible && window.syncAnalyzer.isMaximized) {
             window.syncAnalyzer.close();
+        }
+        if (btn.id !== 'btnFileAuditorTool' && window.fileAuditor && window.fileAuditor.isVisible && window.fileAuditor.isMaximized) {
+            window.fileAuditor.close();
         }
         const viewId = tabs[btn.getAttribute('title')];
         if (viewId) switchView(viewId);

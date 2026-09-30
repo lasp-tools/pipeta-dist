@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.19"
+set "APP_VERSION=v1.1.26"
 set "APP_PORT=3002"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"

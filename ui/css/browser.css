@@ -443,3 +443,232 @@
     font-size: 0.72rem;
     padding: 0 4px;
 }
+
+/* --- FAST RENDERING & SUPPRESS ANIMATIONS --- */
+body.pipeta-fast-rendering *,
+body.pipeta-fast-rendering *::before,
+body.pipeta-fast-rendering *::after {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Ensure panes have relative positioning for overlays */
+.split-pane, .pipeta-pane, #browser-mode-split, #browser-mode-pipeta {
+    position: relative;
+}
+
+/* --- EXPLORER LOADING OVERLAY --- */
+.explorer-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(18, 22, 28, 0.72);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    pointer-events: all;
+    cursor: wait;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.explorer-loading-overlay.active {
+    opacity: 1;
+}
+
+.explorer-loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(0, 229, 255, 0.18);
+    border-top: 3px solid var(--accent, #00e5ff);
+    border-radius: 50%;
+    animation: pipeta-loader-spin 0.65s linear infinite !important;
+    margin-bottom: 8px;
+}
+
+.explorer-loading-text {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #e0e6ed;
+    letter-spacing: 0.3px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+@keyframes pipeta-loader-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* --- CATALOG REFRESH STEPPER (FLOATING CARD) --- */
+.catalog-stepper-card {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: #181d24;
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 16px rgba(0, 229, 255, 0.12);
+    z-index: 11000;
+    padding: 14px 16px;
+    font-family: inherit;
+    color: #e0e6ed;
+    animation: stepper-slide-up 0.22s ease-out;
+}
+
+@keyframes stepper-slide-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.catalog-stepper-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 8px;
+}
+
+.catalog-stepper-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.catalog-stepper-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+    color: #7b8898;
+    transition: color 0.15s ease;
+}
+
+.catalog-stepper-step.active {
+    color: #00e5ff;
+    font-weight: 500;
+}
+
+.catalog-stepper-step.done {
+    color: #a3be8c;
+}
+
+.catalog-stepper-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+}
+
+.catalog-stepper-icon.spinning {
+    border: 2px solid rgba(0, 229, 255, 0.2);
+    border-top: 2px solid #00e5ff;
+    border-radius: 50%;
+    animation: pipeta-loader-spin 0.65s linear infinite !important;
+}
+
+/* --- PIPETA NETWORK UPDATE MODAL --- */
+.pipeta-update-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 12000;
+    animation: stepper-fade-in 0.2s ease-out;
+}
+
+@keyframes stepper-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.pipeta-update-card {
+    background: #181e26;
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 229, 255, 0.15);
+    width: 480px;
+    max-width: 90vw;
+    padding: 24px 28px;
+    color: #e0e6ed;
+}
+
+.pipeta-update-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pipeta-update-desc {
+    font-size: 0.8rem;
+    color: #8b99a8;
+    margin-bottom: 20px;
+}
+
+.pipeta-progress-bar-wrap {
+    height: 8px;
+    background: #0d1117;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 18px;
+    position: relative;
+}
+
+.pipeta-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00bcd4, #00e5ff);
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.35s ease;
+}
+
+.pipeta-progress-bar.animated-stripes {
+    background-size: 30px 30px;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.18) 50%, rgba(255, 255, 255, 0.18) 75%, transparent 75%, transparent);
+    animation: pipeta-bar-stripes 1s linear infinite !important;
+}
+
+@keyframes pipeta-bar-stripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 30px 0; }
+}
+
+.pipeta-update-step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.84rem;
+    color: #7b8898;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.pipeta-update-step-item.active {
+    background: rgba(0, 229, 255, 0.08);
+    color: #00e5ff;
+    font-weight: 600;
+}
+
+.pipeta-update-step-item.done {
+    color: #a3be8c;
+}

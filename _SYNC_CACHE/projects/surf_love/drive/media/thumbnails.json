@@ -1,0 +1,27 @@
+{
+  "id": "media/thumbnails",
+  "project": "surf_love",
+  "type": "drive",
+  "category": "media",
+  "prefix": "thumbnails",
+  "file": "media/thumbnails.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_media_1687",
+      "category": "media",
+      "name": "thumbnails",
+      "relPath": "thumbnails",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-21T17:44:06.284Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/thumbnails",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/thumbnails"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "media/Wrap",
+  "project": "surf_love",
+  "type": "server",
+  "category": "media",
+  "prefix": "Wrap",
+  "file": "media/Wrap.json",
+  "stats": {
+    "itemCount": 1,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_media_38348",
+      "category": "media",
+      "name": "Wrap",
+      "relPath": "Wrap",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2024-07-12T15:00:14.818Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Wrap",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/Wrap"
+    }
+  ]
+}

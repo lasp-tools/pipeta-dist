@@ -628,6 +628,11 @@ const settings = {
         if (proj) {
             settings.currentProject = proj;
             localStorage.setItem('pipeta_active_project_id', id);
+            fetch('/api/system/last-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectName: proj.id || proj.name || id })
+            }).catch(() => {});
             if (proj.roots) {
                 if (window.state) {
                     if (proj.roots.work) window.state.workPath = proj.roots.work;
@@ -2777,7 +2782,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.13'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.25'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -2808,11 +2813,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.19'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.25'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.19'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.25'}.zip</code>).
                             </div>
                         </div>
 
@@ -2825,37 +2830,34 @@ const settings = {
                                 Por defecto <b>no se incluyen cachés</b> para que el .ZIP sea ultra-liviano (~40–70 MB). Si se omiten, Pipeta generará los catálogos automáticamente en la máquina donde se ejecute.
                             </div>
 
-                            <div style="display:flex; flex-direction:column; gap:8px; margin-left:4px;">
-                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:#ccc;">
-                                    <input type="checkbox" id="pkgIncludeDriveCache" style="width:15px; height:15px; cursor:pointer;">
-                                    <span>
-                                        <b>Incluir Caché de Google Drive</b> (Catálogos y metadatos de proyectos Drive en la nube)
-                                    </span>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.8rem; color:#ccc;">
+                                    <input type="checkbox" id="pkgIncludeSyncCacheDrive" style="cursor:pointer;">
+                                    <span>Incluir caché de Google Drive (<code>_SYNC_CACHE/projects/.../drive</code>)</span>
                                 </label>
-                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:#ccc;">
-                                    <input type="checkbox" id="pkgIncludeServerCache" style="width:15px; height:15px; cursor:pointer;">
-                                    <span>
-                                        <b>Incluir Caché del Servidor Central</b> (Catálogos <code>server_*.json</code> de red LAN del estudio)
-                                    </span>
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.8rem; color:#ccc;">
+                                    <input type="checkbox" id="pkgIncludeSyncCacheServer" style="cursor:pointer;">
+                                    <span>Incluir caché de Servidor (<code>_SYNC_CACHE/projects/.../server</code>)</span>
                                 </label>
                             </div>
                         </div>
 
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div id="pkgStatusMsg" style="font-size:0.85rem; color:#aaa;"></div>
-                            <button id="pkgGenerateBtn" class="btn" onclick="settings.executePackageZip()" 
-                                style="background:#00bcd4; color:black; font-weight:bold; padding:10px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(0,188,212,0.3);">
-                                <span>📦 COMPRIMIR & GENERAR PIPETA .ZIP</span>
+                        <!-- BOTÓN ACCIÓN -->
+                        <div style="display:flex; justify-content:flex-end;">
+                            <button class="action-btn-primary" id="btnRunPackageZip" onclick="settings.runZipPackaging()" style="display:flex; align-items:center; gap:8px; padding:8px 18px;">
+                                <span>📦 Empaquetar y Generar .ZIP</span>
                             </button>
                         </div>
                     </div>
                 `;
             case 'version':
-                return `
+                return `                    <div style="height:25px;"></div>
+
+                    <!-- HEADER: VERSION & PATCH NOTES -->
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.19'}
+                            ${window.APP_VERSION || 'v1.1.26'}
                         </span>
                     </h3>
 
@@ -2867,7 +2869,72 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.19 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.26 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Refinamiento de Metadata Dual para Higgsfield AI:</b> Separación estricta y limpia entre el resguardo del ledger original (<code>IA/higgsfield/...meta.json</code>, que conserva el JSON puro entregado por la API de Higgsfield al 100% sin inyección de datos de pipeline) y el sidecar canónico de estudio (<code>[SHOT_ID]_[MOTOR]...meta.json</code>, identificando el archivo con la clave canónica <code>lasp_name</code> y eliminando extensiones redundantes <code>.mp4</code> del nombre de metadata).</li>
+                                    <li><b>Reproductor y Previsualización Robusta de Video Web:</b> Simplificación del visor flotante eliminando botones innecesarios; la miniatura/poster persistente se mantiene siempre activa y responsive sin errores que colapsen el reproductor en videos web.</li>
+                                    <li><b>Iconografía Compacta y Limpia:</b> Remoción de textos redundantes en los botones de Higgsfield AI de la barra superior y del Name Builder, manteniendo un aspecto visual minimalista con tooltips informativos al pasar el cursor.</li>
+                                    <li><b>Corrección de Rutas de Ingesta IA:</b> Eliminada la duplicación de subcarpetas en destino (<code>IA/IA/</code>), garantizando la ubicación canónica directa en <code>IA/</code> y <code>IA/higgsfield/</code>.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.25</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Integración Nativa de Higgsfield AI en IA Ingest:</b> Soporte integral para ingesta directa de planos generados con Higgsfield AI (Dreamina/Jimeng/Seedance), incluyendo extracción automática de UUIDs de Job desde nombres de archivo (<code>hf_AAAAMMDD_..._[UUID]</code>) o URLs de CloudFront.</li>
+                                    <li><b>Consulta REST y Extracción de Metadata de Job (0 créditos):</b> Conexión directa a la API de desarrollador de Higgsfield para recuperar automáticamente prompts, seed, resoluciones nativas, motores canónicos (SD2, SD25, SD5P, etc.) y roles/tags (v2v, i2v, t2v, etc.).</li>
+                                    <li><b>Suite Higgsfield Plegable en Barra Superior:</b> Cajón desplegable en la barra de herramientas superior contextual activable mediante un botón iluminado con el logo oficial de Higgsfield AI. Incluye campo de URL directa con botón <code>Download</code> alineado verticalmente, conmutador <code>Use worker</code> (para procesar local o delegar al worker central de red) y controles de ingesta: <b>Metadata</b> (generación de <code>.meta.json</code> / ledger), <b>Backup</b> (resguardo del original sin renombrar en <code>IA/higgsfield/</code>) y <b>Copy Refs</b> (descarga de frames y assets de entrada a <code>IA/ref/</code>).</li>
+                                    <li><b>Indicador y Forzado de Higgsfield en «3. NAME BUILDER»:</b> Botón conmutador con logo de Higgsfield junto al encabezado del Name Builder que se ilumina con brillo verde neón automáticamente al detectar que el archivo seleccionado es de Higgsfield. Permite forzar o desvincular la interpretación de Higgsfield en cualquier momento con un solo clic.</li>
+                                    <li><b>Selectores de Resolución y Motor con Opciones Automáticas Duales:</b> Se reemplaza el checkbox de auto-detección por dos opciones nativas en la lista de Resolución: <code>📐 Auto (Detección General / Píxeles)</code> y <code>⚡ Auto Higgsfield (Metadata Job)</code>. Misma lógica implementada en el selector de Motor, permitiendo alternar entre el preset del proyecto y el motor reportado por Higgsfield AI.</li>
+                                    <li><b>Aislamiento Total de Configuraciones en la Cola de Ingesta (Batch Queue):</b> Cada archivo de la cola preserva de manera independiente su propia subcarpeta (WIP, Ref, Export), motor, resolución, encuadre (Framing) y tags de compo/proceso. Seleccionar una fila resalta visiblemente el ítem e ilumina sus parámetros en el Builder sin sobreescribir ni contaminar el resto de los archivos en lista.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.24</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>File Auditor con Filtro de Ramón («Solo mis tareas»):</b> Se añade control de filtrado directo por tareas asignadas en Ramón en ambas pestañas (<i>Mirror Integrity</i> y <i>Render & Scene Status</i>), permitiendo auditar y visualizar al instante únicamente los planos y assets asignados al usuario en el proyecto actual.</li>
+                                    <li><b>Deep Compare para Secuencias de Render:</b> Inspección minuciosa de archivos de secuencia en Media para detectar gaps de numeración (frames ausentes dentro del rango) y archivos dañados (frames de 0 bytes). Se incorporan alertas de <code>⚠️ INCOMPLETO</code>, detalle de frames faltantes en el listado y filtro dedicado en la barra de pestañas.</li>
+                                    <li><b>Cotejo Cruzado contra Google Drive (☁️ Comparar contra Drive):</b> Opción para verificar la sincronía del proyecto y de los renders locales contra los catálogos modulares de Google Drive en 0 ms. Detecta si Drive posee una versión más nueva de escena o render (<code>☁️ Más nuevo en Drive</code>) o si el usuario cuenta con archivos locales aún no subidos a la nube (<code>⬆️ Falta subir</code>).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.23</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Modo Deep Compare Inteligente (Fast vs Deep):</b> Conmutador <code>[⚡ FAST]</code> / <code>[🔬 DEEP]</code> en la barra superior («Comparar») y en <i>Sync Analyzer</i>. El modo Fast es instantáneo (0 ms) por nombres y detección de secuencias; el modo Deep Compare evalúa tamaños en bytes y fechas de modificación para detectar archivos corruptos, truncados a 0 bytes o versiones más recientes en Drive/Server.</li>
+                                    <li><b>Validación Fidedigna de Secuencias de Imágenes Parciales:</b> Corregido el bug donde secuencias a medio descargar mostraban tilde verde <code>✓</code> por heredar el estado del primer frame. Ahora detecta faltantes con la insignia <code>⬇️* Bajar (N faltantes)</code> y encola quirúrgicamente para descarga exclusiva los frames faltantes.</li>
+                                    <li><b>Pestaña «Diferencias» en Sync Analyzer:</b> Detección visual de discrepancias de tamaño o versiones más nuevas en local u online, permitiendo resolver diferencias con subidas o bajadas dirigidas.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.22</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Ventana Flotante y Móvil de Confirmación de Sincronización:</b> Sustituido el diálogo nativo del navegador (<code>confirm</code>) por una interfaz moderna, flotante y arrastrable con la estética de <i>Sync Queue</i>. Permite visualizar claramente el nombre del elemento, tamaño, rutas de origen y destino en cajas seleccionables, método de red utilizado y control por teclado (<code>Enter</code> para confirmar, <code>Esc</code> para cancelar).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.21</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Actualización Dirigida en Vivo del Explorador (Sin Colapsos ni Recargas):</b> Eliminado por completo el colapso visual y la recarga en cascada del árbol del explorador al finalizar descargas o subidas. Los elementos descargados o subidos actualizan su insignia a <code>✓</code> y retiran su clase fantasma en el DOM de forma inmediata y quirúrgica sin parpadeos.</li>
+                                    <li><b>Refresco In-Place de Contenido de Carpetas y Conteo de Pendientes:</b> Las carpetas contenedoras actualizan sus contadores de pendientes (<code>⬇️* (N)</code> / <code>✓</code>) en tiempo real hacia arriba en la jerarquía. Si se transfiere una carpeta completa que se encuentra abierta, solo se actualizan sus elementos hijos directos sin reiniciar el árbol raíz ni descolapsar carpetas hermanas.</li>
+                                    <li><b>Eliminación del Flash de Encolado al Subir:</b> Suprimida la recarga prematura que reiniciaba el explorador al solicitar una orden de subida a Drive o Servidor Central.</li>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.20</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Carga de Catálogo Bajo Demanda («Cargar Catálogo de Proyecto»):</b> Al abrir Pipeta por primera vez o seleccionar un proyecto sin caché local, se presenta una tarjeta centrada para inicializar el catálogo modular en ~1 segundo, evitando descargas masivas de proyectos históricos o ajenos.</li>
+                                    <li><b>Eliminación Completa de Catálogos Monolíticos (~50 MB):</b> La lectura y sincronización de catálogos opera exclusivamente sobre arquitectura modular (<code>manifest.json</code> y subcatálogos particionados). El worker y el servidor dejaron de generar archivos monolíticos pesados, purificando más de 320 MB de almacenamiento redundante.</li>
+                                    <li><b>Persistencia del Último Proyecto Activo:</b> Al iniciar el servidor o la app, Pipeta recuerda automáticamente el último proyecto trabajado y sincroniza únicamente sus datos modulares sin sobrecargar la red ni emitir logs innecesarios.</li>
+                                    <li><b>Empaquetador Portable con Selector Granular de Cachés:</b> Subsanada la exclusión de Python al desmarcar Ramón y agregados selectores para incluir u omitir cachés modulares de Drive y Server en el paquete .zip.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.19</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Insignia de Sincronización Pendiente en Carpetas Contenedoras (*):</b> Todas las carpetas que contengan archivos faltantes o desactualizados en niveles inferiores ahora muestran una insignia visual explícita (<code>⬇️* Bajar (N)</code> o <code>⬆️* Subir</code>) con el conteo de archivos pendientes, evitando falsos vistos verdes (✓) antes de desplegar la jerarquía completa.</li>
                                     <li><b>Cálculo Instantáneo de Tamaños de Raíces y Caché en Memoria (0 ms):</b> Se integraron las estadísticas de manifiestos modulares y una memoria caché para consultas de tamaño de directorios (<code>/api/fs/dirSize</code>), eliminando por completo las ejecuciones recursivas y repetitivas de PowerShell que ralentizaban la navegación y el cambio entre vistas LOCAL, DRIVE y SERVER.</li>
@@ -3143,6 +3210,89 @@ const settings = {
         }
     },
 
+    showPipetaUpdateModal: function() {
+        const existing = document.getElementById('pipeta-update-modal');
+        if (existing) existing.remove();
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'pipeta-update-modal';
+        backdrop.className = 'pipeta-update-modal-backdrop';
+        backdrop.innerHTML = `
+            <div class="pipeta-update-card">
+                <div class="pipeta-update-title">
+                    <span style="font-size:1.3rem;">🚀</span> Actualizando Pipeta desde Red
+                </div>
+                <div class="pipeta-update-desc" id="pipeta-update-subtext">
+                    Sincronizando la última versión de producción con tu equipo...
+                </div>
+                <div class="pipeta-progress-bar-wrap">
+                    <div class="pipeta-progress-bar animated-stripes" id="pipeta-update-bar" style="width: 15%;"></div>
+                </div>
+                <div class="pipeta-update-steps" id="pipeta-update-steps">
+                    <div class="pipeta-update-step-item active" id="pstep-1">
+                        <span class="pstep-icon">🔍</span>
+                        <span>1. Localizando repositorio maestro en red (Z: / S: / LASP-MUNRO)...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="pstep-2">
+                        <span class="pstep-icon">📦</span>
+                        <span>2. Sincronizando archivos y scripts del sistema...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="pstep-3">
+                        <span class="pstep-icon">🛡️</span>
+                        <span>3. Preservando configuraciones locales y credenciales...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="pstep-4">
+                        <span class="pstep-icon">🔄</span>
+                        <span>4. Reiniciando servidor local y recargando aplicación...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(backdrop);
+        return {
+            setStep(num, percent, subtext) {
+                const bar = document.getElementById('pipeta-update-bar');
+                if (bar) bar.style.width = `${percent}%`;
+                const sub = document.getElementById('pipeta-update-subtext');
+                if (sub && subtext) sub.textContent = subtext;
+                for (let i = 1; i <= 4; i++) {
+                    const el = document.getElementById(`pstep-${i}`);
+                    if (!el) continue;
+                    const icon = el.querySelector('.pstep-icon');
+                    if (i < num) {
+                        el.className = 'pipeta-update-step-item done';
+                        if (icon) icon.textContent = '✅';
+                    } else if (i === num) {
+                        el.className = 'pipeta-update-step-item active';
+                        if (icon) {
+                            if (i === 1) icon.textContent = '🔍';
+                            if (i === 2) icon.textContent = '📦';
+                            if (i === 3) icon.textContent = '🛡️';
+                            if (i === 4) icon.textContent = '🔄';
+                        }
+                    } else {
+                        el.className = 'pipeta-update-step-item';
+                        if (icon) icon.textContent = '○';
+                    }
+                }
+            },
+            error(err) {
+                const bar = document.getElementById('pipeta-update-bar');
+                if (bar) {
+                    bar.style.background = '#f44336';
+                    bar.classList.remove('animated-stripes');
+                }
+                const sub = document.getElementById('pipeta-update-subtext');
+                if (sub) sub.innerHTML = `<span style="color:#f44336; font-weight:bold;">❌ Error: ${err}</span>`;
+                const closeBtn = document.createElement('button');
+                closeBtn.style.cssText = "margin-top:16px; padding:7px 18px; background:#2c323b; color:#fff; border:1px solid #444; border-radius:4px; cursor:pointer; font-weight:bold;";
+                closeBtn.textContent = "Cerrar";
+                closeBtn.onclick = () => backdrop.remove();
+                backdrop.querySelector('.pipeta-update-card').appendChild(closeBtn);
+            }
+        };
+    },
+
     executeUpdateFromServer: async () => {
         const btn = document.getElementById('updateFromNetBtn');
         const statusMsg = document.getElementById('updateStatusMsg');
@@ -3156,42 +3306,55 @@ const settings = {
             statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Buscando repositorio maestro y sincronizando...</span>';
         }
 
+        const modal = settings.showPipetaUpdateModal();
+        modal.setStep(1, 20, 'Localizando repositorio maestro de Pipeta...');
+
+        const step2Timer = setTimeout(() => {
+            modal.setStep(2, 45, 'Sincronizando archivos del sistema mediante robocopy...');
+        }, 900);
+
         try {
             const res = await fetch('/api/app/update-from-server', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({})
             });
+            clearTimeout(step2Timer);
             const data = await res.json();
             if (data && data.success) {
+                modal.setStep(3, 80, 'Configuraciones locales y credenciales preservadas.');
                 if (statusMsg) {
                     statusMsg.innerHTML = '<span style="color:#4caf50; font-weight:bold;">✅ ¡Actualización completada! Reiniciando Pipeta...</span>';
                 }
-                
-                // Polling de health y recarga automática
-                let attempts = 0;
-                const checkInterval = setInterval(async () => {
-                    attempts++;
-                    try {
-                        const hRes = await fetch('/api/health');
-                        if (hRes.ok) {
-                            clearInterval(checkInterval);
-                            window.location.reload();
+
+                setTimeout(() => {
+                    modal.setStep(4, 95, 'Reiniciando servidor local de Pipeta... Reconectando en segundos.');
+                    let attempts = 0;
+                    const checkInterval = setInterval(async () => {
+                        attempts++;
+                        try {
+                            const hRes = await fetch('/api/health');
+                            if (hRes.ok) {
+                                clearInterval(checkInterval);
+                                modal.setStep(4, 100, '¡Servidor activo! Recargando aplicación...');
+                                setTimeout(() => window.location.reload(), 600);
+                            }
+                        } catch(e) {
+                            if (attempts > 20) {
+                                clearInterval(checkInterval);
+                                window.location.reload();
+                            }
                         }
-                    } catch(e) {
-                        if (attempts > 20) {
-                            clearInterval(checkInterval);
-                            window.location.reload();
-                        }
-                    }
-                }, 1000);
+                    }, 1000);
+                }, 700);
             } else {
                 throw new Error(data ? data.error : 'Error desconocido');
             }
         } catch(e) {
+            clearTimeout(step2Timer);
             console.error("Auto-update error:", e);
+            modal.error(e.message);
             if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al actualizar: ${e.message}</span>`;
-            alert("Error durante la actualización: " + e.message);
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<span>🚀 ACTUALIZAR PIPETA (lasp-munro)</span>';
@@ -3292,7 +3455,150 @@ const settings = {
         }
     },
 
-    executePackageZip: async () => {
+    showZipPackagingModal: function(zipName) {
+        const existing = document.getElementById('pipeta-zip-modal');
+        if (existing) existing.remove();
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'pipeta-zip-modal';
+        backdrop.className = 'pipeta-update-modal-backdrop';
+        backdrop.innerHTML = `
+            <div class="pipeta-update-card" style="width: 520px;">
+                <div class="pipeta-update-title">
+                    <span style="font-size:1.3rem;">📦</span> Empaquetando Versión Portable (.zip)
+                </div>
+                <div class="pipeta-update-desc" id="zip-package-subtext">
+                    Generando <code>${zipName}</code> autocontenido...
+                </div>
+                <div class="pipeta-progress-bar-wrap">
+                    <div class="pipeta-progress-bar animated-stripes" id="zip-package-bar" style="width: 15%;"></div>
+                </div>
+                <div class="pipeta-update-steps" id="zip-package-steps">
+                    <div class="pipeta-update-step-item active" id="zstep-1">
+                        <span class="pstep-icon">📂</span>
+                        <span>1. Preparando base de código, runtime y presets locales...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="zstep-2">
+                        <span class="pstep-icon">🗜️</span>
+                        <span>2. Comprimiendo archivos y dependencias en .ZIP...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="zstep-3">
+                        <span class="pstep-icon">📜</span>
+                        <span>3. Generando script de instalación automática (.bat)...</span>
+                    </div>
+                    <div class="pipeta-update-step-item" id="zstep-4">
+                        <span class="pstep-icon">🎉</span>
+                        <span>4. Finalizando paquete y verificando integridad...</span>
+                    </div>
+                </div>
+                <div id="zip-package-result" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
+                    <div id="zip-package-summary" style="font-size:0.85rem; color:#a3be8c; margin-bottom:12px; font-weight:bold; line-height:1.4;"></div>
+                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                        <button id="btnZipOpenFolder" class="btn" style="background:#222; color:#00bcd4; border:1px solid #00bcd488; border-radius:4px; padding:6px 14px; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                            <span>📂 Abrir Carpeta</span>
+                        </button>
+                        <button id="btnZipClose" class="btn" style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px 16px; font-size:0.85rem; cursor:pointer;">
+                            Cerrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(backdrop);
+        return {
+            setStep(num, percent, subtext) {
+                const bar = document.getElementById('zip-package-bar');
+                if (bar) bar.style.width = `${percent}%`;
+                const sub = document.getElementById('zip-package-subtext');
+                if (sub && subtext) sub.innerHTML = subtext;
+                for (let i = 1; i <= 4; i++) {
+                    const el = document.getElementById(`zstep-${i}`);
+                    if (!el) continue;
+                    const icon = el.querySelector('.pstep-icon');
+                    if (i < num) {
+                        el.className = 'pipeta-update-step-item done';
+                        if (icon) icon.textContent = '✅';
+                    } else if (i === num) {
+                        el.className = 'pipeta-update-step-item active';
+                        if (icon) {
+                            if (i === 1) icon.textContent = '📂';
+                            if (i === 2) icon.textContent = '🗜️';
+                            if (i === 3) icon.textContent = '📜';
+                            if (i === 4) icon.textContent = '🎉';
+                        }
+                    } else {
+                        el.className = 'pipeta-update-step-item';
+                        if (icon) icon.textContent = '○';
+                    }
+                }
+            },
+            complete(data) {
+                const bar = document.getElementById('zip-package-bar');
+                if (bar) {
+                    bar.style.width = '100%';
+                    bar.classList.remove('animated-stripes');
+                    bar.style.background = '#a3be8c';
+                }
+                const sub = document.getElementById('zip-package-subtext');
+                if (sub) sub.innerHTML = `<span style="color:#a3be8c; font-weight:bold;">✅ ¡Empaquetado finalizado con éxito!</span>`;
+                for (let i = 1; i <= 4; i++) {
+                    const el = document.getElementById(`zstep-${i}`);
+                    if (el) {
+                        el.className = 'pipeta-update-step-item done';
+                        const icon = el.querySelector('.pstep-icon');
+                        if (icon) icon.textContent = '✅';
+                    }
+                }
+                const resDiv = document.getElementById('zip-package-result');
+                const summaryDiv = document.getElementById('zip-package-summary');
+                if (resDiv && summaryDiv) {
+                    summaryDiv.innerHTML = `
+                        Generado: <code>${data.zipName}</code> (${data.sizeFormatted})<br>
+                        Lanzador: <code>${data.batName}</code>
+                    `;
+                    resDiv.style.display = 'block';
+
+                    const openBtn = document.getElementById('btnZipOpenFolder');
+                    if (openBtn) {
+                        openBtn.onclick = () => {
+                            if (window.API?.fs?.openFolder) {
+                                window.API.fs.openFolder((data.targetDir || '').replace(/\\/g, '/'));
+                            }
+                        };
+                    }
+                    const closeBtn = document.getElementById('btnZipClose');
+                    if (closeBtn) {
+                        closeBtn.onclick = () => backdrop.remove();
+                    }
+                }
+            },
+            error(err) {
+                const bar = document.getElementById('zip-package-bar');
+                if (bar) {
+                    bar.style.background = '#f44336';
+                    bar.classList.remove('animated-stripes');
+                }
+                const sub = document.getElementById('zip-package-subtext');
+                if (sub) sub.innerHTML = `<span style="color:#f44336; font-weight:bold;">❌ Error al generar .ZIP: ${err}</span>`;
+                const resDiv = document.getElementById('zip-package-result');
+                if (resDiv) {
+                    resDiv.style.display = 'block';
+                    const summaryDiv = document.getElementById('zip-package-summary');
+                    if (summaryDiv) summaryDiv.innerHTML = `<span style="color:#ff6b6b;">${err}</span>`;
+                    const openBtn = document.getElementById('btnZipOpenFolder');
+                    if (openBtn) openBtn.style.display = 'none';
+                    const closeBtn = document.getElementById('btnZipClose');
+                    if (closeBtn) closeBtn.onclick = () => backdrop.remove();
+                }
+            }
+        };
+    },
+
+    runZipPackaging: async function() {
+        return settings.executePackageZip();
+    },
+
+    executePackageZip: async function() {
         const input = document.getElementById('pkgTargetDir');
         const targetDir = (input ? input.value : settings.pkgTargetDir || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS').trim();
         if (!targetDir) {
@@ -3301,27 +3607,27 @@ const settings = {
         }
 
         const includeRamon = document.getElementById('pkgIncludeRamon')?.checked || false;
-        const includeDriveCache = document.getElementById('pkgIncludeDriveCache')?.checked || false;
-        const includeServerCache = document.getElementById('pkgIncludeServerCache')?.checked || false;
+        const includeDriveCache = document.getElementById('pkgIncludeSyncCacheDrive')?.checked || document.getElementById('pkgIncludeDriveCache')?.checked || false;
+        const includeServerCache = document.getElementById('pkgIncludeSyncCacheServer')?.checked || document.getElementById('pkgIncludeServerCache')?.checked || false;
 
-        const btn = document.getElementById('pkgGenerateBtn');
-        const statusMsg = document.getElementById('pkgStatusMsg');
-
-        let cacheDesc = 'sin cachés (ligero)';
-        if (includeDriveCache && includeServerCache) cacheDesc = 'con caché Drive + Server';
-        else if (includeDriveCache) cacheDesc = 'con caché Drive';
-        else if (includeServerCache) cacheDesc = 'con caché Server';
+        const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
+        const zipName = includeRamon 
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.25'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.25'}.zip`;
 
         if (btn) {
             btn.disabled = true;
-            btn.innerHTML = includeRamon 
-                ? '<span>⏳ Comprimiendo Pipeta con Ramón...</span>' 
-                : '<span>⏳ Comprimiendo Pipeta...</span>';
             btn.style.opacity = '0.7';
         }
-        if (statusMsg) {
-            statusMsg.innerHTML = `<span style="color:#00bcd4;">⏳ Empaquetando Pipeta ${includeRamon ? '+ Ramón' : 'estándar'} [${cacheDesc}] (esto puede tomar 15-30 segundos)...</span>`;
-        }
+
+        const modal = settings.showZipPackagingModal(zipName);
+        modal.setStep(1, 20, 'Preparando base de código y presets locales...');
+
+        const t1 = setTimeout(() => {
+            modal.setStep(2, 50, includeRamon 
+                ? 'Comprimiendo Pipeta con entorno de Ramón (esto puede demorar unos segundos)...' 
+                : 'Comprimiendo runtime y archivos en .ZIP...');
+        }, 1200);
 
         try {
             const res = await fetch('/api/system/package-dist', {
@@ -3335,30 +3641,26 @@ const settings = {
                 })
             });
 
+            clearTimeout(t1);
             const data = await res.json();
             if (data && data.success) {
-                if (statusMsg) {
-                    statusMsg.innerHTML = `
-                        <span style="color:#4caf50; font-weight:bold;">
-                            ✅ ¡Paquete creado!: <code>${data.zipName}</code> (${data.sizeFormatted}) + <code>${data.batName}</code>
-                        </span>
-                        <button class="btn" onclick="API.fs.openFolder('${escapeHtml((data.targetDir || '').replace(/\\/g, '/'))}')" style="margin-left:8px; padding:3px 8px; font-size:0.75rem; background:#333; color:#eee;">
-                            📂 Abrir Carpeta
-                        </button>
-                    `;
-                }
-                alert(`¡Pipeta Comprimida con Éxito!\n\nSe generaron en la carpeta de destino:\n1. ${data.zipPath} (${data.sizeFormatted})\n2. ${data.batPath}\n\nLos usuarios solo deben ejecutar 'Instalar_o_Actualizar_Pipeta_Local.bat' para descomprimir automáticamente en C:\\TOOLS\\APPS\\Pipeta.`);
+                modal.setStep(3, 85, 'Generando script instalador .BAT...');
+                setTimeout(() => {
+                    modal.setStep(4, 98, 'Verificando archivo .ZIP generado...');
+                    setTimeout(() => {
+                        modal.complete(data);
+                    }, 400);
+                }, 400);
             } else {
                 throw new Error(data ? data.error : 'Error desconocido del servidor');
             }
         } catch(e) {
+            clearTimeout(t1);
             console.error("Package error:", e);
-            if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al generar .ZIP: ${e.message}</span>`;
-            alert("Error al comprimir Pipeta: " + e.message);
+            modal.error(e.message);
         } finally {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<span>📦 COMPRIMIR & GENERAR PIPETA .ZIP</span>';
                 btn.style.opacity = '1';
             }
         }

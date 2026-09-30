@@ -1,0 +1,75 @@
+{
+  "id": "media/_InPost",
+  "project": "surf_love",
+  "type": "drive",
+  "category": "media",
+  "prefix": "_InPost",
+  "file": "media/_InPost.json",
+  "stats": {
+    "itemCount": 5,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "sync_media_1697",
+      "category": "media",
+      "name": "_InPost",
+      "relPath": "_InPost",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-05-19T19:47:23.768Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/_InPost",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost"
+    },
+    {
+      "id": "sync_media_1739",
+      "category": "media",
+      "name": "260911",
+      "relPath": "_InPost/260911",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-11T20:45:33.615Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/_InPost/260911",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost/260911"
+    },
+    {
+      "id": "sync_media_1743",
+      "category": "media",
+      "name": "260826",
+      "relPath": "_InPost/260826",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-26T14:45:37.831Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/_InPost/260826",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost/260826"
+    },
+    {
+      "id": "sync_media_1973",
+      "category": "media",
+      "name": "Fotos_Actor_Marc",
+      "relPath": "_InPost/260826/Fotos_Actor_Marc",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-09-17T14:45:39.178Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/_InPost/260826/Fotos_Actor_Marc",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost/260826/Fotos_Actor_Marc"
+    },
+    {
+      "id": "sync_media_1974",
+      "category": "media",
+      "name": "Fotos_actriz_chica",
+      "relPath": "_InPost/260826/Fotos_actriz_chica",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-08-26T14:45:38.847Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love_media/_InPost/260826/Fotos_actriz_chica",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/_InPost/260826/Fotos_actriz_chica"
+    }
+  ]
+}

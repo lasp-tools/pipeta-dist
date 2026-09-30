@@ -4,28 +4,142 @@
 
 // Persistence State
 const expandedPaths = new Set();
+window.explorerExpandedPaths = expandedPaths;
+
+function getExplorerRelativePath(fullPath) {
+    if (!fullPath) return '';
+    const norm = fullPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    
+    // Check known root patterns
+    // 1. Media
+    const mediaMatch = norm.match(/(?:(?:[a-z]:)?\/interno\/media\/[^\/]+\/[^\/]+|\/unidades compartidas\/[^\/]+_media)(.*)$/i);
+    if (mediaMatch) {
+        return 'media:' + (mediaMatch[1] || '');
+    }
+    // 2. Work
+    const workMatch = norm.match(/(?:(?:[a-z]:)?\/(?:interno\/)?(?:atresmedia\/[^\/]+|[^\/]+)|\/unidades compartidas\/[^\/]+)(.*)$/i);
+    if (workMatch) {
+        return 'work:' + (workMatch[1] || '');
+    }
+    
+    if (typeof getCurrentRoots === 'function') {
+        const roots = getCurrentRoots();
+        if (roots) {
+            const normWork = (roots.work || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+            const normMedia = (roots.media || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+            if (normMedia && norm.startsWith(normMedia)) {
+                return 'media:' + norm.substring(normMedia.length);
+            }
+            if (normWork && norm.startsWith(normWork)) {
+                return 'work:' + norm.substring(normWork.length);
+            }
+        }
+    }
+    return norm.replace(/^[a-z]:/i, '');
+}
+window.getExplorerRelativePath = getExplorerRelativePath;
+
+function isPathExpanded(path) {
+    if (!path) return false;
+    const norm = path.replace(/\\/g, '/').toLowerCase();
+    const rel = getExplorerRelativePath(path);
+    return expandedPaths.has(norm) || (rel && expandedPaths.has(rel));
+}
+window.isPathExpanded = isPathExpanded;
+
+function setPathExpanded(path, expand) {
+    if (!path) return;
+    const norm = path.replace(/\\/g, '/').toLowerCase();
+    const rel = getExplorerRelativePath(path);
+    if (expand) {
+        expandedPaths.add(norm);
+        if (rel) expandedPaths.add(rel);
+    } else {
+        expandedPaths.delete(norm);
+        if (rel) expandedPaths.delete(rel);
+    }
+}
+window.setPathExpanded = setPathExpanded;
+
+function showExplorerLoading(containerId = null, text = 'Cargando contenido...') {
+    const targets = containerId 
+        ? [document.getElementById(containerId)].filter(Boolean)
+        : [
+            document.getElementById('split-pane-project'), 
+            document.getElementById('split-pane-media'),
+            document.getElementById('pipeta-project-container')?.parentElement,
+            document.getElementById('pipeta-media-container')?.parentElement
+          ].filter(Boolean);
+
+    targets.forEach(pane => {
+        let overlay = pane.querySelector('.explorer-loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'explorer-loading-overlay';
+            overlay.innerHTML = `
+                <div class="explorer-loading-spinner"></div>
+                <div class="explorer-loading-text">${text}</div>
+            `;
+            pane.appendChild(overlay);
+        } else {
+            const textEl = overlay.querySelector('.explorer-loading-text');
+            if (textEl) textEl.textContent = text;
+        }
+        requestAnimationFrame(() => overlay.classList.add('active'));
+    });
+}
+window.showExplorerLoading = showExplorerLoading;
+
+function hideExplorerLoading(containerId = null) {
+    const targets = containerId 
+        ? [document.getElementById(containerId)].filter(Boolean)
+        : document.querySelectorAll('.explorer-loading-overlay');
+
+    targets.forEach(item => {
+        const overlay = item.classList.contains('explorer-loading-overlay') 
+            ? item 
+            : item.querySelector('.explorer-loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+            setTimeout(() => {
+                if (!overlay.classList.contains('active')) overlay.remove();
+            }, 180);
+        }
+    });
+}
+window.hideExplorerLoading = hideExplorerLoading;
 
 async function initBrowser() {
     window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
     const currentToken = window.activeBrowserRenderToken;
 
-    const roots = getCurrentRoots();
-    const mode = window.viewLocationMode || 'local';
-    const modeLabel = mode === 'drive' ? '☁️ DRIVE' : (mode === 'server' ? '🗄️ SERVER' : '💻 LOCAL');
+    document.body.classList.add('pipeta-fast-rendering');
+    showExplorerLoading(null, 'Actualizando vista...');
 
-    // Set Header Labels
-    const workLabel = document.getElementById('label-work-path');
-    const mediaLabel = document.getElementById('label-media-path');
-    if (workLabel) workLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.work}`;
-    if (mediaLabel) mediaLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.media}`;
+    try {
+        const roots = getCurrentRoots();
+        const mode = window.viewLocationMode || 'local';
+        const modeLabel = mode === 'drive' ? '☁️ DRIVE' : (mode === 'server' ? '🗄️ SERVER' : '💻 LOCAL');
 
-    await Promise.all([
-        loadRootTree(roots.work, 'tree-work', currentToken),
-        loadRootTree(roots.media, 'tree-media', currentToken)
-    ]);
+        // Set Header Labels
+        const workLabel = document.getElementById('label-work-path');
+        const mediaLabel = document.getElementById('label-media-path');
+        if (workLabel) workLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.work}`;
+        if (mediaLabel) mediaLabel.innerHTML = `<span style="font-size:0.7rem; background:#1c2430; color:#88c0d0; padding:1px 5px; border-radius:3px; margin-right:6px;">${modeLabel}</span>${roots.media}`;
 
-    // Calculate folder sizes (async, non-blocking)
-    if (typeof updateFolderSizes === 'function') updateFolderSizes();
+        await Promise.all([
+            loadRootTree(roots.work, 'tree-work', currentToken),
+            loadRootTree(roots.media, 'tree-media', currentToken)
+        ]);
+
+        // Calculate folder sizes (async, non-blocking)
+        if (typeof updateFolderSizes === 'function') updateFolderSizes();
+    } finally {
+        hideExplorerLoading();
+        setTimeout(() => {
+            document.body.classList.remove('pipeta-fast-rendering');
+        }, 50);
+    }
 }
 
 async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
@@ -65,6 +179,29 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                 itemCopy.syncStatus = 'matched_drive';
                 itemCopy.onlinePath = catItem.onlinePath || catItem.path;
                 itemCopy.targetLocalPath = catItem.targetLocalPath || item.path;
+                itemCopy.remoteSize = catItem.size || 0;
+                itemCopy.remoteModTime = catItem.modTime || null;
+
+                // Deep Compare: Comprobar peso y fecha
+                if (window.deepCompareMode && !item.isDirectory && !catItem.isDir && !catItem.isDirectory) {
+                    const localSize = Number(item.size) || 0;
+                    const remoteSize = Number(catItem.size) || 0;
+                    if (localSize === 0 && remoteSize > 0) {
+                        itemCopy.syncStatus = 'mismatch_drive';
+                        itemCopy.mismatchReason = 'zero_size';
+                    } else if (remoteSize > 0 && Math.abs(localSize - remoteSize) > 0) {
+                        itemCopy.syncStatus = 'mismatch_drive';
+                        itemCopy.mismatchReason = 'size_diff';
+                    } else if (item.mtime && catItem.modTime) {
+                        const localTime = new Date(item.mtime).getTime();
+                        const remoteTime = new Date(catItem.modTime).getTime();
+                        if (remoteTime - localTime > 3000) {
+                            itemCopy.syncStatus = 'outdated_local';
+                            itemCopy.mismatchReason = 'newer_remote';
+                        }
+                    }
+                }
+
                 if (catItem.hasPendingSync) {
                     itemCopy.hasPendingSync = catItem.hasPendingSync;
                     itemCopy.pendingType = catItem.pendingType;
@@ -114,6 +251,29 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
             if (sMatch) {
                 itemCopy.syncStatus = 'matched_server';
+                itemCopy.remoteSize = sMatch.size || 0;
+                itemCopy.remoteModTime = sMatch.modTime || null;
+
+                // Deep Compare: Comprobar peso y fecha
+                if (window.deepCompareMode && !item.isDirectory && !sMatch.isDir && !sMatch.isDirectory) {
+                    const localSize = Number(item.size) || 0;
+                    const remoteSize = Number(sMatch.size) || 0;
+                    if (localSize === 0 && remoteSize > 0) {
+                        itemCopy.syncStatus = 'mismatch_server';
+                        itemCopy.mismatchReason = 'zero_size';
+                    } else if (remoteSize > 0 && Math.abs(localSize - remoteSize) > 0) {
+                        itemCopy.syncStatus = 'mismatch_server';
+                        itemCopy.mismatchReason = 'size_diff';
+                    } else if (item.mtime && sMatch.modTime) {
+                        const localTime = new Date(item.mtime).getTime();
+                        const remoteTime = new Date(sMatch.modTime).getTime();
+                        if (remoteTime - localTime > 3000) {
+                            itemCopy.syncStatus = 'outdated_local';
+                            itemCopy.mismatchReason = 'newer_remote';
+                        }
+                    }
+                }
+
                 if (sMatch.hasPendingSync) {
                     itemCopy.hasPendingSync = sMatch.hasPendingSync;
                     itemCopy.pendingType = sMatch.pendingType;
@@ -200,11 +360,12 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
     return decorated;
 }
-
 async function loadRootTree(rootPath, containerId, token = null) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = `<div style="padding:10px; color:#666;">Cargando...</div>`;
+    if (!container.hasChildNodes() || container.children.length === 0) {
+        container.innerHTML = `<div style="padding:10px; color:#666;">Cargando...</div>`;
+    }
 
     try {
         const data = await fetchDir(rootPath);
@@ -226,6 +387,27 @@ async function loadRootTree(rootPath, containerId, token = null) {
             container.innerHTML = "";
 
             if (finalItems.length === 0) {
+                const mode = window.viewLocationMode || 'local';
+                const curProj = (typeof settings !== 'undefined') ? settings.currentProject : null;
+                const projName = curProj?.id || curProj?.name || 'surf_love';
+
+                // Si estamos en Drive o Server y no hay elementos cargados por catálogo
+                if ((mode === 'drive' || mode === 'server') && (!data.fromCatalog || !data.exists)) {
+                    container.innerHTML = `
+                        <div class="empty-catalog-card" style="margin: 25px 10px; padding: 22px 16px; background: rgba(28, 36, 48, 0.85); border: 1px dashed rgba(136, 192, 208, 0.4); border-radius: 8px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,0.25);">
+                            <div style="font-size: 1.8rem; margin-bottom: 6px;">⚡</div>
+                            <div style="font-weight: 600; color: #eceff4; font-size: 0.95rem; margin-bottom: 6px;">Catálogo no cargado localmente</div>
+                            <div style="font-size: 0.78rem; color: #8892b0; margin-bottom: 15px; line-height: 1.4;">
+                                El catálogo modular de <b>${projName}</b> no está en este equipo.<br>Cárgalo desde la red para explorar en modo ${mode.toUpperCase()}.
+                            </div>
+                            <button onclick="window.initProjectCatalog('${projName}')" style="background: linear-gradient(135deg, #5e81ac, #81a1c1); color: #fff; border: none; padding: 8px 18px; border-radius: 5px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(94, 129, 172, 0.4);">
+                                ⚡ Cargar Catálogo de Proyecto
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+
                 const emptyMsg = window.explorerOnlyMyTasks
                     ? `<div style="padding:15px; color:#aaa; font-style:italic; line-height:1.4;">
                          🔒 <b>Filtro Ramón activo:</b><br>
@@ -249,7 +431,7 @@ async function loadRootTree(rootPath, containerId, token = null) {
                 if (item && item.isDirectory) {
                     const normPath = item.path.replace(/\\/g, '/').toLowerCase();
                     const shouldAutoExpand = window.explorerOnlyMyTasks && finalItems.length <= 2;
-                    if (expandedPaths.has(normPath) || shouldAutoExpand) {
+                    if (isPathExpanded(normPath) || shouldAutoExpand) {
                         await toggleNode(node, item, 0, node.querySelector('.tree-node'));
                     }
                 }
@@ -319,6 +501,21 @@ function createTreeNode(item, level, containerId = '') {
         badgeHtml = `<span class="sync-badge-action sync-badge-download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Bajar de Drive</span>`;
     } else if (status === 'ghost_server') {
         badgeHtml = `<span class="sync-badge-action sync-badge-download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">⬇️ Bajar de Server</span>`;
+    } else if (status === 'partial_drive' || status === 'partial_server') {
+        const targetType = status === 'partial_server' ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        const missingCount = item.missingFramesCount || (item.missingFrames ? item.missingFrames.length : 1);
+        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#d08770; color:#fff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar los frames faltantes desde ${labelTarget}">⬇️* Bajar (${missingCount} faltantes)</span>`;
+    } else if (status === 'mismatch_drive' || status === 'mismatch_server') {
+        const targetType = status === 'mismatch_server' ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        const lMb = item.size ? (item.size / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+        const rMb = item.remoteSize ? (item.remoteSize / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#bf616a; color:#fff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Diferencia de peso detectada (Local: ${lMb} ≠ ${labelTarget}: ${rMb}). Clic para re-descargar versión íntegra">⚠️* Peso difiere (${lMb} vs ${rMb})</span>`;
+    } else if (status === 'outdated_local') {
+        const targetType = (window.syncComparisonMode === 'server') ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#ebcb8b; color:#2e3440; font-weight:bold;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="El archivo en ${labelTarget} es más reciente que el local. Clic para actualizar">⬇️* Actualizar (Más nuevo)</span>`;
     }
 
     row.innerHTML = `
@@ -370,7 +567,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
 
     if (isHidden) {
         container.style.display = 'block';
-        expandedPaths.add(item.path.replace(/\\/g, '/').toLowerCase());
+        setPathExpanded(item.path, true);
 
         if (!wrapper._loaded) {
             container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666;">Cargando...</div>`;
@@ -407,7 +604,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
                     const isTargetTask = assignedSet.has(childNameLower);
                     const shouldAutoExpandChild = window.explorerOnlyMyTasks && !isTargetTask && finalItems.length <= 2;
 
-                    if (child.isDirectory && (expandedPaths.has(normChildPath) || shouldAutoExpandChild)) {
+                    if (child.isDirectory && (isPathExpanded(normChildPath) || shouldAutoExpandChild)) {
                         await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
                     }
                 }
@@ -417,7 +614,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
         }
     } else {
         container.style.display = 'none';
-        expandedPaths.delete(item.path.replace(/\\/g, '/').toLowerCase());
+        setPathExpanded(item.path, false);
     }
 }
 
@@ -546,3 +743,241 @@ if (document.readyState === 'loading') {
 } else {
     initPropertiesPanelState();
 }
+
+window.initProjectCatalog = async function(projName) {
+    if (!projName) {
+        projName = (typeof settings !== 'undefined' && settings.currentProject)
+            ? (settings.currentProject.id || settings.currentProject.name)
+            : 'surf_love';
+    }
+
+    const btns = document.querySelectorAll('.empty-catalog-card button');
+    btns.forEach(b => {
+        b.disabled = true;
+        b.innerHTML = '⏳ Sincronizando catálogo...';
+    });
+
+    try {
+        const res = await fetch('/api/sync/catalog/init-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectName: projName })
+        }).then(r => r.json());
+
+        if (res && res.success) {
+            if (typeof loadActiveProjectSyncCatalog === 'function') {
+                await loadActiveProjectSyncCatalog(true);
+            }
+            if (typeof initBrowser === 'function') {
+                await initBrowser();
+            }
+        } else {
+            alert('No se pudo inicializar el catálogo: ' + (res?.error || 'Error desconocido'));
+            btns.forEach(b => {
+                b.disabled = false;
+                b.innerHTML = '⚡ Cargar Catálogo de Proyecto';
+            });
+        }
+    } catch(e) {
+        alert('Error al conectar con el servidor: ' + e.message);
+        btns.forEach(b => {
+            b.disabled = false;
+            b.innerHTML = '⚡ Cargar Catálogo de Proyecto';
+        });
+    }
+};
+
+function updateParentFolderBadge(wrapper) {
+    if (!wrapper || !wrapper._item || !wrapper._item.isDirectory) return;
+    const item = wrapper._item;
+    const row = wrapper._row || wrapper.querySelector('.tree-node');
+    if (!row) return;
+
+    let remainingPending = 0;
+    if (wrapper._childrenContainer && wrapper._loaded) {
+        const childBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badge-action');
+        remainingPending = childBadges.length;
+    } else if (typeof item.pendingCount === 'number') {
+        remainingPending = Math.max(0, item.pendingCount - 1);
+        item.pendingCount = remainingPending;
+    }
+
+    const badgeContainer = row.querySelector('.sync-badge-action') || row.querySelector('.sync-badge-ok');
+    if (remainingPending > 0) {
+        const isUp = item.pendingType === 'upload';
+        const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
+        const targetType = (item.syncStatus === 'matched_server' || item.syncStatus === 'ghost_server') ? 'server' : 'drive';
+        const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')`;
+        const newBadge = document.createElement('span');
+        newBadge.className = 'sync-badge-action sync-badge-pending-folder';
+        newBadge.onclick = (e) => { e.stopPropagation(); eval(actionCall); };
+        newBadge.title = `* Esta carpeta contiene ${remainingPending} archivo(s) pendientes de sincronizar`;
+        newBadge.innerText = `${actionText} (${remainingPending})`;
+        if (badgeContainer) badgeContainer.replaceWith(newBadge);
+    } else {
+        item.hasPendingSync = false;
+        item.pendingCount = 0;
+        const okBadge = document.createElement('span');
+        okBadge.className = 'sync-badge-ok';
+        okBadge.title = '✓ En Local (Sincronizado)';
+        okBadge.textContent = '✓';
+        if (badgeContainer) badgeContainer.replaceWith(okBadge);
+    }
+}
+
+async function refreshFolderChildrenInPlace(wrapper, item) {
+    const container = wrapper._childrenContainer;
+    if (!container) return;
+
+    try {
+        const data = await fetchDir(item.path);
+        if (data.error) return;
+
+        const allDiskItems = data.items || [];
+        const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
+        const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
+        const filteredItems = (typeof window.filterExplorerItems === 'function')
+            ? window.filterExplorerItems(decoratedItems, containerId, item.path, allDiskItems)
+            : decoratedItems;
+        const finalItems = (typeof collapseImageSequences === 'function')
+            ? collapseImageSequences(filteredItems)
+            : filteredItems;
+
+        container.innerHTML = "";
+        if (finalItems.length === 0) {
+            const emptyChildMsg = window.explorerOnlyMyTasks
+                ? `<div style="padding-left:20px; color:#666; font-size:0.8rem; font-style:italic;">(Sin tareas asignadas en esta carpeta)</div>`
+                : `<div style="padding-left:20px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
+            container.innerHTML = emptyChildMsg;
+        } else {
+            const level = Math.floor(parseInt((wrapper._row?.style?.paddingLeft || '10px').replace('px', ''), 10) / 20);
+            const fragment = document.createDocumentFragment();
+            for (const child of finalItems) {
+                const node = createTreeNode(child, level + 1, containerId);
+                fragment.appendChild(node);
+            }
+            container.appendChild(fragment);
+
+            for (const node of container.children) {
+                const childItem = node._item;
+                if (childItem && childItem.isDirectory) {
+                    const normChildPath = childItem.path.replace(/\\/g, '/').toLowerCase();
+                    if (isPathExpanded(normChildPath)) {
+                        await toggleNode(node, childItem, level + 1, node.querySelector('.tree-node'));
+                    }
+                }
+            }
+        }
+        wrapper._loaded = true;
+    } catch (err) {
+        console.error('[EXPLORER] Error refrescando hijos de carpeta in-place:', err);
+    }
+}
+
+async function updateTransferredItemsInDOM(order) {
+    if (!order || !order.items || order.items.length === 0) return false;
+    let anyUpdated = false;
+
+    for (const it of order.items) {
+        const targetPath = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+        if (!targetPath) continue;
+        const normTarget = targetPath.toLowerCase();
+        const isDir = !!(it.isDir || it.isDirectory);
+        let foundNode = false;
+
+        // 1. Nodos del árbol del explorador (Split view)
+        const allRows = document.querySelectorAll('.tree-node');
+        for (const row of allRows) {
+            const p = (row.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
+            if (p === normTarget) {
+                anyUpdated = true;
+                foundNode = true;
+                const wrapper = row.closest('.node-wrapper');
+                if (wrapper) {
+                    row.classList.remove('sync-ghost');
+                    wrapper.classList.remove('sync-ghost-wrapper');
+
+                    if (wrapper._item) {
+                        wrapper._item.isGhost = false;
+                        wrapper._item.syncStatus = order.transferType === 'server' ? 'matched_server' : 'matched_drive';
+                        wrapper._item.hasPendingSync = false;
+                        wrapper._item.pendingCount = 0;
+                    }
+
+                    const badgeAction = row.querySelector('.sync-badge-action');
+                    if (badgeAction) {
+                        const okBadge = document.createElement('span');
+                        okBadge.className = 'sync-badge-ok';
+                        okBadge.title = '✓ En Local (Sincronizado)';
+                        okBadge.textContent = '✓';
+                        badgeAction.replaceWith(okBadge);
+                    }
+
+                    // Si es una carpeta y estaba abierta, refrescar solo sus hijos in-place
+                    if (isDir && wrapper._childrenContainer && wrapper._childrenContainer.style.display !== 'none') {
+                        await refreshFolderChildrenInPlace(wrapper, wrapper._item || { path: targetPath, isDirectory: true });
+                    }
+
+                    // Actualizar insignias de las carpetas padre hacia arriba
+                    let parentContainer = row.closest('.node-children');
+                    while (parentContainer) {
+                        const parentWrapper = parentContainer.closest('.node-wrapper');
+                        if (!parentWrapper) break;
+                        updateParentFolderBadge(parentWrapper);
+                        parentContainer = parentWrapper.parentElement?.closest('.node-children');
+                    }
+                }
+            }
+        }
+
+        // Si el archivo específico no estaba en el DOM (ej. descargado dentro de una carpeta ya abierta)
+        if (!foundNode) {
+            const parentPath = targetPath.substring(0, targetPath.lastIndexOf('/'));
+            const normParent = parentPath.toLowerCase();
+            for (const row of allRows) {
+                const p = (row.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
+                if (p === normParent) {
+                    const wrapper = row.closest('.node-wrapper');
+                    if (wrapper && wrapper._childrenContainer && wrapper._childrenContainer.style.display !== 'none') {
+                        await refreshFolderChildrenInPlace(wrapper, wrapper._item || { path: parentPath, isDirectory: true });
+                        anyUpdated = true;
+                        updateParentFolderBadge(wrapper);
+                        let parentContainer = row.closest('.node-children');
+                        while (parentContainer) {
+                            const parentWrapper = parentContainer.closest('.node-wrapper');
+                            if (!parentWrapper) break;
+                            updateParentFolderBadge(parentWrapper);
+                            parentContainer = parentWrapper.parentElement?.closest('.node-children');
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 2. Bloques de vista Miller Columns (Pipeta view)
+        const allBlocks = document.querySelectorAll('.pipeta-block');
+        for (const block of allBlocks) {
+            const p = (block.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
+            if (p === normTarget) {
+                anyUpdated = true;
+                block.classList.remove('sync-ghost');
+                const badgeAction = block.querySelector('.sync-badge-action');
+                if (badgeAction) {
+                    const okSpan = document.createElement('span');
+                    okSpan.className = 'sync-badge-ok';
+                    okSpan.style.marginLeft = '8px';
+                    okSpan.textContent = '✓';
+                    badgeAction.replaceWith(okSpan);
+                }
+            }
+        }
+    }
+
+    return anyUpdated;
+}
+
+window.updateParentFolderBadge = updateParentFolderBadge;
+window.refreshFolderChildrenInPlace = refreshFolderChildrenInPlace;
+window.updateTransferredItemsInDOM = updateTransferredItemsInDOM;
+

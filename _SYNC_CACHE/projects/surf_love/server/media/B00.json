@@ -1,0 +1,63 @@
+{
+  "id": "media/B00",
+  "project": "surf_love",
+  "type": "server",
+  "category": "media",
+  "prefix": "B00",
+  "file": "media/B00.json",
+  "stats": {
+    "itemCount": 4,
+    "fileCount": 0,
+    "byteCount": 0
+  },
+  "flatList": [
+    {
+      "id": "server_media_11318",
+      "category": "media",
+      "name": "B00",
+      "relPath": "B00",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-21T17:05:36.108Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00"
+    },
+    {
+      "id": "server_media_11319",
+      "category": "media",
+      "name": "000",
+      "relPath": "B00/000",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-21T17:05:36.111Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000"
+    },
+    {
+      "id": "server_media_11320",
+      "category": "media",
+      "name": "SURF_B00_000_0020",
+      "relPath": "B00/000/SURF_B00_000_0020",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-21T17:05:36.113Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000/SURF_B00_000_0020",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000/SURF_B00_000_0020"
+    },
+    {
+      "id": "server_media_11321",
+      "category": "media",
+      "name": "in",
+      "relPath": "B00/000/SURF_B00_000_0020/in",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-07-21T17:05:36.113Z",
+      "serverPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000/SURF_B00_000_0020/in",
+      "targetLocalPath": "Z:/INTERNO/MEDIA/atresmedia/surf_love/B00/000/SURF_B00_000_0020/in"
+    }
+  ]
+}

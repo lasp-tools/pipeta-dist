@@ -1,0 +1,51 @@
+{
+  "id": "episodios/VFX-Edits",
+  "project": "surf_love",
+  "type": "drive",
+  "category": "work",
+  "prefix": "episodios/VFX-Edits",
+  "file": "episodios/VFX-Edits.json",
+  "stats": {
+    "itemCount": 3,
+    "fileCount": 2,
+    "byteCount": 409068
+  },
+  "flatList": [
+    {
+      "id": "sync_work_38",
+      "category": "work",
+      "name": "VFX-Edits",
+      "relPath": "episodios/VFX-Edits",
+      "ext": "",
+      "isDir": true,
+      "size": 0,
+      "modTime": "2026-04-10T14:08:04.291Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love/episodios/VFX-Edits",
+      "targetLocalPath": "Z:/atresmedia/surf_love/episodios/VFX-Edits"
+    },
+    {
+      "id": "sync_work_69",
+      "category": "work",
+      "name": "SURF_B03_044_v001.drt",
+      "relPath": "episodios/VFX-Edits/SURF_B03_044_v001.drt",
+      "ext": ".drt",
+      "isDir": false,
+      "size": 125056,
+      "modTime": "2026-09-16T14:50:14.990Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love/episodios/VFX-Edits/SURF_B03_044_v001.drt",
+      "targetLocalPath": "Z:/atresmedia/surf_love/episodios/VFX-Edits/SURF_B03_044_v001.drt"
+    },
+    {
+      "id": "sync_work_70",
+      "category": "work",
+      "name": "SURF_LOVE_Sup.drp",
+      "relPath": "episodios/VFX-Edits/SURF_LOVE_Sup.drp",
+      "ext": ".drp",
+      "isDir": false,
+      "size": 284012,
+      "modTime": "2026-09-16T14:38:15.281Z",
+      "onlinePath": "G:/Unidades compartidas/surf_love/episodios/VFX-Edits/SURF_LOVE_Sup.drp",
+      "targetLocalPath": "Z:/atresmedia/surf_love/episodios/VFX-Edits/SURF_LOVE_Sup.drp"
+    }
+  ]
+}
