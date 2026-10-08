@@ -1,0 +1,28 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "pipeta-dependencies",
+  "depotPath": "Z:/INTERNO/TOOLS/_DEPOT",
+  "package": "pipeta_dependencies.zip",
+  "components": {
+    "node": {
+      "path": "bin/node/node.exe",
+      "version": "v20.11.1",
+      "description": "Node.js portable runtime"
+    },
+    "python": {
+      "path": "bin/python/python.exe",
+      "version": "3.10-embed",
+      "description": "Python embedded runtime for Ramon/Tactic"
+    },
+    "rclone": {
+      "path": "tools/rclone/rclone.exe",
+      "version": "v1.65.0",
+      "description": "Rclone portable binary for Drive sync"
+    },
+    "higgsfield": {
+      "path": "bin/ai_cli/higgsfield/hf.exe",
+      "version": "1.0.0",
+      "description": "Higgsfield AI CLI binary"
+    }
+  }
+}

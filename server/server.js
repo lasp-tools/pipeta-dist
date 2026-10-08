@@ -2239,19 +2239,22 @@ try {
     New-Item -ItemType Directory -Path $pkgRoot -Force | Out-Null
     
     # 1. Copiar base completa de Pipeta hacia la subcarpeta 'Pipeta'
-    # Excluir siempre .git, .gemini, logs, node_modules\\.cache y _SYNC_CACHE
+    # Excluir siempre .git, .gemini, logs, node_modules\\.cache, _SYNC_CACHE y credentials
+    # Excluir scripts exclusivos del estudio central (Actualizar y Publicar)
     $pythonDir = Join-Path $source "bin\python"
+    $excludeFiles = @("*.zip", "*.log", "Actualizar_Pipeta_desde_Red.bat", "Publicar_Pipeta_a_Produccion_Estudio.bat")
     if ($includeRamon) {
-        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE credentials /XF $excludeFiles /NFL /NDL /NJH /NJS /R:0 /W:0
     } else {
-        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE "$pythonDir" python /XF *.zip *.log /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE credentials "$pythonDir" python /XF $excludeFiles /NFL /NDL /NJH /NJS /R:0 /W:0
         $pkgPython = Join-Path $pkgRoot "bin\python"
         if (Test-Path $pkgPython) { Remove-Item -Recurse -Force $pkgPython }
     }
 
-    # 1.1 Inclusión selectiva de cachés de sincronización
+    # 1.1 Inclusión selectiva de cachés de sincronización (desde cache local o Z:)
     $destCache = Join-Path $pkgRoot "_SYNC_CACHE"
-    $srcCache = Join-Path $source "_SYNC_CACHE"
+    $srcCache = "C:\TOOLS\APPS\Pipeta\_SYNC_CACHE"
+    if (-not (Test-Path $srcCache)) { $srcCache = "Z:\_SYNC_CACHE" }
     New-Item -ItemType Directory -Path $destCache -Force | Out-Null
 
     if (($includeDriveCache -or $includeServerCache) -and (Test-Path $srcCache)) {
