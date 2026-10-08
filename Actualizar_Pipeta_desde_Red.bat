@@ -38,7 +38,7 @@ taskkill /F /IM node.exe >nul 2>&1
 echo [2/3] Sincronizando archivos con Robocopy desde %SRC%...
 if not exist "%DEST%" mkdir "%DEST%"
 
-robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 
 if exist "%SRC%\presets" (
     robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /NFL /NDL /NJH /NJS /R:0 /W:0

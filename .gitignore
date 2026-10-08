@@ -1,8 +1,26 @@
+# Dependencies & Runtimes
 node_modules/
 server/node_modules/
-*.log
-logs/
 bin/
 tools/
+
+# Cache & Temporary files
+_SYNC_CACHE/
+*.log
+logs/
+*.tmp
+*.temp
+
+# Credentials & Private studio data
+credentials/
+*.env
+*.local.json
+
+# Export packages & Archives
+*.zip
+dist/
+
+# OS artifacts
 .DS_Store
 Thumbs.db
+Desktop.ini
