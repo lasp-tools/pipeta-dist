@@ -50,6 +50,22 @@ const uiPath = path.join(__dirname, '../ui');
 app.use(express.static(uiPath));
 
 // ================================================================
+// PIPETA CACHE & STORAGE RESOLVER
+// ================================================================
+function getLocalSyncCacheDir() {
+    const appDir = path.resolve(__dirname, '..');
+    const isGitRepo = fs.existsSync(path.join(appDir, '.git')) || __dirname.toLowerCase().includes('github');
+    if (isGitRepo) {
+        const localDevCache = path.resolve('C:/TOOLS/APPS/Pipeta/_SYNC_CACHE');
+        try { fs.ensureDirSync(localDevCache); } catch(e) {}
+        return localDevCache;
+    }
+    const localAppCache = path.join(appDir, '_SYNC_CACHE');
+    try { fs.ensureDirSync(localAppCache); } catch(e) {}
+    return localAppCache;
+}
+
+// ================================================================
 // PIPETA SYSTEM LOGGER (Backend & Disk Persistence)
 // ================================================================
 const LOGS_DIR = path.join(__dirname, '../logs');
@@ -243,7 +259,7 @@ async function runEnvironmentDetection() {
     }
 
     const hasDriveG = fs.existsSync('G:/Unidades compartidas') || fs.existsSync('G:/');
-    const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE') || fs.existsSync(path.join(__dirname, '../_SYNC_CACHE'));
+    const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE') || fs.existsSync(getLocalSyncCacheDir());
 
     // Detección precisa de Z: (Real vs Falso / Subst)
     let zInfo = { isRealServer: true, type: 'network', target: 'Servidor Central SMB' };
@@ -438,7 +454,7 @@ app.get('/api/sync/server-catalog/:project', async (req, res) => {
 
 app.get('/api/system/last-project', (req, res) => {
     try {
-        const localFile = path.join(__dirname, '../_SYNC_CACHE/last_project.json');
+        const localFile = path.join(getLocalSyncCacheDir(), 'last_project.json');
         const netFile = 'Z:/_SYNC_CACHE/last_project.json';
         let target = fs.existsSync(localFile) ? localFile : (fs.existsSync(netFile) ? netFile : null);
         if (target) {
@@ -456,7 +472,7 @@ app.post('/api/system/last-project', (req, res) => {
         const { projectName } = req.body || {};
         if (!projectName) return res.status(400).json({ success: false, error: 'projectName requerido' });
         const payload = { projectName, updatedAt: new Date().toISOString() };
-        const localDir = path.join(__dirname, '../_SYNC_CACHE');
+        const localDir = getLocalSyncCacheDir();
         fs.ensureDirSync(localDir);
         fs.writeJsonSync(path.join(localDir, 'last_project.json'), payload, { spaces: 2 });
 
@@ -474,7 +490,7 @@ app.post('/api/system/last-project', (req, res) => {
 app.get('/api/sync/catalog/status/:project', (req, res) => {
     try {
         const projectName = req.params.project;
-        const localManifest = path.join(__dirname, '../_SYNC_CACHE/projects', projectName, 'drive', 'manifest.json');
+        const localManifest = path.join(getLocalSyncCacheDir(), 'projects', projectName, 'drive', 'manifest.json');
         const netManifest = path.join('Z:/_SYNC_CACHE/projects', projectName, 'drive', 'manifest.json');
         const hasLocal = fs.existsSync(localManifest);
         const hasNetwork = fs.existsSync(netManifest);
@@ -587,24 +603,24 @@ const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 function getCentralCacheDir() {
     // 0. Si hay un Local Worker activo o corriendo en esta máquina, SIEMPRE usar la carpeta local de Pipeta
     if (checkLocalWorkerRunning() || localWorkerPid) {
-        return path.join(__dirname, '../_SYNC_CACHE');
+        return getLocalSyncCacheDir();
     }
 
     // 0.1 Si worker_status.json en la caché local tiene un heartbeat reciente (< 45s) de un local_worker
     try {
-        const localStatus = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+        const localStatus = path.join(getLocalSyncCacheDir(), 'worker_status.json');
         if (fs.existsSync(localStatus)) {
             const data = fs.readJsonSync(localStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
             if (diff < 45 && data.workerId && data.workerId.includes('local_worker')) {
-                return path.join(__dirname, '../_SYNC_CACHE');
+                return getLocalSyncCacheDir();
             }
         }
     } catch(e) {}
 
     // 0.2 Si estamos en un equipo externo / remoto, usar inmediatamente el cache local de Pipeta
     if (global.isExternalMachine || cachedEnvState?.isExternalMachine) {
-        return path.join(__dirname, '../_SYNC_CACHE');
+        return getLocalSyncCacheDir();
     }
 
     // 1. Si Z:/_SYNC_CACHE tiene un heartbeat activo o reciente (< 45s) de un Worker central, usar Z:/
@@ -648,7 +664,7 @@ function getCentralCacheDir() {
     }
 
     // 6. Fallback a carpeta local en la aplicación
-    return path.join(__dirname, '../_SYNC_CACHE');
+    return getLocalSyncCacheDir();
 }
 
 function getOrdersDir() {
@@ -658,7 +674,7 @@ function getOrdersDir() {
 function getAllOrdersCandidateDirs() {
     const primaryDir = getOrdersDir();
     const dirs = [primaryDir];
-    const localDir = path.join(__dirname, '../_SYNC_CACHE/requests');
+    const localDir = path.join(getLocalSyncCacheDir(), 'requests');
     if (path.resolve(primaryDir).toLowerCase() !== path.resolve(localDir).toLowerCase()) {
         dirs.push(localDir);
     }
@@ -1162,7 +1178,7 @@ function checkLocalWorkerRunning() {
     }
     // Fallback: verificar si existe un worker_status.json reciente de local_worker
     try {
-        const localStatus = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+        const localStatus = path.join(getLocalSyncCacheDir(), 'worker_status.json');
         if (fs.existsSync(localStatus)) {
             const data = fs.readJsonSync(localStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
@@ -1198,7 +1214,7 @@ function startLocalWorkerBackground() {
     const nodeExe = process.execPath;
     const workerScript = path.join(__dirname, 'sync_worker.js');
 
-    const logDir = path.join(__dirname, '../_SYNC_CACHE');
+    const logDir = getLocalSyncCacheDir();
     try { fs.ensureDirSync(logDir); } catch(e){}
     const logFile = path.join(logDir, 'local_worker.log');
     let outStream = 'ignore';
@@ -1468,7 +1484,7 @@ app.post('/api/sync/worker/stop-local', (req, res) => {
                     fs.removeSync(statusFile);
                 }
             }
-            const localStatusFile = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+            const localStatusFile = path.join(getLocalSyncCacheDir(), 'worker_status.json');
             if (fs.existsSync(localStatusFile)) {
                 fs.removeSync(localStatusFile);
             }
@@ -1484,7 +1500,7 @@ app.post('/api/sync/worker/stop-local', (req, res) => {
 app.get('/api/sync/worker/logs', (req, res) => {
     try {
         const logFile = path.join(getCentralCacheDir(), 'local_worker.log');
-        const fallbackLog = path.join(__dirname, '../_SYNC_CACHE', 'local_worker.log');
+        const fallbackLog = path.join(getLocalSyncCacheDir(), 'local_worker.log');
         const target = fs.existsSync(logFile) ? logFile : (fs.existsSync(fallbackLog) ? fallbackLog : null);
         if (!target) {
             return res.json({ success: true, logs: 'No hay registros del worker aún.' });
@@ -1505,7 +1521,7 @@ app.get('/api/sync/worker-status', (req, res) => {
 
         // 1. Primero chequear si hay un Worker Local activo o con latido reciente (< 25s)
         try {
-            const localStatusFile = path.join(__dirname, '../_SYNC_CACHE', 'worker_status.json');
+            const localStatusFile = path.join(getLocalSyncCacheDir(), 'worker_status.json');
             if (fs.existsSync(localStatusFile)) {
                 const localData = fs.readJsonSync(localStatusFile);
                 const diffSeconds = (Date.now() - new Date(localData.lastPing).getTime()) / 1000;
@@ -3301,7 +3317,7 @@ app.post('/api/audit/scan', async (req, res) => {
         const pName = driveManifest.project || reqProjName || config.projectName;
         const subFile = category === 'work' ? `episodios/${epName}.json` : `media/${epName}.json`;
         const candidatePaths = [
-            path.join(__dirname, '../_SYNC_CACHE/projects', pName, 'drive', subFile),
+            path.join(getLocalSyncCacheDir(), 'projects', pName, 'drive', subFile),
             path.join('Z:/_SYNC_CACHE/projects', pName, 'drive', subFile),
             path.join(process.env.TEMP || 'C:/Temp', '_SYNC_CACHE/projects', pName, 'drive', subFile)
         ];
@@ -4734,7 +4750,7 @@ function startListening(retries = 10) {
         if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
             try {
                 let lastProj = null;
-                const localFile = path.join(__dirname, '../_SYNC_CACHE/last_project.json');
+                const localFile = path.join(getLocalSyncCacheDir(), 'last_project.json');
                 const netFile = 'Z:/_SYNC_CACHE/last_project.json';
                 const target = fs.existsSync(localFile) ? localFile : (fs.existsSync(netFile) ? netFile : null);
                 if (target) {
