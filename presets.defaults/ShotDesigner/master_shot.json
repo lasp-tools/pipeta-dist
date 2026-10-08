@@ -1,0 +1,826 @@
+{
+  "id": "master_shot",
+  "name": "Master_Shot",
+  "nodes": [
+    {
+      "id": "node_work_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 8.32142857142852,
+      "y": -1055.8809523809518,
+      "parent": null,
+      "isMirrorOn": true,
+      "isSyncPoint": false
+    },
+    {
+      "id": "node_work_client",
+      "type": "folder",
+      "name": "cliente",
+      "x": 751.1666666666665,
+      "y": -1055.8809523809518,
+      "parent": "node_work_unit",
+      "isClientNode": true,
+      "isMirrorOn": true,
+      "isSyncPoint": false,
+      "parentOnline": "n_1787324375195",
+      "isVariable": true,
+      "variableName": "cliente",
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "node_work_project",
+      "type": "folder",
+      "name": "Proyecto",
+      "x": 1004.9999999999999,
+      "y": -1055.8809523809518,
+      "parent": "node_work_client",
+      "isProjectNode": true,
+      "isMirrorOn": true,
+      "isSyncPoint": true,
+      "isVariable": true,
+      "variableName": "proyecto",
+      "exampleValue": "surf_love",
+      "hasNickVar": true,
+      "nickExample": "SURF",
+      "parentOnline": "n_1787324375195"
+    },
+    {
+      "id": "node_work_episodios",
+      "type": "folder",
+      "name": "episodios",
+      "x": 1236.6666666666667,
+      "y": -1055.8809523809518,
+      "parent": "node_work_project",
+      "isMirrorOn": false,
+      "isSyncPoint": false,
+      "parentOnline": "n_1787324375195"
+    },
+    {
+      "id": "node_work_ep",
+      "type": "folder",
+      "name": "n. de episodio",
+      "x": 1447.6190476190475,
+      "y": -1055.8809523809518,
+      "parent": "node_work_episodios",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_work_secuencias",
+      "type": "folder",
+      "name": "secuencias",
+      "x": 1671.6666666666667,
+      "y": -1055.8809523809518,
+      "parent": "node_work_ep"
+    },
+    {
+      "id": "node_work_seq",
+      "type": "folder",
+      "name": "n. de secuencia",
+      "x": 1903.3333333333333,
+      "y": -1055.8809523809518,
+      "parent": "node_work_secuencias",
+      "isVariable": true,
+      "variableName": "ESC",
+      "isScene": true,
+      "exampleValue": "066",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_work_shots",
+      "type": "folder",
+      "name": "shots",
+      "x": 2114.9999999999995,
+      "y": -1055.8809523809518,
+      "parent": "node_work_seq"
+    },
+    {
+      "id": "node_work_shot_id",
+      "type": "folder",
+      "name": "nombre del shot",
+      "x": 2356.6666666666674,
+      "y": -1055.8809523809518,
+      "parent": "node_work_shots",
+      "isVariable": true,
+      "variableName": "SHOTNAME",
+      "isShot": true,
+      "exampleValue": "",
+      "isMirrorOn": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[NICK]_[EP]_[ESC]_[SHOT]",
+        "versionPadding": 3
+      },
+      "itemConfig": {
+        "cosmeticName": "1130"
+      },
+      "isAssetFocus": false
+    },
+    {
+      "id": "node_work_comp",
+      "type": "folder",
+      "name": "compo",
+      "x": 2731.218011147521,
+      "y": -1120.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "node_work_nuke_nk",
+      "type": "file",
+      "name": "nuke_File.nk",
+      "x": 3091.015630195139,
+      "y": -1122.740089945794,
+      "parent": "node_work_comp",
+      "isScene": true,
+      "isVariable": true,
+      "variableName": "NukeFile",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SHOTNAME]_[PROCESO]_[version][ext]",
+        "versionPadding": 3
+      },
+      "isRenderFile": false
+    },
+    {
+      "id": "node_media_unit",
+      "type": "unit",
+      "name": "Z",
+      "x": 55.1612772360925,
+      "y": 420,
+      "parent": null,
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_media_interno",
+      "type": "folder",
+      "name": "INTERNO",
+      "x": 255.1612772360925,
+      "y": 420,
+      "parent": "node_media_unit"
+    },
+    {
+      "id": "node_media_media",
+      "type": "folder",
+      "name": "MEDIA",
+      "x": 451.6666666666667,
+      "y": 420,
+      "parent": "node_media_interno"
+    },
+    {
+      "id": "node_media_client",
+      "type": "folder",
+      "name": "cliente",
+      "x": 651.6666666666666,
+      "y": 420,
+      "parent": "node_media_media",
+      "isClientNode": true,
+      "isMirrorOn": true,
+      "isVariable": true,
+      "variableName": "cliente",
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "node_media_project",
+      "type": "folder",
+      "name": "Proyecto",
+      "x": 851.6666666666666,
+      "y": 420,
+      "parent": "node_media_client",
+      "isProjectNode": true,
+      "isMirrorOn": true,
+      "isVariable": true,
+      "variableName": "proyecto",
+      "exampleValue": "surf_love",
+      "hasNickVar": true,
+      "nickExample": "SURF"
+    },
+    {
+      "id": "node_media_ep",
+      "type": "folder",
+      "name": "n. de episodio",
+      "x": 1430,
+      "y": 420,
+      "parent": "node_media_project",
+      "isVariable": true,
+      "variableName": "EP",
+      "isEpisode": true,
+      "exampleValue": "B03",
+      "isMirrorOn": true,
+      "isSyncPoint": true,
+      "parentOnline": "n_1787324582116"
+    },
+    {
+      "id": "node_media_seq",
+      "type": "folder",
+      "name": "n. de secuencia",
+      "x": 1890,
+      "y": 418.3333333333333,
+      "parent": "node_media_ep",
+      "isVariable": true,
+      "variableName": "ESC",
+      "isScene": true,
+      "exampleValue": "066",
+      "isMirrorOn": true
+    },
+    {
+      "id": "node_media_shot_id",
+      "type": "folder",
+      "name": "nombre del shot",
+      "x": 2350,
+      "y": 420,
+      "parent": "node_media_seq",
+      "isVariable": true,
+      "variableName": "SHOTNAME",
+      "isShot": true,
+      "exampleValue": "",
+      "isMirrorOn": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[NICK]_[EP]_[ESC]_[SHOT]",
+        "versionPadding": 3
+      }
+    },
+    {
+      "id": "node_media_in",
+      "type": "folder",
+      "name": "in",
+      "x": 2668.361111111114,
+      "y": 82.8055555555556,
+      "parent": "node_media_shot_id",
+      "isRenderFolder": true
+    },
+    {
+      "id": "node_media_nuke",
+      "type": "folder",
+      "name": "nuke",
+      "x": 2663.333333333335,
+      "y": 415.2222222222225,
+      "parent": "node_media_shot_id"
+    },
+    {
+      "id": "node_media_fullres",
+      "type": "folder",
+      "name": "fullres",
+      "x": 2967.9166666666656,
+      "y": 361.94444444444423,
+      "parent": "node_media_nuke",
+      "isRenderFolder": false
+    },
+    {
+      "id": "node_media_prerender",
+      "type": "folder",
+      "name": "prerender",
+      "x": 2951.428571428572,
+      "y": 772.4206349206349,
+      "parent": "node_media_nuke",
+      "isRenderFolder": false
+    },
+    {
+      "id": "node_media_exportia",
+      "type": "folder",
+      "name": "exportIA",
+      "x": 2945.9722222222235,
+      "y": 1008.214285714286,
+      "parent": "node_media_nuke",
+      "isRenderFolder": false
+    },
+    {
+      "id": "n_1787257335300",
+      "type": "unit",
+      "name": "G",
+      "x": -7.583333333333364,
+      "y": -1291.3333333333333,
+      "parent": null,
+      "isVariable": false
+    },
+    {
+      "id": "n_1787260641960",
+      "type": "folder",
+      "name": "IA",
+      "x": 2687.2222222222263,
+      "y": 1462.7777777777776,
+      "parent": "node_media_shot_id",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260687088",
+      "type": "folder",
+      "name": "export",
+      "x": 2990.1388888888937,
+      "y": 1346.6666666666667,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260705337",
+      "type": "folder",
+      "name": "ref",
+      "x": 2988.4722222222263,
+      "y": 1456.5277777777776,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787260709228",
+      "type": "folder",
+      "name": "enc",
+      "x": 2988.4722222222263,
+      "y": 1542.7777777777776,
+      "parent": "n_1787260641960",
+      "isRenderFolder": true
+    },
+    {
+      "id": "n_1787324375195",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 755.8333333333329,
+      "y": -1296.6666666666667,
+      "parent": "n_1787257335300"
+    },
+    {
+      "id": "n_1787324439017",
+      "type": "unit",
+      "name": "G",
+      "x": 41.19240244458037,
+      "y": 552.2587502978394,
+      "parent": null,
+      "isVariable": false
+    },
+    {
+      "id": "n_1787324442620",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 651.0398211147432,
+      "y": 525.8495527868573,
+      "parent": "n_1787324439017"
+    },
+    {
+      "id": "n_1787324582116",
+      "type": "folder",
+      "name": "media online",
+      "x": 847.2842273870812,
+      "y": 529.6051465145193,
+      "parent": "n_1787324442620",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[proyecto]_media",
+        "versionPadding": 3
+      },
+      "isVariable": true,
+      "variableName": "",
+      "isProjectNode": true,
+      "exampleValue": "surf_love"
+    },
+    {
+      "id": "n_1787338396108",
+      "type": "folder",
+      "name": "Render version",
+      "x": 3200.9166666666647,
+      "y": 355.43253968253964,
+      "parent": "node_media_fullres",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]",
+        "versionPadding": 3
+      },
+      "isRenderFolder": true,
+      "isVariable": true,
+      "isFinalRender": true
+    },
+    {
+      "id": "n_1787338520954",
+      "type": "folder",
+      "name": "mov",
+      "x": 2962.500000000004,
+      "y": 503.13888888888926,
+      "parent": "node_media_nuke",
+      "isRenderFolder": true,
+      "isCompressionRender": false
+    },
+    {
+      "id": "n_1787340276003",
+      "type": "file",
+      "name": "Full ress de nuke",
+      "x": 3495.738095238093,
+      "y": 351.8611111111111,
+      "parent": "n_1787338396108",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]_[RenderCounter####][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".exr"
+      },
+      "isFinalRender": true
+    },
+    {
+      "id": "n_1787340876494",
+      "type": "file",
+      "name": "Mov  en baja",
+      "x": 3494.666666666664,
+      "y": 463.46825396825375,
+      "parent": "n_1787338520954",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mov"
+      },
+      "isCompressionRender": true
+    },
+    {
+      "id": "n_1787341075693",
+      "type": "file",
+      "name": "mov en alta",
+      "x": 3483.952380952378,
+      "y": 592.468253968254,
+      "parent": "n_1787338520954",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[SceneName][SceneVersion]_st2084[ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mov"
+      },
+      "isCompressionRender": true
+    },
+    {
+      "id": "n_1787341247594",
+      "type": "folder",
+      "name": "prerender name",
+      "x": 3198.095238095239,
+      "y": 775.0873015873017,
+      "parent": "node_media_prerender",
+      "isRenderFolder": true,
+      "isVariable": true,
+      "variableName": "Prerender",
+      "exampleValue": "denoise",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[EP]_[ESC]_[SHOT]_[Prerender]",
+        "versionPadding": 3
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787341791084",
+      "type": "file",
+      "name": "Full ress de nuke",
+      "x": 3482.738095238093,
+      "y": 781.8611111111111,
+      "parent": "n_1787341247594",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[Prerender]_[RenderCounter####][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".exr"
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787341942233",
+      "type": "folder",
+      "name": "export de ia folder",
+      "x": 3210.7738095238105,
+      "y": 1007.5873015873017,
+      "parent": "node_media_exportia",
+      "isRenderFolder": true,
+      "isVariable": true,
+      "variableName": "prerenderia",
+      "exampleValue": "1920x1080_CRP",
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[EP]_[ESC]_[SHOT]_[prerenderia]",
+        "versionPadding": 3
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787342035715",
+      "type": "file",
+      "name": "export ia png",
+      "x": 3475.5952380952353,
+      "y": 1007.5753968253968,
+      "parent": "n_1787341942233",
+      "isVariable": true,
+      "isRenderFile": true,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[Prerenderia]_[RenderCounter####][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".png"
+      },
+      "isExternalTcl": true,
+      "variableName": "EXPIA"
+    },
+    {
+      "id": "n_1787342063228",
+      "type": "file",
+      "name": "export de ia mp4",
+      "x": 3212.7380952380927,
+      "y": 1110.4325396825402,
+      "parent": "node_media_exportia",
+      "isVariable": true,
+      "isRenderFile": false,
+      "nameConfig": {
+        "enabled": true,
+        "pattern": "[prerenderia][ext]",
+        "versionPadding": 4,
+        "allowedExtensions": ".mp4"
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693210328",
+      "type": "folder",
+      "name": "Matte",
+      "x": 2731.218011147521,
+      "y": -820.2400899457933,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693448592",
+      "type": "folder",
+      "name": "Roto",
+      "x": 2731.218011147521,
+      "y": -670.2400899457936,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693460909",
+      "type": "folder",
+      "name": "SceneComp",
+      "x": 2731.218011147521,
+      "y": -595.2400899457936,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693471261",
+      "type": "folder",
+      "name": "Simulacion",
+      "x": 2731.218011147521,
+      "y": -520.2400899457936,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693480068",
+      "type": "folder",
+      "name": "Tracking",
+      "x": 2731.218011147521,
+      "y": -445.24008994579367,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693495952",
+      "type": "folder",
+      "name": "Lighting",
+      "x": 2731.218011147521,
+      "y": -895.2400899457933,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693505027",
+      "type": "folder",
+      "name": "Layout",
+      "x": 2731.218011147521,
+      "y": -970.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693523471",
+      "type": "folder",
+      "name": "Export_caches",
+      "x": 2731.218011147521,
+      "y": -1045.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693542507",
+      "type": "folder",
+      "name": "clean",
+      "x": 2731.218011147521,
+      "y": -1195.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    },
+    {
+      "id": "n_1787693556901",
+      "type": "folder",
+      "name": "chroma",
+      "x": 2731.218011147521,
+      "y": -1270.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693569638",
+      "type": "folder",
+      "name": "bloking",
+      "x": 2731.218011147521,
+      "y": -1345.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693587133",
+      "type": "folder",
+      "name": "Animacion_A",
+      "x": 2731.218011147521,
+      "y": -1420.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693596425",
+      "type": "folder",
+      "name": "Animacion",
+      "x": 2731.218011147521,
+      "y": -1495.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693603293",
+      "type": "folder",
+      "name": "3D",
+      "x": 2731.218011147521,
+      "y": -1570.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693610480",
+      "type": "folder",
+      "name": "2D",
+      "x": 2731.218011147521,
+      "y": -1645.2400899457934,
+      "parent": "node_work_shot_id",
+      "isProcess": false,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      },
+      "isExternalTcl": true
+    },
+    {
+      "id": "n_1787693686105",
+      "type": "folder",
+      "name": "Mogra",
+      "x": 2731.218011147521,
+      "y": -745.2400899457936,
+      "parent": "node_work_shot_id",
+      "isProcess": true,
+      "nameConfig": {
+        "enabled": false,
+        "pattern": ""
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "node_work_unit",
+      "to": "node_media_unit",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_client",
+      "to": "node_media_client",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_project",
+      "to": "node_media_project",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_ep",
+      "to": "node_media_ep",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_seq",
+      "to": "node_media_seq",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_shot_id",
+      "to": "node_media_shot_id",
+      "fromPort": "mirror",
+      "toPort": "mirror"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787338396108",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787338520954",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787341247594",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    },
+    {
+      "from": "node_work_nuke_nk",
+      "to": "n_1787341942233",
+      "fromPort": "out-render",
+      "toPort": "in-render"
+    }
+  ],
+  "_fileName": "master_shot.json"
+}

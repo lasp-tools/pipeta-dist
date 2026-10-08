@@ -1,0 +1,535 @@
+{
+  "id": "master_asset",
+  "name": "Master_Asset",
+  "nodes": [
+    {
+      "id": "n_1787759161938",
+      "type": "unit",
+      "name": "Z",
+      "x": -72.90909090909088,
+      "y": 153.90909090909093,
+      "parent": null
+    },
+    {
+      "id": "n_1787759164677",
+      "type": "unit",
+      "name": "G",
+      "x": -69.68649127106742,
+      "y": -112.7459650842698,
+      "parent": null
+    },
+    {
+      "id": "n_1787759213931",
+      "type": "folder",
+      "name": "Cliente",
+      "x": 172.5454545454546,
+      "y": 153.90909090909093,
+      "parent": "n_1787759161938",
+      "isClientNode": true,
+      "isVariable": true,
+      "exampleValue": "atresmedia"
+    },
+    {
+      "id": "n_1787759221741",
+      "type": "folder",
+      "name": " Proyecto",
+      "x": 515,
+      "y": 137,
+      "parent": "n_1787759213931",
+      "isVariable": true,
+      "isProjectNode": true,
+      "isSyncPoint": true,
+      "parentOnline": "n_1787759287671",
+      "exampleValue": "surf_love"
+    },
+    {
+      "id": "n_1787759287671",
+      "type": "folder",
+      "name": "Unidades compartidas",
+      "x": 172,
+      "y": -110,
+      "parent": "n_1787759164677"
+    },
+    {
+      "id": "n_1787759438996",
+      "type": "folder",
+      "name": "assets2D",
+      "x": 756.8181818181813,
+      "y": 139.72727272727272,
+      "parent": "n_1787759221741",
+      "isMainCategory": true,
+      "isVariable": false,
+      "variableName": "MAIN_CAT",
+      "exampleValue": "3D"
+    },
+    {
+      "id": "n_1787770763638_eiaf",
+      "type": "folder",
+      "name": "assets3D",
+      "x": 729.680375180375,
+      "y": 852.1461038961039,
+      "parent": "n_1787759221741",
+      "isMainCategory": true,
+      "isVariable": false,
+      "variableName": "MAIN_CAT",
+      "exampleValue": "3D"
+    },
+    {
+      "id": "n_1787770861682",
+      "type": "folder",
+      "name": "concepts",
+      "x": 1113.9772727272727,
+      "y": -376.8636363636363,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787770889778_sfd9",
+      "type": "folder",
+      "name": "gizmos",
+      "x": 1120.1136363636367,
+      "y": -260.1590909090909,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787771113748_q3nn",
+      "type": "folder",
+      "name": "grafica",
+      "x": 1109.886363636364,
+      "y": -119.59090909090907,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787771119422_p3p4",
+      "type": "folder",
+      "name": "HDRi",
+      "x": 1110.7954545454552,
+      "y": 149.61363636363632,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787773117311",
+      "type": "folder",
+      "name": "nombre_concept",
+      "x": 1313.9772727272727,
+      "y": -376.8636363636363,
+      "parent": "n_1787770861682",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773605719",
+      "type": "folder",
+      "name": "Export",
+      "x": 1527.7272727272727,
+      "y": -493.11363636363626,
+      "parent": "n_1787773117311",
+      "isProcess": true,
+      "exampleValue": "Export",
+      "processConfig": {
+        "parentItem": true
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773721050_nxge",
+      "type": "folder",
+      "name": "nombre_grafica",
+      "x": 1316.4772727272727,
+      "y": -118.11363636363632,
+      "parent": "n_1787771113748_q3nn",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773779718_yv23",
+      "type": "folder",
+      "name": "_Input",
+      "x": 1522.2272727272727,
+      "y": -226.86363636363632,
+      "parent": "n_1787773721050_nxge",
+      "isProcess": true,
+      "exampleValue": "_Input",
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773796373_20ww",
+      "type": "folder",
+      "name": "Animacion",
+      "x": 1519.9772727272727,
+      "y": -159.36363636363632,
+      "parent": "n_1787773721050_nxge",
+      "isProcess": true,
+      "exampleValue": "Animacion",
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773813389_c43a",
+      "type": "folder",
+      "name": "Export",
+      "x": 1518.9772727272727,
+      "y": -88.11363636363632,
+      "parent": "n_1787773721050_nxge",
+      "isProcess": true,
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787773903809_injn"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773819861_ykpf",
+      "type": "folder",
+      "name": "Ilustracion",
+      "x": 1518.9772727272727,
+      "y": -18.113636363636317,
+      "parent": "n_1787773721050_nxge",
+      "isProcess": true,
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787773117311",
+          "n_1787773903809_injn"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773827014_8h3r",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1517.7272727272727,
+      "y": 51.88636363636368,
+      "parent": "n_1787773721050_nxge",
+      "isProcess": true,
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787773117311",
+          "n_1787773903809_injn"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787773851159_ewtc",
+      "type": "folder",
+      "name": "matte_painting",
+      "x": 1110.7954545454552,
+      "y": 227.11363636363632,
+      "parent": "n_1787759438996",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787773903809_injn",
+      "type": "folder",
+      "name": "nombre_matte",
+      "x": 1302.4772727272723,
+      "y": 227.2196969696969,
+      "parent": "n_1787773851159_ewtc",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787773928819",
+      "type": "folder",
+      "name": "Boceto",
+      "x": 1507.4772727272723,
+      "y": 228.2196969696969,
+      "parent": "n_1787773903809_injn",
+      "isProcess": true,
+      "exampleValue": "Boceto",
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774155251_d174",
+      "type": "folder",
+      "name": "personajes",
+      "x": 1015.1446608946615,
+      "y": 764.8437950937949,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774167189_xqqh",
+      "type": "folder",
+      "name": "previs",
+      "x": 1015.1446608946615,
+      "y": 839.8437950937949,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774175083_pwnp",
+      "type": "folder",
+      "name": "props",
+      "x": 1015.1446608946615,
+      "y": 914.8437950937949,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774180259_01i3",
+      "type": "folder",
+      "name": "sets",
+      "x": 1015.1446608946615,
+      "y": 989.8437950937949,
+      "parent": "n_1787770763638_eiaf",
+      "isCategory": true,
+      "isVariable": false,
+      "variableName": "CAT",
+      "exampleValue": ""
+    },
+    {
+      "id": "n_1787774219390_1mea",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1215.1446608946615,
+      "y": 764.8437950937949,
+      "parent": "n_1787774155251_d174",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774351467",
+      "type": "folder",
+      "name": "Chequeo_Escala",
+      "x": 1518.3661616161605,
+      "y": 595.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Chequeo_Escala",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774358666_qlki",
+      "type": "folder",
+      "name": "Diseno",
+      "x": 1518.3661616161605,
+      "y": 670.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Diseno",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774971923_pujk",
+          "n_1787774968949_rrcw"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774365172_81p3",
+      "type": "folder",
+      "name": "Modelado",
+      "x": 1518.3661616161605,
+      "y": 745.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Modelado",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774370244_55vx",
+      "type": "folder",
+      "name": "Referencias",
+      "x": 1518.3661616161605,
+      "y": 820.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Referencias",
+      "isFileContainer": true,
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      }
+    },
+    {
+      "id": "n_1787774376076_tz8z",
+      "type": "folder",
+      "name": "Rig",
+      "x": 1518.3661616161605,
+      "y": 895.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Rig",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774381532_e5c4",
+      "type": "folder",
+      "name": "Shading",
+      "x": 1518.3661616161605,
+      "y": 970.8863636363634,
+      "parent": "n_1787774219390_1mea",
+      "isProcess": true,
+      "exampleValue": "Shading",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774385987_raut",
+      "type": "folder",
+      "name": "Texturas",
+      "x": 1518.3661616161605,
+      "y": 1045.8863636363635,
+      "parent": "n_1787774219390_1mea",
+      "nameConfig": {
+        "enabled": false
+      },
+      "isProcess": true,
+      "exampleValue": "Texturas",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    },
+    {
+      "id": "n_1787774903864_ozc3",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1215.1446608946615,
+      "y": 839.8437950937949,
+      "parent": "n_1787774167189_xqqh",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774968949_rrcw",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1215.1446608946615,
+      "y": 914.8437950937949,
+      "parent": "n_1787774175083_pwnp",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787774971923_pujk",
+      "type": "folder",
+      "name": "nombre_asset",
+      "x": 1215.1446608946615,
+      "y": 989.8437950937949,
+      "parent": "n_1787774180259_01i3",
+      "isVariable": true,
+      "variableName": "ASSET",
+      "exampleValue": "tortuga",
+      "isItem": true,
+      "isAssetFocus": true
+    },
+    {
+      "id": "n_1787775647564_ung4",
+      "type": "folder",
+      "name": "Texturas",
+      "x": 1518.3661616161605,
+      "y": 1120.8863636363635,
+      "parent": "n_1787774219390_1mea",
+      "nameConfig": {
+        "enabled": false
+      },
+      "isProcess": true,
+      "exampleValue": "Texturas",
+      "processConfig": {
+        "parentItem": true,
+        "additionalParents": [
+          "n_1787774903864_ozc3",
+          "n_1787774968949_rrcw",
+          "n_1787774971923_pujk"
+        ]
+      },
+      "isFileContainer": true
+    }
+  ],
+  "connections": [],
+  "_fileName": "master_asset.json",
+  "annotations": []
+}

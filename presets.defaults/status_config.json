@@ -1,0 +1,60 @@
+{
+  "statuses": [
+    {
+      "id": "none",
+      "name": "Ninguno",
+      "color": "#757575",
+      "icon": "⚪",
+      "scope": "both",
+      "isDefault": true
+    },
+    {
+      "id": "assigned",
+      "name": "Asignado",
+      "color": "#2196f3",
+      "icon": "🔵",
+      "scope": "both",
+      "isDefault": false
+    },
+    {
+      "id": "in_progress",
+      "name": "En Proceso",
+      "color": "#ff9800",
+      "icon": "🟠",
+      "scope": "both",
+      "isDefault": false
+    },
+    {
+      "id": "review",
+      "name": "Review",
+      "color": "#9c27b0",
+      "icon": "🟣",
+      "scope": "both",
+      "isDefault": false
+    },
+    {
+      "id": "approved",
+      "name": "Aprobado",
+      "color": "#4caf50",
+      "icon": "🟢",
+      "scope": "both",
+      "isDefault": false
+    },
+    {
+      "id": "canceled",
+      "name": "Cancelado",
+      "color": "#f44336",
+      "icon": "🔴",
+      "scope": "both",
+      "isDefault": false
+    },
+    {
+      "id": "hold",
+      "name": "En Pausa / Hold",
+      "color": "#ffc107",
+      "icon": "🟡",
+      "scope": "both",
+      "isDefault": false
+    }
+  ]
+}

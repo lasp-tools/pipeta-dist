@@ -1,0 +1,22 @@
+{
+  "id": "proj_1786715737162",
+  "name": "surf_love",
+  "client": "atresmedia",
+  "projectCode": "SURF",
+  "roots": {
+    "work": "Z:/atresmedia/surf_love",
+    "media": "Z:/INTERNO/MEDIA/atresmedia/surf_love",
+    "onlineWork": "G:/Unidades compartidas/surf_love",
+    "onlineMedia": "G:/Unidades compartidas/surf_love_media"
+  },
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  }
+}

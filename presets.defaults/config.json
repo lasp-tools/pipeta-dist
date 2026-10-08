@@ -1,0 +1,7 @@
+{
+  "defaultViewMode": "local",
+  "validationPresetAsset": "master_asset",
+  "validationPresetShot": "master_shot",
+  "loggingEnabled": true,
+  "logsPath": "C:\\TOOLS\\APPS\\Pipeta\\logs"
+}

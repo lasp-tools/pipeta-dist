@@ -1,0 +1,23 @@
+{
+  "id": "asset_1787758585971",
+  "name": "Default Asset",
+  "_fileName": "default_asset.json",
+  "nodes": [
+    {
+      "id": "n_1787758669257",
+      "type": "unit",
+      "name": "Z",
+      "x": -105,
+      "y": 191,
+      "parent": null
+    },
+    {
+      "id": "n_1787758670009",
+      "type": "unit",
+      "name": "G",
+      "x": -139,
+      "y": 289,
+      "parent": null
+    }
+  ]
+}
