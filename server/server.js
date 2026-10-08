@@ -4430,10 +4430,19 @@ function getPythonExecutable() {
     const candidates = [
         path.join(__dirname, '../bin/python/python.exe'),
         'C:\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
+        '\\\\LASP-VM\\Pipeta\\bin\\python\\python.exe',
+        '\\\\192.168.206.114\\Pipeta\\bin\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
-        'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe',
-        'S:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe',
+        'Z:\\INTERNO\\TOOLS\\Sammie-lasp\\python\\python.exe',
+        'C:\\TOOLS\\Sammie-lasp\\python\\python.exe',
+        // Fallback solo para entorno de desarrollo LASP-VM si existe S:
+        ...(fs.existsSync('S:\\INTERNO\\TOOLS') ? [
+            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
+            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
+            'S:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe'
+        ] : []),
         'C:\\Python39\\python.exe',
         'C:\\Python310\\python.exe',
         'C:\\Python311\\python.exe',
@@ -4456,7 +4465,7 @@ function getPythonExecutable() {
         if (cand.includes('\\') && !fs.existsSync(cand)) continue;
         try {
             const out = require('child_process').execSync(`"${cand}" -c "import sys; print(sys.version_info[0])"`, {
-                timeout: 3000,
+                timeout: 5000,
                 stdio: ['ignore', 'pipe', 'pipe'],
                 windowsHide: true
             }).toString().trim();
@@ -4503,7 +4512,7 @@ function runRamonBridge(args, timeoutMs = 30000) {
                 }
                 if (errMsg.includes('Microsoft Store') || errMsg.includes('No se encontró Python') || errMsg.includes('No se encontr')) {
                     detectedPythonBin = null;
-                    errMsg = "No se encontró un intérprete de Python en el equipo ni en la red (Z:/S:). Asegúrate de tener acceso a Z:\\INTERNO\\TOOLS\\... o Python instalado.";
+                    errMsg = "No se encontró un intérprete de Python en el equipo ni en la red (Z:). Asegúrate de tener acceso a Z:\\INTERNO\\TOOLS\\... o sincronizar Pipeta desde la red.";
                 }
                 return resolve({ success: false, error: errMsg });
             }

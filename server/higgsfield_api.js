@@ -30,7 +30,21 @@ function getCandidateCredPaths() {
         conf: 'C:/Users/lasp-mpastorino/.config/higgsfield/config.json'
     });
 
-    // 3. Rutas en Z:\ (si existieran compartidas para workers de estudio)
+    // 3. Rutas en Z:\ (centralizadas en GITHUB/TOOLS/APPS/credentials/higgsfield)
+    candidates.push({
+        cred: 'Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/credentials/higgsfield/credentials.json',
+        conf: 'Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/credentials/higgsfield/config.json'
+    });
+    candidates.push({
+        cred: '//192.168.206.116/Z/INTERNO/TOOLS/GITHUB/TOOLS/APPS/credentials/higgsfield/credentials.json',
+        conf: '//192.168.206.116/Z/INTERNO/TOOLS/GITHUB/TOOLS/APPS/credentials/higgsfield/config.json'
+    });
+    candidates.push({
+        cred: 'C:/TOOLS/APPS/credentials/higgsfield/credentials.json',
+        conf: 'C:/TOOLS/APPS/credentials/higgsfield/config.json'
+    });
+
+    // 4. Fallbacks históricos
     candidates.push({
         cred: 'Z:/INTERNO/TOOLS/higgsfield/credentials.json',
         conf: 'Z:/INTERNO/TOOLS/higgsfield/config.json'
