@@ -1,14 +1,15 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.26"
+set "APP_VERSION=v1.1.43"
 set "APP_PORT=3002"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 set "SERVER_DIR=%LOCAL_DIR%\server"
-set "NETWORK_DIR=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+set "NETWORK_DIR=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+if not exist "%NETWORK_DIR%\server\server.js" set "NETWORK_DIR=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 if not exist "%NETWORK_DIR%\server\server.js" (
-    if exist "\\LASP-VM\Pipeta\server\server.js" (
-        set "NETWORK_DIR=\\LASP-VM\Pipeta"
+    if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        set "NETWORK_DIR=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
     )
 )
 set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
@@ -53,7 +54,7 @@ echo [INFO] Sincronizando archivos a disco local en %LOCAL_DIR%...
 
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
 
 if exist "%~dp0presets" (
     if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
@@ -86,10 +87,28 @@ cd /d "%SERVER_DIR%"
 set "NODE_BIN=node"
 where node >nul 2>&1
 if %errorlevel% neq 0 (
+    if not exist "%LOCAL_DIR%\bin\node\node.exe" (
+        echo [INFO] Runtimes no detectados en disco local.
+        echo [INFO] Hidratando dependencias desde el deposito central...
+        set "DEPOT_ZIP=Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+        if not exist "!DEPOT_ZIP!" (
+            if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
+                set "DEPOT_ZIP=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+            )
+        )
+        if exist "!DEPOT_ZIP!" (
+            echo [INFO] Extrayendo dependencias con tar nativo en %LOCAL_DIR%...
+            tar.exe -xf "!DEPOT_ZIP!" -C "%LOCAL_DIR%"
+        )
+    )
     if exist "%LOCAL_DIR%\bin\node\node.exe" (
         set "NODE_BIN=%LOCAL_DIR%\bin\node\node.exe"
+    ) else if exist "Z:\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe" (
+        set "NODE_BIN=Z:\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe"
+    ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe" (
+        set "NODE_BIN=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe"
     ) else (
-        echo [ERROR] No se encontro Node.js en el sistema ni en bin\node\node.exe
+        echo [ERROR] No se encontro Node.js en el sistema ni en bin\node\node.exe ni en el _DEPOT.
         pause
         exit /b 1
     )
@@ -105,7 +124,7 @@ if exist "%RESTART_FLAG%" (
     echo.
     echo [INFO] Reinicio solicitado por la aplicacion. Sincronizando y relanzando...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER
@@ -115,7 +134,7 @@ if %EXIT_CODE% equ 42 (
     echo.
     echo [INFO] Reinicio solicitado (codigo 42). Relanzando servidor...
     if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
+        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
     )
     timeout /t 1 >nul
     goto :START_SERVER

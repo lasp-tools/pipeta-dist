@@ -339,7 +339,7 @@ const ShotNavigator = {
                         }
                     }
                 }
-                if (updated) {
+                if (updated && ShotNavigator.trackerFilePath) {
                     await ShotNavigator.saveTracker();
                 }
             }
@@ -628,8 +628,7 @@ const ShotNavigator = {
             }
         });
 
-        // 6. Guardar snapshot local
-        await ShotNavigator.saveTracker();
+        // 6. Sincronización completa en memoria (no forzar escritura a disco pasiva para no ensuciar proyectos limpios)
     },
 
     discoverShotsFromDisk: async () => {
@@ -768,14 +767,22 @@ const ShotNavigator = {
 
     saveTracker: async () => {
         if (!ShotNavigator.project) return;
+        const projectWork = (ShotNavigator.project.roots?.work || '').replace(/\//g, '\\');
+        if (!projectWork || projectWork.includes('[cliente]') || projectWork.includes('[proyecto]')) return;
         const workflowDir = ShotNavigator.getProjectWorkflowDir();
         
         try {
-            await API.workflow.saveTracker(workflowDir, ShotNavigator.trackerData);
-            console.log("[ShotNav] Tracker saved successfully to", workflowDir);
+            const res = await API.workflow.saveTracker(workflowDir, ShotNavigator.trackerData);
+            if (res && res.skipped) {
+                console.log("[ShotNav] Tracker save skipped:", res.reason);
+                return;
+            }
+            if (res && res.success) {
+                ShotNavigator.trackerFilePath = res.trackerFile || pathJoin(workflowDir, 'shot_tracker.json');
+                console.log("[ShotNav] Tracker saved successfully to", workflowDir);
+            }
         } catch(e) {
             console.error("[ShotNav] Error saving tracker:", e);
-            alert("Error al guardar base de datos de workflow: " + e.message);
         }
     },
 

@@ -75,17 +75,17 @@ function showExplorerLoading(containerId = null, text = 'Cargando contenido...')
         let overlay = pane.querySelector('.explorer-loading-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
-            overlay.className = 'explorer-loading-overlay';
+            overlay.className = 'explorer-loading-overlay active';
             overlay.innerHTML = `
                 <div class="explorer-loading-spinner"></div>
                 <div class="explorer-loading-text">${text}</div>
             `;
             pane.appendChild(overlay);
         } else {
+            overlay.classList.add('active');
             const textEl = overlay.querySelector('.explorer-loading-text');
             if (textEl) textEl.textContent = text;
         }
-        requestAnimationFrame(() => overlay.classList.add('active'));
     });
 }
 window.showExplorerLoading = showExplorerLoading;
@@ -101,9 +101,7 @@ function hideExplorerLoading(containerId = null) {
             : item.querySelector('.explorer-loading-overlay');
         if (overlay) {
             overlay.classList.remove('active');
-            setTimeout(() => {
-                if (!overlay.classList.contains('active')) overlay.remove();
-            }, 180);
+            overlay.remove();
         }
     });
 }
@@ -538,9 +536,13 @@ function createTreeNode(item, level, containerId = '') {
         }
 
         updateDetailsPanel(item);
-        if (item.isDirectory && !e.shiftKey) toggleNode(wrapper, item, level, row);
-
-        if (typeof triggerTreeMirror === 'function') {
+        if (item.isDirectory && !e.shiftKey) {
+            const wasHidden = !wrapper._childrenContainer || wrapper._childrenContainer.style.display === 'none';
+            await toggleNode(wrapper, item, level, row);
+            if (wasHidden && typeof triggerTreeMirror === 'function') {
+                triggerTreeMirror(item.path);
+            }
+        } else if (typeof triggerTreeMirror === 'function') {
             triggerTreeMirror(item.path);
         }
     };
@@ -560,6 +562,9 @@ function createTreeNode(item, level, containerId = '') {
 async function toggleNode(wrapper, item, level, rowElement) {
     const container = wrapper._childrenContainer;
     if (!container) return;
+    if (wrapper._loadingPromise) {
+        return wrapper._loadingPromise;
+    }
     const isHidden = container.style.display === 'none';
     const arrowSpan = rowElement.querySelector('.tree-arrow') || rowElement.querySelector('span');
 
@@ -571,46 +576,61 @@ async function toggleNode(wrapper, item, level, rowElement) {
 
         if (!wrapper._loaded) {
             container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666;">Cargando...</div>`;
-            const data = await fetchDir(item.path);
-            container.innerHTML = "";
-            const allDiskItems = (data && data.items) ? data.items : [];
-            const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
-            const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
-            const filteredItems = (typeof window.filterExplorerItems === 'function')
-                ? window.filterExplorerItems(decoratedItems, containerId, item.path, allDiskItems)
-                : decoratedItems;
-            const finalItems = (typeof collapseImageSequences === 'function')
-                ? collapseImageSequences(filteredItems)
-                : filteredItems;
+            wrapper._loadingPromise = (async () => {
+                try {
+                    const data = await fetchDir(item.path);
+                    container.innerHTML = "";
+                    const allDiskItems = (data && data.items) ? data.items : [];
+                    const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
+                    const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
+                    const filteredItems = (typeof window.filterExplorerItems === 'function')
+                        ? window.filterExplorerItems(decoratedItems, containerId, item.path, allDiskItems)
+                        : decoratedItems;
+                    const finalItems = (typeof collapseImageSequences === 'function')
+                        ? collapseImageSequences(filteredItems)
+                        : filteredItems;
 
-            if (finalItems.length === 0) {
-                const emptyChildMsg = window.explorerOnlyMyTasks
-                    ? `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666; font-size:0.8rem; font-style:italic;">(Sin tareas asignadas en esta carpeta)</div>`
-                    : `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
-                container.innerHTML = emptyChildMsg;
-            } else {
-                const fragment = document.createDocumentFragment();
-                const assignedSet = (window.explorerOnlyMyTasks && typeof window.getExplorerAssignedTaskNames === 'function')
-                    ? window.getExplorerAssignedTaskNames()
-                    : new Set();
+                    if (finalItems.length === 0) {
+                        const emptyChildMsg = window.explorerOnlyMyTasks
+                            ? `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666; font-size:0.8rem; font-style:italic;">(Sin tareas asignadas en esta carpeta)</div>`
+                            : `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#555; font-size:0.8rem; font-style:italic;">(Carpeta vacía)</div>`;
+                        container.innerHTML = emptyChildMsg;
+                    } else {
+                        const fragment = document.createDocumentFragment();
+                        const assignedSet = (window.explorerOnlyMyTasks && typeof window.getExplorerAssignedTaskNames === 'function')
+                            ? window.getExplorerAssignedTaskNames()
+                            : new Set();
 
-                for (const child of finalItems) {
-                    const node = createTreeNode(child, level + 1, containerId);
-                    fragment.appendChild(node);
+                        const nodesToExpand = [];
+                        for (const child of finalItems) {
+                            const node = createTreeNode(child, level + 1, containerId);
+                            fragment.appendChild(node);
 
-                    const normChildPath = child.path.replace(/\\/g, '/').toLowerCase();
-                    const childNameLower = (child.name || '').toLowerCase();
-                    // Auto-expandir carpetas intermedias en la ruta hacia la tarea, deteniéndose en la tarea asignada
-                    const isTargetTask = assignedSet.has(childNameLower);
-                    const shouldAutoExpandChild = window.explorerOnlyMyTasks && !isTargetTask && finalItems.length <= 2;
+                            const normChildPath = child.path.replace(/\\/g, '/').toLowerCase();
+                            const childNameLower = (child.name || '').toLowerCase();
+                            // Auto-expandir carpetas intermedias en la ruta hacia la tarea, deteniéndose en la tarea asignada
+                            const isTargetTask = assignedSet.has(childNameLower);
+                            const shouldAutoExpandChild = window.explorerOnlyMyTasks && !isTargetTask && finalItems.length <= 2;
 
-                    if (child.isDirectory && (isPathExpanded(normChildPath) || shouldAutoExpandChild)) {
-                        await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
+                            if (child.isDirectory && (isPathExpanded(normChildPath) || shouldAutoExpandChild)) {
+                                nodesToExpand.push({ node, child });
+                            }
+                        }
+                        container.appendChild(fragment);
+                        for (const { node, child } of nodesToExpand) {
+                            await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
+                        }
                     }
+                    wrapper._loaded = true;
+                } catch (err) {
+                    console.error("Error al desplegar nodo:", err);
+                    container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#e06c75; font-size:0.8rem;">(Error al cargar carpeta)</div>`;
+                    wrapper._loaded = false;
+                } finally {
+                    wrapper._loadingPromise = null;
                 }
-                container.appendChild(fragment);
-            }
-            wrapper._loaded = true;
+            })();
+            await wrapper._loadingPromise;
         }
     } else {
         container.style.display = 'none';

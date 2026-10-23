@@ -255,7 +255,7 @@
       "x": 2668.361111111114,
       "y": 82.8055555555556,
       "parent": "node_media_shot_id",
-      "isRenderFolder": true
+      "isRenderFolder": false
     },
     {
       "id": "node_media_nuke",

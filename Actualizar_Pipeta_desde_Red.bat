@@ -10,17 +10,19 @@ echo.
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 set "SRC="
-if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+    set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+) else if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
     set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-) else if exist "\\LASP-VM\Pipeta\server\server.js" (
-    set "SRC=\\LASP-VM\Pipeta"
+) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+    set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 )
 
 if "%SRC%"=="" (
     echo [ERROR] No se pudo acceder al servidor maestro de Pipeta.
     echo Se verificaron las siguientes rutas:
     echo   - Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
-    echo   - \\LASP-VM\Pipeta
+    echo   - \\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
     echo Verifica que la red este activa o que la unidad Z: este conectada.
     echo.
     pause
@@ -38,7 +40,7 @@ taskkill /F /IM node.exe >nul 2>&1
 echo [2/3] Sincronizando archivos con Robocopy desde %SRC%...
 if not exist "%DEST%" mkdir "%DEST%"
 
-robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 
 if exist "%SRC%\presets" (
     robocopy "%SRC%\presets" "%DEST%\presets" /E /XO /NFL /NDL /NJH /NJS /R:0 /W:0
@@ -49,7 +51,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v1.1.26 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.1.43 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 timeout /t 2 >nul

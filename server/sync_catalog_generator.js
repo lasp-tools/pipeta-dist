@@ -5,7 +5,95 @@ const { execSync } = require('child_process');
 
 // Carpeta estándar centralizada para los catálogos en local SSD (y fallback Z:\_SYNC_CACHE si está montado)
 const LOCAL_CACHE_DIR = path.join(__dirname, '../_SYNC_CACHE');
+const MODULAR_PROJECTS_DIR = path.join(LOCAL_CACHE_DIR, 'projects');
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
+const CENTRAL_SERVER_URL = process.env.PIPETA_SERVER_API || 'http://192.168.206.121:3005';
+
+/**
+ * Descarga y extrae el paquete modular completo (.tar.gz) de un proyecto desde Pipeta Server (0 SMB)
+ */
+function fetchProjectBundleFromCentralServer(projectName) {
+    if (!projectName || global.isExternalMachine) return false;
+    const namesToTry = [projectName];
+    try {
+        if (typeof getProjectConfig === 'function') {
+            const cfg = getProjectConfig(projectName);
+            if (cfg) {
+                if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
+                if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
+            }
+        }
+    } catch(e) {}
+
+    for (const name of namesToTry) {
+        const destDir = path.join(MODULAR_PROJECTS_DIR, name);
+        try {
+            fs.ensureDirSync(destDir);
+            const cmd = `curl.exe -s -m 8 "${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/bundle" | tar.exe -xzf - -C "${destDir}"`;
+            execSync(cmd, { stdio: 'ignore', timeout: 9000 });
+            const serverManifest = path.join(destDir, 'server', 'manifest.json');
+            const driveManifest = path.join(destDir, 'drive', 'manifest.json');
+            if (fs.existsSync(serverManifest) || fs.existsSync(driveManifest)) {
+                console.log(`[CENTRAL SERVER HTTP] Catálogo de ${name} hidratado por HTTP en ${destDir} (0 SMB)`);
+                return true;
+            }
+        } catch (e) {}
+    }
+    return false;
+}
+
+/**
+ * Descarga un archivo específico (manifest.json o sub-catálogo) directamente por HTTP (0 SMB)
+ */
+function fetchSubCatalogFromCentralServer(projectName, type, subFile) {
+    if (!projectName || global.isExternalMachine) return null;
+    const namesToTry = [projectName];
+    try {
+        if (typeof getProjectConfig === 'function') {
+            const cfg = getProjectConfig(projectName);
+            if (cfg) {
+                if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
+                if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
+            }
+        }
+    } catch(e) {}
+
+    const subKey = subFile.replace(/\\/g, '/').replace(/\.json$/i, '');
+    for (const name of namesToTry) {
+        const localPrimary = path.join(MODULAR_PROJECTS_DIR, name, type, subFile);
+        try {
+            fs.ensureDirSync(path.dirname(localPrimary));
+            const url = `${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/modular?type=${type}&sub=${encodeURIComponent(subKey)}`;
+            const cmd = `curl.exe -s -m 10 -f -o "${localPrimary}" "${url}"`;
+            execSync(cmd, { stdio: 'ignore', timeout: 11000 });
+            if (fs.existsSync(localPrimary) && fs.statSync(localPrimary).size > 10) {
+                return localPrimary;
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+let _isZDriveNetworkCache = null;
+function isZDriveNetwork() {
+    if (_isZDriveNetworkCache !== null) return _isZDriveNetworkCache;
+    try {
+        const substOut = execSync('subst', { encoding: 'utf8', timeout: 800 });
+        if (/Z:\\: =>/i.test(substOut)) {
+            _isZDriveNetworkCache = false;
+            return false;
+        }
+    } catch(e) {}
+    try {
+        const netUse = execSync('net use Z:', { encoding: 'utf8', timeout: 800 });
+        if (netUse && !/no se encuentra|error/i.test(netUse)) {
+            _isZDriveNetworkCache = true;
+            return true;
+        }
+    } catch(e) {}
+    _isZDriveNetworkCache = true;
+    return true;
+}
+
 const CACHE_ROOT = fs.existsSync(LOCAL_CACHE_DIR) 
     ? LOCAL_CACHE_DIR 
     : (fs.existsSync('Z:/_SYNC_CACHE') ? 'Z:/_SYNC_CACHE' : LOCAL_CACHE_DIR);
@@ -20,7 +108,15 @@ function syncLocalCacheFromNetwork(projectName = null) {
     try {
         fs.ensureDirSync(LOCAL_CACHE_DIR);
 
-        function isZDriveLocalSubst() {
+        // 0. Si se solicita un proyecto, intentar hidratar el paquete completo por HTTP desde Pipeta Server (0 SMB)
+        if (projectName) {
+            const bundleOk = fetchProjectBundleFromCentralServer(projectName);
+            if (bundleOk) return;
+        }
+
+        
+
+function isZDriveLocalSubst() {
             try {
                 const substOut = execSync('subst', { encoding: 'utf8', timeout: 500 });
                 return /Z:\\: =>/i.test(substOut);
@@ -28,7 +124,7 @@ function syncLocalCacheFromNetwork(projectName = null) {
         }
 
         const isSubst = isZDriveLocalSubst();
-        const candidateRoots = ['S:/_SYNC_CACHE', UNC_CACHE];
+        const candidateRoots = [UNC_CACHE];
         if (!isSubst) {
             candidateRoots.push('Z:/_SYNC_CACHE');
         } else if (fs.existsSync('Z:/_SYNC_CACHE')) {
@@ -74,6 +170,7 @@ function syncLocalCacheFromNetwork(projectName = null) {
             }
         }
 
+        let projectCopied = false;
         for (const centralRoot of centralRoots) {
             // Sincronizar archivos esenciales de control (worker_status, last_project)
             const controlFiles = ['worker_status.json', 'last_project.json'];
@@ -84,11 +181,13 @@ function syncLocalCacheFromNetwork(projectName = null) {
             // Sincronizar directorio modular projects/
             const centralProjects = path.join(centralRoot, 'projects');
             const localProjects = path.join(LOCAL_CACHE_DIR, 'projects');
-            if (fs.existsSync(centralProjects)) {
+            if (!projectCopied && fs.existsSync(centralProjects)) {
                 fs.ensureDirSync(localProjects);
                 if (projectName) {
-                    const namesToTry = [projectName];
-                    const cfg = typeof getProjectConfig === 'function' ? getProjectConfig(projectName) : null;
+                    const cleanProj = String(projectName).replace(/^proj_/i, '').trim();
+                    const namesToTry = [cleanProj];
+                    if (projectName !== cleanProj) namesToTry.push(projectName);
+                    const cfg = typeof getProjectConfig === 'function' ? (getProjectConfig(cleanProj) || getProjectConfig(projectName)) : null;
                     if (cfg) {
                         if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
                         if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
@@ -99,6 +198,7 @@ function syncLocalCacheFromNetwork(projectName = null) {
                         const dstProjDir = path.join(localProjects, name);
                         if (fs.existsSync(srcProjDir)) {
                             copyNewerOnly(srcProjDir, dstProjDir);
+                            projectCopied = true;
                         }
                     }
 
@@ -801,7 +901,7 @@ async function listAvailableCatalogs() {
 }
 
 // --- MODULAR SUB-CATALOGS SYSTEM ---
-const MODULAR_PROJECTS_DIR = path.join(LOCAL_CACHE_DIR, 'projects');
+// MODULAR_PROJECTS_DIR hoisted at top
 const manifestMemoryCache = new Map();
 const subCatalogMemoryCache = new Map();
 
@@ -1003,27 +1103,59 @@ function partitionCatalog(monolithicData, type) {
     return manifestData;
 }
 
+const projectPathLookupCache = new Map();
+const autoHydratedProjects = new Set();
+
 function getModularManifest(projectName, type) {
     if (type === 'server' && global.isExternalMachine) return null;
 
-    const candidates = [
-        path.join(MODULAR_PROJECTS_DIR, projectName, type, 'manifest.json')
-    ];
-    if (!global.isExternalMachine) {
-        candidates.push(
-            path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
-            path.join(UNC_CACHE, 'projects', projectName, type, 'manifest.json')
-        );
-    }
-
+    const localManifest = path.join(MODULAR_PROJECTS_DIR, projectName, type, 'manifest.json');
     let manifestPath = null;
-    for (const c of candidates) {
-        try {
-            if (fs.existsSync(c)) {
-                manifestPath = c;
-                break;
+
+    try {
+        if (fs.existsSync(localManifest)) {
+            manifestPath = localManifest;
+        }
+    } catch(e) {}
+
+    if (!manifestPath && !global.isExternalMachine) {
+        // 0. Intentar resolver el manifiesto por HTTP desde Pipeta Server (0 SMB)
+        const httpManifest = fetchSubCatalogFromCentralServer(projectName, type, 'manifest.json');
+        if (httpManifest) {
+            manifestPath = httpManifest;
+        }
+        // Si no existe en SSD local, intentar hidratarlo desde la red una vez por sesión
+        const hydKey = `${projectName}_${type}`.toLowerCase();
+        if (!autoHydratedProjects.has(hydKey)) {
+            autoHydratedProjects.add(hydKey);
+            try { syncLocalCacheFromNetwork(projectName); } catch(e) {}
+            try {
+                if (fs.existsSync(localManifest)) {
+                    manifestPath = localManifest;
+                }
+            } catch(e) {}
+        }
+
+        if (!manifestPath) {
+            const netCandidates = [
+                path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
+                path.join(UNC_CACHE, 'projects', projectName, type, 'manifest.json')
+            ];
+            for (const c of netCandidates) {
+                try {
+                    if (fs.existsSync(c)) {
+                        manifestPath = c;
+                        // Hidratar en segundo plano o directo al SSD local para siguientes lecturas
+                        try {
+                            fs.ensureDirSync(path.dirname(localManifest));
+                            fs.copySync(path.dirname(c), path.dirname(localManifest), { overwrite: true });
+                            manifestPath = localManifest;
+                        } catch(copyErr) {}
+                        break;
+                    }
+                } catch(e) {}
             }
-        } catch(e) {}
+        }
     }
 
     if (!manifestPath) {
@@ -1031,6 +1163,7 @@ function getModularManifest(projectName, type) {
             type === 'server' ? path.join(LOCAL_CACHE_DIR, `server_${projectName}.json`) : path.join(LOCAL_CACHE_DIR, `${projectName}.json`)
         ];
         if (!global.isExternalMachine) {
+
             monoCandidates.push(
                 type === 'server' ? path.join('Z:/_SYNC_CACHE', `server_${projectName}.json`) : path.join('Z:/_SYNC_CACHE', `${projectName}.json`),
                 type === 'server' ? path.join(UNC_CACHE, `server_${projectName}.json`) : path.join(UNC_CACHE, `${projectName}.json`)
@@ -1067,20 +1200,79 @@ function findProjectManifestForPath(requestedPath, type) {
     const stripDrive = s => (s || '').replace(/^[a-zA-Z]:/, '');
     const normNoDrive = stripDrive(norm);
 
-    const candidateBases = [
+    const cacheKey = `${type}::${norm}`;
+    const cachedMatch = projectPathLookupCache.get(cacheKey);
+    if (cachedMatch && (Date.now() - cachedMatch.time < 60000)) {
+        const freshManifest = getModularManifest(cachedMatch.data.projectName, type) || cachedMatch.data.manifest;
+        return { ...cachedMatch.data, manifest: freshManifest };
+    }
+
+    const rememberMatch = (resObj) => {
+        projectPathLookupCache.set(cacheKey, { time: Date.now(), data: resObj });
+        return resObj;
+    };
+
+    // 0. Fast-path: Resolver primero usando presets locales en disco C: (0 ms, sin escaneo de red SMB)
+    try {
+        if (fs.existsSync(PRESETS_PROJECTS_DIR)) {
+            const presetFiles = fs.readdirSync(PRESETS_PROJECTS_DIR).filter(f => f.endsWith('.json') && f !== 'base.json');
+            for (const pf of presetFiles) {
+                try {
+                    const pCfg = fs.readJsonSync(path.join(PRESETS_PROJECTS_DIR, pf));
+                    const pName = pCfg.name || path.basename(pf, '.json');
+                    const wRoot = normalizeSlash(pCfg.roots?.work || '').toLowerCase().replace(/^s:/i, 'z:');
+                    const mRoot = normalizeSlash(pCfg.roots?.media || '').toLowerCase().replace(/^s:/i, 'z:');
+                    const owRoot = normalizeSlash(pCfg.roots?.onlineWork || '').toLowerCase();
+                    const omRoot = normalizeSlash(pCfg.roots?.onlineMedia || '').toLowerCase();
+
+                    const wNoDrive = stripDrive(wRoot);
+                    const mNoDrive = stripDrive(mRoot);
+
+                    let matchedCat = null;
+                    let matchedRoot = null;
+                    if (wRoot && (norm === wRoot || norm.startsWith(wRoot + '/'))) {
+                        matchedCat = 'work'; matchedRoot = wRoot;
+                    } else if (mRoot && (norm === mRoot || norm.startsWith(mRoot + '/'))) {
+                        matchedCat = 'media'; matchedRoot = mRoot;
+                    } else if (type !== 'server' && owRoot && (norm === owRoot || norm.startsWith(owRoot + '/'))) {
+                        matchedCat = 'work'; matchedRoot = owRoot;
+                    } else if (type !== 'server' && omRoot && (norm === omRoot || norm.startsWith(omRoot + '/'))) {
+                        matchedCat = 'media'; matchedRoot = omRoot;
+                    } else if (wNoDrive && (normNoDrive === wNoDrive || normNoDrive.startsWith(wNoDrive + '/'))) {
+                        matchedCat = 'work'; matchedRoot = norm.substring(0, norm.length - (normNoDrive.length - wNoDrive.length));
+                    } else if (mNoDrive && (normNoDrive === mNoDrive || normNoDrive.startsWith(mNoDrive + '/'))) {
+                        matchedCat = 'media'; matchedRoot = norm.substring(0, norm.length - (normNoDrive.length - mNoDrive.length));
+                    }
+
+                    if (matchedCat && matchedRoot) {
+                        const manifest = getModularManifest(pName, type);
+                        if (manifest) {
+                            return rememberMatch({ manifest, projectName: manifest.project || pName, category: matchedCat, rootPath: matchedRoot });
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+    } catch(e) {}
+
+    const localBases = [
         path.join(CACHE_ROOT, 'projects'),
         MODULAR_PROJECTS_DIR
-    ];
-    if (!global.isExternalMachine) {
-        candidateBases.push(
-            'S:/_SYNC_CACHE/projects',
-            path.join(UNC_CACHE, 'projects'),
-            'Z:/_SYNC_CACHE/projects'
-        );
-    }
-    const projectBases = candidateBases.filter((b, idx, arr) => {
+    ].filter((b, idx, arr) => {
         try { return fs.existsSync(b) && arr.indexOf(b) === idx; } catch(e) { return false; }
     });
+
+    const netBases = [];
+    if (!global.isExternalMachine) {
+
+        for (const nb of ['Z:/_SYNC_CACHE/projects', path.join(UNC_CACHE, 'projects')]) {
+            if (!localBases.includes(nb)) {
+                try { if (fs.existsSync(nb)) netBases.push(nb); } catch(e) {}
+            }
+        }
+    }
+
+    const projectBases = [...localBases, ...netBases];
     if (projectBases.length === 0) return null;
 
     const seenProjects = new Set();
@@ -1106,20 +1298,20 @@ function findProjectManifestForPath(requestedPath, type) {
                 rootMedia = normalizeSlash(manifest.roots?.media?.server || '').toLowerCase().replace(/^s:/i, 'z:');
                 
                 if (rootWork && (norm === rootWork || norm.startsWith(rootWork + '/'))) {
-                    return { manifest, projectName: pName, category: 'work', rootPath: rootWork };
+                    return rememberMatch({ manifest, projectName: pName, category: 'work', rootPath: rootWork });
                 }
                 if (rootMedia && (norm === rootMedia || norm.startsWith(rootMedia + '/'))) {
-                    return { manifest, projectName: pName, category: 'media', rootPath: rootMedia };
+                    return rememberMatch({ manifest, projectName: pName, category: 'media', rootPath: rootMedia });
                 }
                 const rootWorkNoDrive = stripDrive(rootWork);
                 if (rootWorkNoDrive && (normNoDrive === rootWorkNoDrive || normNoDrive.startsWith(rootWorkNoDrive + '/'))) {
                     const rootPath = norm.substring(0, norm.length - (normNoDrive.length - rootWorkNoDrive.length));
-                    return { manifest, projectName: pName, category: 'work', rootPath };
+                    return rememberMatch({ manifest, projectName: pName, category: 'work', rootPath });
                 }
                 const rootMediaNoDrive = stripDrive(rootMedia);
                 if (rootMediaNoDrive && (normNoDrive === rootMediaNoDrive || normNoDrive.startsWith(rootMediaNoDrive + '/'))) {
                     const rootPath = norm.substring(0, norm.length - (normNoDrive.length - rootMediaNoDrive.length));
-                    return { manifest, projectName: pName, category: 'media', rootPath };
+                    return rememberMatch({ manifest, projectName: pName, category: 'media', rootPath });
                 }
             } else {
                 const onlineWork = normalizeSlash(manifest.roots?.work?.online || `G:/Unidades compartidas/${p}`).toLowerCase();
@@ -1128,30 +1320,112 @@ function findProjectManifestForPath(requestedPath, type) {
                 const localMedia = normalizeSlash(manifest.roots?.media?.local || `Z:/INTERNO/MEDIA/atresmedia/${p}`).toLowerCase();
 
                 if (onlineWork && (norm === onlineWork || norm.startsWith(onlineWork + '/'))) {
-                    return { manifest, projectName: pName, category: 'work', rootPath: onlineWork };
+                    return rememberMatch({ manifest, projectName: pName, category: 'work', rootPath: onlineWork });
                 }
                 if (onlineMedia && (norm === onlineMedia || norm.startsWith(onlineMedia + '/'))) {
-                    return { manifest, projectName: pName, category: 'media', rootPath: onlineMedia };
+                    return rememberMatch({ manifest, projectName: pName, category: 'media', rootPath: onlineMedia });
                 }
                 if (localWork && (norm === localWork || norm.startsWith(localWork + '/'))) {
-                    return { manifest, projectName: pName, category: 'work', rootPath: localWork };
+                    return rememberMatch({ manifest, projectName: pName, category: 'work', rootPath: localWork });
                 }
                 if (localMedia && (norm === localMedia || norm.startsWith(localMedia + '/'))) {
-                    return { manifest, projectName: pName, category: 'media', rootPath: localMedia };
+                    return rememberMatch({ manifest, projectName: pName, category: 'media', rootPath: localMedia });
                 }
 
                 // Comparación independiente de la letra de unidad (C:, Z:, S:, etc.)
                 const localWorkNoDrive = stripDrive(localWork);
                 if (localWorkNoDrive && (normNoDrive === localWorkNoDrive || normNoDrive.startsWith(localWorkNoDrive + '/'))) {
                     const rootPath = norm.substring(0, norm.length - (normNoDrive.length - localWorkNoDrive.length));
-                    return { manifest, projectName: pName, category: 'work', rootPath };
+                    return rememberMatch({ manifest, projectName: pName, category: 'work', rootPath });
                 }
                 const localMediaNoDrive = stripDrive(localMedia);
                 if (localMediaNoDrive && (normNoDrive === localMediaNoDrive || normNoDrive.startsWith(localMediaNoDrive + '/'))) {
                     const rootPath = norm.substring(0, norm.length - (normNoDrive.length - localMediaNoDrive.length));
-                    return { manifest, projectName: pName, category: 'media', rootPath };
+                    return rememberMatch({ manifest, projectName: pName, category: 'media', rootPath });
                 }
             }
+        }
+    }
+    return null;
+}
+
+const dirExistsCache = new Map();
+const DIR_CACHE_TTL = 5000;
+
+function dirExistsFast(dirPath) {
+    if (!dirPath) return false;
+    const norm = path.normalize(dirPath).toLowerCase();
+    const now = Date.now();
+    const cached = dirExistsCache.get(norm);
+    if (cached && (now - cached.time < DIR_CACHE_TTL)) {
+        return cached.exists;
+    }
+
+    const parent = path.dirname(norm);
+    if (parent && parent !== norm && parent !== path.parse(norm).root.toLowerCase()) {
+        if (!dirExistsFast(parent)) {
+            dirExistsCache.set(norm, { time: now, exists: false });
+            return false;
+        }
+    }
+
+    let exists = false;
+    try {
+        exists = fs.existsSync(norm);
+    } catch(e) {
+        exists = false;
+    }
+    dirExistsCache.set(norm, { time: now, exists });
+    return exists;
+}
+
+function fileExistsFast(filePath) {
+    if (!filePath) return false;
+    const parent = path.dirname(filePath);
+    if (!dirExistsFast(parent)) return false;
+    try {
+        return fs.existsSync(filePath);
+    } catch(e) {
+        return false;
+    }
+}
+
+function resolveModularSubCatalogFile(projectName, type, subFile) {
+    const localPrimary = path.join(MODULAR_PROJECTS_DIR, projectName, type, subFile);
+    try {
+        if (fs.existsSync(localPrimary)) return localPrimary;
+    } catch(e) {}
+
+    const localAlt = path.join(CACHE_ROOT, 'projects', projectName, type, subFile);
+    if (localAlt !== localPrimary) {
+        try {
+            if (fs.existsSync(localAlt)) return localAlt;
+        } catch(e) {}
+    }
+
+    if (!global.isExternalMachine) {
+
+        // 0. Intentar descargar el sub-catálogo específico por HTTP desde Pipeta Server (0 SMB)
+        const httpSub = fetchSubCatalogFromCentralServer(projectName, type, subFile);
+        if (httpSub) return httpSub;
+
+        const netCandidates = [
+            path.join(UNC_CACHE, 'projects', projectName, type, subFile),
+            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile)
+        ];
+        for (const nc of netCandidates) {
+            try {
+                if (fs.existsSync(nc)) {
+                    // Copiar al SSD local para que todas las próximas lecturas sean instantáneas (0 ms SMB)
+                    try {
+                        fs.ensureDirSync(path.dirname(localPrimary));
+                        fs.copySync(nc, localPrimary, { overwrite: true });
+                        return localPrimary;
+                    } catch(copyErr) {
+                        return nc;
+                    }
+                }
+            } catch(e) {}
         }
     }
     return null;
@@ -1160,23 +1434,16 @@ function findProjectManifestForPath(requestedPath, type) {
 const pendingSyncCache = new Map();
 
 function checkSubCatalogPendingSync(projectName, type, subFile) {
+    if (!global.isExternalMachine && type === 'server') {
+        return { hasPending: false, count: 0 };
+    }
     const cacheKey = `${projectName}_${type}_${subFile}`.toLowerCase();
     const now = Date.now();
     if (pendingSyncCache.has(cacheKey)) {
         const cached = pendingSyncCache.get(cacheKey);
-        if (now - cached.time < 30000) return cached.data;
+        if (now - cached.time < 60000) return cached.data;
     }
-    const candidateList = [
-        path.join(CACHE_ROOT, 'projects', projectName, type, subFile),
-        path.join(MODULAR_PROJECTS_DIR, projectName, type, subFile)
-    ];
-    if (!global.isExternalMachine) {
-        candidateList.push(
-            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile),
-            path.join(UNC_CACHE, 'projects', projectName, type, subFile)
-        );
-    }
-    const subFilePath = candidateList.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } });
+    const subFilePath = resolveModularSubCatalogFile(projectName, type, subFile);
     if (!subFilePath) {
         const res = { hasPending: false, count: 0 };
         pendingSyncCache.set(cacheKey, { time: now, data: res });
@@ -1185,12 +1452,12 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
     try {
         const data = fs.readJsonSync(subFilePath);
         let missing = 0;
-        if (data && Array.isArray(data.flatList)) {
-            for (const it of data.flatList) {
-                if (!it.isDir && !it.isDirectory) {
-                    const p = (it.targetLocalPath || '').replace(/^S:/i, 'Z:');
-                    if (p && !fs.existsSync(p)) missing++;
-                }
+        if (data && Array.isArray(data.flatList) && data.flatList.length > 0) {
+            const sample = data.flatList[0];
+            const sampleTarget = (sample?.targetLocalPath || '').replace(/^S:/i, 'Z:');
+            const parentDir = sampleTarget ? path.dirname(sampleTarget) : null;
+            if (parentDir && !dirExistsFast(parentDir)) {
+                missing = data.flatList.length;
             }
         }
         const res = { hasPending: missing > 0, count: missing };
@@ -1225,32 +1492,6 @@ function buildSubCatalogIndex(subCatalog) {
             const targetLocal = (item.targetLocalPath || p).replace(/^S:/i, 'Z:');
             const isDirectory = !!item.isDir || !!item.isDirectory;
 
-            let fileMissingLocally = false;
-            if (!isDirectory && targetLocal) {
-                try {
-                    fileMissingLocally = !fs.existsSync(targetLocal);
-                } catch(e) {
-                    fileMissingLocally = true;
-                }
-            }
-
-            if (fileMissingLocally) {
-                let curP = p;
-                while (curP.includes('/')) {
-                    curP = curP.substring(0, curP.lastIndexOf('/'));
-                    const curLow = curP.toLowerCase();
-                    pendingDownloadFolders.add(curLow);
-                    pendingCountMap.set(curLow, (pendingCountMap.get(curLow) || 0) + 1);
-                }
-                let curL = targetLocal;
-                while (curL.includes('/')) {
-                    curL = curL.substring(0, curL.lastIndexOf('/'));
-                    const curLowL = curL.toLowerCase();
-                    pendingDownloadFolders.add(curLowL);
-                    pendingCountMap.set(curLowL, (pendingCountMap.get(curLowL) || 0) + 1);
-                }
-            }
-
             const entryObj = {
                 name: item.name,
                 isDirectory,
@@ -1260,11 +1501,10 @@ function buildSubCatalogIndex(subCatalog) {
                 targetLocalPath: targetLocal,
                 fromCatalog: true,
                 isServer: subCatalog.type === 'server',
-                localExists: !fileMissingLocally
+                localExists: true
             };
             arr.push(entryObj);
 
-            // Indexar también por la ruta del padre local (targetLocalPath) para consultas directas desde vista LOCAL
             if (targetLocal) {
                 const normLocal = normalizeSlash(targetLocal);
                 const localLastSlash = normLocal.lastIndexOf('/');
@@ -1277,36 +1517,8 @@ function buildSubCatalogIndex(subCatalog) {
                     }
                     localArr.push(entryObj);
                 }
-                const strippedLocalKey = localParentKey.replace(/^[a-zA-Z]:/, '');
-                if (strippedLocalKey && strippedLocalKey !== localParentKey) {
-                    let stripArr = parentMap.get(strippedLocalKey);
-                    if (!stripArr) {
-                        stripArr = [];
-                        parentMap.set(strippedLocalKey, stripArr);
-                    }
-                    stripArr.push(entryObj);
-                }
             }
         }
-    }
-
-    for (const [key, list] of parentMap.entries()) {
-        for (const it of list) {
-            if (it.isDirectory) {
-                const normP = (it.path || '').toLowerCase();
-                const normL = (it.targetLocalPath || '').toLowerCase();
-                const isPending = pendingDownloadFolders.has(normP) || (normL && pendingDownloadFolders.has(normL));
-                if (isPending) {
-                    it.hasPendingSync = true;
-                    it.pendingType = 'download';
-                    it.pendingCount = pendingCountMap.get(normP) || pendingCountMap.get(normL) || 1;
-                }
-            }
-        }
-        list.sort((a, b) => {
-            if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-            return a.isDirectory ? -1 : 1;
-        });
     }
 
     return { parentMap, pendingDownloadFolders, pendingCountMap };
@@ -1330,8 +1542,10 @@ function listFromModularCatalog(requestedPath, type = 'server') {
             targetLocal = norm.replace(/\/+$/, '') + '/' + c.name;
         }
         let localExists = false;
-        if (targetLocal) {
-            try { localExists = fs.existsSync(targetLocal); } catch(e) {}
+        if (c.localExists !== undefined) {
+            localExists = c.localExists;
+        } else if (targetLocal) {
+            try { localExists = fileExistsFast(targetLocal); } catch(e) {}
         }
         return {
             ...c,
@@ -1413,46 +1627,12 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         subFile = `media/${parts[0]}.json`;
     }
 
-    const candidateList = [
-        path.join(CACHE_ROOT, 'projects', projectName, type, subFile),
-        path.join(MODULAR_PROJECTS_DIR, projectName, type, subFile)
-    ];
-    if (!global.isExternalMachine) {
-        candidateList.push(
-            path.join('S:/_SYNC_CACHE/projects', projectName, type, subFile),
-            path.join(UNC_CACHE, 'projects', projectName, type, subFile),
-            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile)
-        );
-    }
-    const subCandidates = candidateList.filter((sc, idx, arr) => {
-        try { return fs.existsSync(sc) && arr.indexOf(sc) === idx; } catch(e) { return false; }
-    });
-
-    let subFilePath = null;
-    let bestMtime = 0;
-    for (const sc of subCandidates) {
-        try {
-            const st = fs.statSync(sc);
-            if (st.mtimeMs > bestMtime) {
-                bestMtime = st.mtimeMs;
-                subFilePath = sc;
-            }
-        } catch(e) {}
-    }
+    const subFilePath = resolveModularSubCatalogFile(projectName, type, subFile);
 
     if (!subFilePath) {
         if (subFile.startsWith('episodios/')) {
-            const rootSubCandidates = [
-                path.join(MODULAR_PROJECTS_DIR, projectName, type, 'episodios/_root.json')
-            ];
-            if (!global.isExternalMachine) {
-                rootSubCandidates.push(
-                    path.join('S:/_SYNC_CACHE/projects', projectName, type, 'episodios/_root.json'),
-                    path.join(UNC_CACHE, 'projects', projectName, type, 'episodios/_root.json'),
-                    path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'episodios/_root.json')
-                );
-            }
-            if (rootSubCandidates.some(p => { try { return fs.existsSync(p); } catch(e) { return false; } })) return [];
+            const rootSubFile = resolveModularSubCatalogFile(projectName, type, 'episodios/_root.json');
+            if (rootSubFile) return [];
         }
         return null;
     }
@@ -1489,10 +1669,28 @@ function listFromModularCatalog(requestedPath, type = 'server') {
 
     if (!children) return [];
 
+    let existingNamesSet = null;
+    if (children.length > 0 && children[0].targetLocalPath) {
+        const parentDir = path.dirname(children[0].targetLocalPath);
+        if (parentDir) {
+            try {
+                if (fs.existsSync(parentDir)) {
+                    existingNamesSet = new Set(fs.readdirSync(parentDir).map(n => n.toLowerCase()));
+                } else {
+                    existingNamesSet = new Set();
+                }
+            } catch(e) {
+                existingNamesSet = null;
+            }
+        }
+    }
+
     return children.map(c => {
         let localExists = false;
-        if (c.targetLocalPath) {
-            try { localExists = fs.existsSync(c.targetLocalPath); } catch(e) {}
+        if (c.localExists !== undefined && existingNamesSet === null) {
+            localExists = c.localExists;
+        } else if (existingNamesSet) {
+            localExists = existingNamesSet.has((c.name || '').toLowerCase());
         }
         return {
             ...c,
@@ -2327,12 +2525,12 @@ const serverCatalogMemoryCache = new Map();
 
 /**
  * Construye un mapa hash indexado O(1) de carpeta_padre -> items_hijos directos
- * Incluye ancestros sintéticos desde las raíces S: hasta los directorios de trabajo
+ * Incluye ancestros sintéticos desde las raíces Z: hasta los directorios de trabajo
  */
 function buildCatalogParentIndex(catalog) {
     const parentMap = new Map();
 
-    // 1. Ancestros de las raíces (ej. S: -> atresmedia, INTERNO; S:/atresmedia -> surf_love)
+    // 1. Ancestros de las raíces (ej. Z: -> atresmedia, INTERNO; Z:/atresmedia -> surf_love)
     if (catalog.roots) {
         for (const type of ['work', 'media']) {
             const rootPath = normalizeSlash(catalog.roots[type]?.server);
@@ -2556,6 +2754,10 @@ function clearMemoryCaches() {
     subCatalogMemoryCache.clear();
     driveCatalogMemoryCache.clear();
     serverCatalogMemoryCache.clear();
+    dirExistsCache.clear();
+    pendingSyncCache.clear();
+    projectPathLookupCache.clear();
+    autoHydratedProjects.clear();
 }
 
 module.exports = {
@@ -2581,7 +2783,10 @@ module.exports = {
     recordTransferredItem,
     getModularManifest,
     clearMemoryCaches,
-    listWithRclone
+    listWithRclone,
+    dirExistsFast,
+    fileExistsFast,
+    isZDriveNetwork
 };
 
 // --- CLI RUNNER ---

@@ -1635,7 +1635,11 @@ class FileAuditor {
         const optDown = document.getElementById('render-fix-opt-download')?.checked;
         const optUp = document.getElementById('render-fix-opt-upload')?.checked;
         const hasOpt = optDown || optUp;
-        const canFix = selCount > 0 && hasOpt;
+
+        // Check if any selected item has .tmp files to clean
+        const hasTmp = selected.some(r => r.hasTmpFiles || (r.badFiles && r.badFiles.some(f => f.toLowerCase().endsWith('.tmp'))) || (r.tmpFiles && r.tmpFiles.length > 0));
+
+        const canFix = selCount > 0 && (hasOpt || hasTmp);
 
         const btnFix = document.getElementById('render-btn-fix');
         if (btnFix) {
@@ -1643,6 +1647,11 @@ class FileAuditor {
             btnFix.style.background = canFix ? '#ffb74d' : '#444';
             btnFix.style.color = canFix ? '#000' : '#888';
             btnFix.style.fontWeight = 'bold';
+            if (hasTmp && !hasOpt) {
+                btnFix.innerText = 'Fix (Borrar .tmp)';
+            } else {
+                btnFix.innerText = 'Fix';
+            }
         }
     }
 
@@ -1655,8 +1664,31 @@ class FileAuditor {
         const modeGap = document.getElementById('render-fix-mode-gap')?.checked;
         const modeFull = document.getElementById('render-fix-mode-full')?.checked;
 
+        // 0. Clean .tmp files first if any selected items have them (Strictly local, no cloud transfer)
+        const selectedWithTmp = selected.filter(r => r.hasTmpFiles || (r.badFiles && r.badFiles.some(f => f.toLowerCase().endsWith('.tmp'))) || (r.tmpFiles && r.tmpFiles.length > 0));
+        let cleanedTmpCount = 0;
+        if (selectedWithTmp.length > 0) {
+            const cleanRes = await this.cleanTmpFilesForShots(selectedWithTmp);
+            if (cleanRes && cleanRes.success) {
+                cleanedTmpCount = cleanRes.deletedCount || selectedWithTmp.length;
+            }
+        }
+
+        // If no cloud transfer options are checked, we are done!
         if (!optDown && !optUp) {
-            alert('Selecciona al menos Download o Upload.');
+            if (cleanedTmpCount > 0) {
+                const msg = `🧹 Fix completado: Se eliminaron ${cleanedTmpCount} archivo(s) .tmp residuales en ${selectedWithTmp.length} plano(s).\nLos frames de render quedaron intactos y el estado se actualizó a AL DÍA.`;
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast(msg, 'success', 5, 'Limpieza de temporales');
+                } else {
+                    alert(msg);
+                }
+                if (typeof PipetaConsole !== 'undefined') {
+                    PipetaConsole.log('audit', `[FILE AUDITOR] ${msg}`, 'ok');
+                }
+                return;
+            }
+            alert('Selecciona al menos Download o Upload (o selecciona planos con residuos .tmp para limpiar).');
             return;
         }
 
@@ -1752,7 +1784,10 @@ class FileAuditor {
                 if (queuedDownloads > 0) parts.push(`${queuedDownloads} descarga(s)`);
                 if (queuedUploads > 0) parts.push(`${queuedUploads} subida(s)`);
                 const modeLabel = modeGap ? 'Fix GAP' : 'Full Sync';
-                const msg = `⚡ [${modeLabel}] Encoladas para sync: ${parts.join(' y ')} de renders.`;
+                let msg = `⚡ [${modeLabel}] Encoladas para sync: ${parts.join(' y ')} de renders.`;
+                if (cleanedTmpCount > 0) {
+                    msg = `🧹 Se eliminaron ${cleanedTmpCount} archivo(s) .tmp residuales.\n` + msg;
+                }
                 if (typeof settings !== 'undefined' && settings.showToast) {
                     settings.showToast(msg, 'success', 4, 'Órdenes enviadas a la cola de transferencias');
                 } else {
@@ -1760,6 +1795,13 @@ class FileAuditor {
                 }
                 if (typeof PipetaConsole !== 'undefined') {
                     PipetaConsole.log('audit', `[FILE AUDITOR] ${msg}`, 'ok');
+                }
+            } else if (cleanedTmpCount > 0) {
+                const msg = `🧹 Fix completado: Se eliminaron ${cleanedTmpCount} archivo(s) .tmp residuales en ${selectedWithTmp.length} plano(s).\nNo había transferencias adicionales de Drive requeridas.`;
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast(msg, 'success', 4);
+                } else {
+                    alert(msg);
                 }
             } else {
                 alert('No se encontraron renders pendientes de transferir con los filtros y opciones seleccionadas.');
@@ -1806,8 +1848,15 @@ class FileAuditor {
         const workPath = item.workPath || item.scriptPath || '';
         const mediaPath = item.mediaPath || (item.renders && item.renders[0]?.path) || '';
         const primaryPath = workPath || mediaPath;
+        const hasTmp = item.hasTmpFiles || item.hasOnlyTmpBadFiles || (item.badFiles && item.badFiles.some(f => f.toLowerCase().endsWith('.tmp'))) || (item.tmpFiles && item.tmpFiles.length > 0);
 
         cm.innerHTML = `
+            ${hasTmp ? `
+                <div onclick="fileAuditor.cleanTmpFiles('${item.key}')" style="padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; color:#ffb74d;" onmouseenter="this.style.background='#2e2e2e'" onmouseleave="this.style.background='transparent'">
+                    <span>🧹</span> <span>Borrar archivos .tmp residuales</span>
+                </div>
+                <div style="height:1px; background:#333; margin:4px 0;"></div>
+            ` : ''}
             ${workPath ? `
                 <div onclick="fileAuditor.openInExplorer('${workPath.replace(/\\/g, '\\\\')}')" style="padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseenter="this.style.background='#2e2e2e'" onmouseleave="this.style.background='transparent'">
                     <span>📂</span> <span>Abrir Proyecto en Explorer</span>
@@ -1829,6 +1878,105 @@ class FileAuditor {
         cm.style.display = 'block';
         cm.style.left = Math.min(event.clientX, window.innerWidth - 210) + 'px';
         cm.style.top = Math.min(event.clientY, window.innerHeight - 150) + 'px';
+    }
+
+    async cleanTmpFiles(shotKey) {
+        const item = (this.renderResults || []).find(r => r.key === shotKey) || (this.auditResults || []).find(r => r.key === shotKey);
+        if (!item) return;
+
+        const rendersToClean = (item.renders || []).filter(r => r.tmpFiles && r.tmpFiles.length > 0);
+        if (rendersToClean.length === 0 && item.renders && item.renders[0]) {
+            rendersToClean.push(item.renders[0]);
+        }
+
+        const count = item.tmpFiles?.length || item.badFiles?.length || 1;
+        const confirmed = confirm(`¿Deseas eliminar permanentemente los ${count} archivo(s) .tmp residuales de este render?\n\nLos frames .exr y el resto de la secuencia se mantendrán 100% intactos.`);
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch('/api/audit/clean-tmp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targets: [{
+                        key: item.key,
+                        renders: rendersToClean.map(r => ({ path: r.path, tmpFiles: r.tmpFiles || item.badFiles }))
+                    }]
+                })
+            }).then(r => r.json());
+
+            if (res.success) {
+                item.badFiles = [];
+                item.tmpFiles = [];
+                item.hasTmpFiles = false;
+                item.hasOnlyTmpBadFiles = false;
+
+                const highestRender = item.renders ? item.renders[0] : null;
+                if (highestRender && item.latestScriptNum) {
+                    if (highestRender.versionNum === item.latestScriptNum) {
+                        item.renderStatus = 'up-to-date';
+                    } else if (highestRender.versionNum < item.latestScriptNum) {
+                        item.renderStatus = 'outdated';
+                    }
+                }
+
+                this.renderRenderResults();
+                const cleanMsg = `🧹 Se eliminaron ${res.deletedCount} archivo(s) .tmp residuales.\nEl plano quedó actualizado a: ${item.renderStatus === 'up-to-date' ? 'AL DÍA' : 'DESACTUALIZADO'}.`;
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast(cleanMsg, 'success', 4);
+                } else {
+                    alert(cleanMsg);
+                }
+            } else {
+                alert(`Error al limpiar archivos .tmp: ${res.error || 'Error desconocido'}`);
+            }
+        } catch (err) {
+            console.error("Error cleaning tmp files:", err);
+            alert(`Error al intentar limpiar .tmp: ${err.message}`);
+        }
+    }
+
+    async cleanTmpFilesForShots(shotList) {
+        const targets = shotList.map(item => {
+            const rendersToClean = (item.renders || []).filter(r => r.tmpFiles && r.tmpFiles.length > 0);
+            if (rendersToClean.length === 0 && item.renders && item.renders[0]) {
+                rendersToClean.push(item.renders[0]);
+            }
+            return {
+                key: item.key,
+                renders: rendersToClean.map(r => ({ path: r.path, tmpFiles: r.tmpFiles || item.badFiles }))
+            };
+        });
+
+        try {
+            const res = await fetch('/api/audit/clean-tmp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targets })
+            }).then(r => r.json());
+
+            if (res.success) {
+                shotList.forEach(item => {
+                    item.badFiles = [];
+                    item.tmpFiles = [];
+                    item.hasTmpFiles = false;
+                    item.hasOnlyTmpBadFiles = false;
+                    const highestRender = item.renders ? item.renders[0] : null;
+                    if (highestRender && item.latestScriptNum) {
+                        if (highestRender.versionNum === item.latestScriptNum) {
+                            item.renderStatus = 'up-to-date';
+                        } else if (highestRender.versionNum < item.latestScriptNum) {
+                            item.renderStatus = 'outdated';
+                        }
+                    }
+                });
+                this.renderRenderResults();
+            }
+            return res;
+        } catch (err) {
+            console.error("Error in cleanTmpFilesForShots:", err);
+            return { success: false, error: err.message, deletedCount: 0 };
+        }
     }
 
     async openInExplorer(p) {
@@ -1908,11 +2056,20 @@ class FileAuditor {
                 const lastRndVer = item.renders[0]?.versionStr || 'desconocida';
                 detailText = `<span style="color:#ffd54f;">⚠️ Script en <b>${item.latestScriptVer}</b> pero el render más reciente en Media es <b>${lastRndVer}</b>.</span>`;
             } else if (item.renderStatus === 'bad-naming') {
-                statusBadge = '<span style="background:#ff9800; color:#000; font-size:0.65rem; font-weight:bold; padding:2px 6px; border-radius:3px;">NOMBRE INCORRECTO</span>';
-                statusBorder = '#ff9800';
-                const badExample = item.badFiles && item.badFiles.length > 0 ? item.badFiles[0] : 'archivo sin patrón';
-                const expectedPattern = `${item.shot}_${item.process}_${item.latestScriptVer || 'v001'}.####.exr`;
-                detailText = `<span style="color:#ff9800;">Nombre actual: <code>${badExample}</code> ➔ <b>Formato esperado:</b> <code>${expectedPattern}</code></span>`;
+                const isTmpOnly = item.hasOnlyTmpBadFiles || (item.badFiles && item.badFiles.length > 0 && item.badFiles.every(f => f.toLowerCase().endsWith('.tmp')));
+                if (isTmpOnly) {
+                    statusBadge = '<span style="background:#ffb74d; color:#000; font-size:0.65rem; font-weight:bold; padding:2px 6px; border-radius:3px;">RESIDUOS .TMP</span>';
+                    statusBorder = '#ffb74d';
+                    const tmpCount = item.tmpFiles?.length || item.badFiles?.length || 1;
+                    detailText = `<span style="color:#ffb74d;">🧹 Se detectaron <b>${tmpCount} archivo(s) .tmp</b> residuales dentro de la carpeta de render.</span>
+                    <button onclick="fileAuditor.cleanTmpFiles('${item.key}')" style="margin-left:8px; padding:2px 8px; font-size:0.7rem; background:#ff9800; color:#000; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">🗑️ Borrar .tmp</button>`;
+                } else {
+                    statusBadge = '<span style="background:#ff9800; color:#000; font-size:0.65rem; font-weight:bold; padding:2px 6px; border-radius:3px;">NOMBRE INCORRECTO</span>';
+                    statusBorder = '#ff9800';
+                    const badExample = item.badFiles && item.badFiles.length > 0 ? item.badFiles[0] : 'archivo sin patrón';
+                    const expectedPattern = `${item.shot}_${item.process}_${item.latestScriptVer || 'v001'}.####.exr`;
+                    detailText = `<span style="color:#ff9800;">Nombre actual: <code>${badExample}</code> ➔ <b>Formato esperado:</b> <code>${expectedPattern}</code></span>`;
+                }
             } else if (item.renderStatus === 'orphan-render') {
                 statusBadge = '<span style="background:#ba68c8; color:#000; font-size:0.65rem; font-weight:bold; padding:2px 6px; border-radius:3px;">RENDER SIN ESCENA</span>';
                 statusBorder = '#ba68c8';

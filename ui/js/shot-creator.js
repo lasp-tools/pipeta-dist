@@ -458,7 +458,6 @@ const ShotCreator = {
             const candidateDirs = [
                 ShotCreator.presetsPath,
                 "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner",
-                "S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner"
             ];
             for (const cDir of candidateDirs) {
                 if (window.API && API.fs && API.fs.getFiles) {

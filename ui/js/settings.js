@@ -92,7 +92,7 @@ const settings = {
 
     // Copy Engine (auto | native)
     copyEngine: 'auto',
-    exportPresetsPath: "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets",
+    exportPresetsPath: "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets",
 
     // Sync Configuration & State
     syncMode: 'auto',
@@ -125,6 +125,15 @@ const settings = {
 
     getBaseProject: () => {
         return settings.projects.find(p => p.id === 'proj_base' || p.isBase) || CANONICAL_BASE_PRESETS;
+    },
+
+    isBaseProject: (p) => {
+        if (!p) return false;
+        if (p.id === 'proj_base' || p.isBase === true) return true;
+        if (p._sourceFile === 'base.json') return true;
+        const nameClean = (p.name || '').trim().toLowerCase();
+        if (nameClean === 'proyecto base' || nameClean === 'base') return true;
+        return false;
     },
 
     loadPresets: async () => {
@@ -471,8 +480,11 @@ const settings = {
         }
 
         const savedActiveId = localStorage.getItem('pipeta_active_project_id');
-        const found = settings.projects.find(p => p.id === savedActiveId && p.id !== 'proj_base');
-        settings.currentProject = found || settings.projects.find(p => !p.isBase) || settings.projects[0];
+        const found = settings.projects.find(p => p.id === savedActiveId && !settings.isBaseProject(p));
+        settings.currentProject = found || settings.projects.find(p => !settings.isBaseProject(p)) || settings.projects[0];
+        if (settings.currentProject && !settings.isBaseProject(settings.currentProject)) {
+            localStorage.setItem('pipeta_active_project_id', settings.currentProject.id);
+        }
         
         settings.updateHeaderProjectSelector();
     },
@@ -525,7 +537,7 @@ const settings = {
         });
     },
 
-    newProject: () => {
+    newProject: async () => {
         const name = prompt("Nombre del nuevo proyecto:", "Nuevo Proyecto");
         if (!name) return;
 
@@ -533,18 +545,20 @@ const settings = {
             id: 'proj_' + Date.now(),
             name: name,
             client: "cliente",
-            projectCode: "proy",
+            projectCode: name.substring(0, 4).toUpperCase(),
             overrideBasePresets: false,
             roots: {
-                work: "Z:/",
-                media: "Z:/",
-                onlineWork: "G:/Unidades compartidas/",
-                onlineMedia: "G:/Unidades compartidas/"
+                work: `Z:/cliente/${name}`,
+                media: `Z:/INTERNO/MEDIA/cliente/${name}`,
+                onlineWork: `G:/Unidades compartidas/${name}`,
+                onlineMedia: `G:/Unidades compartidas/${name}_media`
             }
         };
         settings.projects.push(newProj);
         settings.currentProject = newProj;
+        await settings.saveProject();
         settings.render();
+        settings.updateHeaderProjectSelector();
     },
 
     deleteProject: async () => {
@@ -612,11 +626,39 @@ const settings = {
             select.innerHTML = '<option value="">(Sin proyectos)</option>';
             return;
         }
-        settings.projects.forEach(p => {
+
+        // Filtrar Proyecto Base: no debe mostrarse en el selector de la barra superior
+        const visibleProjects = settings.projects.filter(p => !settings.isBaseProject(p));
+
+        if (visibleProjects.length === 0) {
+            select.innerHTML = '<option value="">(Sin proyectos configurados)</option>';
+            return;
+        }
+
+        // Determinar qué proyecto debe figurar seleccionado
+        const savedId = localStorage.getItem('pipeta_active_project_id');
+        let selectedProj = visibleProjects.find(p => p.id === savedId);
+        if (!selectedProj) {
+            if (settings.currentProject && !settings.isBaseProject(settings.currentProject)) {
+                selectedProj = settings.currentProject;
+            } else {
+                selectedProj = visibleProjects[0];
+            }
+        }
+
+        // Si currentProject era base o nulo, sincronizar con el seleccionado real
+        if (!settings.currentProject || settings.isBaseProject(settings.currentProject)) {
+            settings.currentProject = selectedProj;
+            if (selectedProj) {
+                localStorage.setItem('pipeta_active_project_id', selectedProj.id);
+            }
+        }
+
+        visibleProjects.forEach(p => {
             const opt = document.createElement('option');
             opt.value = p.id;
             opt.innerText = p.name;
-            if (settings.currentProject && settings.currentProject.id === p.id) {
+            if (selectedProj && selectedProj.id === p.id) {
                 opt.selected = true;
             }
             select.appendChild(opt);
@@ -624,19 +666,46 @@ const settings = {
     },
 
     selectHeaderProject: async (id) => {
+        const select = document.getElementById('headerProjectSelect');
+        const spinner = document.getElementById('projectSelectSpinner');
         const proj = settings.projects.find(p => p.id === id);
-        if (proj) {
+        if (!proj) return;
+
+        // Feedback visual inmediato en cabecera y pantalla
+        if (select) {
+            select.disabled = true;
+            select.style.opacity = '0.6';
+        }
+        if (spinner) spinner.style.display = 'inline-block';
+
+        if (typeof showOverlay === 'function') {
+            showOverlay(`Cargando Proyecto: ${proj.name || id}`, 'Sincronizando catálogo, explorador y dependencias...');
+        } else if (typeof settings.showToast === 'function') {
+            settings.showToast(`Cargando proyecto ${proj.name}...`, 'info', 3);
+        }
+
+        // Permitir repaint en el navegador para que el loading sea visible al instante
+        await new Promise(r => setTimeout(r, 60));
+
+        try {
             settings.currentProject = proj;
             localStorage.setItem('pipeta_active_project_id', id);
+
+            // Notificar al backend del proyecto activo para hidratación SSD
             fetch('/api/system/last-project', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectName: proj.id || proj.name || id })
             }).catch(() => {});
+
             if (proj.roots) {
                 if (window.state) {
                     if (proj.roots.work) window.state.workPath = proj.roots.work;
                     if (proj.roots.media) window.state.mediaPath = proj.roots.media;
+                }
+                if (typeof ROOTS !== 'undefined') {
+                    if (proj.roots.work) ROOTS.work = proj.roots.work;
+                    if (proj.roots.media) ROOTS.media = proj.roots.media;
                 }
             }
             settings.updateHeaderProjectSelector();
@@ -646,16 +715,17 @@ const settings = {
             window.pipetaSyncCatalog = null;
             window.pipetaServerCatalog = null;
             window.pipetaSyncCatalogLookup = null;
+            window.pipetaServerCatalogLookup = null;
             fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
 
             if (typeof loadActiveProjectSyncCatalog === 'function') {
                 await loadActiveProjectSyncCatalog(true);
             }
 
-            if (typeof initBrowser !== 'undefined') {
+            if (typeof refreshCurrentView === 'function') {
+                await refreshCurrentView(false);
+            } else if (typeof initBrowser !== 'undefined') {
                 await initBrowser();
-            } else if (typeof refreshCurrentView === 'function') {
-                await refreshCurrentView(true);
             }
 
             if (typeof refreshIaHierarchy === 'function') refreshIaHierarchy();
@@ -672,6 +742,31 @@ const settings = {
             if (window.AssetCreator && AssetCreator.isVisible) {
                 AssetCreator.resolveContext(proj.roots?.work || "");
                 AssetCreator.render();
+            }
+            if (window.ShotNavigator) {
+                ShotNavigator.project = proj;
+                ShotNavigator.workflowLoaded = false;
+                if (ShotNavigator.isVisible && typeof ShotNavigator.init === 'function') {
+                    ShotNavigator.init(true);
+                }
+            }
+
+            if (typeof settings.showToast === 'function') {
+                settings.showToast(`Proyecto activo: ${proj.name}`, 'success', 2.5);
+            }
+        } catch (err) {
+            console.error("Error al cambiar proyecto:", err);
+            if (typeof settings.showToast === 'function') {
+                settings.showToast(`Error al cambiar de proyecto: ${err.message}`, 'error', 4);
+            }
+        } finally {
+            if (spinner) spinner.style.display = 'none';
+            if (select) {
+                select.disabled = false;
+                select.style.opacity = '1';
+            }
+            if (typeof hideOverlay === 'function') {
+                hideOverlay();
             }
         }
     },
@@ -2696,7 +2791,7 @@ const settings = {
                         </div>
                         <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; margin-bottom:12px;"></div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\LASP-VM\\Pipeta</code>) y reinicia el sistema automáticamente.
+                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code>) y reinicia el sistema automáticamente.
                         </p>
 
                         <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; font-size:0.8rem;">
@@ -2752,7 +2847,7 @@ const settings = {
                             </div>
                             <div style="display:flex; gap:8px; margin-bottom:14px;">
                                 <input type="text" id="expTargetPath" class="config-input" 
-                                    value="${settings.exportPresetsPath || 'Z:\\\\INTERNO\\\\TOOLS\\\\Mati\\\\Propios\\\\Scripts\\\\Pipeta\\\\presets'}" 
+                                    value="${settings.exportPresetsPath || 'Z:\\\\INTERNO\\\\TOOLS\\\\GITHUB\\\\TOOLS\\\\APPS\\\\Pipeta\\\\presets'}" 
                                     oninput="settings.exportPresetsPath = this.value"
                                     style="flex:1; font-family:monospace; font-size:0.85rem; padding:8px; color:var(--accent);">
                                 <button id="expBrowseBtn" class="btn" onclick="settings.browseExportPath()" 
@@ -2782,7 +2877,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.25'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.43'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -2813,11 +2908,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.25'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.43'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.25'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.43'}.zip</code>).
                             </div>
                         </div>
 
@@ -2857,7 +2952,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.26'}
+                            ${window.APP_VERSION || 'v1.1.43'}
                         </span>
                     </h3>
 
@@ -2869,7 +2964,140 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.26 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.43 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>File Auditor: Fix Desacoplado para Archivos Temporales (.tmp):</b> La opción Fix ahora limpia exclusivamente los archivos <code>.tmp</code> residuales de los renders sin exigir ni encolar subidas o descargas hacia Google Drive (Upload/Download pueden permanecer apagados). Se habilita dinámicamente con texto orientativo <code>Fix (Borrar .tmp)</code> y actualiza el estado directamente a AL DÍA sin falsas alertas de error.</li>
+                                    <li><b>Control de Caché en UI (Cache-Busting):</b> Se vincularon parámetros de versión en los scripts de la interfaz para forzar la recarga inmediata de los módulos en equipos de artistas conectados por red sin requerir recargas forzadas.</li>
+                                    <li><b>Badge Específico de Residuos (.tmp):</b> Detección visual que diferencia carpetas con nombres incorrectos de secuencias válidas afectadas únicamente por archivos residuales <code>.tmp</code> de Nuke/Windows SMB, integrando botón rápido de eliminación y acceso desde el menú contextual.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.42</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>File Auditor: Escaneo Multinivel de Renders y Detección de Ingest:</b> Corrección en el escaneo de renders que solo miraba un nivel de profundidad; ahora inspecciona correctamente jerarquías anidadas canónicas de Nuke (<code>fullres</code>, <code>prerender</code>, <code>mov</code>) y excluye estrictamente carpetas de cámara o ingesta (<code>in/</code>, <code>plates/</code>) de ser catalogadas falsamente como renders.</li>
+                                    <li><b>Limpieza Segura de Residuos Temporales (.tmp):</b> Nueva funcionalidad de corrección que detecta archivos residuales <code>.tmp</code> dejados por Nuke/Windows SMB en carpetas de render. Permite borrarlos de forma individual o en lote con la opción Fix, manteniendo las secuencias de frames 100% intactas y actualizando automáticamente el estado a AL DÍA.</li>
+                                    <li><b>Shot Designer: Restauración de Conexiones Mirror y Trazados Bézier:</b> Corrección en el dibujado de conexiones púrpuras verticales entre Proyecto y Media, habilitación de arrastre fluido de conexiones desde dots y corrección en la carga de presets locales.</li>
+                                    <li><b>Navegación Explorer: Eliminación de Bloqueo en Apertura:</b> Se solventó la condición de carrera en los overlays de carga que dejaba congelada la pantalla en "Actualizando vista..." al abrir la aplicación.</li>
+                                </ul>
+                            </div>
+
+
+                            <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.39</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Navegación Automática contra Catálogo DB en RAM (0 SMB):</b> En puestos del estudio donde Z: es un volumen de red SMB, la exploración del árbol local utiliza de forma directa y prioritaria la DB del servidor central sin consultar la red a cada clic, respondiendo en 0 ms.</li>
+                                    <li><b>Detección Inteligente de Tipo de Unidad Z:</b> Distinción transparente entre volúmenes de red SMB y montajes locales virtuales (VSUB). En modo local por VSUB se aprovecha la velocidad física del SSD, mientras que en red SMB se evita el escaneo innecesario de archivos.</li>
+                                    <li><b>Actualización Reactiva de Archivos:</b> Refresco selectivo e invalidación inmediata del catálogo ante cualquier acción de Pipeta (creación de assets, planos, copiado, ingest o eliminación).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.38</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Navegación Instantánea en Red SMB y Catálogos Modulares:</b> Eliminación de bloqueos de Event Loop causados por escaneos síncronos sobre la unidad Z: conectada por red SMB. La indexación de miles de archivos se realiza en memoria en menos de 100 ms.</li>
+                                    <li><b>Caché en Memoria Acelerado:</b> Incorporación de lectura instantánea con <code>serverDirCache</code> para navegación a 0 ms.</li>
+                                    <li><b>Blindaje del Árbol de Exploración:</b> Manejo robusto de promesas en Split View evitando estados colgados de carga.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.37</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Arquitectura de Catálogos Centralizados por HTTP (0 SMB):</b> Los manifiestos y sub-catálogos de proyectos (tanto de Google Drive como del servidor del estudio Z:) se sirven directamente por HTTP comprimido desde <code>lasp-pipeta-server</code> hacia el SSD local. Se eliminan los bloqueos y latencias de navegación de Windows SMB en puestos nuevos o reinstalados.</li>
+                                    <li><b>Puente de Catálogos Continuo:</b> Sincronización continua de la estructura de proyectos y catálogos en el servidor central con <code>rsync</code> incremental.</li>
+                                    <li><b>Blindaje de Dependencias y Reinicios:</b> Protección total de <code>node_modules</code> y runtimes locales durante reinicios automáticos de la aplicación.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.36</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Selector de Proyectos Optimizado:</b> Se oculta el proyecto técnico base de la lista de selección en la barra superior (manteniendo su función como base de configuración) y se añade un indicador visual de carga al conmutar de proyecto.</li>
+                                    <li><b>Monitor de Almacenamiento Colapsable:</b> Monitor de discos discretamente ubicado a la derecha de la barra superior, apagado por defecto y desplegable con botón dedicado.</li>
+                                    <li><b>Estabilidad y Telemetría Central (Pipeta Server):</b> Puente continuo de almacenamiento (<code>pipeta-storage-bridge</code>) y protección anti-clock-skew para el monitoreo ininterrumpido de nodos (<code>lasp-virt-030</code>).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.35</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Rediseño de Pipeta Server (Panel de Control):</b> Reorganización del dashboard en dos columnas; los Nodos Workers ahora se sitúan en una columna lateral dedicada y la tabla principal se expande bajo el título <code>Transfer Queue</code>.</li>
+                                    <li><b>Limpieza Visual de la Interfaz:</b> Remoción del botón obsoleto «Levantar Worker Local (este servidor)», eliminación del icono de escoba en «Limpiar Historial» y del rayo en la cabecera de la cola.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.34</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Blindaje de Cola de Sincronización Local / Red (Cero Congelamiento en Tasa):</b> Se corrigió la condición de carrera en la persistencia de órdenes locales (escritura simultánea asíncrona sobre SMB que corrompía el JSON de la orden). Ahora el estado se persiste de inmediato en el SSD local y se replica de forma segura y secuencial a la red.</li>
+                                    <li><b>Telemetría en Tiempo Real desde Memoria RAM (0 ms):</b> La consulta de órdenes inyecta el progreso de las transferencias locales directamente desde el proceso Node en RAM, garantizando velocidad y porcentaje instantáneos sin quedar trabado en «Calculando tasa...».</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.33</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Monitor de Discos Colapsable a la Derecha:</b> Se reubicó el monitor de almacenamiento (Z: / G:) al extremo derecho de la barra superior, junto a los controles de sistema. Por defecto permanece oculto para mantener la barra limpia, y se despliega al tocar el nuevo botón con icono de disco.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.32</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Ocultamiento del Proyecto Base en Selector de Cabecera:</b> El desplegable de proyectos de la barra superior ahora excluye de forma limpia el <i>Proyecto Base</i> (preservándolo intacto como plantilla maestra de configuración en Opciones Avanzadas y en el resto del sistema).</li>
+                                    <li><b>Feedback Visual y Pantalla de Carga al Cambiar de Proyecto:</b> Al seleccionar un proyecto nuevo, se despliega de inmediato una pantalla de carga con indicador esmerilado de progreso y spinner en el selector, evitando la sensación de congelamiento mientras se sincronizan catálogos y exploradores.</li>
+                                    <li><b>Sincronización Coordinada de Entorno:</b> Actualización instantánea de raíces de trabajo (<code>ROOTS</code>, <code>window.state</code>, <code>ShotNavigator</code>, <code>ShotCreator</code>, <code>AssetCreator</code>) y soporte dinámico para vistas Split y Miller al conmutar de proyecto.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.31</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Eliminación del Bloqueo de Event Loop por Cola de Órdenes SMB:</b> Se optimizó <code>/api/sync/orders</code> y <code>/api/sync/worker-status</code> con caché en memoria para órdenes finalizadas y límite de inspección a las órdenes más recientes, además de depurar órdenes históricas en red. Esto elimina el bloqueo síncrono de 15-20 segundos cada 3 segundos en máquinas conectadas vía UNC (<code>\\\\192.168.206.116\\Z</code>).</li>
+                                    <li><b>Hidratación Local Instantánea de Subcatálogos Modulares (0 ms):</b> Las consultas a subcatálogos modulares ahora priorizan e hidratan automáticamente el disco SSD local (<code>C:\\TOOLS\\APPS\\Pipeta\\_SYNC_CACHE</code>) sin realizar barridos repetitivos por red SMB en cada carpeta desplegada.</li>
+                                    <li><b>Blindaje de Despliegue de Carpetas en Split-View Explorer:</b> Se incorporó protección contra clics/eventos concurrentes mientras una carpeta está cargando (evitando que se cierre sola) y se corrigió el orden de inserción en el DOM antes de auto-expandir subcarpetas.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.30</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Optimización Drástica de Split-View Explorer:</b> Se implementó caché jerárquico de directorios locales (<code>dirExistsFast</code> / <code>fileExistsFast</code>). Al comparar local contra servidor en carpetas con miles de archivos que aún no existen en el disco del artista, la verificación de existencia se resuelve en &lt; 30 ms en lugar de congelar la aplicación por 45-60 segundos.</li>
+                                    <li><b>Eliminación de Consultas SMB Redundantes:</b> Se unificó el estado de existencia local para evitar comprobaciones de disco duplicadas por cada ítem listado.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.29</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Blindaje de Workflow y Base de Datos Local:</b> Se eliminó la escritura automática pasiva de <code>shot_tracker.json</code> en disco al consultar o sincronizar tareas con Ramón. Los proyectos nuevos o vacíos ya no generan de forma espontánea carpetas residuales <code>workflow/</code> en la raíz de trabajo.</li>
+                                    <li><b>Protección de Proyectos no Creados en Disco:</b> Los endpoints de guardado de tracker ahora verifican la existencia previa de la carpeta raíz del proyecto antes de generar subdirectorios, previniendo la creación de proyectos fantasma o huérfanos.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.28</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Auto-Guardado Inmediato de Proyectos:</b> La creación de nuevos proyectos persiste de forma inmediata y automática en el disco local (<code>.json</code>) al asignar su nombre, eliminando pérdidas de configuración por omitir el botón manual de guardado.</li>
+                                    <li><b>Exportación y Publicación Canónica de Presets:</b> Se actualizó la ruta de exportación de presets por defecto a la ubicación central oficial del repositorio (<code>Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\presets</code>), asegurando que los presets lleguen directamente a la red y a producción.</li>
+                                    <li><b>Incorporación del Proyecto <code>compound_nine</code>:</b> Integración del preset canónico del nuevo proyecto oficial en la suite de proyectos activos del estudio.</li>
+                                    <li><b>Auto-Hidratación de Dependencias y Protección de Runtimes:</b> Blindaje en los lanzadores y actualizadores con exclusión estricta de carpetas <code>bin/</code>, <code>tools/</code> y <code>node_modules/</code> ante sincronizaciones con Robocopy, y descompresión automática transparente desde el depósito central (<code>_DEPOT</code>) al detectar runtimes faltantes.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.27</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Transferencia Concurrente Multi-Stream (Secuencias de Frames):</b> Implementación de un worker pool paralelo de hasta 8 streams simultáneos de copia sobre red SMB. Elimina el cuello de botella de latencia por archivo en secuencias de imágenes (PNG/EXR) y sustituye las lecturas remotas repetitivas de red por chequeos de memoria local en RAM, multiplicando radicalmente el ancho de banda transferido.</li>
+                                    <li><b>Cancelación Inmediata en Caliente de Descargas Locales:</b> Integración de <code>AbortController</code> en la memoria activa del servidor. Al cancelar una descarga, los streams se destruyen en el acto, liberando los archivos y evitando que el hilo continúe escribiendo o marque la tarea como completada al finalizar.</li>
+                                    <li><b>Saneamiento de Órdenes Huérfanas (Zombie Orders):</b> Limpieza automática de tareas que permanecían congeladas en estado <code>processing</code> tras cerrar o reiniciar Pipeta. Al reiniciar el servidor y al consultar la lista de órdenes, las transferencias locales no activas en RAM se marcan como <i>interrumpidas</i> de inmediato.</li>
+                                    <li><b>Apertura Instantánea en Windows Explorer:</b> Resolución automática de carpetas desde puestos con unidad virtual <code>subst Z:</code> hacia recursos UNC del Servidor Central con conexión SMB previa verificada. Se elimina el bloqueo y la espera de 20-30 segundos de Windows Explorer.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.26</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Refinamiento de Metadata Dual para Higgsfield AI:</b> Separación estricta y limpia entre el resguardo del ledger original (<code>IA/higgsfield/...meta.json</code>, que conserva el JSON puro entregado por la API de Higgsfield al 100% sin inyección de datos de pipeline) y el sidecar canónico de estudio (<code>[SHOT_ID]_[MOTOR]...meta.json</code>, identificando el archivo con la clave canónica <code>lasp_name</code> y eliminando extensiones redundantes <code>.mp4</code> del nombre de metadata).</li>
                                     <li><b>Reproductor y Previsualización Robusta de Video Web:</b> Simplificación del visor flotante eliminando botones innecesarios; la miniatura/poster persistente se mantiene siempre activa y responsive sin errores que colapsen el reproductor en videos web.</li>
@@ -2983,8 +3211,8 @@ const settings = {
                             <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
                                 <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.14</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
-                                    <li><b>Aislamiento y Modo Exclusivo para Equipos Externos (Home / WAN):</b> En máquinas remotas o de artistas en casa (detectadas por ausencia de LAN del estudio o inicio de sesión en Ramón WAN), Pipeta oculta y deshabilita automáticamente el modo Servidor Central (S:) y sus comparaciones. El equipo trabaja exclusivamente en modo <code>LOCAL</code> y <code>GOOGLE DRIVE</code>, eliminando por completo intentos de lectura o bloqueos por catálogos centrales de red.</li>
-                                    <li><b>Compatibilidad Total con Puestos del Estudio:</b> Los puestos locales del estudio y máquinas virtuales de desarrollo (donde Z: es una unidad virtual o subst pero existe conectividad interna LAN) conservan intacta la funcionalidad completa de Servidor Central (S:) y catálogos centrales.</li>
+                                    <li><b>Aislamiento y Modo Exclusivo para Equipos Externos (Home / WAN):</b> En máquinas remotas o de artistas en casa (detectadas por ausencia de LAN del estudio o inicio de sesión en Ramón WAN), Pipeta oculta y deshabilita automáticamente el modo Servidor Central y sus comparaciones. El equipo trabaja exclusivamente en modo <code>LOCAL</code> y <code>GOOGLE DRIVE</code>, eliminando por completo intentos de lectura o bloqueos por catálogos centrales de red.</li>
+                                    <li><b>Compatibilidad Total con Puestos del Estudio:</b> Los puestos locales del estudio y máquinas virtuales de desarrollo (donde Z: es una unidad virtual o subst pero existe conectividad interna LAN) conservan intacta la funcionalidad completa de Servidor Central y catálogos centrales.</li>
                                     <li><b>Detección Instantánea No Bloqueante:</b> La comprobación de entorno de red y Ramón remoto se ejecuta mediante sondeo directo ultra-rápido en backend y se sincroniza en tiempo real al iniciar sesión sin requerir recargar la página.</li>
                                 </ul>
                             </div>
@@ -3231,7 +3459,7 @@ const settings = {
                 <div class="pipeta-update-steps" id="pipeta-update-steps">
                     <div class="pipeta-update-step-item active" id="pstep-1">
                         <span class="pstep-icon">🔍</span>
-                        <span>1. Localizando repositorio maestro en red (Z: / S: / LASP-MUNRO)...</span>
+                        <span>1. Localizando repositorio maestro en red...</span>
                     </div>
                     <div class="pipeta-update-step-item" id="pstep-2">
                         <span class="pstep-icon">📦</span>
@@ -3392,7 +3620,7 @@ const settings = {
     },
 
     setDefaultExportPath: () => {
-        const defaultPath = 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets';
+        const defaultPath = 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets';
         const input = document.getElementById('expTargetPath');
         if (input) input.value = defaultPath;
         settings.exportPresetsPath = defaultPath;
@@ -3402,7 +3630,7 @@ const settings = {
 
     browseExportPath: async () => {
         const input = document.getElementById('expTargetPath');
-        const current = (input ? input.value : settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets').trim();
+        const current = (input ? input.value : settings.exportPresetsPath || 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets').trim();
         const btn = document.getElementById('expBrowseBtn');
         if (btn) btn.innerHTML = '<span>⏳ Abriendo...</span>';
         try {
@@ -3612,8 +3840,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.25'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.25'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.43'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.43'}.zip`;
 
         if (btn) {
             btn.disabled = true;

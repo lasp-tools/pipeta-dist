@@ -66,7 +66,7 @@
             }
 
             const actionLabel = action === 'upload' ? 'Subir' : 'Descargar';
-            const targetLabel = targetType === 'server' ? 'Servidor Central (S:)' : 'Google Drive';
+            const targetLabel = targetType === 'server' ? 'Servidor Central' : 'Google Drive';
             const typeLabel = isDir ? 'Carpeta' : 'Archivo';
 
             // Comparativas de fecha y peso
@@ -368,7 +368,7 @@
             if (targetType === 'server') {
                 const serverStat = await API.fs.stat(serverPath);
                 targetInfo = {
-                    label: 'Servidor Central (S:)',
+                    label: 'Servidor Central',
                     name: itemName,
                     path: serverPath,
                     size: serverStat.size || 0,
@@ -407,7 +407,7 @@
             if (targetType === 'server') {
                 const serverStat = await API.fs.stat(serverPath);
                 sourceInfo = {
-                    label: 'Servidor Central (S:)',
+                    label: 'Servidor Central',
                     name: itemName,
                     path: serverPath,
                     size: serverStat.size || 0,

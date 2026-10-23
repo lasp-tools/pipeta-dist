@@ -244,28 +244,28 @@ const headerToolsTemplates = {
         <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
             <span class="toolbar-section-label">File / Folder Functions</span>
             <div class="toolbar-section-content">
-                <button class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
+                <button id="btn-tb-copy" class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
                     <img src="icons/copy.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
+                <button id="btn-tb-paste" class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
                     <img src="icons/paste.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
+                <button id="btn-tb-duplicate" class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
                     <img src="icons/duplicate.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
+                <button id="btn-tb-rename" class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
                     <img src="icons/rename.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
+                <button id="btn-tb-newfolder" class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
                     <img src="icons/new_folder.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
+                <button id="btn-tb-delete" class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
                     <img src="icons/delete.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
+                <button id="btn-tb-copypath" class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
                     <img src="icons/copy_path.svg" class="btn-icon-svg">
                 </button>
-                <button class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
+                <button id="btn-tb-openexplorer" class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
                     <img src="icons/open_explorer.svg" class="btn-icon-svg">
                 </button>
             </div>
@@ -548,11 +548,28 @@ const headerToolsTemplates = {
 function showOverlay(msg, subMsg) {
     const ov = document.getElementById('app-overlay');
     if (ov) {
-        document.getElementById('app-overlay-msg').innerText = msg;
-        document.getElementById('app-overlay-sub').innerText = subMsg || "";
+        const msgEl = document.getElementById('app-overlay-msg');
+        const subEl = document.getElementById('app-overlay-sub');
+        const spinner = ov.querySelector('.spinner-large');
+        if (msgEl) msgEl.innerText = msg;
+        if (subEl) subEl.innerText = subMsg || "";
+        if (spinner) {
+            spinner.style.borderTopColor = 'var(--accent)';
+            spinner.style.animation = 'spin 1s linear infinite';
+        }
         ov.style.display = 'flex';
     }
 }
+
+function hideOverlay() {
+    const ov = document.getElementById('app-overlay');
+    if (ov) {
+        ov.style.display = 'none';
+    }
+}
+
+window.showOverlay = showOverlay;
+window.hideOverlay = hideOverlay;
 
 window.closeApp = async () => {
     showOverlay("Cerrando Aplicación", "Apagando servidor Pipeta Core...");
@@ -619,6 +636,10 @@ function updateHeaderTools(viewId) {
 
     // Execute if function, else use string (legacy support if needed, but we converted all)
     container.innerHTML = typeof generator === 'function' ? generator() : generator;
+
+    if (typeof updateToolbarFileActionsState === 'function') {
+        updateToolbarFileActionsState();
+    }
 }
 
 function switchView(viewId) {
@@ -1026,6 +1047,22 @@ async function checkRcloneStatus() {
 }
 
 // --- DISK USAGE MONITOR ---
+function toggleDiskMonitor() {
+    const monitor = document.getElementById('disk-monitor');
+    const btn = document.getElementById('btnToggleDisks');
+    if (!monitor) return;
+    const isHidden = monitor.style.display === 'none' || getComputedStyle(monitor).display === 'none';
+    if (isHidden) {
+        monitor.style.display = 'flex';
+        if (btn) btn.classList.add('active');
+        if (typeof updateDiskMonitor === 'function') updateDiskMonitor();
+    } else {
+        monitor.style.display = 'none';
+        if (btn) btn.classList.remove('active');
+    }
+}
+window.toggleDiskMonitor = toggleDiskMonitor;
+
 async function updateDiskMonitor() {
     try {
         let onlineDrive = 'G';

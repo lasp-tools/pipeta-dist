@@ -47,6 +47,12 @@ if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta_*.zip" (
     copy /Y "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta_*.zip" "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\" >nul 2>&1
 )
 
+echo [4/4] Sincronizando deposito de dependencias (_DEPOT) a Produccion...
+if exist "Z:\INTERNO\TOOLS\_DEPOT" (
+    if not exist "S:\INTERNO\TOOLS\_DEPOT" mkdir "S:\INTERNO\TOOLS\_DEPOT"
+    robocopy "Z:\INTERNO\TOOLS\_DEPOT" "S:\INTERNO\TOOLS\_DEPOT" /MIR /R:2 /W:2 /MT:16 /NFL /NDL /NJH /NJS
+)
+
 echo.
 echo ============================================================
 echo   OK: Pipeta ha sido publicada con exito en S: (Z: del estudio)

@@ -23,11 +23,9 @@ const isLocalMode = process.argv.includes('--local') || process.env.PIPETA_LOCAL
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 const CACHE_ROOT = isLocalMode 
     ? path.join(__dirname, '../_SYNC_CACHE')
-    : (fs.existsSync('S:/_SYNC_CACHE')
-        ? 'S:/_SYNC_CACHE'
-        : (fs.existsSync('Z:/_SYNC_CACHE') 
-            ? 'Z:/_SYNC_CACHE' 
-            : (fs.existsSync(UNC_CACHE) ? UNC_CACHE : path.join(__dirname, '../_SYNC_CACHE'))));
+    : (fs.existsSync('Z:/_SYNC_CACHE') 
+        ? 'Z:/_SYNC_CACHE' 
+        : (fs.existsSync(UNC_CACHE) ? UNC_CACHE : path.join(__dirname, '../_SYNC_CACHE')));
 
 const ORDERS_DIR = path.join(CACHE_ROOT, 'requests');
 const STATUS_FILE = path.join(CACHE_ROOT, 'worker_status.json');
@@ -38,7 +36,6 @@ function findRcloneExe() {
         path.join(__dirname, '../tools/rclone/rclone.exe'),
         'C:/TOOLS/APPS/Pipeta/tools/rclone/rclone.exe',
         'Z:/INTERNO/TOOLS/Instaladores/rclone/rclone.exe',
-        'S:/INTERNO/TOOLS/Instaladores/rclone/rclone.exe',
         'C:/Program Files/rclone/rclone.exe'
     ];
     for (const c of candidates) {
@@ -52,7 +49,6 @@ function findRcloneConf() {
         path.join(__dirname, '../tools/rclone/rclone.conf'),
         'C:/TOOLS/APPS/Pipeta/tools/rclone/rclone.conf',
         'Z:/INTERNO/TOOLS/Instaladores/rclone.conf',
-        'S:/INTERNO/TOOLS/Instaladores/rclone.conf',
         '//192.168.206.116/Z/INTERNO/TOOLS/Instaladores/rclone.conf',
         path.join(process.env.APPDATA || '', 'rclone/rclone.conf'),
         path.join(os.homedir(), '.config/rclone/rclone.conf'),
@@ -71,10 +67,7 @@ function getCandidateOrdersDirs() {
     if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(localDir).toLowerCase()) && fs.existsSync(localDir)) {
         dirs.push(localDir);
     }
-    const sDir = 'S:/_SYNC_CACHE/requests';
-    if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(sDir).toLowerCase()) && fs.existsSync(sDir)) {
-        dirs.push(sDir);
-    }
+
     const zDir = 'Z:/_SYNC_CACHE/requests';
     if (!dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(zDir).toLowerCase()) && fs.existsSync(zDir)) {
         dirs.push(zDir);
@@ -158,7 +151,7 @@ function resolveRemoteInfo(fullPath) {
 }
 
 /**
- * Resuelve la ruta local considerando las letras de unidad en Server (Z:) vs Dev (S:)
+ * Resuelve la ruta local considerando las letras de unidad en Server vs Dev
  */
 function resolveLocalPathForWorker(p) {
     if (!p) return '';
@@ -236,7 +229,7 @@ function updateHeartbeat(status = 'idle', activeTask = null) {
             }
         } catch(e) {}
 
-        // No sobreescribir STATUS_FILE de produccion (S:) desde la maquina de desarrollo (LASP-VM)
+        // No sobreescribir STATUS_FILE de produccion desde la maquina de desarrollo (LASP-VM)
         if (canUpdateLegacyStatus && !(CACHE_ROOT.toUpperCase().startsWith('S:') && os.hostname().toLowerCase().includes('vm'))) {
             fs.writeJsonSync(STATUS_FILE, data, { spaces: 2 });
         }

@@ -192,7 +192,6 @@ async function fetchJobDetails(jobId) {
 
     const networkCacheDirs = [
         'Z:/_SYNC_CACHE/higgsfield',
-        'S:/_SYNC_CACHE/higgsfield',
         '//192.168.206.116/Z/_SYNC_CACHE/higgsfield'
     ];
     for (const nDir of networkCacheDirs) {

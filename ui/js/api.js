@@ -6,10 +6,11 @@ async function fetchDir(path, options = {}) {
         if (options.localSource) url += `&local_source=${encodeURIComponent(options.localSource)}`;
         if (options.force) url += `&force=true`;
     }
-    if ((!options || !options.localSource) && window.viewLocationMode === 'server') {
+    const isAppLocal = path && (path.includes('presets') || /^[a-z]:[/\\]tools[/\\]apps/i.test(path) || /^[a-z]:[/\\]interno[/\\]tools[/\\]github/i.test(path));
+    if (!isAppLocal && (!options || !options.localSource) && window.viewLocationMode === 'server') {
         url += `&local_source=server_catalog`;
     }
-    if ((!options || !options.onlineEngine) && (window.viewLocationMode === 'drive' || window.viewLocationMode === 'online')) {
+    if (!isAppLocal && (!options || !options.onlineEngine) && (window.viewLocationMode === 'drive' || window.viewLocationMode === 'online')) {
         url += `&online_engine=catalog`;
     }
     try {
@@ -26,8 +27,9 @@ const API = {
     fetchDir: fetchDir, // Alias
     fs: {
         // FS Helpers for Asset Designer (Node Backend)
-        getFiles: async (dirPath) => {
-            const data = await fetchDir(dirPath);
+        getFiles: async (dirPath, options = {}) => {
+            const opts = Object.assign({ localSource: 'z_local' }, options);
+            const data = await fetchDir(dirPath, opts);
             // Server returns { path: ..., items: [...] }
             if (data && data.items && Array.isArray(data.items)) {
                 return data.items.map(f => f.name);

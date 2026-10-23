@@ -980,14 +980,14 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
                 const okBadge = document.createElement('span');
                 okBadge.className = 'sync-badge-ok';
                 okBadge.innerText = '✓';
-                okBadge.title = syncMode === 'server' ? '✓ Idéntico en Server Central (S:)' : '✓ Sincronizado con Google Drive';
+                okBadge.title = syncMode === 'server' ? '✓ Idéntico en Servidor Central' : '✓ Sincronizado con Google Drive';
                 block.appendChild(okBadge);
             } else {
                 block.classList.add('sync-pending-upload');
                 const upBtn = document.createElement('span');
                 upBtn.className = 'sync-badge-action sync-badge-upload';
                 upBtn.innerHTML = syncMode === 'server' ? '⬆️ Subir a Server' : '⬆️ Subir a Drive';
-                upBtn.title = syncMode === 'server' ? 'Copiar a Servidor Central Real (S:)' : 'Subir a Google Drive';
+                upBtn.title = syncMode === 'server' ? 'Copiar a Servidor Central' : 'Subir a Google Drive';
                 upBtn.onclick = (e) => requestUploadLocalItem(item, e, syncMode);
                 block.appendChild(upBtn);
             }

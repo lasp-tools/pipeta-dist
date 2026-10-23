@@ -1,0 +1,23 @@
+{
+  "id": "proj_compound_nine",
+  "name": "compound_nine",
+  "client": "cinema7",
+  "projectCode": "C9",
+  "roots": {
+    "work": "Z:/cinema7/compound_nine",
+    "media": "Z:/INTERNO/MEDIA/cinema7/compound_nine",
+    "onlineWork": "G:/Unidades compartidas/compound_nine",
+    "onlineMedia": "G:/Unidades compartidas/compound_nine_media"
+  },
+  "defaultShotPresetId": "master_shot",
+  "defaultAssetPresetId": "master_asset",
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  },
+  "_sourceFile": "compound_nine.json"
+}

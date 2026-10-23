@@ -180,7 +180,7 @@ const Tutorials = {
                     </tr>
                     <tr style="border-bottom:1px solid #333;">
                         <td style="padding:8px; color:#FF9800; font-weight:bold;">SERVER</td>
-                        <td style="padding:8px; color:#999;">Accede al verdadero servidor central SMB del estudio (S: / Storage) para comparar con el máster del proyecto.</td>
+                        <td style="padding:8px; color:#999;">Accede al servidor central SMB del estudio para comparar con el máster del proyecto.</td>
                     </tr>
                 </table>
 

@@ -12,6 +12,11 @@ set "BIN_DIR=%SCRIPT_DIR%bin"
 set "TOOLS_DIR=%SCRIPT_DIR%tools"
 set "SERVER_DIR=%SCRIPT_DIR%server"
 set "DEPOT_ZIP=Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+if not exist "%DEPOT_ZIP%" (
+    if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
+        set "DEPOT_ZIP=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+    )
+)
 
 :: 1. Verificar si las dependencias ya estan presentes
 if exist "%BIN_DIR%\node\node.exe" (

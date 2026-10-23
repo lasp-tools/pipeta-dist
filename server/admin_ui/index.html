@@ -195,11 +195,29 @@
         main {
             padding: 24px;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
+            align-items: flex-start;
             gap: 24px;
-            max-width: 1600px;
+            max-width: 100%;
             margin: 0 auto;
             width: 100%;
+            box-sizing: border-box;
+        }
+
+        .workers-sidebar {
+            width: 360px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .queue-main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
         .section-header {
@@ -222,9 +240,18 @@
 
         /* Workers Grid */
         .workers-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-            gap: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        @media (max-width: 1180px) {
+            main {
+                flex-direction: column;
+            }
+            .workers-sidebar {
+                width: 100%;
+            }
         }
 
         .worker-card {
@@ -894,6 +921,182 @@
             transform: translateY(0);
             opacity: 1;
         }
+    
+        /* Modal Confirm Custom */
+        .modal-confirm-card {
+            max-width: 440px;
+            gap: 16px;
+        }
+
+        .confirm-modal-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .confirm-modal-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+        }
+
+        .confirm-modal-body {
+            font-size: 0.88rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+
+        /* Context Menu Flotante */
+        .context-menu {
+            position: fixed;
+            background: #181c27;
+            border: 1px solid #3d455d;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.65);
+            border-radius: 8px;
+            padding: 6px 0;
+            min-width: 220px;
+            z-index: 9999;
+            font-family: var(--font-main);
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(255, 107, 0, 0.16);
+            color: var(--accent);
+        }
+
+        .context-menu-item.danger:hover {
+            background: rgba(239, 68, 68, 0.18);
+            color: #f87171;
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background: var(--border);
+            margin: 4px 0;
+        }
+
+        /* Barra de Acciones en Lote (Selection Bar) */
+        .selection-bar {
+            background: #141721;
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 8px 16px;
+            margin-bottom: 14px;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 4px 16px rgba(255, 107, 0, 0.12);
+        }
+
+        .selection-bar.active {
+            display: flex;
+        }
+
+        .selection-count-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: var(--accent);
+            font-family: var(--font-mono);
+        }
+
+        .selection-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* Input de Prioridad Inline */
+        .inline-priority-input {
+            width: 48px;
+            background: #0d0f14;
+            border: 1px solid var(--accent);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            font-weight: 800;
+            font-size: 0.8rem;
+            text-align: center;
+            border-radius: 4px;
+            padding: 2px 4px;
+            outline: none;
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        /* Secciones separadas Queue vs Historial */
+        .queue-section {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .queue-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            background: #12151e;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .queue-section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .section-badge-count {
+            background: var(--bg-card);
+            border: 1px solid var(--border-highlight);
+            color: var(--accent);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            font-weight: 700;
+        }
+
+        tr.row-selected td {
+            background: rgba(255, 107, 0, 0.08) !important;
+        }
+
+        .task-row {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .task-checkbox {
+            cursor: pointer;
+            accent-color: var(--accent);
+            width: 15px;
+            height: 15px;
+        }
+
     </style>
 </head>
 <body>
@@ -930,53 +1133,39 @@
                 <span id="queuePauseText">Pausar Cola Global</span>
             </button>
             <button class="btn" onclick="clearFinishedHistory()">
-                <span>🧹</span> Limpiar Historial
+                Limpiar Historial
             </button>
         </div>
     </header>
 
     <!-- Main Dashboard -->
     <main>
-        <!-- Workers Section -->
-        <section>
+        <!-- Workers Column (Sidebar) -->
+        <aside class="workers-sidebar">
             <div class="section-header">
                 <div class="section-title">
                     <span>🖥️</span> Nodos de Procesamiento (Workers)
                 </div>
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <button class="btn" style="background: rgba(0, 210, 255, 0.1); border-color: rgba(0, 210, 255, 0.4); color: var(--cyan); font-size: 0.74rem; padding: 4px 10px; font-weight: 600;" onclick="startLocalWorker()">
-                        ⚡ Levantar Worker Local (este servidor)
-                    </button>
-                    <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);" id="workersSummaryText">
-                        Escaneando nodos en red...
-                    </div>
+                <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);" id="workersSummaryText">
+                    Escaneando nodos en red...
                 </div>
             </div>
             <div class="workers-grid" id="workersGrid">
                 <!-- Tarjetas de Workers renderizadas dinámicamente -->
             </div>
-        </section>
+        </aside>
 
-        <!-- Queue Section -->
-        <section>
+        <!-- Queue Column (Main Area) -->
+        <section class="queue-main">
             <div class="section-header">
                 <div class="section-title">
-                    <span>⚡</span> Cola de Transferencias e Ingestas
+                    Transfer Queue & Orquestación
                 </div>
             </div>
 
-            <!-- Filters -->
+            <!-- Global Filters Panel -->
             <div class="filters-panel">
-                <div class="filter-tabs">
-                    <button class="tab-btn active" onclick="setFilterStatus('all')">Todas (<span id="countAll">0</span>)</button>
-                    <button class="tab-btn" onclick="setFilterStatus('processing')">En Proceso (<span id="countProc">0</span>)</button>
-                    <button class="tab-btn" onclick="setFilterStatus('pending')">En Cola (<span id="countPend">0</span>)</button>
-                    <button class="tab-btn" onclick="setFilterStatus('paused')">Pausadas (<span id="countPau">0</span>)</button>
-                    <button class="tab-btn" onclick="setFilterStatus('completed')">Completadas (<span id="countComp">0</span>)</button>
-                    <button class="tab-btn" onclick="setFilterStatus('failed')">Fallidas (<span id="countFail">0</span>)</button>
-                </div>
-
-                <div class="filter-inputs">
+                <div class="filter-inputs" style="width: 100%; justify-content: flex-start; gap: 12px;">
                     <select class="input-select" id="filterType" onchange="renderQueue()">
                         <option value="all">Todos los tipos</option>
                         <option value="download">Drive: Descarga</option>
@@ -989,17 +1178,45 @@
                     <select class="input-select" id="filterProject" onchange="renderQueue()">
                         <option value="all">Todos los proyectos</option>
                     </select>
-                    <input type="text" class="input-search" id="filterSearch" placeholder="Buscar por shot, archivo, usuario..." oninput="renderQueue()">
+                    <input type="text" class="input-search" id="filterSearch" placeholder="Buscar por shot, archivo, usuario..." oninput="renderQueue()" style="flex: 1; max-width: 400px;">
                 </div>
             </div>
 
-            <!-- Queue Table -->
-            <div class="queue-container">
+            <!-- Selection Bar (Acciones en Lote) -->
+            <div class="selection-bar" id="selectionBar">
+                <div class="selection-count-badge">
+                    <span>⚡</span>
+                    <span id="selectedCountText">0 tareas seleccionadas</span>
+                </div>
+                <div class="selection-actions">
+                    <button class="btn btn-icon" title="Cambiar Prioridad" onclick="openBatchPriorityModal()">⚡ Cambiar Prioridad</button>
+                    <button class="btn btn-icon" style="color: var(--cyan); border-color: rgba(0,210,255,0.4);" title="Reintentar seleccionadas" onclick="batchRetrySelected()">🔄 Reintentar</button>
+                    <button class="btn btn-icon btn-danger" title="Cancelar seleccionadas" onclick="batchCancelSelected()">🛑 Cancelar</button>
+                    <button class="btn btn-icon btn-danger" title="Eliminar seleccionadas" onclick="batchDeleteSelected()">🗑 Eliminar</button>
+                    <button class="btn btn-icon" title="Deseleccionar todo" onclick="clearSelection()" style="margin-left: 8px;">✕</button>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 1: COLA ACTIVA Y EN PROCESO -->
+            <div class="queue-section" id="activeQueueSection">
+                <div class="queue-section-header">
+                    <div class="queue-section-title">
+                        <span>⚡</span>
+                        <span>COLA ACTIVA Y EN PROCESO</span>
+                        <span class="section-badge-count" id="badgeActiveCount">0</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                        Tareas en ejecución, en cola o pausadas
+                    </div>
+                </div>
                 <div class="table-responsive">
-                    <table>
+                    <table class="queue-table">
                         <thead>
                             <tr>
-                                <th style="width: 65px;">Prioridad</th>
+                                <th style="width: 38px; text-align: center;">
+                                    <input type="checkbox" class="task-checkbox" id="selectAllActive" onchange="toggleSelectAllActive(this.checked)">
+                                </th>
+                                <th style="width: 75px;">Prioridad</th>
                                 <th style="width: 120px;">Tipo</th>
                                 <th style="width: 110px;">Proyecto</th>
                                 <th style="width: 120px;">Usuario</th>
@@ -1007,13 +1224,56 @@
                                 <th style="width: 160px;">Progreso / Velocidad</th>
                                 <th style="width: 155px;">Inicio / Fin</th>
                                 <th style="width: 120px;">Estado</th>
-                                <th style="width: 130px; text-align: right;">Acciones</th>
+                                <th style="width: 110px; text-align: right;">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody id="queueTableBody">
+                        <tbody id="activeQueueTableBody">
                             <tr>
-                                <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 30px;">
-                                    Conectando al servidor...
+                                <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                                    No hay tareas activas en cola.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: HISTORIAL DE TAREAS FINALIZADAS -->
+            <div class="queue-section" id="historyQueueSection">
+                <div class="queue-section-header">
+                    <div class="queue-section-title">
+                        <span>📜</span>
+                        <span>HISTORIAL</span>
+                        <span class="section-badge-count" id="badgeHistoryCount">0</span>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="clearFinishedHistory()" style="padding: 4px 12px; font-size: 0.76rem;">
+                            Limpiar Historial
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="queue-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 38px; text-align: center;">
+                                    <input type="checkbox" class="task-checkbox" id="selectAllHistory" onchange="toggleSelectAllHistory(this.checked)">
+                                </th>
+                                <th style="width: 75px;">Prioridad</th>
+                                <th style="width: 120px;">Tipo</th>
+                                <th style="width: 110px;">Proyecto</th>
+                                <th style="width: 120px;">Usuario</th>
+                                <th>Detalle / Destino</th>
+                                <th style="width: 160px;">Progreso / Velocidad</th>
+                                <th style="width: 155px;">Inicio / Fin</th>
+                                <th style="width: 120px;">Estado</th>
+                                <th style="width: 80px; text-align: right;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyQueueTableBody">
+                            <tr>
+                                <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                                    Historial vacío.
                                 </td>
                             </tr>
                         </tbody>
@@ -1148,8 +1408,48 @@
 
             <div class="modal-footer" style="margin-top: 14px;">
                 <button class="btn" onclick="closeWakeModal()">Cerrar</button>
-                <button class="btn btn-primary" id="btnWakeStartLocal" style="background: var(--accent); border-color: var(--accent); color: #fff; font-weight:700;" onclick="startLocalWorker(); closeWakeModal();">⚡ Levantar Worker Local (este servidor)</button>
             </div>
+        </div>
+    </div>
+
+    
+    <!-- Modal Confirmación Custom Nativo Pipeta -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-card modal-confirm-card">
+            <div class="confirm-modal-header">
+                <div class="confirm-modal-title">
+                    <span id="confirmModalIcon">⚠️</span>
+                    <span id="confirmModalTitle">Confirmar Acción</span>
+                </div>
+            </div>
+            <div class="confirm-modal-body" id="confirmModalMsg">
+                ¿Está seguro de que desea continuar?
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="confirmModalBtnCancel">Cancelar</button>
+                <button class="btn btn-danger" id="confirmModalBtnOk">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú Contextual Flotante (Click Derecho) -->
+    <div id="taskContextMenu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="handleContextMenuAction('retry')">
+            <span>🔄</span> <span>Reintentar</span>
+        </div>
+        <div class="context-menu-item" onclick="handleContextMenuAction('requeue_all_failed')">
+            <span>🔁</span> <span>Requeue All (Reencolar falladas)</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="handleContextMenuAction('priority')">
+            <span>⚡</span> <span>Cambiar Prioridad...</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item danger" onclick="handleContextMenuAction('cancel')" style="color: #f87171;">
+            <span>🛑</span> <span>Interrumpir / Cancelar</span>
+        </div>
+        <div class="context-menu-item danger" onclick="handleContextMenuAction('delete')" style="color: #f87171;">
+            <span>🗑</span> <span>Eliminar</span>
         </div>
     </div>
 
@@ -1163,14 +1463,69 @@
             orders: [],
             counts: {}
         };
-        let activeStatusFilter = 'all';
         let targetTaskIdForPriority = null;
+        let isBatchPriorityMode = false;
+        const selectedTaskIds = new Set();
+        let inlineEditingTaskId = null;
+        let contextMenuTargetId = null;
 
         function showToast(msg) {
             const t = document.getElementById('toast');
             t.innerText = msg;
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        // Modal de Confirmación Asíncrono Nativo
+        function showConfirmDialog({ title, message, confirmText = 'Confirmar', isDanger = true, icon = '⚠️' }) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('confirmModal');
+                document.getElementById('confirmModalTitle').innerText = title || 'Confirmar';
+                document.getElementById('confirmModalMsg').innerHTML = message || '¿Desea continuar?';
+                document.getElementById('confirmModalIcon').innerText = icon;
+
+                const btnOk = document.getElementById('confirmModalBtnOk');
+                const btnCancel = document.getElementById('confirmModalBtnCancel');
+
+                btnOk.className = isDanger ? 'btn btn-danger' : 'btn';
+                if (!isDanger) {
+                    btnOk.style.background = 'var(--accent)';
+                    btnOk.style.borderColor = 'var(--accent)';
+                    btnOk.style.color = '#fff';
+                } else {
+                    btnOk.style.background = '';
+                    btnOk.style.borderColor = '';
+                    btnOk.style.color = '';
+                }
+                btnOk.innerText = confirmText;
+
+                const cleanup = () => {
+                    modal.classList.remove('open');
+                    document.removeEventListener('keydown', keyHandler);
+                    btnOk.onclick = null;
+                    btnCancel.onclick = null;
+                };
+
+                const onConfirm = () => {
+                    cleanup();
+                    resolve(true);
+                };
+
+                const onCancel = () => {
+                    cleanup();
+                    resolve(false);
+                };
+
+                const keyHandler = (e) => {
+                    if (e.key === 'Escape') { onCancel(); }
+                    else if (e.key === 'Enter') { onConfirm(); }
+                };
+
+                btnOk.onclick = onConfirm;
+                btnCancel.onclick = onCancel;
+                document.addEventListener('keydown', keyHandler);
+                modal.classList.add('open');
+            });
         }
 
         // Conectar SSE para tiempo real
@@ -1247,86 +1602,45 @@
                 let badgeClass = 'badge-offline';
                 let badgeText = 'APAGADO';
 
-                if (w.isRestarting) {
-                    cardClass = 'restarting';
-                    badgeClass = 'badge-restarting';
-                    badgeText = '<span class="spin-icon">🔄</span> REINICIANDO...';
-                } else if (w.justRestarted) {
-                    cardClass = 'just-restarted';
-                    badgeClass = 'badge-just-restarted';
-                    badgeText = `✅ REINICIADO (${w.pid || 'OK'})`;
-                } else if (w.isOnline) {
-                    if (w.status === 'processing') {
-                        cardClass = 'busy';
+                if (w.isOnline) {
+                    if (w.activeTask) {
                         badgeClass = 'badge-processing';
-                        badgeText = 'PROCESANDO';
-                    } else if (w.status === 'refreshing_folder') {
-                        cardClass = 'busy';
-                        badgeClass = 'badge-refreshing';
-                        badgeText = 'REFRESCANDO';
-                    } else if (w.status === 'paused') {
-                        cardClass = 'paused';
-                        badgeClass = 'badge-paused';
-                        badgeText = 'PAUSADO';
+                        badgeText = 'OCUPADO';
                     } else {
                         badgeClass = 'badge-idle';
                         badgeText = 'LIBRE / LISTO';
                     }
                 }
 
-                let activeTaskHtml = '<div style="color: var(--text-muted); font-size: 0.78rem;">Sin tareas activas</div>';
-                if (w.isRestarting) {
-                    const stepDesc = w.restartStatus?.message || 'Reiniciando proceso en la máquina remota...';
-                    activeTaskHtml = `
-                        <div class="active-task-desc" style="color: var(--amber); display: flex; align-items: center; gap: 6px;">
-                            <span class="spin-icon">🔄</span> ${stepDesc}
-                        </div>
-                        <div style="font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">
-                            Paso ${w.restartStatus?.step || 1} de 4 • ${w.restartStatus?.elapsed || 0}s transcurridos
-                        </div>
-                    `;
-                } else if (w.activeTask) {
-                    const taskName = w.activeTask.orderId || w.activeTask.project || 'Transferencia activa';
-                    const pct = w.activeTask.progress?.percentage || 0;
-                    const speed = w.activeTask.progress?.speedFormatted || '';
-                    activeTaskHtml = `
-                        <div class="active-task-desc">${taskName} [${w.activeTask.type || ''}]</div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.72rem; color:var(--cyan); font-family:var(--font-mono);">
-                            <span>${pct}%</span>
-                            <span>${speed}</span>
-                        </div>
-                    `;
-                } else if (!w.isOnline) {
-                    activeTaskHtml = `
-                        <div style="color: var(--rose); font-size: 0.76rem; display: flex; align-items: center; gap: 6px;">
-                            <span>⚠️</span> Equipo apagado o consola de Worker cerrada
-                        </div>
-                    `;
-                }
-
-                const memFreeGb = w.system ? (w.system.freeMem / 1024 / 1024 / 1024).toFixed(1) : '-';
-                const memTotGb = w.system ? (w.system.totalMem / 1024 / 1024 / 1024).toFixed(1) : '-';
-
                 let restartBtnHtml = '';
-                if (w.isRestarting) {
+                if (w.isOnline) {
                     restartBtnHtml = `
-                        <button class="btn btn-icon" style="color: var(--amber); border-color: rgba(245,158,11,0.6); font-size: 0.72rem; padding: 2px 8px; background: rgba(245,158,11,0.12);" title="Ver pasos del reinicio en curso" onclick="openRestartModalForHost('${w.hostname}')">
-                            <span class="spin-icon">🔄</span> Ver Pasos...
-                        </button>
-                    `;
-                } else if (w.isOnline) {
-                    restartBtnHtml = `
-                        <button class="btn btn-icon" style="color: var(--amber); border-color: rgba(245,158,11,0.3); font-size: 0.72rem; padding: 2px 7px;" title="Reiniciar Worker y recargar última versión" onclick="restartWorker('${w.hostname}')">
-                            🔄 Reiniciar
+                        <button class="btn btn-icon btn-restart" title="Reiniciar Worker con versión más reciente" onclick="restartWorker('${w.hostname}')">
+                            <span class="restart-btn-icon">🔄</span>
+                            <span class="restart-btn-label">Reiniciar</span>
                         </button>
                     `;
                 } else {
                     restartBtnHtml = `
-                        <button class="btn btn-icon" style="color: var(--cyan); border-color: rgba(0, 210, 255, 0.4); font-size: 0.72rem; padding: 2px 8px; background: rgba(0, 210, 255, 0.08);" title="Comprobar estado y levantar Worker" onclick="wakeWorker('${w.hostname}')">
-                            ⚡ Levantar
+                        <button class="btn btn-icon btn-restart" style="color:var(--text-dim); border-color:var(--border);" title="Ver estado / Despertar worker" onclick="wakeWorker('${w.hostname}')">
+                            <span class="restart-btn-icon">⚡</span>
+                            <span class="restart-btn-label">Levantar</span>
                         </button>
                     `;
                 }
+
+                let activeTaskHtml = '<div class="active-task-none">Sin tareas activas</div>';
+                if (w.activeTask) {
+                    const taskType = w.activeTask.type || 'TASK';
+                    const taskIdShort = (w.activeTask.id || '').substring(0, 14);
+                    activeTaskHtml = `
+                        <div class="active-task-title">${taskType} - ${taskIdShort}</div>
+                        <div class="active-task-desc">${w.activeTask.file || w.activeTask.detail || 'Procesando...'}</div>
+                    `;
+                }
+
+                let memFreeGb = (w.system?.memory?.freeMb ? (w.system.memory.freeMb / 1024).toFixed(1) : '-');
+                let memTotGb = (w.system?.memory?.totalMb ? (w.system.memory.totalMb / 1024).toFixed(1) : '-');
 
                 const pingLabel = formatRelativeTime(w.lastPingSecondsAgo);
 
@@ -1361,13 +1675,6 @@
             grid.innerHTML = html;
         }
 
-        function setFilterStatus(status) {
-            activeStatusFilter = status;
-            document.querySelectorAll('.filter-tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            renderQueue();
-        }
-
         function formatRelativeTime(sec) {
             if (!sec || sec > 900000) return 'Sin registro';
             if (sec < 60) return `hace ${sec}s`;
@@ -1395,58 +1702,139 @@
             }
         }
 
-        function renderQueue() {
-            const orders = currentSnapshot.orders || [];
-            const projectFilter = document.getElementById('filterProject').value;
-            const typeFilter = document.getElementById('filterType') ? document.getElementById('filterType').value : 'all';
-            const searchFilter = (document.getElementById('filterSearch').value || '').trim().toLowerCase();
-
-            // Actualizar contadores de pestañas
-            const counts = currentSnapshot.counts || {};
-            document.getElementById('countAll').innerText = counts.totalOrders || 0;
-            document.getElementById('countProc').innerText = counts.processing || 0;
-            document.getElementById('countPend').innerText = counts.pending || 0;
-            document.getElementById('countPau').innerText = counts.paused || 0;
-            document.getElementById('countComp').innerText = counts.completed || 0;
-            document.getElementById('countFail').innerText = counts.failed || 0;
-
-            // Actualizar proyectos en select
-            const projectSelect = document.getElementById('filterProject');
-            const allProjects = Array.from(new Set(orders.map(o => o.project).filter(Boolean)));
-            const currentSelected = projectSelect.value;
-            let optionsHtml = '<option value="all">Todos los proyectos</option>';
-            for (const p of allProjects) {
-                optionsHtml += `<option value="${p}" ${p === currentSelected ? 'selected' : ''}>${p}</option>`;
+        // Manejo de Selección
+        function toggleTaskSelect(id, checked, event) {
+            if (event) event.stopPropagation();
+            if (checked) {
+                selectedTaskIds.add(id);
+            } else {
+                selectedTaskIds.delete(id);
             }
-            projectSelect.innerHTML = optionsHtml;
+            updateSelectionUI();
+        }
 
-            // Filtrar
-            let filtered = orders.filter(o => {
-                if (activeStatusFilter === 'processing' && o.status !== 'processing') return false;
-                if (activeStatusFilter === 'pending' && o.status !== 'pending') return false;
-                if (activeStatusFilter === 'paused' && o.status !== 'paused') return false;
-                if (activeStatusFilter === 'completed' && o.status !== 'completed' && o.status !== 'completed_with_errors') return false;
-                if (activeStatusFilter === 'failed' && o.status !== 'failed') return false;
+        function toggleSelectAllActive(checked) {
+            const orders = getFilteredOrders().activeOrders;
+            for (const o of orders) {
+                if (checked) selectedTaskIds.add(o.id);
+                else selectedTaskIds.delete(o.id);
+            }
+            updateSelectionUI();
+            renderQueue();
+        }
 
+        function toggleSelectAllHistory(checked) {
+            const orders = getFilteredOrders().historyOrders;
+            for (const o of orders) {
+                if (checked) selectedTaskIds.add(o.id);
+                else selectedTaskIds.delete(o.id);
+            }
+            updateSelectionUI();
+            renderQueue();
+        }
+
+        function clearSelection() {
+            selectedTaskIds.clear();
+            updateSelectionUI();
+            renderQueue();
+        }
+
+        function updateSelectionUI() {
+            const count = selectedTaskIds.size;
+            const bar = document.getElementById('selectionBar');
+            const countText = document.getElementById('selectedCountText');
+            if (count > 0) {
+                bar.classList.add('active');
+                countText.innerText = `${count} tarea${count > 1 ? 's' : ''} seleccionada${count > 1 ? 's' : ''}`;
+            } else {
+                bar.classList.remove('active');
+            }
+
+            // Actualizar clases en los TR existentes
+            document.querySelectorAll('tr[data-task-id]').forEach(tr => {
+                const id = tr.getAttribute('data-task-id');
+                const chk = tr.querySelector('.task-checkbox');
+                if (selectedTaskIds.has(id)) {
+                    tr.classList.add('row-selected');
+                    if (chk) chk.checked = true;
+                } else {
+                    tr.classList.remove('row-selected');
+                    if (chk) chk.checked = false;
+                }
+            });
+        }
+
+        function getFilteredOrders() {
+            const orders = currentSnapshot.orders || [];
+            const projectFilter = document.getElementById('filterProject') ? document.getElementById('filterProject').value : 'all';
+            const typeFilter = document.getElementById('filterType') ? document.getElementById('filterType').value : 'all';
+            const searchFilter = ((document.getElementById('filterSearch') && document.getElementById('filterSearch').value) || '').trim().toLowerCase();
+
+            const filtered = orders.filter(o => {
+                if (projectFilter !== 'all' && o.project !== projectFilter) return false;
                 if (typeFilter !== 'all' && o.type !== typeFilter) return false;
-                if (projectFilter !== 'all' && o.project?.toLowerCase() !== projectFilter.toLowerCase()) return false;
-
                 if (searchFilter) {
-                    const matchId = o.id.toLowerCase().includes(searchFilter);
+                    const matchId = (o.id || '').toLowerCase().includes(searchFilter);
                     const matchUser = (o.user || '').toLowerCase().includes(searchFilter);
                     const matchProj = (o.project || '').toLowerCase().includes(searchFilter);
-                    const matchItems = o.items && o.items.some(i => (i.name || i.onlinePath || i.targetLocalPath || '').toLowerCase().includes(searchFilter));
+                    const matchItems = (o.items || []).some(item => {
+                        const name = item.name || item.relativePath || item.onlinePath || '';
+                        return name.toLowerCase().includes(searchFilter);
+                    });
                     if (!matchId && !matchUser && !matchProj && !matchItems) return false;
                 }
                 return true;
             });
 
-            const tbody = document.getElementById('queueTableBody');
-            if (filtered.length === 0) {
+            const activeOrders = filtered.filter(o => ['processing', 'pending', 'paused'].includes(o.status));
+            const historyOrders = filtered.filter(o => ['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(o.status));
+
+            return { filtered, activeOrders, historyOrders };
+        }
+
+        // Renderizado Principal de Queue
+        function renderQueue() {
+            const { filtered, activeOrders, historyOrders } = getFilteredOrders();
+            const allOrders = currentSnapshot.orders || [];
+
+            // Actualizar proyectos en select
+            const projectSelect = document.getElementById('filterProject');
+            if (projectSelect) {
+                const allProjects = Array.from(new Set(allOrders.map(o => o.project).filter(Boolean)));
+                const currentSelected = projectSelect.value;
+                let optionsHtml = '<option value="all">Todos los proyectos</option>';
+                for (const p of allProjects) {
+                    optionsHtml += `<option value="${p}" ${p === currentSelected ? 'selected' : ''}>${p}</option>`;
+                }
+                projectSelect.innerHTML = optionsHtml;
+            }
+
+            // Actualizar Badges de conteo
+            document.getElementById('badgeActiveCount').innerText = activeOrders.length;
+            document.getElementById('badgeHistoryCount').innerText = historyOrders.length;
+
+            // Renderizar Sección Activa
+            renderOrderTable('activeQueueTableBody', activeOrders, true);
+
+            // Renderizar Sección Historial
+            renderOrderTable('historyQueueTableBody', historyOrders, false);
+
+            // Actualizar estados de selección
+            updateSelectionUI();
+        }
+
+        function renderOrderTable(tbodyId, orders, isActiveSection) {
+            const tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+
+            if (orders.length === 0) {
+                const emptyMsg = isActiveSection 
+                    ? 'No hay transferencias ni tareas activas en cola.' 
+                    : 'No hay tareas en el historial para los filtros aplicados.';
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 30px;">
-                            No hay órdenes en este filtro.
+                        <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 26px;">
+                            ${emptyMsg}
                         </td>
                     </tr>
                 `;
@@ -1454,7 +1842,10 @@
             }
 
             let html = '';
-            for (const o of filtered) {
+            for (const o of orders) {
+                // Si esta tarea está en edición inline activa, no la sobreescribimos
+                if (inlineEditingTaskId === o.id) continue;
+
                 const p = o.priority || 50;
                 let pClass = 'priority-normal';
                 if (p >= 90) pClass = 'priority-rush';
@@ -1463,7 +1854,7 @@
 
                 const typeClass = `type-${o.type || 'download'}`;
 
-                // Formateo de detalle
+                // Detalle
                 let detailText = '';
                 if (o.items && o.items.length > 0) {
                     const first = o.items[0];
@@ -1476,7 +1867,7 @@
                     detailText = `<div class="mono-path">${o.id}</div>`;
                 }
 
-                // Fechas Inicio / Fin / Duración
+                // Fechas
                 let datesHtml = '';
                 if (o.startedAt) {
                     datesHtml += `<div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-main);" title="Hora de Inicio">▶ ${formatDateTime(o.startedAt)}</div>`;
@@ -1509,7 +1900,7 @@
 
                 let fillClass = o.status === 'completed' ? 'completed' : (o.status === 'failed' ? 'failed' : '');
 
-                // Estado
+                // Estado Badge
                 let statusBadge = '';
                 if (o.status === 'processing') statusBadge = '<span class="status-badge badge-processing">EN PROCESO</span>';
                 else if (o.status === 'pending') statusBadge = '<span class="status-badge badge-idle">EN COLA</span>';
@@ -1523,11 +1914,14 @@
                     statusBadge += `<div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 3px;">Node: ${o.workerHostname}</div>`;
                 }
 
-                // Acciones
+                // Columna Acciones: Solo Interrumpir y Borrar (SIN Reintentar)
                 let actionsHtml = '';
-                if (o.status === 'pending') {
+                if (o.status === 'processing') {
                     actionsHtml = `
-                        <button class="btn btn-icon" title="Ajustar Prioridad" onclick="openPriorityModal('${o.id}', ${p})">⚡</button>
+                        <button class="btn btn-icon btn-danger" title="Interrumpir proceso" onclick="cancelTask('${o.id}')">🛑 Interrumpir</button>
+                    `;
+                } else if (o.status === 'pending') {
+                    actionsHtml = `
                         <button class="btn btn-icon" title="Pausar Tarea" onclick="pauseTask('${o.id}')">⏸</button>
                         <button class="btn btn-icon btn-danger" title="Cancelar Tarea" onclick="cancelTask('${o.id}')">🛑</button>
                     `;
@@ -1537,25 +1931,23 @@
                         <button class="btn btn-icon btn-danger" title="Cancelar Tarea" onclick="cancelTask('${o.id}')">🛑</button>
                         <button class="btn btn-icon" title="Eliminar" onclick="deleteTask('${o.id}')">🗑</button>
                     `;
-                } else if (o.status === 'processing') {
+                } else {
+                    // Historial (failed, cancelled, completed)
                     actionsHtml = `
-                        <button class="btn btn-icon btn-danger" title="Cancelar Proceso" onclick="cancelTask('${o.id}')">🛑 Interrumpir</button>
-                    `;
-                } else if (o.status === 'failed' || o.status === 'cancelled') {
-                    actionsHtml = `
-                        <button class="btn btn-icon" style="color: var(--cyan); border-color: rgba(0,210,255,0.4);" title="Reintentar con 1 clic" onclick="retryTask('${o.id}')">🔄 Reintentar</button>
-                        <button class="btn btn-icon" title="Eliminar" onclick="deleteTask('${o.id}')">🗑</button>
-                    `;
-                } else if (o.status === 'completed' || o.status === 'completed_with_errors') {
-                    actionsHtml = `
-                        <button class="btn btn-icon" title="Eliminar" onclick="deleteTask('${o.id}')">🗑</button>
+                        <button class="btn btn-icon" title="Eliminar del historial" onclick="deleteTask('${o.id}')">🗑</button>
                     `;
                 }
 
+                const isSelected = selectedTaskIds.has(o.id);
+                const rowClass = isSelected ? 'task-row row-selected' : 'task-row';
+
                 html += `
-                    <tr>
-                        <td>
-                            <span class="priority-badge ${pClass}" onclick="openPriorityModal('${o.id}', ${p})" title="Clic para cambiar prioridad">
+                    <tr class="${rowClass}" data-task-id="${o.id}" oncontextmenu="handleRowContextMenu(event, '${o.id}')">
+                        <td style="text-align: center;" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="task-checkbox" data-id="${o.id}" ${isSelected ? 'checked' : ''} onchange="toggleTaskSelect('${o.id}', this.checked, event)">
+                        </td>
+                        <td id="priority-cell-${o.id}">
+                            <span class="priority-badge ${pClass}" ondblclick="startInlinePriority(event, '${o.id}', ${p})" onclick="openPriorityModal('${o.id}', ${p})" title="Doble clic para editar inline / Clic para abrir control">
                                 ${p}
                             </span>
                         </td>
@@ -1581,9 +1973,7 @@
                                 </div>
                             </div>
                         </td>
-                        <td>
-                            ${datesHtml}
-                        </td>
+                        <td>${datesHtml}</td>
                         <td>${statusBadge}</td>
                         <td style="text-align: right;">
                             <div class="action-btns" style="justify-content: flex-end;">
@@ -1597,6 +1987,374 @@
             tbody.innerHTML = html;
         }
 
+        // EDICIÓN INLINE DE PRIORIDAD (Doble Clic)
+        function startInlinePriority(event, taskId, currentPriority) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            inlineEditingTaskId = taskId;
+            const cell = document.getElementById(`priority-cell-${taskId}`);
+            if (!cell) return;
+
+            cell.innerHTML = `
+                <input type="number" min="1" max="100" class="inline-priority-input" id="inline-input-${taskId}" value="${currentPriority}" onblur="finishInlinePriority('${taskId}', this.value)" onkeydown="handleInlinePriorityKey(event, '${taskId}')">
+            `;
+
+            const input = document.getElementById(`inline-input-${taskId}`);
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+
+        function handleInlinePriorityKey(event, taskId) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.target.blur();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                inlineEditingTaskId = null;
+                renderQueue();
+            }
+        }
+
+        async function finishInlinePriority(taskId, value) {
+            if (inlineEditingTaskId !== taskId) return;
+            const newP = Math.min(100, Math.max(1, parseInt(value, 10) || 50));
+            inlineEditingTaskId = null;
+
+            try {
+                await fetch(`/api/server/task/${taskId}/priority`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ priority: newP })
+                });
+                showToast(`⚡ Prioridad de tarea actualizada a ${newP}`);
+            } catch(e) {
+                showToast('Error al actualizar prioridad');
+            }
+            renderQueue();
+        }
+
+        // MENÚ CONTEXTUAL FLOTANTE (Click Derecho)
+        function handleRowContextMenu(event, taskId) {
+            event.preventDefault();
+            contextMenuTargetId = taskId;
+
+            if (!selectedTaskIds.has(taskId)) {
+                selectedTaskIds.clear();
+                selectedTaskIds.add(taskId);
+                updateSelectionUI();
+            }
+
+            const menu = document.getElementById('taskContextMenu');
+            menu.style.display = 'block';
+
+            // Posicionamiento inteligente respecto a la pantalla
+            const menuWidth = 220;
+            const menuHeight = 210;
+            let x = event.clientX;
+            let y = event.clientY;
+
+            if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+            if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+        }
+
+        document.addEventListener('click', () => {
+            const menu = document.getElementById('taskContextMenu');
+            if (menu) menu.style.display = 'none';
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const menu = document.getElementById('taskContextMenu');
+                if (menu) menu.style.display = 'none';
+            }
+        });
+
+        async function handleContextMenuAction(action) {
+            const menu = document.getElementById('taskContextMenu');
+            if (menu) menu.style.display = 'none';
+
+            const ids = Array.from(selectedTaskIds);
+            if (ids.length === 0 && contextMenuTargetId) ids.push(contextMenuTargetId);
+
+            if (action === 'requeue_all_failed') {
+                const ok = await showConfirmDialog({
+                    title: '¿Reencolar todas las falladas?',
+                    message: 'Se buscarán todas las tareas en estado <b>fallida o cancelada</b> en el servidor y se pondrán nuevamente en cola.',
+                    confirmText: 'Reencolar Todas',
+                    isDanger: false,
+                    icon: '🔁'
+                });
+                if (!ok) return;
+
+                try {
+                    const res = await fetch('/api/server/tasks/batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'requeue_all_failed' })
+                    });
+                    const d = await res.json();
+                    showToast(`✅ ${d.affectedCount || 0} tareas reencoladas exitosamente`);
+                } catch(e) {
+                    showToast('Error al reencolar tareas');
+                }
+                clearSelection();
+                return;
+            }
+
+            if (action === 'retry') {
+                batchRetrySelected();
+                return;
+            }
+
+            if (action === 'priority') {
+                openBatchPriorityModal();
+                return;
+            }
+
+            if (action === 'cancel') {
+                batchCancelSelected();
+                return;
+            }
+
+            if (action === 'delete') {
+                batchDeleteSelected();
+                return;
+            }
+        }
+
+        // ACCIONES EN LOTE (Batch Actions)
+        async function batchDeleteSelected() {
+            const ids = Array.from(selectedTaskIds);
+            if (ids.length === 0) return;
+
+            const ok = await showConfirmDialog({
+                title: '¿Eliminar tareas seleccionadas?',
+                message: `¿Está seguro de eliminar permanentemente las <b>${ids.length}</b> tareas seleccionadas?`,
+                confirmText: 'Eliminar en Lote',
+                isDanger: true,
+                icon: '🗑'
+            });
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/server/tasks/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete', ids })
+                });
+                const d = await res.json();
+                showToast(`🗑 ${d.affectedCount || 0} tareas eliminadas`);
+            } catch(e) {
+                showToast('Error al eliminar tareas');
+            }
+            clearSelection();
+        }
+
+        async function batchCancelSelected() {
+            const ids = Array.from(selectedTaskIds);
+            if (ids.length === 0) return;
+
+            const ok = await showConfirmDialog({
+                title: '¿Interrumpir / Cancelar tareas?',
+                message: `Se cancelarán <b>${ids.length}</b> tareas seleccionadas. Si están en curso, se abortarán los subprocesos Rclone.`,
+                confirmText: 'Interrumpir',
+                isDanger: true,
+                icon: '🛑'
+            });
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/server/tasks/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'cancel', ids })
+                });
+                const d = await res.json();
+                showToast(`🛑 ${d.affectedCount || 0} tareas canceladas`);
+            } catch(e) {
+                showToast('Error al cancelar tareas');
+            }
+            clearSelection();
+        }
+
+        async function batchRetrySelected() {
+            const ids = Array.from(selectedTaskIds);
+            if (ids.length === 0) return;
+
+            try {
+                const res = await fetch('/api/server/tasks/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'retry', ids })
+                });
+                const d = await res.json();
+                showToast(`🔄 ${d.affectedCount || 0} tareas puestas en reintento`);
+            } catch(e) {
+                showToast('Error al reintentar tareas');
+            }
+            clearSelection();
+        }
+
+        function openBatchPriorityModal() {
+            const ids = Array.from(selectedTaskIds);
+            if (ids.length === 0) return;
+            isBatchPriorityMode = true;
+            document.getElementById('modalTaskDesc').innerText = `Afectando a ${ids.length} tarea${ids.length > 1 ? 's' : ''} seleccionada${ids.length > 1 ? 's' : ''}`;
+            updateModalSlider(50);
+            document.getElementById('priorityModal').classList.add('open');
+        }
+
+        // Acciones Individuales
+        async function cancelTask(id) {
+            const ok = await showConfirmDialog({
+                title: '¿Interrumpir proceso?',
+                message: `¿Cancelar tarea <b>${id}</b>? Si está en ejecución, se abortará el subproceso Rclone.`,
+                confirmText: 'Interrumpir',
+                isDanger: true,
+                icon: '🛑'
+            });
+            if (!ok) return;
+
+            try {
+                await fetch(`/api/server/task/${id}/cancel`, { method: 'POST' });
+                showToast(`🛑 Tarea ${id} cancelada`);
+            } catch(e) {
+                showToast('Error al cancelar tarea');
+            }
+            renderQueue();
+        }
+
+        async function deleteTask(id) {
+            const ok = await showConfirmDialog({
+                title: '¿Eliminar orden permanentemente?',
+                message: `¿Eliminar orden <b>${id}</b> permanentemente del sistema?`,
+                confirmText: 'Eliminar',
+                isDanger: true,
+                icon: '🗑'
+            });
+            if (!ok) return;
+
+            try {
+                await fetch(`/api/server/task/${id}/delete`, { method: 'POST' });
+                showToast(`🗑 Tarea ${id} eliminada`);
+            } catch(e) {
+                showToast('Error al eliminar tarea');
+            }
+            selectedTaskIds.delete(id);
+            updateSelectionUI();
+            renderQueue();
+        }
+
+        async function clearFinishedHistory() {
+            const ok = await showConfirmDialog({
+                title: '¿Limpiar Historial?',
+                message: '¿Eliminar del historial todas las tareas completadas, fallidas y canceladas?',
+                confirmText: 'Limpiar Todo',
+                isDanger: true,
+                icon: '🧹'
+            });
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/server/queue/clear-history', { method: 'POST' });
+                const data = await res.json();
+                showToast(`🧹 Historial limpiado (${data.clearedCount || 0} órdenes eliminadas)`);
+            } catch(e) {
+                showToast('Error al limpiar historial');
+            }
+            clearSelection();
+        }
+
+        async function pauseTask(id) {
+            try {
+                await fetch(`/api/server/task/${id}/pause`, { method: 'POST' });
+                showToast(`⏸ Tarea ${id} pausada`);
+            } catch(e) {
+                showToast('Error al pausar tarea');
+            }
+        }
+
+        async function resumeTask(id) {
+            try {
+                await fetch(`/api/server/task/${id}/resume`, { method: 'POST' });
+                showToast(`▶ Tarea ${id} reanudada`);
+            } catch(e) {
+                showToast('Error al reanudar tarea');
+            }
+        }
+
+        // Modal de Prioridad (Individual y Batch)
+        function openPriorityModal(id, priority) {
+            isBatchPriorityMode = false;
+            targetTaskIdForPriority = id;
+            document.getElementById('modalTaskDesc').innerText = `Orden ID: ${id}`;
+            updateModalSlider(priority);
+            document.getElementById('priorityModal').classList.add('open');
+        }
+
+        function closePriorityModal() {
+            document.getElementById('priorityModal').classList.remove('open');
+            targetTaskIdForPriority = null;
+            isBatchPriorityMode = false;
+        }
+
+        function updateModalSlider(val) {
+            const v = parseInt(val, 10);
+            document.getElementById('modalPrioritySlider').value = v;
+            document.getElementById('modalSliderVal').innerText = v;
+            const valEl = document.getElementById('modalSliderVal');
+            if (v >= 90) valEl.style.color = 'var(--rose)';
+            else if (v >= 75) valEl.style.color = 'var(--accent)';
+            else if (v <= 30) valEl.style.color = 'var(--text-dim)';
+            else valEl.style.color = 'var(--cyan)';
+        }
+
+        async function saveTaskPriority() {
+            const priority = parseInt(document.getElementById('modalPrioritySlider').value, 10);
+
+            if (isBatchPriorityMode) {
+                const ids = Array.from(selectedTaskIds);
+                if (ids.length === 0) return closePriorityModal();
+
+                try {
+                    const res = await fetch('/api/server/tasks/batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'priority', ids, priority })
+                    });
+                    const d = await res.json();
+                    showToast(`⚡ Prioridad ajustada a ${priority} para ${d.affectedCount || 0} tareas`);
+                } catch(e) {
+                    showToast('Error al guardar prioridades');
+                }
+                closePriorityModal();
+                clearSelection();
+                return;
+            }
+
+            if (!targetTaskIdForPriority) return;
+            try {
+                await fetch(`/api/server/task/${targetTaskIdForPriority}/priority`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ priority })
+                });
+                showToast(`⚡ Prioridad actualizada a ${priority}`);
+                closePriorityModal();
+            } catch(e) {
+                showToast('Error al guardar prioridad');
+            }
+            renderQueue();
+        }
+
+        // Supervisor y Workers
         let activeRestartHost = null;
         let restartPollingTimer = null;
 
@@ -1613,7 +2371,6 @@
             document.getElementById('restartPidInfo').innerText = `PID previo: ${oldPid || 'N/A'}`;
             document.getElementById('restartElapsedLabel').innerText = 'Tiempo transcurrido: 0s';
 
-            // Reset steps
             setStepState(1, 'active', '⏳');
             setStepState(2, 'pending', '○');
             setStepState(3, 'pending', '○');
@@ -1658,9 +2415,7 @@
                     const res = await fetch(`/api/server/worker/${encodeURIComponent(hostname)}/restart-status`);
                     const data = await res.json();
 
-                    if (!data.success || !data.active) {
-                        return;
-                    }
+                    if (!data.success || !data.active) return;
 
                     document.getElementById('restartElapsedLabel').innerText = `Tiempo transcurrido: ${data.elapsed || 0}s`;
                     if (data.oldPid) {
@@ -1668,11 +2423,8 @@
                     }
 
                     const step = data.step || 1;
-
-                    // Paso 1: Bandera generada
                     setStepState(1, 'done');
 
-                    // Paso 2: Cierre de proceso
                     if (step === 2) {
                         setStepState(2, 'active');
                         setStepState(3, 'pending', '○');
@@ -1683,7 +2435,6 @@
                         setStepState(2, 'pending', '○');
                     }
 
-                    // Paso 3: Relanzamiento supervisor
                     if (step === 3) {
                         setStepState(3, 'active');
                         setStepState(4, 'pending', '○');
@@ -1693,7 +2444,6 @@
                         if (step < 3) setStepState(3, 'pending', '○');
                     }
 
-                    // Paso 4 / Completado
                     if (step === 4 || data.status === 'completed') {
                         setStepState(1, 'done');
                         setStepState(2, 'done');
@@ -1721,7 +2471,14 @@
         }
 
         async function restartWorker(hostname) {
-            if (!confirm(`¿Solicitar reinicio para el nodo '${hostname}'?\n\nEl worker se detendrá de forma segura y el script supervisor de Windows lo relanzará con la versión más reciente en ~15 segundos.`)) return;
+            const ok = await showConfirmDialog({
+                title: '¿Reiniciar nodo worker?',
+                message: `¿Solicitar reinicio para el nodo <b>${hostname}</b>?<br><br>El worker se detendrá de forma segura y el script supervisor de Windows lo relanzará con la versión más reciente en ~15 segundos.`,
+                confirmText: 'Reiniciar Worker',
+                isDanger: false,
+                icon: '🔄'
+            });
+            if (!ok) return;
 
             const workers = currentSnapshot.workers || [];
             const w = workers.find(item => item.hostname.toLowerCase() === hostname.toLowerCase());
@@ -1742,7 +2499,6 @@
             }
         }
 
-        // Control de Levantamiento / Despertar de Workers
         function openWakeModal(hostname, ip) {
             document.getElementById('wakeModalHost').innerText = `${hostname} (${ip || 'N/A'})`;
             document.getElementById('wakeModalContent').innerHTML = `
@@ -1769,10 +2525,9 @@
                         <div class="warning-detail" style="line-height:1.5;">
                             El nodo <b>${hostname}</b> (${ip || 'IP desconocida'}) no responde a las solicitudes de red.<br><br>
                             <b>¿Cómo encenderlo?</b><br>
-                            1. Si es una <b>máquina virtual</b> (ej. VM 105), enciéndala en el hipervisor (VMware / Proxmox).<br>
+                            1. Si es una <b>máquina virtual</b> (ej. VM 105), enciéndala en el hipervisor.<br>
                             2. Si es una <b>estación física</b>, encienda el equipo manualmente.<br>
-                            3. Al iniciar sesión en Windows, si ejecutó <i>Crear_Inicio_Automatico_Worker.bat</i>, el worker arrancará automáticamente.<br><br>
-                            <b>💡 ¿Tiene transferencias urgentes?</b> Puede hacer clic abajo en <b>'Levantar Worker Local'</b> para que este servidor procese la cola inmediatamente.
+                            3. Al iniciar sesión en Windows arrancará automáticamente.
                         </div>
                     </div>
                 `;
@@ -1799,7 +2554,7 @@
                         </div>
                         <div class="warning-detail" style="line-height:1.5;">
                             ${data.message || 'Windows rechazó el inicio remoto por falta de permisos RPC.'}<br><br>
-                            <b>Para que inicie siempre solo:</b> Ejecute <code>Crear_Inicio_Automatico_Worker.bat</code> en ese equipo para registrar la tarea de inicio automático de Windows.
+                            Ejecute <code>Crear_Inicio_Automatico_Worker.bat</code> en ese equipo.
                         </div>
                     </div>
                 `;
@@ -1822,22 +2577,6 @@
             }
         }
 
-        async function startLocalWorker() {
-            showToast('⚡ Iniciando Worker en este servidor...');
-            try {
-                const res = await fetch('/api/server/worker/start-local', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    showToast(`✅ ${data.message}`);
-                } else {
-                    showToast(`ℹ️ ${data.message || 'El worker ya está activo'}`);
-                }
-            } catch(e) {
-                showToast('Error al iniciar worker local');
-            }
-        }
-
-        // Acciones API
         async function toggleGlobalQueue() {
             try {
                 const res = await fetch('/api/server/queue/pause', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
@@ -1845,104 +2584,6 @@
                 showToast(data.queuePaused ? '⏸ Cola global pausada en todos los workers' : '▶ Cola global reanudada');
             } catch(e) {
                 showToast('Error al modificar estado de cola');
-            }
-        }
-
-        async function pauseTask(id) {
-            try {
-                await fetch(`/api/server/task/${id}/pause`, { method: 'POST' });
-                showToast(`Tarea ${id} pausada`);
-            } catch(e) {
-                showToast('Error al pausar tarea');
-            }
-        }
-
-        async function resumeTask(id) {
-            try {
-                await fetch(`/api/server/task/${id}/resume`, { method: 'POST' });
-                showToast(`Tarea ${id} reanudada`);
-            } catch(e) {
-                showToast('Error al reanudar tarea');
-            }
-        }
-
-        async function cancelTask(id) {
-            if (!confirm(`¿Cancelar tarea ${id}? Si está en ejecución, se abortará el subproceso Rclone.`)) return;
-            try {
-                await fetch(`/api/server/task/${id}/cancel`, { method: 'POST' });
-                showToast(`Tarea ${id} cancelada`);
-            } catch(e) {
-                showToast('Error al cancelar tarea');
-            }
-        }
-
-        async function retryTask(id) {
-            try {
-                await fetch(`/api/server/task/${id}/retry`, { method: 'POST' });
-                showToast(`Tarea ${id} puesta en reintento`);
-            } catch(e) {
-                showToast('Error al reintentar tarea');
-            }
-        }
-
-        async function deleteTask(id) {
-            if (!confirm(`¿Eliminar orden ${id} permanentemente?`)) return;
-            try {
-                await fetch(`/api/server/task/${id}/delete`, { method: 'POST' });
-                showToast(`Tarea ${id} eliminada`);
-            } catch(e) {
-                showToast('Error al eliminar tarea');
-            }
-        }
-
-        async function clearFinishedHistory() {
-            if (!confirm('¿Eliminar del historial todas las tareas completadas y fallidas?')) return;
-            try {
-                const res = await fetch('/api/server/queue/clear-history', { method: 'POST' });
-                const data = await res.json();
-                showToast(`Historial limpiado (${data.clearedCount || 0} órdenes eliminadas)`);
-            } catch(e) {
-                showToast('Error al limpiar historial');
-            }
-        }
-
-        // Modal de Prioridad
-        function openPriorityModal(id, priority) {
-            targetTaskIdForPriority = id;
-            document.getElementById('modalTaskDesc').innerText = `Orden ID: ${id}`;
-            updateModalSlider(priority);
-            document.getElementById('priorityModal').classList.add('open');
-        }
-
-        function closePriorityModal() {
-            document.getElementById('priorityModal').classList.remove('open');
-            targetTaskIdForPriority = null;
-        }
-
-        function updateModalSlider(val) {
-            const v = parseInt(val, 10);
-            document.getElementById('modalPrioritySlider').value = v;
-            document.getElementById('modalSliderVal').innerText = v;
-            const valEl = document.getElementById('modalSliderVal');
-            if (v >= 90) valEl.style.color = 'var(--rose)';
-            else if (v >= 75) valEl.style.color = 'var(--accent)';
-            else if (v <= 30) valEl.style.color = 'var(--text-dim)';
-            else valEl.style.color = 'var(--cyan)';
-        }
-
-        async function saveTaskPriority() {
-            if (!targetTaskIdForPriority) return;
-            const priority = parseInt(document.getElementById('modalPrioritySlider').value, 10);
-            try {
-                await fetch(`/api/server/task/${targetTaskIdForPriority}/priority`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ priority })
-                });
-                showToast(`Prioridad actualizada a ${priority}`);
-                closePriorityModal();
-            } catch(e) {
-                showToast('Error al guardar prioridad');
             }
         }
 

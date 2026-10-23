@@ -258,43 +258,53 @@ const ShotDesigner = {
     // --- PERSISTENCE ---
     loadPresets: async () => {
         ShotDesigner.assets = [];
-        try {
-            // Ensure folder exists
-            if (window.API && API.fs && API.fs.mkdir) {
-                await API.fs.mkdir(ShotDesigner.presetsPath);
-            }
+        const seenIds = new Set();
+        const candidatePaths = [
+            ShotDesigner.presetsPath,
+            (typeof settings !== 'undefined' && settings?.exportPresetsPath) ? (settings.exportPresetsPath + "\\ShotDesigner") : null,
+            "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner"
+        ].filter(Boolean);
 
-            const files = await API.fs.getFiles(ShotDesigner.presetsPath);
-            console.log("Found preset files:", files);
-
-            for (const f of files) {
-                if (f.endsWith('.json')) {
-                    const content = await API.fs.readFile(ShotDesigner.presetsPath + "\\" + f);
-                    if (content) {
-                        try {
-                            const asset = JSON.parse(content);
-                            // IMPORTANTE: Asegurar ID único
-                            if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
-                            // Ensure connections array exists
-                            if (!asset.connections) asset.connections = [];
-                            asset._fileName = f;
-                            ShotDesigner.assets.push(asset);
-                        } catch (parseErr) {
-                            console.error("Error parsing " + f, parseErr);
+        for (const dir of candidatePaths) {
+            try {
+                if (window.API && API.fs && API.fs.mkdir) {
+                    await API.fs.mkdir(dir);
+                }
+                const files = await API.fs.getFiles(dir, { localSource: 'z_local' });
+                if (files && Array.isArray(files)) {
+                    for (const f of files) {
+                        if (f.endsWith('.json')) {
+                            const content = await API.fs.readFile(dir + "\\" + f);
+                            if (content) {
+                                try {
+                                    const asset = JSON.parse(content);
+                                    if (!asset.id) asset.id = 'asset_' + Math.random().toString(36).substr(2, 9);
+                                    if (!asset.connections) asset.connections = [];
+                                    asset._fileName = f;
+                                    const key = (asset.id || f).toLowerCase();
+                                    if (!seenIds.has(key)) {
+                                        seenIds.add(key);
+                                        ShotDesigner.assets.push(asset);
+                                        ShotDesigner.presetsPath = dir;
+                                    }
+                                } catch (parseErr) {
+                                    console.error("Error parsing " + f, parseErr);
+                                }
+                            }
                         }
                     }
                 }
+            } catch (e) {
+                // Ignore missing dir
             }
-        } catch (e) {
-            console.error("loadPresets error:", e);
         }
 
         if (ShotDesigner.assets.length === 0) {
             console.log("No assets found. Using default.");
         } else {
             console.log("Loaded", ShotDesigner.assets.length, "assets.");
-            // Seleccionar el primero por defecto
-            ShotDesigner.currentAsset = ShotDesigner.assets[0];
+            const master = ShotDesigner.assets.find(a => a.id === 'master_shot' || a.name?.toLowerCase() === 'master_shot');
+            ShotDesigner.currentAsset = master || ShotDesigner.assets[0];
         }
     },
 
@@ -482,15 +492,6 @@ const ShotDesigner = {
         ShotDesigner.saveAsset(); // Save immediately?
     },
 
-    selectAsset: (id) => {
-        const found = ShotDesigner.assets.find(a => a.id === id);
-        if (found) {
-            ShotDesigner.currentAsset = found;
-            ShotDesigner.renderCanvas();
-            ShotDesigner.updateSidebar();
-        }
-    },
-
     // --- RENDERERS ---
     renderUI: () => {
         const select = document.getElementById('sd-asset-selector');
@@ -631,45 +632,58 @@ const ShotDesigner = {
 
         if (!ShotDesigner.currentAsset) return;
 
-        // Draw Connections
+        // Draw Connections from Nodes Hierarchy
         ShotDesigner.currentAsset.nodes.forEach(node => {
             if (node.parent) {
                 const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === node.parent);
                 if (parent) {
-                    ShotDesigner.drawConnection(parent, node, svgGroup, 'local');
+                    const toPort = node.isSyncPoint ? 'in-local' : 'in';
+                    ShotDesigner.drawConnection(parent, node, svgGroup, 'out', toPort);
                 }
             }
             if (node.parentOnline && node.isSyncPoint) {
                 const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === node.parentOnline);
                 if (parent) {
-                    ShotDesigner.drawConnection(parent, node, svgGroup, 'online');
+                    ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in-online');
                 }
             }
             if (node.mirrorOf) {
                 const sourceNode = ShotDesigner.currentAsset.nodes.find(n => n.id === node.mirrorOf);
                 if (sourceNode) {
-                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'mirror');
+                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'mirror', 'mirror', true);
                 }
             }
             if (node.renderSourceNodeId) {
                 const sourceNode = ShotDesigner.currentAsset.nodes.find(n => n.id === node.renderSourceNodeId);
                 if (sourceNode) {
-                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'render');
+                    ShotDesigner.drawConnection(sourceNode, node, svgGroup, 'out-render', 'in-render');
                 }
             }
             if (node.isProcess && node.processConfig && node.processConfig.parentItem && node.processConfig.additionalParents) {
                 node.processConfig.additionalParents.forEach(pId => {
                     const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === pId);
                     if (parent) {
-                        ShotDesigner.drawConnection(parent, node, svgGroup, 'local');
+                        ShotDesigner.drawConnection(parent, node, svgGroup, 'out', 'in');
                     }
                 });
             }
         });
 
+        // Draw Explicit Connections (mirror, render, etc.)
+        if (ShotDesigner.currentAsset.connections && Array.isArray(ShotDesigner.currentAsset.connections)) {
+            ShotDesigner.currentAsset.connections.forEach(conn => {
+                const fromNode = ShotDesigner.currentAsset.nodes.find(n => n.id === conn.from);
+                const toNode = ShotDesigner.currentAsset.nodes.find(n => n.id === conn.to);
+                if (fromNode && toNode) {
+                    const isMirror = (conn.fromPort === 'mirror' || conn.toPort === 'mirror');
+                    ShotDesigner.drawConnection(fromNode, toNode, svgGroup, conn.fromPort, conn.toPort, isMirror);
+                }
+            });
+        }
+
         // Draft Connection
         if (ShotDesigner.isConnecting && ShotDesigner.connectionStartNode) {
-            ShotDesigner.drawDraftConnection(ShotDesigner.connectionStartNode, ShotDesigner.connectionCurrentPos, svgGroup);
+            ShotDesigner.drawDraftConnection(ShotDesigner.connectionStartNode, ShotDesigner.connectionCurrentPos, svgGroup, ShotDesigner.connectionStartPoint);
         }
 
         // Draw Nodes
@@ -680,18 +694,33 @@ const ShotDesigner = {
             el.style.left = `${node.x}px`;
             el.style.top = `${node.y}px`;
             el.setAttribute('data-id', node.id);
-            el.setAttribute('onmousedown', `event.stopPropagation(); ShotDesigner.startDragNode(event, ShotDesigner.currentAsset.nodes.find(n => n.id === '${node.id}'))`);
+            el.onmousedown = (e) => {
+                if (e.target && e.target.classList && e.target.classList.contains('sd-dot')) {
+                    return; // Dejar que el dot maneje su conexion
+                }
+                e.stopPropagation();
+                if (e.shiftKey || e.ctrlKey) {
+                    ShotDesigner.selectNode(node.id, true);
+                } else {
+                    if (!ShotDesigner.selectedNodeIds || !ShotDesigner.selectedNodeIds.includes(node.id)) {
+                        ShotDesigner.selectNode(node.id, false);
+                    }
+                }
+                if (!e.altKey && e.button === 0) {
+                    ShotDesigner.startDragNode(e, node);
+                }
+            };
 
             let dotsHtml = '';
             if (node.isSyncPoint) {
-                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-online" title="Input Online" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'online')"></div>`;
-                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-local" title="Input Local" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-online" data-node-id="${node.id}" data-type="online" title="Input Online" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'online')"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in sd-dot-in-local" data-node-id="${node.id}" data-type="local" title="Input Local" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
             } else {
-                dotsHtml += `<div class="sd-dot sd-dot-in" title="Input" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-in" data-node-id="${node.id}" data-type="local" title="Input" onmousedown="event.stopPropagation(); ShotDesigner.onDotInDown('${node.id}', event, 'local')"></div>`;
             }
 
             if (node.type === 'folder' || node.type === 'unit') {
-                dotsHtml += `<div class="sd-dot sd-dot-out" title="Output" onmousedown="event.stopPropagation(); ShotDesigner.onDotOutDown('${node.id}', event)"></div>`;
+                dotsHtml += `<div class="sd-dot sd-dot-out" data-node-id="${node.id}" data-type="out" title="Output" onmousedown="event.stopPropagation(); ShotDesigner.onDotOutDown('${node.id}', event)"></div>`;
             }
 
             let icon = '';
@@ -743,6 +772,24 @@ const ShotDesigner = {
                 mirrorDot.className = `sd-dot sd-dot-mirror ${isMedia ? 'top' : 'bottom'}`;
                 mirrorDot.setAttribute('data-node-id', node.id);
                 mirrorDot.setAttribute('data-type', 'mirror');
+                mirrorDot.setAttribute('title', 'Conexión Mirror (Arrastra hacia su par para sincronizar Proyecto <-> Media)');
+                mirrorDot.onmousedown = (e) => {
+                    e.stopPropagation();
+                    if (e.button === 2) {
+                        ShotDesigner.disconnectPort(node.id, 'mirror');
+                        e.preventDefault();
+                        return;
+                    }
+                    ShotDesigner.isConnecting = true;
+                    ShotDesigner.connectionStartNode = node;
+                    ShotDesigner.connectionStartPoint = 'mirror';
+                    const rect = document.getElementById('sd-canvas-area').getBoundingClientRect();
+                    ShotDesigner.connectionCurrentPos = {
+                        x: (e.clientX - rect.left - ShotDesigner.panOffset.x) / ShotDesigner.zoomLevel,
+                        y: (e.clientY - rect.top - ShotDesigner.panOffset.y) / ShotDesigner.zoomLevel
+                    };
+                    document.body.style.cursor = 'crosshair';
+                };
                 el.appendChild(mirrorDot);
             }
 
@@ -1278,21 +1325,25 @@ const ShotDesigner = {
         const toPoint = ShotDesigner.getDotPosition(to, toPort);
 
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("class", isMirror ? "connector mirror" : "connector"); // 'mirror' uses dasharray in CSS
+        path.setAttribute("class", isMirror ? "connector mirror" : "connector");
 
-        // Curved path
-        const cp1x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
-        const cp2x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
-        const d = `M ${fromPoint.x} ${fromPoint.y} C ${cp1x} ${fromPoint.y} ${cp2x} ${toPoint.y} ${toPoint.x} ${toPoint.y}`;
-        path.setAttribute("d", d);
-
+        let d;
         if (isMirror) {
+            const cp1y = fromPoint.y + (toPoint.y - fromPoint.y) * 0.5;
+            const cp2y = fromPoint.y + (toPoint.y - fromPoint.y) * 0.5;
+            d = `M ${fromPoint.x} ${fromPoint.y} C ${fromPoint.x} ${cp1y} ${toPoint.x} ${cp2y} ${toPoint.x} ${toPoint.y}`;
             path.setAttribute("stroke", "#E040FB");
             path.setAttribute("stroke-dasharray", "5,5");
         } else if (fromPort === 'out-render' || toPort === 'in-render') {
+            const cp1x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
+            const cp2x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
+            d = `M ${fromPoint.x} ${fromPoint.y} C ${cp1x} ${fromPoint.y} ${cp2x} ${toPoint.y} ${toPoint.x} ${toPoint.y}`;
             path.setAttribute("stroke", "#FFD600");
             path.setAttribute("stroke-dasharray", "3,3");
         } else {
+            const cp1x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
+            const cp2x = fromPoint.x + (toPoint.x - fromPoint.x) / 2;
+            d = `M ${fromPoint.x} ${fromPoint.y} C ${cp1x} ${fromPoint.y} ${cp2x} ${toPoint.y} ${toPoint.x} ${toPoint.y}`;
             // Color Logic: Trace ancestry to see if we are in Online or Local branch
             let strokeColor = "#555";
 
@@ -1306,10 +1357,12 @@ const ShotDesigner = {
             } else if (ShotDesigner.isFeedingLocalSync(to.id)) { // Check if target node feeds local sync
                 strokeColor = "#2196F3"; // Propagate Blue Backwards
             } else {
-                strokeColor = "#555"; // Default Grey for non-sync paths
+                strokeColor = "#9E9E9E"; // Clearly visible Grey for standard paths
             }
             path.style.stroke = strokeColor;
         }
+
+        path.setAttribute("d", d);
 
         path.setAttribute("stroke-width", 2.5 / ShotDesigner.zoomLevel);
         path.style.cursor = 'pointer';
@@ -1369,6 +1422,23 @@ const ShotDesigner = {
 
     removeSpecificConnection: (fromId, toId, fromPort, toPort) => {
         const toNode = ShotDesigner.currentAsset.nodes.find(n => n.id === toId);
+        if (fromPort === 'mirror' || toPort === 'mirror') {
+            if (ShotDesigner.currentAsset.connections) {
+                ShotDesigner.currentAsset.connections = ShotDesigner.currentAsset.connections.filter(c =>
+                    !((c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId))
+                );
+            }
+            const n = ShotDesigner.currentAsset.nodes.find(n => n.id === toId);
+            if (n) n.mirrorOf = null;
+            const f = ShotDesigner.currentAsset.nodes.find(n => n.id === fromId);
+            if (f && f.mirrorOf === toId) f.mirrorOf = null;
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+            ShotDesigner.updatePreview();
+            return;
+        }
         if (toNode) {
             if (toNode.parent === fromId) toNode.parent = null;
             if (toNode.parentOnline === fromId) toNode.parentOnline = null;
@@ -1394,11 +1464,21 @@ const ShotDesigner = {
         const cX = endPos.x;
         const cY = endPos.y;
 
-        const d = `M ${fromPoint.x} ${fromPoint.y} C ${fromPoint.x + 50} ${fromPoint.y}, ${cX - 50} ${cY}, ${cX} ${cY}`;
+        let d;
+        if (fromPort === 'mirror') {
+            const cp1y = fromPoint.y + (cY - fromPoint.y) * 0.5;
+            d = `M ${fromPoint.x} ${fromPoint.y} C ${fromPoint.x} ${cp1y}, ${cX} ${cp1y}, ${cX} ${cY}`;
+        } else {
+            d = `M ${fromPoint.x} ${fromPoint.y} C ${fromPoint.x + 50} ${fromPoint.y}, ${cX - 50} ${cY}, ${cX} ${cY}`;
+        }
 
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", d);
         path.setAttribute("class", "connector draft");
+        if (fromPort === 'mirror') {
+            path.setAttribute("stroke", "#E040FB");
+            path.setAttribute("stroke-dasharray", "5,5");
+        }
         path.setAttribute("stroke-width", 2 / ShotDesigner.zoomLevel);
         svgGroup.appendChild(path);
     },
@@ -1414,7 +1494,8 @@ const ShotDesigner = {
         if (type === 'out') return { x: x + width, y: y + height / 2 };
         if (type === 'in' || type === 'in-multi-item' || type === 'in-multi-process') return { x: x, y: y + height / 2 };
         if (type === 'in-online') return { x: x, y: y + height * 0.25 };
-        if (type === 'in-local') return { x: x, y: y + height * 0.75 };
+        if (type === 'in-local' || type === 'local') return { x: x, y: y + height * 0.75 };
+        if (type === 'online') return { x: x, y: y + height * 0.25 };
         if (type === 'mirror') {
             const isMedia = node.y >= 0;
             // Mirror dot is at the top or bottom center of the node
@@ -1464,8 +1545,52 @@ const ShotDesigner = {
     },
 
     // Connection Logic
-    // onDotOutDown and onDotInDown are replaced by a more generic onCanvasMouseDown/Up for dots
-    // The logic for starting a connection is now handled by onCanvasMouseDown if it hits a dot.
+    onDotOutDown: (nodeId, e) => {
+        const node = ShotDesigner.currentAsset.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        ShotDesigner.isConnecting = true;
+        ShotDesigner.connectionStartNode = node;
+        ShotDesigner.connectionStartPoint = 'out';
+        const rect = document.getElementById('sd-canvas-area').getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const canvasX = (mouseX - ShotDesigner.panOffset.x) / ShotDesigner.zoomLevel;
+        const canvasY = (mouseY - ShotDesigner.panOffset.y) / ShotDesigner.zoomLevel;
+
+        ShotDesigner.connectionCurrentPos = { x: canvasX, y: canvasY };
+        document.body.style.cursor = 'crosshair';
+    },
+
+    onDotInDown: (nodeId, e, type = 'local') => {
+        const node = ShotDesigner.currentAsset.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        let currentParentId = (type === 'online') ? node.parentOnline : node.parent;
+        if (!currentParentId) return;
+
+        if (type === 'online') {
+            node.parentOnline = null;
+        } else {
+            node.parent = null;
+        }
+
+        ShotDesigner.isConnecting = true;
+        const parent = ShotDesigner.currentAsset.nodes.find(n => n.id === currentParentId);
+        ShotDesigner.connectionStartNode = parent;
+        ShotDesigner.connectionStartPoint = type;
+
+        const rect = document.getElementById('sd-canvas-area').getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const canvasX = (mouseX - ShotDesigner.panOffset.x) / ShotDesigner.zoomLevel;
+        const canvasY = (mouseY - ShotDesigner.panOffset.y) / ShotDesigner.zoomLevel;
+
+        ShotDesigner.connectionCurrentPos = { x: canvasX, y: canvasY };
+        document.body.style.cursor = 'crosshair';
+        ShotDesigner.renderCanvas();
+    },
 
     onCanvasMouseDown: (e) => {
         const isShift = e.shiftKey || e.ctrlKey;
@@ -1946,10 +2071,25 @@ const ShotDesigner = {
                 !((c.from === fromId || c.to === fromId || c.from === toId || c.to === toId) && (c.fromPort === 'mirror' || c.toPort === 'mirror'))
             );
 
-            ShotDesigner.currentAsset.connections.push({ from: fromId, to: toId, fromPort: fromPort, toPort: toPort });
+            ShotDesigner.currentAsset.connections.push({ from: fromId, to: toId, fromPort: 'mirror', toPort: 'mirror' });
+
+            // Also keep node.mirrorOf synchronized for backward compatibility
+            const fromNode = ShotDesigner.currentAsset.nodes.find(n => n.id === fromId);
+            const toNode = ShotDesigner.currentAsset.nodes.find(n => n.id === toId);
+            if (fromNode && toNode) {
+                fromNode.isMirrorOn = true;
+                toNode.isMirrorOn = true;
+                toNode.mirrorOf = fromId;
+            }
 
             // Initial sync: from -> to
             ShotDesigner.mirrorSync(fromId, toId);
+            ShotDesigner.pushHistory();
+            ShotDesigner.saveAsset();
+            ShotDesigner.renderCanvas();
+            ShotDesigner.updateSidebar();
+            ShotDesigner.updatePreview();
+            return;
         } else {
             // Standard Connection Logic (Mapping to existing parent/parentOnline props for compatibility)
             const source = ShotDesigner.currentAsset.nodes.find(n => n.id === fromId);
@@ -1959,7 +2099,7 @@ const ShotDesigner = {
                 // Prevent loops
                 if (fromId === toId) return;
 
-                if (toPort === 'in-online') {
+                if (toPort && (toPort === 'in-online' || toPort === 'online' || toPort.includes('online'))) {
                     target.parentOnline = fromId;
                 } else if (toPort === 'in-multi-item') {
                     if (!target.itemConfig) target.itemConfig = {};

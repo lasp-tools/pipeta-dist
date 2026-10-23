@@ -167,7 +167,7 @@ class SyncAnalyzer {
         if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
             const labels = {
                 'z_local': 'Disco Z: Local',
-                'server_catalog': 'Servidor Central (Catálogo S:)'
+                'server_catalog': 'Servidor Central (Catálogo Central)'
             };
             settings.showToast(`Origen Local: ${labels[source] || source}`, 'info', 2);
         }
@@ -533,7 +533,7 @@ class SyncAnalyzer {
                                 <div style="color:#fff; font-weight:bold; display:flex; align-items:center; gap:6px;">
                                     Servidor Central <span style="font-size:0.65rem; color:#ffb74d; background:#2e2005; padding:1px 5px; border-radius:3px; font-weight:normal;">Catálogo S:</span>
                                 </div>
-                                <div style="font-size:0.7rem; color:#888; line-height:1.2; margin-top:2px;">Compara contra el verdadero disco del servidor (S:) vía Catálogo central.</div>
+                                <div style="font-size:0.7rem; color:#888; line-height:1.2; margin-top:2px;">Compara contra el disco del servidor vía Catálogo central.</div>
                             </div>
                         </label>
                     </div>

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeta Beta - Pipeline Manager</title>
+    <title>Pipeta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/components.css">
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.1.26</span>
+                <span class="app-version" id="appVersion">v1.1.43</span>
             </div>
         </div>
 
@@ -35,10 +35,11 @@
 
         <!-- ZONE 2: CONFIG (Project + User) -->
         <div class="header-zone-config">
-            <div class="project-selector">
+            <div class="project-selector" style="position:relative; display:flex; align-items:center;">
                 <select id="headerProjectSelect" onchange="settings.selectHeaderProject(this.value)" title="Proyecto Activo">
                     <option>Cargando Proyectos...</option>
                 </select>
+                <div id="projectSelectSpinner" class="spinner-small" style="display:none; width:12px; height:12px; border-width:2px; margin-left:6px; flex-shrink:0;" title="Cargando proyecto..."></div>
             </div>
             <div class="header-config-divider"></div>
             <div id="headerUserSelectorContainer" title="Gestionar Sesión y Operador Activo">
@@ -46,31 +47,6 @@
                 <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)">
                     <option>Cargando...</option>
                 </select>
-            </div>
-        </div>
-
-        <div class="zone-divider"></div>
-
-        <!-- ZONE 3: GLOBAL INFO (Disks) -->
-        <div class="header-zone-global">
-            <!-- Disk Usage Bars -->
-            <div class="disk-monitor" id="disk-monitor">
-                <div class="disk-bars-inner">
-                    <div class="disk-bar-wrap" title="Disco Local (Z:)">
-                        <span class="disk-label">Z:</span>
-                        <div class="disk-bar-track">
-                            <div class="disk-bar-fill" id="disk-bar-z" style="width:0%"></div>
-                            <span class="disk-bar-text" id="disk-pct-z">—</span>
-                        </div>
-                    </div>
-                    <div class="disk-bar-wrap" title="Disco Online (G:)">
-                        <span class="disk-label">G:</span>
-                        <div class="disk-bar-track">
-                            <div class="disk-bar-fill" id="disk-bar-m" style="width:0%"></div>
-                            <span class="disk-bar-text" id="disk-pct-m">—</span>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -95,6 +71,30 @@
                 </button>
             </div>
 
+            <!-- DISK USAGE BARS (COLLAPSIBLE / DEFAULT HIDDEN) -->
+            <div class="disk-monitor" id="disk-monitor" style="display:none;">
+                <div class="disk-bars-inner">
+                    <div class="disk-bar-wrap" title="Disco Local (Z:)">
+                        <span class="disk-label">Z:</span>
+                        <div class="disk-bar-track">
+                            <div class="disk-bar-fill" id="disk-bar-z" style="width:0%"></div>
+                            <span class="disk-bar-text" id="disk-pct-z">—</span>
+                        </div>
+                    </div>
+                    <div class="disk-bar-wrap" title="Disco Online (G:)">
+                        <span class="disk-label">G:</span>
+                        <div class="disk-bar-track">
+                            <div class="disk-bar-fill" id="disk-bar-m" style="width:0%"></div>
+                            <span class="disk-bar-text" id="disk-pct-m">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOTON DISCOS DESPLEGABLE -->
+            <button type="button" class="control-btn" id="btnToggleDisks" title="Espacio en Discos (Z: / G:)" onclick="toggleDiskMonitor()">
+                <img src="icons/hdd.svg" class="btn-icon-svg" style="width:16px; height:16px;">
+            </button>
 
             <button class="control-btn" title="Maximizar Canvas / Modo Pantalla Completa" onclick="toggleCanvasFullscreen()">
                 <span style="font-size:0.9rem;">🔲</span>
@@ -753,33 +753,33 @@
         style="display:none; top: 10vh; left: 15vw; width: 920px; height: 740px;"></div>
 
     <!-- SCRIPT MODULES -->
-    <script src="js/config.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/ramon.js"></script>
-    <script src="js/console.js"></script>
-    <script src="js/selection.js"></script>
-    <script src="js/inspector.js"></script>
-    <script src="js/validator.js"></script>
-    <script src="js/context-menu.js"></script>
-    <script src="js/settings.js"></script>
+    <script src="js/config.js?v=v1.1.43"></script>
+    <script src="js/state.js?v=v1.1.43"></script>
+    <script src="js/api.js?v=v1.1.43"></script>
+    <script src="js/ramon.js?v=v1.1.43"></script>
+    <script src="js/console.js?v=v1.1.43"></script>
+    <script src="js/selection.js?v=v1.1.43"></script>
+    <script src="js/inspector.js?v=v1.1.43"></script>
+    <script src="js/validator.js?v=v1.1.43"></script>
+    <script src="js/context-menu.js?v=v1.1.43"></script>
+    <script src="js/settings.js?v=v1.1.43"></script>
     <!-- Views -->
-    <script src="js/pipeta-view.js"></script>
-    <script src="js/mirror.js"></script>
-    <script src="js/split-view.js"></script>
-    <script src="js/asset-designer.js"></script>
-    <script src="js/shot-designer.js"></script>
-    <script src="js/asset-creator.js"></script>
-    <script src="js/shot-creator.js"></script>
-    <script src="js/tutorials.js"></script>
-    <script src="js/sync-analyzer.js"></script>
-    <script src="js/sync-queue.js"></script>
-    <script src="js/sync-conflict.js"></script>
-    <script src="js/ia-ingest.js"></script>
-    <script src="js/file-auditor.js"></script>
-    <script src="js/shot-navigator.js"></script>
+    <script src="js/pipeta-view.js?v=v1.1.43"></script>
+    <script src="js/mirror.js?v=v1.1.43"></script>
+    <script src="js/split-view.js?v=v1.1.43"></script>
+    <script src="js/asset-designer.js?v=v1.1.43"></script>
+    <script src="js/shot-designer.js?v=v1.1.43"></script>
+    <script src="js/asset-creator.js?v=v1.1.43"></script>
+    <script src="js/shot-creator.js?v=v1.1.43"></script>
+    <script src="js/tutorials.js?v=v1.1.43"></script>
+    <script src="js/sync-analyzer.js?v=v1.1.43"></script>
+    <script src="js/sync-queue.js?v=v1.1.43"></script>
+    <script src="js/sync-conflict.js?v=v1.1.43"></script>
+    <script src="js/ia-ingest.js?v=v1.1.43"></script>
+    <script src="js/file-auditor.js?v=v1.1.43"></script>
+    <script src="js/shot-navigator.js?v=v1.1.43"></script>
     <!-- Main Entry -->
-    <script src="js/main.js"></script>
+    <script src="js/main.js?v=v1.1.43"></script>
 
 </body>
 

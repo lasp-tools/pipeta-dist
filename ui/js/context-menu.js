@@ -88,8 +88,39 @@ class ContextMenu {
         this.activeTarget = null;
     }
 
+    isGhostItem(target, path) {
+        if (!target && path) {
+            try {
+                target = document.querySelector(`[data-path="${CSS.escape(path)}"]`);
+            } catch(e) {}
+        }
+        if (!target) return false;
+        if (target.classList && target.classList.contains('sync-ghost')) return true;
+        if (target.closest && target.closest('.sync-ghost-wrapper, .sync-ghost')) return true;
+        const item = target._item || (target.closest && target.closest('.node-wrapper')?._item);
+        if (item) {
+            if (item.isGhost) return true;
+            if (typeof item.syncStatus === 'string' && item.syncStatus.startsWith('ghost')) return true;
+        }
+        if (target.querySelector && target.querySelector('.sync-badge-download')) return true;
+        return false;
+    }
+
+    isAnyGhostSelected(target, path) {
+        if (this.isGhostItem(target, path)) return true;
+        if (window.selectedPaths && window.selectedPaths.size > 0) {
+            const selectedEls = document.querySelectorAll('.tree-node.selected, .pipeta-block.selected');
+            for (const el of selectedEls) {
+                if (this.isGhostItem(el)) return true;
+            }
+        }
+        return false;
+    }
+
     getMenuItems(path, isDir, name, multi, count) {
-        const canPaste = !!this.clipboard;
+        const isServerView = (window.viewLocationMode === 'server');
+        const isGhost = this.isAnyGhostSelected(this.activeTarget, path);
+        const canPaste = !isServerView && !isGhost && !!this.clipboard;
         const labelSuffix = multi ? ` (${count})` : '';
 
         const compMode = window.syncComparisonMode || 'off';
@@ -113,12 +144,12 @@ class ContextMenu {
             syncItems.push(
                 { separator: true },
                 { 
-                    label: `Upload (Subir a Servidor S:)${labelSuffix}`, 
+                    label: `Upload (Subir a Servidor Central)${labelSuffix}`, 
                     icon: '⬆️', 
                     action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'server', path: p, isDir, name }) 
                 },
                 { 
-                    label: `Download (Bajar de Servidor S:)${labelSuffix}`, 
+                    label: `Download (Bajar de Servidor Central)${labelSuffix}`, 
                     icon: '⬇️', 
                     action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'server', path: p, isDir, name }) 
                 }
@@ -127,12 +158,12 @@ class ContextMenu {
             syncItems.push(
                 { separator: true },
                 { 
-                    label: `Subir a Servidor (S:)${labelSuffix}`, 
+                    label: `Subir a Servidor Central${labelSuffix}`, 
                     icon: '🗄️⬆️', 
                     action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'server', path: p, isDir, name }) 
                 },
                 { 
-                    label: `Bajar de Servidor (S:)${labelSuffix}`, 
+                    label: `Bajar de Servidor Central${labelSuffix}`, 
                     icon: '🗄️⬇️', 
                     action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'server', path: p, isDir, name }) 
                 },
@@ -150,20 +181,20 @@ class ContextMenu {
         }
 
         return [
-            { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi) },
+            { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi), disabled: isServerView || isGhost },
             { label: 'Refrescar Carpeta', icon: '🔄', action: (p) => this.refreshFolder(p, isDir) },
             ...syncItems,
             { separator: true },
-            { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false) },
-            { label: `Cortar${labelSuffix}`, icon: '✂️', action: (p) => this.copyToClipboard(true) },
+            { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false), disabled: isGhost },
+            { label: `Cortar${labelSuffix}`, icon: '✂️', action: (p) => this.copyToClipboard(true), disabled: isServerView || isGhost },
             { label: 'Pegar', icon: '📋', action: (p) => this.pasteFromClipboard(p), disabled: !canPaste },
             { separator: true },
-            { label: 'Renombrar', icon: '✏️', action: (p) => this.renameItem(p, name), disabled: multi },
-            { label: `Duplicar${labelSuffix}`, icon: '♊', action: (p) => this.duplicateItems() },
-            { label: `Borrar${labelSuffix}`, icon: '🗑️', action: (p) => this.deleteItems() },
+            { label: 'Renombrar', icon: '✏️', action: (p) => this.renameItem(p, name), disabled: multi || isServerView || isGhost },
+            { label: `Duplicar${labelSuffix}`, icon: '♊', action: (p) => this.duplicateItems(), disabled: isServerView || isGhost },
+            { label: `Borrar${labelSuffix}`, icon: '🗑️', action: (p) => this.deleteItems(), disabled: isServerView || isGhost },
             { separator: true },
             { label: 'Copiar Ruta', icon: '🔗', action: (p) => this.copyPath(p) },
-            { label: 'Nueva Carpeta', icon: '📁', action: (p) => this.createFolder(p, isDir), disabled: multi }
+            { label: 'Nueva Carpeta', icon: '📁', action: (p) => this.createFolder(p, isDir), disabled: multi || isServerView }
         ];
     }
 
@@ -266,6 +297,14 @@ class ContextMenu {
     }
 
     async openInExplorer(path, multi) {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Abrir en Explorer' está deshabilitado en vista Servidor.");
+            return;
+        }
+        if (this.isAnyGhostSelected(this.activeTarget, path)) {
+            console.warn("[ContextMenu] 'Abrir en Explorer' no disponible para elementos no descargados.");
+            return;
+        }
         if (!path && typeof selectedContextPath !== 'undefined' && selectedContextPath) {
             path = selectedContextPath;
         }
@@ -287,12 +326,28 @@ class ContextMenu {
     }
 
     copyToClipboard(isCut) {
+        if (this.isAnyGhostSelected(this.activeTarget)) {
+            console.warn("[ContextMenu] No se puede copiar o cortar elementos no descargados.");
+            return;
+        }
+        if (isCut && window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Cortar' está deshabilitado en vista Servidor.");
+            return;
+        }
         const paths = Array.from(window.selectedPaths);
         this.clipboard = { paths, isCut };
         console.log(`Clipboard: ${isCut ? 'Cut' : 'Copy'} ${paths.length} items`);
     }
 
     async pasteFromClipboard(targetPath) {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Pegar' está deshabilitado en vista Servidor.");
+            return;
+        }
+        if (this.isAnyGhostSelected(this.activeTarget, targetPath)) {
+            console.warn("[ContextMenu] 'Pegar' no disponible en destino no descargado.");
+            return;
+        }
         if (!this.clipboard) return;
 
         // Determine dest folder
@@ -350,6 +405,14 @@ class ContextMenu {
     }
 
     async renameItem(path, oldName) {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Renombrar' está deshabilitado en vista Servidor.");
+            return;
+        }
+        if (this.isAnyGhostSelected(this.activeTarget, path)) {
+            console.warn("[ContextMenu] 'Renombrar' no disponible para elementos no descargados.");
+            return;
+        }
         if (!oldName) {
             const sep = path.lastIndexOf('\\') > -1 ? '\\' : '/';
             oldName = path.substring(path.lastIndexOf(sep) + 1);
@@ -366,6 +429,14 @@ class ContextMenu {
     }
 
     async duplicateItems() {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Duplicar' está deshabilitado en vista Servidor.");
+            return;
+        }
+        if (this.isAnyGhostSelected(this.activeTarget)) {
+            console.warn("[ContextMenu] 'Duplicar' no disponible para elementos no descargados.");
+            return;
+        }
         const paths = Array.from(window.selectedPaths);
         const promises = paths.map(async (path) => {
             const sep = path.lastIndexOf('\\') > -1 ? '\\' : '/';
@@ -385,6 +456,14 @@ class ContextMenu {
     }
 
     async deleteItems() {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Borrar' está deshabilitado en vista Servidor.");
+            return;
+        }
+        if (this.isAnyGhostSelected(this.activeTarget)) {
+            console.warn("[ContextMenu] 'Borrar' no disponible para elementos no descargados.");
+            return;
+        }
         const paths = Array.from(window.selectedPaths);
         const count = paths.length;
         if (confirm(`¿Estás seguro de BORRAR PERMANENTEMENTE ${count} elemento(s)?`)) {
@@ -395,6 +474,10 @@ class ContextMenu {
     }
 
     async createFolder(path, isDir) {
+        if (window.viewLocationMode === 'server') {
+            console.warn("[ContextMenu] 'Nueva Carpeta' está deshabilitado en vista Servidor.");
+            return;
+        }
         let parent = path;
         if (!isDir) {
             const sep = path.lastIndexOf('\\') > -1 ? '\\' : '/';
@@ -463,3 +546,39 @@ class ContextMenu {
 }
 
 window.contextMenu = new ContextMenu();
+
+function updateToolbarFileActionsState() {
+    const isServer = (window.viewLocationMode === 'server');
+    const isGhost = (window.contextMenu && typeof window.contextMenu.isAnyGhostSelected === 'function')
+        ? window.contextMenu.isAnyGhostSelected(null, window.selectedContextPath)
+        : false;
+
+    const setBtnState = (id, disabled) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        if (disabled) {
+            btn.setAttribute('disabled', 'true');
+            btn.classList.add('disabled');
+            btn.style.opacity = '0.35';
+            btn.style.pointerEvents = 'none';
+            btn.style.cursor = 'not-allowed';
+        } else {
+            btn.removeAttribute('disabled');
+            btn.classList.remove('disabled');
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+            btn.style.cursor = 'pointer';
+        }
+    };
+
+    const canPaste = !isServer && !isGhost && !!(window.contextMenu && window.contextMenu.clipboard);
+
+    setBtnState('btn-tb-openexplorer', isServer || isGhost);
+    setBtnState('btn-tb-copy', isGhost);
+    setBtnState('btn-tb-paste', !canPaste || isServer || isGhost);
+    setBtnState('btn-tb-duplicate', isServer || isGhost);
+    setBtnState('btn-tb-rename', isServer || isGhost);
+    setBtnState('btn-tb-newfolder', isServer);
+    setBtnState('btn-tb-delete', isServer || isGhost);
+}
+window.updateToolbarFileActionsState = updateToolbarFileActionsState;

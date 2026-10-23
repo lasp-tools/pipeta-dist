@@ -362,6 +362,11 @@ function updateDesignContext() {
     if (typeof handleIaSelectionChange === 'function') {
         handleIaSelectionChange(selectedContextPath);
     }
+
+    // Update toolbar actions state (ghost / server view disable rules)
+    if (typeof updateToolbarFileActionsState === 'function') {
+        updateToolbarFileActionsState();
+    }
 }
 
 function selectBlock(el, name) {
@@ -571,7 +576,7 @@ async function setSyncComparisonMode(mode) {
 
     const modeLabels = {
         'drive': '☁️ GOOGLE DRIVE (Ver qué falta subir o bajar)',
-        'server': '🗄️ SERVIDOR CENTRAL (S:)',
+        'server': '🗄️ SERVIDOR CENTRAL',
         'off': 'APAGADO'
     };
 
@@ -757,7 +762,7 @@ async function switchViewLocation(mode) {
     const modeLabels = {
         local: 'DISCO LOCAL (Z:)',
         drive: '☁️ GOOGLE DRIVE (G:)',
-        server: '🗄️ SERVIDOR CENTRAL (S:)'
+        server: '🗄️ SERVIDOR CENTRAL'
     };
 
     if (typeof PipetaConsole !== 'undefined') {

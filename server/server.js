@@ -6,7 +6,7 @@ const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.26";
+const VERSION = "v1.1.43";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -481,6 +481,16 @@ app.post('/api/system/last-project', (req, res) => {
                 fs.writeJsonSync('Z:/_SYNC_CACHE/last_project.json', payload, { spaces: 2 });
             } catch(e) {}
         }
+
+        // Hidratar en segundo plano el catálogo modular del proyecto seleccionado hacia el SSD local C:
+        setImmediate(() => {
+            try {
+                if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+                    catalogGenerator.syncLocalCacheFromNetwork(projectName);
+                }
+            } catch(e) {}
+        });
+
         res.json({ success: true, projectName });
     } catch(e) {
         res.status(500).json({ success: false, error: e.message });
@@ -600,11 +610,23 @@ app.post('/api/sync/catalog/generate', async (req, res) => {
 
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 
+let cachedCentralCacheDir = { time: 0, dir: null };
+
 function getCentralCacheDir() {
     // 0. Si hay un Local Worker activo o corriendo en esta máquina, SIEMPRE usar la carpeta local de Pipeta
     if (checkLocalWorkerRunning() || localWorkerPid) {
         return getLocalSyncCacheDir();
     }
+
+    const now = Date.now();
+    if (cachedCentralCacheDir.dir && (now - cachedCentralCacheDir.time < 15000)) {
+        return cachedCentralCacheDir.dir;
+    }
+
+    const setAndReturn = (d) => {
+        cachedCentralCacheDir = { time: now, dir: d };
+        return d;
+    };
 
     // 0.1 Si worker_status.json en la caché local tiene un heartbeat reciente (< 45s) de un local_worker
     try {
@@ -613,14 +635,14 @@ function getCentralCacheDir() {
             const data = fs.readJsonSync(localStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
             if (diff < 45 && data.workerId && data.workerId.includes('local_worker')) {
-                return getLocalSyncCacheDir();
+                return setAndReturn(getLocalSyncCacheDir());
             }
         }
     } catch(e) {}
 
     // 0.2 Si estamos en un equipo externo / remoto, usar inmediatamente el cache local de Pipeta
     if (global.isExternalMachine || cachedEnvState?.isExternalMachine) {
-        return getLocalSyncCacheDir();
+        return setAndReturn(getLocalSyncCacheDir());
     }
 
     // 1. Si Z:/_SYNC_CACHE tiene un heartbeat activo o reciente (< 45s) de un Worker central, usar Z:/
@@ -629,7 +651,7 @@ function getCentralCacheDir() {
         if (fs.existsSync(zStatus)) {
             const data = fs.readJsonSync(zStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
-            if (diff < 45 && !data.workerId?.includes('local_worker')) return 'Z:/_SYNC_CACHE';
+            if (diff < 45 && !data.workerId?.includes('local_worker')) return setAndReturn('Z:/_SYNC_CACHE');
         }
     } catch (e) {}
 
@@ -639,7 +661,7 @@ function getCentralCacheDir() {
         if (fs.existsSync(uncStatus)) {
             const data = fs.readJsonSync(uncStatus);
             const diff = (Date.now() - new Date(data.lastPing).getTime()) / 1000;
-            if (diff < 45) return UNC_CACHE;
+            if (diff < 45) return setAndReturn(UNC_CACHE);
         }
     } catch (e) {}
 
@@ -648,23 +670,23 @@ function getCentralCacheDir() {
         if (fs.existsSync(UNC_CACHE)) {
             const substOut = execSync('subst', { encoding: 'utf8', timeout: 500 });
             if (/Z:\\: =>/i.test(substOut)) {
-                return UNC_CACHE;
+                return setAndReturn(UNC_CACHE);
             }
         }
     } catch (e) {}
 
     // 4. Si Z:/_SYNC_CACHE existe (ruta estándar en puestos de trabajo con Z: mapeado)
     if (fs.existsSync('Z:/_SYNC_CACHE')) {
-        return 'Z:/_SYNC_CACHE';
+        return setAndReturn('Z:/_SYNC_CACHE');
     }
 
     // 5. Si UNC_CACHE existe
     if (fs.existsSync(UNC_CACHE)) {
-        return UNC_CACHE;
+        return setAndReturn(UNC_CACHE);
     }
 
     // 6. Fallback a carpeta local en la aplicación
-    return getLocalSyncCacheDir();
+    return setAndReturn(getLocalSyncCacheDir());
 }
 
 function getOrdersDir() {
@@ -693,9 +715,11 @@ function saveOrderInCandidateDirs(orderId, orderData) {
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             const p = path.join(dir, `${orderId}.json`);
             fs.writeFileSync(p, JSON.stringify(orderData, null, 2), 'utf8');
+            if (typeof ordersFileMemoryCache !== 'undefined') ordersFileMemoryCache.delete(p);
             if (!primaryFile) primaryFile = p;
         } catch (e) {}
     }
+    if (typeof ordersResponseCache !== 'undefined') ordersResponseCache.time = 0;
     return primaryFile || path.join(getOrdersDir(), `${orderId}.json`);
 }
 
@@ -863,28 +887,57 @@ function getDirectoryFilesAndSize(dirPath) {
     return { files, totalBytes };
 }
 
-function streamCopyFile(srcFile, destFile, onChunk) {
+const activeLocalTransfers = new Map();
+const ensuredDirsCache = new Set();
+
+function ensureDirCached(dir) {
+    if (!dir || ensuredDirsCache.has(dir)) return;
+    try {
+        fs.ensureDirSync(dir);
+        ensuredDirsCache.add(dir);
+    } catch (e) {}
+}
+
+function streamCopyFile(srcFile, destFile, onChunk, abortSignal = null) {
     return new Promise((resolve, reject) => {
+        if (abortSignal && abortSignal.aborted) {
+            return reject(new Error('TRANSF_ABORTED'));
+        }
         try {
-            fs.ensureDirSync(path.dirname(destFile));
-            const readStream = fs.createReadStream(srcFile, { highWaterMark: 1024 * 512 });
-            const writeStream = fs.createWriteStream(destFile);
+            ensureDirCached(path.dirname(destFile));
+            // Buffer de 2MB por stream (ideal para concurrencia multi-hilo en SMB sin saturar memoria)
+            const readStream = fs.createReadStream(srcFile, { highWaterMark: 1024 * 1024 * 2 });
+            const writeStream = fs.createWriteStream(destFile, { highWaterMark: 1024 * 1024 * 2 });
+
+            const onAbort = () => {
+                try { readStream.destroy(); } catch(e){}
+                try { writeStream.destroy(); } catch(e){}
+                try { if (fs.existsSync(destFile)) fs.removeSync(destFile); } catch(e){}
+                reject(new Error('TRANSF_ABORTED'));
+            };
+
+            if (abortSignal) {
+                abortSignal.addEventListener('abort', onAbort, { once: true });
+            }
 
             readStream.on('data', (chunk) => {
                 if (onChunk) onChunk(chunk.length);
             });
 
             readStream.on('error', (err) => {
+                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                 try { writeStream.destroy(); } catch(e){}
                 reject(err);
             });
 
             writeStream.on('error', (err) => {
+                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                 try { readStream.destroy(); } catch(e){}
                 reject(err);
             });
 
             writeStream.on('finish', () => {
+                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                 resolve();
             });
 
@@ -897,10 +950,63 @@ function streamCopyFile(srcFile, destFile, onChunk) {
 
 async function runLocalTransferOrder(orderId, orderData, filePath) {
     const startTime = Date.now();
+    const abortController = new AbortController();
+    const candidateDirs = getAllOrdersCandidateDirs();
+    const activeTransfer = {
+        abortController,
+        isCancelled: false,
+        currentDestFile: null,
+        orderData,
+        filePath,
+        candidateDirs
+    };
+    activeLocalTransfers.set(orderId, activeTransfer);
+
     orderData.status = 'processing';
     orderData.startedAt = new Date().toISOString();
     orderData.worker = `local_${os.hostname()}`;
-    try { fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8'); } catch(e){}
+
+    let isWritingProgress = false;
+    const persistOrder = (isTerminal = false) => {
+        const jsonStr = JSON.stringify(orderData, null, 2);
+        for (const dir of candidateDirs) {
+            const p = path.join(dir, `${orderId}.json`);
+            if (typeof ordersFileMemoryCache !== 'undefined') {
+                ordersFileMemoryCache.set(p, {
+                    mtimeMs: Date.now(),
+                    checkedAt: Date.now(),
+                    isTerminal,
+                    data: JSON.parse(jsonStr)
+                });
+            }
+        }
+        if (typeof ordersResponseCache !== 'undefined') ordersResponseCache.time = 0;
+
+        // Escribir de forma inmediata y sincrónica en el SSD local para que las lecturas locales nunca fallen
+        try {
+            const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
+            fs.ensureDirSync(localReqDir);
+            fs.writeFileSync(path.join(localReqDir, `${orderId}.json`), jsonStr, 'utf8');
+        } catch(e) {}
+
+        // En red central (SMB), escribir sin solapamiento
+        for (const dir of candidateDirs) {
+            const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
+            if (path.resolve(dir).toLowerCase() === path.resolve(localReqDir).toLowerCase()) continue;
+            try {
+                if (isTerminal) {
+                    fs.writeFileSync(path.join(dir, `${orderId}.json`), jsonStr, 'utf8');
+                } else if (!isWritingProgress) {
+                    isWritingProgress = true;
+                    fs.writeFile(path.join(dir, `${orderId}.json`), jsonStr, 'utf8')
+                        .catch(() => {})
+                        .finally(() => { isWritingProgress = false; });
+                }
+            } catch(e) {}
+        }
+    };
+
+    persistOrder(false);
 
     const env = cachedEnvState || {};
     const isNotRealServer = !env?.zInfo?.isRealServer;
@@ -969,18 +1075,22 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
     let lastSpeed = 0;
 
     const updateProgress = (force = false, currentFileName = '', itemIndex = 1) => {
+        if (activeTransfer.isCancelled || abortController.signal.aborted) return;
         const now = Date.now();
-        if (!force && (now - lastProgressWrite < 700)) return;
+        if (!force && (now - lastProgressWrite < 800)) return;
 
         const timeDiffSec = (now - windowStartTime) / 1000;
-        if (timeDiffSec >= 0.7) {
+        if (timeDiffSec >= 0.8) {
             lastSpeed = Math.round(windowBytesTransferred / timeDiffSec);
             windowBytesTransferred = 0;
             windowStartTime = now;
         }
 
+        const avgSpeed = (now - startTime > 200) ? Math.round(overallTransferredBytes / Math.max(0.2, (now - startTime) / 1000)) : lastSpeed;
+        const currentSpeed = lastSpeed > 0 ? lastSpeed : avgSpeed;
+
         const remainingBytes = Math.max(0, grandTotalBytes - overallTransferredBytes);
-        const etaSeconds = (lastSpeed > 0 && remainingBytes > 0) ? Math.round(remainingBytes / lastSpeed) : 0;
+        const etaSeconds = (currentSpeed > 0 && remainingBytes > 0) ? Math.round(remainingBytes / currentSpeed) : 0;
         const pct = grandTotalBytes > 0 
             ? Math.min(100, Math.round((overallTransferredBytes / grandTotalBytes) * 1000) / 10) 
             : 0;
@@ -989,8 +1099,8 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
             percentage: pct,
             transferredBytes: overallTransferredBytes,
             totalBytes: grandTotalBytes,
-            speedBytesPerSec: lastSpeed,
-            speedFormatted: formatSpeed(lastSpeed),
+            speedBytesPerSec: currentSpeed,
+            speedFormatted: formatSpeed(currentSpeed),
             etaSeconds,
             currentFile: currentFileName,
             itemIndex,
@@ -998,14 +1108,16 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
         };
 
         lastProgressWrite = now;
-        try {
-            fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
-        } catch (e) {}
+        persistOrder(false);
     };
 
     const errors = [];
     try {
         for (let i = 0; i < itemsPlan.length; i++) {
+            if (activeTransfer.isCancelled || abortController.signal.aborted) {
+                throw new Error('TRANSF_ABORTED');
+            }
+
             const plan = itemsPlan[i];
             const normSrc = path.resolve(plan.src.replace(/\//g, '\\')).toLowerCase();
             const normDest = path.resolve(plan.dest.replace(/\//g, '\\')).toLowerCase();
@@ -1017,36 +1129,101 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
                 continue;
             }
 
-            for (const file of plan.filesList) {
-                const targetFilePath = plan.isDir 
-                    ? path.join(plan.dest, file.relPath).replace(/\\/g, '/')
-                    : plan.dest;
-
-                try {
-                    await streamCopyFile(file.fullPath, targetFilePath, (chunkBytes) => {
-                        overallTransferredBytes += chunkBytes;
-                        windowBytesTransferred += chunkBytes;
-                        updateProgress(false, path.basename(file.relPath), i + 1);
-                    });
-                } catch (copyErr) {
-                    errors.push({ file: file.relPath, error: copyErr.message });
-                    console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
-                }
+            if (plan.isDir) {
+                ensureDirCached(plan.dest);
             }
+
+            let lastRemoteCancelCheck = 0;
+            const checkRemoteCancel = async () => {
+                if (activeTransfer.isCancelled || abortController.signal.aborted) {
+                    throw new Error('TRANSF_ABORTED');
+                }
+                const now = Date.now();
+                if (now - lastRemoteCancelCheck > 2500) {
+                    lastRemoteCancelCheck = now;
+                    try {
+                        for (const dir of candidateDirs) {
+                            const p = path.join(dir, `${orderId}.json`);
+                            if (fs.existsSync(p)) {
+                                const fresh = fs.readJsonSync(p);
+                                if (fresh && fresh.status === 'cancelled') {
+                                    activeTransfer.isCancelled = true;
+                                    abortController.abort();
+                                    throw new Error('TRANSF_ABORTED');
+                                }
+                            }
+                        }
+                    } catch (chkErr) {
+                        if (chkErr.message === 'TRANSF_ABORTED') throw chkErr;
+                    }
+                }
+            };
+
+            // Concurrencia paralela optimizada para secuencias de frames (hasta 8 streams concurrentes)
+            const CONCURRENCY = Math.min(8, Math.max(1, plan.filesList.length));
+            let fileIndex = 0;
+
+            const runWorker = async () => {
+                while (fileIndex < plan.filesList.length) {
+                    if (activeTransfer.isCancelled || abortController.signal.aborted) {
+                        throw new Error('TRANSF_ABORTED');
+                    }
+
+                    await checkRemoteCancel();
+
+                    const currentIndex = fileIndex++;
+                    if (currentIndex >= plan.filesList.length) break;
+                    const file = plan.filesList[currentIndex];
+                    if (!file) break;
+
+                    const targetFilePath = plan.isDir 
+                        ? path.join(plan.dest, file.relPath).replace(/\\/g, '/')
+                        : plan.dest;
+
+                    activeTransfer.currentDestFile = targetFilePath;
+
+                    try {
+                        await streamCopyFile(file.fullPath, targetFilePath, (chunkBytes) => {
+                            overallTransferredBytes += chunkBytes;
+                            windowBytesTransferred += chunkBytes;
+                            updateProgress(false, path.basename(file.relPath), i + 1);
+                        }, abortController.signal);
+                    } catch (copyErr) {
+                        if (copyErr.message === 'TRANSF_ABORTED' || activeTransfer.isCancelled) {
+                            throw copyErr;
+                        }
+                        errors.push({ file: file.relPath, error: copyErr.message });
+                        console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
+                    } finally {
+                        activeTransfer.currentDestFile = null;
+                    }
+                }
+            };
+
+            const workers = [];
+            for (let w = 0; w < CONCURRENCY; w++) {
+                workers.push(runWorker());
+            }
+
+            await Promise.all(workers);
         }
 
-        updateProgress(true, '', itemsPlan.length);
+        if (activeTransfer.isCancelled || abortController.signal.aborted) {
+            throw new Error('TRANSF_ABORTED');
+        }
+
         orderData.status = errors.length === 0 ? 'completed' : (errors.length < itemsPlan.length ? 'completed_with_errors' : 'failed');
         orderData.completedAt = new Date().toISOString();
-        orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        orderData.durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
         if (orderData.progress) {
             orderData.progress.percentage = 100;
+            orderData.progress.transferredBytes = grandTotalBytes;
             orderData.progress.speedFormatted = 'Completado';
             orderData.progress.etaSeconds = 0;
         }
         if (errors.length > 0) orderData.errors = errors;
 
-        fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8');
+        persistOrder(true);
 
         if (typeof serverDirCache !== 'undefined') serverDirCache.clear();
         if (typeof rcloneDirCache !== 'undefined') rcloneDirCache.clear();
@@ -1064,12 +1241,29 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
             }
         }
     } catch (err) {
+        if (err.message === 'TRANSF_ABORTED' || activeTransfer.isCancelled) {
+            console.log(`[LOCAL TRANSFER] Orden ${orderId} CANCELADA con éxito. Deteniendo streams y limpiando.`);
+            orderData.status = 'cancelled';
+            orderData.cancelledAt = new Date().toISOString();
+            if (orderData.progress) {
+                orderData.progress.speedFormatted = 'Cancelado';
+                orderData.progress.etaSeconds = 0;
+            }
+            if (activeTransfer.currentDestFile) {
+                try { if (fs.existsSync(activeTransfer.currentDestFile)) fs.removeSync(activeTransfer.currentDestFile); } catch(e){}
+            }
+            persistOrder(true);
+            return;
+        }
+
         console.error(`[LOCAL TRANSFER ORDER] Error en ${orderId}:`, err);
         orderData.status = 'failed';
         orderData.error = err.message;
         orderData.completedAt = new Date().toISOString();
-        orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
-        try { fs.writeFileSync(filePath, JSON.stringify(orderData, null, 2), 'utf8'); } catch (e) {}
+        orderData.durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+        persistOrder(true);
+    } finally {
+        activeLocalTransfers.delete(orderId);
     }
 }
 
@@ -1275,31 +1469,147 @@ function ensureSyncWorkerRunning() {
     startLocalWorkerBackground();
 }
 
-app.get('/api/sync/orders', (req, res) => {
+let zombieCleanupDoneOnBoot = false;
+const ordersFileMemoryCache = new Map();
+
+function sanitizeZombieOrders(force = false) {
+    if (!force && zombieCleanupDoneOnBoot && activeLocalTransfers.size === 0) return;
+    zombieCleanupDoneOnBoot = true;
     try {
-        const { user, role, onlyMyTasks } = req.query;
-        const candidateDirs = getAllOrdersCandidateDirs();
-        const seenOrders = new Set();
-        let orders = [];
+        // Solo sanear órdenes en la carpeta local de requests para no escanear toda la red SMB en cada ciclo
+        const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
+        const candidateDirs = [localReqDir];
+        const myLocalWorkerId = 'local_' + os.hostname();
 
         for (const dir of candidateDirs) {
             if (!fs.existsSync(dir)) continue;
             let files = [];
             try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')); } catch(e){ continue; }
             for (const f of files) {
+                const filePath = path.join(dir, f);
                 try {
-                    const content = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                    const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    if (!content || !content.id) continue;
+
+                    // Si figura como processing pero pertenece a este puesto y no está corriendo en memoria
+                    if (content.status === 'processing') {
+                        const isLocalMachine = content.processedBy === myLocalWorkerId || content.workerId === myLocalWorkerId || !content.processedBy;
+                        const isRunningInMemory = activeLocalTransfers.has(content.id);
+
+                        if (isLocalMachine && !isRunningInMemory) {
+                            content.status = 'interrupted';
+                            content.error = 'Transferencia interrumpida al cerrar o reiniciar Pipeta';
+                            content.currentSpeed = 'Interrumpido';
+                            content.updatedAt = new Date().toISOString();
+                            try {
+                                fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf8');
+                                console.log(`[ZOMBIE CLEANUP] Orden huérfana local ${content.id} saneada -> 'interrupted'`);
+                            } catch(writeErr) {
+                                console.warn(`[ZOMBIE CLEANUP] No se pudo actualizar orden ${content.id}:`, writeErr.message);
+                            }
+                        }
+                    }
+                } catch(e){}
+            }
+        }
+    } catch(err) {
+        console.warn('[ZOMBIE CLEANUP] Error en sanitizeZombieOrders:', err.message);
+    }
+}
+
+function readOrderJsonCached(filePath) {
+    try {
+        const cached = ordersFileMemoryCache.get(filePath);
+        if (cached && cached.isTerminal && (Date.now() - cached.checkedAt < 60000)) {
+            return cached.data;
+        }
+        if (!fs.existsSync(filePath)) return null;
+        const st = fs.statSync(filePath);
+        if (cached && cached.mtimeMs === st.mtimeMs) {
+            cached.checkedAt = Date.now();
+            return cached.data;
+        }
+        let raw = fs.readFileSync(filePath, 'utf8');
+        // Auto-sanitizar posible corrupción de llaves } }, por ráfagas concurrentes en red
+        if (raw.includes('} },')) {
+            raw = raw.replace('} },', '},');
+        }
+        const content = JSON.parse(raw);
+        const isTerminal = ['completed', 'completed_with_errors', 'failed', 'cancelled', 'interrupted'].includes(content?.status);
+        ordersFileMemoryCache.set(filePath, {
+            mtimeMs: st.mtimeMs,
+            checkedAt: Date.now(),
+            isTerminal,
+            data: content
+        });
+        return content;
+    } catch (e) {
+        return null;
+    }
+}
+
+let ordersResponseCache = { time: 0, rawOrders: [] };
+
+app.get('/api/sync/orders', (req, res) => {
+    try {
+        // Sanear órdenes huérfanas locales solo si corresponde
+        sanitizeZombieOrders(false);
+
+        const { user, role, onlyMyTasks } = req.query;
+        const now = Date.now();
+        let orders = [];
+
+        // Si no hay transferencias locales activas, reutilizar listado durante 1.5s para evitar ráfagas SMB
+        if (activeLocalTransfers.size === 0 && (now - ordersResponseCache.time < 1500)) {
+            orders = ordersResponseCache.rawOrders.map(o => ({ ...o }));
+        } else {
+            const candidateDirs = getAllOrdersCandidateDirs();
+            const seenOrders = new Set();
+
+            for (const dir of candidateDirs) {
+                if (!fs.existsSync(dir)) continue;
+                let files = [];
+                try {
+                    files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+                    // Ordenar por timestamp embebido en el nombre (ej. order_179244... o upload_179244...) descendente y tomar los 35 más recientes
+                    files.sort((a, b) => {
+                        const ta = parseInt((a.match(/_(\d{10,15})_/) || [])[1] || '0', 10);
+                        const tb = parseInt((b.match(/_(\d{10,15})_/) || [])[1] || '0', 10);
+                        return tb - ta;
+                    });
+                    files = files.slice(0, 35);
+                } catch(e){ continue; }
+
+                for (const f of files) {
+                    const fullP = path.join(dir, f);
+                    const content = readOrderJsonCached(fullP);
                     if (content && content.id && !seenOrders.has(content.id)) {
                         seenOrders.add(content.id);
+                        if (activeLocalTransfers.has(content.id)) {
+                            const act = activeLocalTransfers.get(content.id);
+                            if (act && act.orderData) {
+                                Object.assign(content, JSON.parse(JSON.stringify(act.orderData)));
+                            }
+                        }
                         content.priority = Number.isFinite(content.priority) 
                             ? content.priority 
                             : (content.type === 'higgsfield_ingest' || content.type === 'refresh_folder' ? 80 : 50);
                         orders.push(content);
                     }
-                } catch(e){}
+                }
             }
+
+            // Inyectar transferencias locales vivas en memoria que aún no figuren en disco
+            for (const [activeId, active] of activeLocalTransfers.entries()) {
+                if (!seenOrders.has(activeId) && active && active.orderData) {
+                    seenOrders.add(activeId);
+                    orders.unshift(JSON.parse(JSON.stringify(active.orderData)));
+                }
+            }
+
+            orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            ordersResponseCache = { time: now, rawOrders: orders };
         }
-        orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         const isAdmin = role === 'admin' || role === 'administrator' || role === 'superuser' || role === 'lead';
         if (user && !isAdmin && onlyMyTasks !== 'false') {
@@ -1339,6 +1649,8 @@ app.post('/api/sync/orders/priority', (req, res) => {
                     orderData.priority = prioNum;
                     orderData.priorityUpdatedAt = new Date().toISOString();
                     fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    ordersFileMemoryCache.delete(filePath);
+                    ordersResponseCache.time = 0;
                     found = true;
                 } catch(e){}
             }
@@ -1359,6 +1671,15 @@ app.post('/api/sync/orders/cancel', (req, res) => {
         if (!orderId) {
             return res.status(400).json({ success: false, error: 'orderId es requerido' });
         }
+
+        // 1. Si la orden está corriendo activamente en memoria local, abortar sus streams de inmediato
+        if (activeLocalTransfers.has(orderId)) {
+            const activeTransfer = activeLocalTransfers.get(orderId);
+            activeTransfer.isCancelled = true;
+            try { activeTransfer.abortController.abort(); } catch(e){}
+            console.log(`[LOCAL TRANSFER] Señal de aborto enviada a transferencia local activa: ${orderId}`);
+        }
+
         const candidateDirs = getAllOrdersCandidateDirs();
         let found = false;
         for (const dir of candidateDirs) {
@@ -1373,7 +1694,13 @@ app.post('/api/sync/orders/cancel', (req, res) => {
                     orderData.status = 'cancelled';
                     orderData.cancelledAt = new Date().toISOString();
                     orderData.cancelledBy = user || 'user';
+                    if (orderData.progress) {
+                        orderData.progress.speedFormatted = 'Cancelado';
+                        orderData.progress.etaSeconds = 0;
+                    }
                     fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    ordersFileMemoryCache.delete(filePath);
+                    ordersResponseCache.time = 0;
                     found = true;
                 } catch(e){}
             }
@@ -1404,16 +1731,18 @@ app.post('/api/sync/orders/clear-history', (req, res) => {
             for (const f of files) {
                 const filePath = path.join(dir, f);
                 try {
-                    const data = fs.readJsonSync(filePath);
+                    const data = readOrderJsonCached(filePath) || fs.readJsonSync(filePath);
                     if (finishedStatuses.includes(data.status)) {
                         if (!user || isAdmin || (data.user && (data.user.toLowerCase() === user.toLowerCase() || data.user === 'artista'))) {
                             fs.removeSync(filePath);
+                            ordersFileMemoryCache.delete(filePath);
                             clearedCount++;
                         }
                     }
                 } catch(e){}
             }
         }
+        ordersResponseCache.time = 0;
         console.log(`[SYNC ORDER] Historial limpiado: ${clearedCount} órdenes eliminadas por '${user || 'user'}'`);
         res.json({ success: true, clearedCount });
     } catch (err) {
@@ -1515,8 +1844,15 @@ app.get('/api/sync/worker/logs', (req, res) => {
 });
 
 
+let cachedWorkerStatusResp = { time: 0, payload: null };
+
 app.get('/api/sync/worker-status', (req, res) => {
     try {
+        const now = Date.now();
+        if (cachedWorkerStatusResp.payload && (now - cachedWorkerStatusResp.time < 2500)) {
+            return res.json(cachedWorkerStatusResp.payload);
+        }
+
         const isLocalRunning = checkLocalWorkerRunning();
 
         // 1. Primero chequear si hay un Worker Local activo o con latido reciente (< 25s)
@@ -1529,7 +1865,9 @@ app.get('/api/sync/worker-status', (req, res) => {
                     localData.isAlive = true;
                     localData.diffSeconds = Math.round(diffSeconds);
                     localData.isLocal = true;
-                    return res.json({ success: true, status: localData, isLocalWorkerRunning: true });
+                    const payload = { success: true, status: localData, isLocalWorkerRunning: true };
+                    cachedWorkerStatusResp = { time: now, payload };
+                    return res.json(payload);
                 }
             }
         } catch(e) {}
@@ -1544,14 +1882,18 @@ app.get('/api/sync/worker-status', (req, res) => {
             status.diffSeconds = Math.round(diffSeconds);
             const isLocal = isLocalRunning || (status.workerId && status.workerId.includes('local_worker')) || status.hostname === os.hostname();
             status.isLocal = isLocal;
-            return res.json({ success: true, status, isLocalWorkerRunning: isLocalRunning || (isLocal && status.isAlive) });
+            const payload = { success: true, status, isLocalWorkerRunning: isLocalRunning || (isLocal && status.isAlive) };
+            cachedWorkerStatusResp = { time: now, payload };
+            return res.json(payload);
         }
 
-        res.json({ 
+        const payload = { 
             success: true, 
             status: { isAlive: false, message: 'Worker no detectado' },
             isLocalWorkerRunning: isLocalRunning
-        });
+        };
+        cachedWorkerStatusResp = { time: now, payload };
+        res.json(payload);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -1563,22 +1905,17 @@ setInterval(() => {
         const isExternal = !!(global.isExternalMachine || cachedEnvState?.isExternalMachine);
         if (!isExternal) return; // NUNCA supervisar ni auto-iniciar en oficinas del estudio / sedes
 
-        const candidateDirs = getAllOrdersCandidateDirs();
+        const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
+        if (!fs.existsSync(localReqDir)) return;
+        let files = [];
+        try { files = fs.readdirSync(localReqDir).filter(f => f.endsWith('.json')); } catch(e){ return; }
         let hasPending = false;
-        for (const d of candidateDirs) {
-            if (!fs.existsSync(d)) continue;
-            let files = [];
-            try { files = fs.readdirSync(d).filter(f => f.endsWith('.json')); } catch(e){ continue; }
-            for (const f of files) {
-                try {
-                    const data = fs.readJsonSync(path.join(d, f));
-                    if (data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
-                        hasPending = true;
-                        break;
-                    }
-                } catch(e) {}
+        for (const f of files) {
+            const data = readOrderJsonCached(path.join(localReqDir, f));
+            if (data && data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
+                hasPending = true;
+                break;
             }
-            if (hasPending) break;
         }
         if (hasPending) {
             ensureSyncWorkerRunning();
@@ -1593,6 +1930,7 @@ const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutos
 const RCLONE_CACHE_TTL = 60 * 1000; // 1 minuto
 
 app.get('/api/fs/list', (req, res) => {
+    const t0 = Date.now();
     let requestedPath = req.query.path;
     let forceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
     let onlineEngine = req.query.online_engine; // 'rclone' | 'gdrive' | 'catalog'
@@ -1606,7 +1944,32 @@ app.get('/api/fs/list', (req, res) => {
             let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
             const lowerSafeP = safeP.toLowerCase();
 
-            // 0. Si se solicita expresamente origen del Servidor Central para una ruta local (Z:, C:, S:, etc.):
+            // 1. Mem cache fast-path para listados de red o locales (0 ms SMB)
+            if (!forceRefresh && serverDirCache.has(lowerSafeP)) {
+                const cached = serverDirCache.get(lowerSafeP);
+                if (Date.now() - cached.time < SERVER_CACHE_TTL) {
+                    return res.json({ path: safeP, items: cached.items, exists: true, fromCache: true });
+                }
+            }
+
+            // 2. AUTO-CATÁLOGO SERVER (DB EN RAM):
+            // Si el equipo tiene Z: mapeado por red SMB (puestos del estudio) y no se fuerza refresco físico,
+            // consultar PRIMERO el catálogo del servidor en memoria (0 ms SMB, respuesta instantánea de la DB).
+            const isNetworkZ = (typeof catalogGenerator.isZDriveNetwork === 'function')
+                ? catalogGenerator.isZDriveNetwork()
+                : true;
+
+            if (isNetworkZ && !forceRefresh && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive') {
+                if (typeof catalogGenerator.listFromModularCatalog === 'function') {
+                    const serverItems = catalogGenerator.listFromModularCatalog(safeP, 'server');
+                    if (serverItems !== null) {
+                        serverDirCache.set(lowerSafeP, { time: Date.now(), items: serverItems });
+                        return res.json({ path: safeP, items: serverItems, exists: true, fromCatalog: true, isServer: true });
+                    }
+                }
+            }
+
+            // 0. Si se solicita expresamente origen del Servidor Central para una ruta local (Z:, C:, etc.):
             if ((localSource === 'server_catalog' || source === 'server') && !lowerSafeP.startsWith('g:/')) {
                 if (cachedEnvState && cachedEnvState.isExternalMachine) {
                     return res.json({ path: safeP, items: [], exists: false, isServer: false, isExternal: true });
@@ -1626,8 +1989,10 @@ app.get('/api/fs/list', (req, res) => {
                         serverPath: (item.serverPath || item.path || '').replace(/^S:/i, 'Z:'),
                         targetLocalPath: (item.targetLocalPath || item.path || '').replace(/^S:/i, 'Z:')
                     }));
+                    console.log(`[API /api/fs/list server_catalog] ${safeP} -> ${cleanItems.length} items (${Date.now() - t0}ms)`);
                     return res.json({ path: safeP, items: cleanItems, exists: true, fromCatalog: true, isServer: true });
                 }
+                console.log(`[API /api/fs/list server_catalog NULL] ${safeP} (${Date.now() - t0}ms)`);
                 return res.json({ path: safeP, items: [], exists: false, isServer: true });
             }
 
@@ -1689,9 +2054,11 @@ app.get('/api/fs/list', (req, res) => {
 
                     if (catalogItems !== null) {
                         for (const it of catalogItems) {
-                            if (it.targetLocalPath) {
+                            if (it.localExists === undefined && it.targetLocalPath) {
                                 try {
-                                    it.localExists = fs.existsSync(it.targetLocalPath);
+                                    it.localExists = (typeof catalogGenerator.fileExistsFast === 'function')
+                                        ? catalogGenerator.fileExistsFast(it.targetLocalPath)
+                                        : fs.existsSync(it.targetLocalPath);
                                 } catch (e) {
                                     it.localExists = false;
                                 }
@@ -1742,14 +2109,19 @@ app.get('/api/fs/list', (req, res) => {
             return res.json({ path: requestedPath || 'Z:/', items: [] });
         }
 
-        const isNetworkPath = targetPath.startsWith('//') || targetPath.startsWith('\\\\');
-        const items = fs.readdirSync(targetPath, { withFileTypes: true });
+                const isNetworkPath = targetPath.startsWith('//') || targetPath.startsWith('\\\\') || /^[d-z]:/i.test(targetPath);
+        let items = [];
+        try {
+            items = fs.readdirSync(targetPath, { withFileTypes: true });
+        } catch (e) {
+            return res.json({ path: targetPath, items: [], exists: false, error: e.message });
+        }
         const result = items.map(item => {
             const isDir = item.isDirectory();
             const fullItemPath = path.join(targetPath, item.name).replace(/\\/g, '/');
             let size = 0;
             let mtime = null;
-            // Solo calcular tamaño y mtime síncrono si es disco local rápido. En red SMB, se omite para evitar freeze.
+            // Solo calcular tamaño y mtime síncrono si es disco local C:. En red SMB (Z:, UNC, etc.), se omite para evitar freeze de Node.
             if (!isDir && !isNetworkPath) {
                 try {
                     const st = fs.statSync(fullItemPath);
@@ -1772,9 +2144,9 @@ app.get('/api/fs/list', (req, res) => {
             return a.isDirectory ? -1 : 1;
         });
 
-        // Almacenar en caché en memoria si es ruta de red
-        if (isNetworkPath) {
-            serverDirCache.set(targetPath.toLowerCase(), { time: Date.now(), items: result });
+        serverDirCache.set(targetPath.toLowerCase(), { time: Date.now(), items: result });
+        if (typeof lowerSafeP !== 'undefined') {
+            serverDirCache.set(lowerSafeP, { time: Date.now(), items: result });
         }
 
         res.json({
@@ -1793,32 +2165,47 @@ app.get('/api/fs/list', (req, res) => {
 app.post('/api/fs/open', async (req, res) => {
     let p = req.body?.path;
     if (!p) return res.status(400).json({ error: "No se especificó ninguna ruta para abrir" });
-    p = path.resolve(p.replace(/\//g, '\\'));
+    p = p.replace(/\//g, '\\');
 
     let targetPath = p;
     let isFile = false;
 
     try {
-        if (fs.existsSync(p)) {
-            const stat = fs.statSync(p);
+        // 1. Probar ruta tal como viene si existe en el sistema de archivos local actual
+        if (fs.existsSync(targetPath)) {
+            const stat = fs.statSync(targetPath);
             isFile = stat.isFile();
-        } else {
-            // Si la ruta específica no existe aún, buscar la carpeta padre más cercana
-            let current = path.dirname(p);
+        }
+        // 2. Si no existe exactamente, buscar la carpeta padre local más cercana
+        else {
+            let current = path.dirname(targetPath);
             while (current && current.length > 3 && !fs.existsSync(current)) {
                 current = path.dirname(current);
             }
             if (fs.existsSync(current)) {
                 targetPath = current;
                 isFile = false;
+            } else {
+                return res.status(404).json({ error: "La ruta no existe localmente en este equipo." });
             }
         }
     } catch (e) {
         console.warn("[FS_OPEN] Stat warning:", e.message);
+        return res.status(500).json({ error: e.message });
     }
 
     try {
         const { spawn } = require('child_process');
+        // Si isFile es true pero no existe, abrir la carpeta padre para no trabar explorer.exe
+        if (isFile && !fs.existsSync(targetPath)) {
+            isFile = false;
+            targetPath = path.dirname(targetPath);
+        }
+
+        if (!fs.existsSync(targetPath)) {
+            return res.status(404).json({ error: "La ruta no existe localmente en este equipo." });
+        }
+
         const args = isFile ? [`/select,${targetPath}`] : [targetPath];
         const child = spawn('explorer.exe', args, {
             detached: true,
@@ -2446,7 +2833,7 @@ app.post('/api/app/update-from-server', async (req, res) => {
     const candidateSources = [
         customSource,
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
-        '\\\\LASP-VM\\Pipeta'
+        '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'
     ].filter(s => s && s.trim().length > 0);
 
     const psScript = `
@@ -2462,7 +2849,7 @@ foreach ($src in $candidateSources) {
 }
 
 if (-not $foundSource) {
-    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta y \\\\LASP-VM\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
+    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta y \\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
     exit 1
 }
 
@@ -2470,7 +2857,7 @@ $dest = 'C:\\TOOLS\\APPS\\Pipeta'
 if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
 
 # 1. Sincronizar archivos principales directamente desde el origen detectado
-& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets bin tools node_modules /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
 
 # 2. Sincronizar presets base sin sobreescribir configuraciones locales
@@ -2727,7 +3114,9 @@ app.post('/api/workflow/shot-tracker/load', async (req, res) => {
         const trackerFile = path.join(effectiveWorkflowDir, 'shot_tracker.json');
 
         let trackerData = { projectPath, shots: {}, updatedAt: new Date().toISOString() };
+        let exists = false;
         if (fs.existsSync(trackerFile)) {
+            exists = true;
             try {
                 trackerData = await fs.readJson(trackerFile);
             } catch (e) {
@@ -2735,7 +3124,7 @@ app.post('/api/workflow/shot-tracker/load', async (req, res) => {
             }
         }
 
-        res.json({ success: true, trackerFile, trackerData });
+        res.json({ success: true, trackerFile: exists ? trackerFile : null, exists, trackerData });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2745,6 +3134,12 @@ app.post('/api/workflow/shot-tracker/save', async (req, res) => {
     try {
         const { workflowDir, trackerData } = req.body;
         if (!workflowDir || !trackerData) return res.status(400).json({ error: "Missing workflowDir or trackerData" });
+
+        // Blindar: No crear carpetas fantasma si el proyecto no existe físicamente en disco
+        const projectRoot = path.dirname(workflowDir);
+        if (!fs.existsSync(projectRoot)) {
+            return res.json({ success: false, skipped: true, reason: "Project root does not exist on disk" });
+        }
 
         await fs.ensureDir(workflowDir);
         const trackerFile = path.join(workflowDir, 'shot_tracker.json');
@@ -3588,28 +3983,102 @@ app.post('/api/audit/scan', async (req, res) => {
                                 const foundRenders = [];
                                 if (await fs.pathExists(shotMediaPath)) {
                                     try {
-                                        const mediaSubs = await fs.readdir(shotMediaPath);
-                                        for (const mSub of mediaSubs) {
-                                            const mSubPath = path.join(shotMediaPath, mSub);
-                                            try {
-                                                if (!(await fs.stat(mSubPath)).isDirectory()) continue;
-                                            } catch(e) { continue; }
-                                            const subNameLower = mSub.toLowerCase();
+                                        const IGNORE_MEDIA_DIRS = new Set(['in', 'ingest', 'plates', 'plate', 'ref', 'reference', 'audio', 'sound', 'lut', 'luts', 'offline', 'source', 'sources', 'thumb', 'thumbnails', 'cache']);
+                                        const candidateRoots = [];
+                                        const topEntries = await fs.readdir(shotMediaPath);
 
-                                            const deepItems = await fs.readdir(mSubPath);
+                                        for (const entry of topEntries) {
+                                            if (entry.startsWith('.')) continue;
+                                            const entryLower = entry.toLowerCase();
+                                            if (IGNORE_MEDIA_DIRS.has(entryLower)) continue;
+
+                                            const entryPath = path.join(shotMediaPath, entry);
+                                            let entryStat;
+                                            try {
+                                                entryStat = await fs.stat(entryPath);
+                                            } catch(e) { continue; }
+
+                                            if (!entryStat.isDirectory()) {
+                                                candidateRoots.push({ path: shotMediaPath, subCategory: '', isDirectFile: true, fileName: entry });
+                                                continue;
+                                            }
+
+                                            let subEntries = [];
+                                            try {
+                                                subEntries = await fs.readdir(entryPath);
+                                            } catch(e) {}
+
+                                            const hasKnownRenderSubs = subEntries.some(s => {
+                                                const sl = s.toLowerCase();
+                                                return sl.includes('fullres') || sl.includes('prerender') || sl.includes('mov') || sl.includes('compres') || sl.includes('exportia');
+                                            });
+
+                                            const isToolOrProc = hasKnownRenderSubs || ['nuke', 'compo', 'comp', 'flame', 'ae', 'maya', 'blender', '3d'].includes(entryLower) || entryLower === procName.toLowerCase();
+
+                                            if (isToolOrProc) {
+                                                for (const sub of subEntries) {
+                                                    if (sub.startsWith('.')) continue;
+                                                    const subLower = sub.toLowerCase();
+                                                    if (IGNORE_MEDIA_DIRS.has(subLower)) continue;
+                                                    const subPath = path.join(entryPath, sub);
+                                                    try {
+                                                        const subStat = await fs.stat(subPath);
+                                                        if (subStat.isDirectory()) {
+                                                            candidateRoots.push({ path: subPath, subCategory: subLower, tool: entryLower });
+                                                        } else {
+                                                            candidateRoots.push({ path: entryPath, subCategory: entryLower, isDirectFile: true, fileName: sub });
+                                                        }
+                                                    } catch(e) {}
+                                                }
+                                            } else {
+                                                candidateRoots.push({ path: entryPath, subCategory: entryLower, tool: 'direct' });
+                                            }
+                                        }
+
+                                        for (const cRoot of candidateRoots) {
+                                            if (cRoot.isDirectFile) {
+                                                const vFile = extractVersion(cRoot.fileName);
+                                                if (vFile) {
+                                                    const fLower = cRoot.fileName.toLowerCase();
+                                                    const isMov = fLower.endsWith('.mov') || fLower.endsWith('.mp4');
+                                                    const isTcl = cRoot.subCategory.includes('prerender') || fLower.includes('prerender');
+                                                    const badFiles = [];
+                                                    if (!isTcl) {
+                                                        const hasShot = fLower.includes(shot.toLowerCase());
+                                                        const hasVer = fLower.includes(vFile.str.toLowerCase());
+                                                        if (!hasShot || !hasVer) badFiles.push(cRoot.fileName);
+                                                    }
+                                                    foundRenders.push({
+                                                        type: isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres'),
+                                                        folderName: cRoot.subCategory,
+                                                        versionStr: vFile.str,
+                                                        versionNum: vFile.num,
+                                                        path: path.join(cRoot.path, cRoot.fileName).replace(/\\/g, '/'),
+                                                        frameCount: 1,
+                                                        hasBadNaming: badFiles.length > 0,
+                                                        badFiles,
+                                                        sequenceIntegrity: null
+                                                    });
+                                                }
+                                                continue;
+                                            }
+
+                                            const deepItems = await fs.readdir(cRoot.path);
                                             for (const deepItem of deepItems) {
-                                                const deepPath = path.join(mSubPath, deepItem);
+                                                if (deepItem.startsWith('.')) continue;
+                                                const deepPath = path.join(cRoot.path, deepItem);
                                                 let deepStat;
                                                 try {
                                                     deepStat = await fs.stat(deepPath);
                                                 } catch(e) { continue; }
+
                                                 const deepLower = deepItem.toLowerCase();
                                                 const vFolder = extractVersion(deepItem);
 
                                                 if (deepStat.isDirectory() && vFolder) {
                                                     let frameFiles = (await fs.readdir(deepPath)).filter(f => !f.startsWith('.'));
-                                                    const isMov = subNameLower.includes('mov') || deepLower.includes('mov') || deepLower.includes('compres') || deepLower.includes('mp4');
-                                                    const isTcl = subNameLower.includes('prerender') || deepLower.includes('prerender');
+                                                    const isMov = cRoot.subCategory.includes('mov') || deepLower.includes('mov') || deepLower.includes('compres') || deepLower.includes('mp4');
+                                                    const isTcl = cRoot.subCategory.includes('prerender') || deepLower.includes('prerender');
                                                     const rType = isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres');
 
                                                     // Inspect if there is a resolution subfolder (e.g. 4608x3164, 3840x2160, 1920x1080)
@@ -3696,6 +4165,15 @@ app.post('/api/audit/scan', async (req, res) => {
                                                         }
                                                     }
 
+                                                    const tmpFiles = actualFrames.filter(f => {
+                                                        const fl = f.toLowerCase();
+                                                        return fl.endsWith('.tmp') || fl.endsWith('.part') || fl.endsWith('.crdownload');
+                                                    });
+                                                    const hasOnlyTmpBadFiles = (badFiles.length > 0 && badFiles.every(f => {
+                                                        const fl = f.toLowerCase();
+                                                        return fl.endsWith('.tmp') || fl.endsWith('.part') || fl.endsWith('.crdownload');
+                                                    }));
+
                                                     foundRenders.push({
                                                         type: rType,
                                                         folderName: deepItem,
@@ -3705,13 +4183,16 @@ app.post('/api/audit/scan', async (req, res) => {
                                                         frameCount: actualFrames.length,
                                                         hasBadNaming: badFiles.length > 0,
                                                         badFiles,
+                                                        tmpFiles,
+                                                        hasTmpFiles: tmpFiles.length > 0,
+                                                        hasOnlyTmpBadFiles,
                                                         sequenceIntegrity
                                                     });
                                                 } else if (!deepStat.isDirectory()) {
                                                     const vFile = extractVersion(deepItem);
                                                     if (vFile) {
                                                         const isMov = deepLower.endsWith('.mov') || deepLower.endsWith('.mp4');
-                                                        const isTcl = subNameLower.includes('prerender') || deepLower.includes('prerender');
+                                                        const isTcl = cRoot.subCategory.includes('prerender') || deepLower.includes('prerender');
                                                         const badFiles = [];
                                                         if (!isTcl) {
                                                             const hasShot = deepLower.includes(shot.toLowerCase());
@@ -3719,15 +4200,15 @@ app.post('/api/audit/scan', async (req, res) => {
                                                             if (!hasShot || !hasVer) badFiles.push(deepItem);
                                                         }
                                                         foundRenders.push({
-                                                            type: isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres'),
-                                                            folderName: mSub,
-                                                            versionStr: vFile.str,
-                                                            versionNum: vFile.num,
-                                                            path: deepPath.replace(/\\/g, '/'),
-                                                            frameCount: 1,
-                                                            hasBadNaming: badFiles.length > 0,
-                                                            badFiles,
-                                                            sequenceIntegrity: null
+                                                           type: isMov ? 'mov' : (isTcl ? 'tcl' : 'fullres'),
+                                                           folderName: cRoot.subCategory,
+                                                           versionStr: vFile.str,
+                                                           versionNum: vFile.num,
+                                                           path: deepPath.replace(/\\/g, '/'),
+                                                           frameCount: 1,
+                                                           hasBadNaming: badFiles.length > 0,
+                                                           badFiles,
+                                                           sequenceIntegrity: null
                                                         });
                                                     }
                                                 }
@@ -3735,7 +4216,6 @@ app.post('/api/audit/scan', async (req, res) => {
                                         }
                                     } catch (e) { }
                                 }
-
                                 foundRenders.sort((a, b) => b.versionNum - a.versionNum);
 
                                 const shotRecord = {
@@ -3756,6 +4236,9 @@ app.post('/api/audit/scan', async (req, res) => {
                                     badFiles: [],
                                     sceneStatus: 'no-script',
                                     renderStatus: 'no-script',
+                                    tmpFiles: [],
+                                    hasTmpFiles: false,
+                                    hasOnlyTmpBadFiles: false,
                                     sequenceIssue: null,
                                     driveDiff: null
                                 };
@@ -3796,6 +4279,9 @@ app.post('/api/audit/scan', async (req, res) => {
                                     if (highestRender && highestRender.versionNum > latestScript.num) {
                                         shotRecord.renderStatus = 'orphan-render';
                                     } else if (matchingRender) {
+                                        shotRecord.tmpFiles = matchingRender.tmpFiles || [];
+                                        shotRecord.hasTmpFiles = !!(matchingRender.hasTmpFiles);
+                                        shotRecord.hasOnlyTmpBadFiles = !!(matchingRender.hasOnlyTmpBadFiles);
                                         if (matchingRender.hasBadNaming) {
                                             shotRecord.renderStatus = 'bad-naming';
                                             shotRecord.badFiles = matchingRender.badFiles;
@@ -3803,6 +4289,9 @@ app.post('/api/audit/scan', async (req, res) => {
                                             shotRecord.renderStatus = 'up-to-date';
                                         }
                                     } else if (highestRender && highestRender.versionNum < latestScript.num) {
+                                        shotRecord.tmpFiles = highestRender.tmpFiles || [];
+                                        shotRecord.hasTmpFiles = !!(highestRender.hasTmpFiles);
+                                        shotRecord.hasOnlyTmpBadFiles = !!(highestRender.hasOnlyTmpBadFiles);
                                         if (highestRender.hasBadNaming) {
                                             shotRecord.renderStatus = 'bad-naming';
                                             shotRecord.badFiles = highestRender.badFiles;
@@ -3897,6 +4386,68 @@ app.post('/api/audit/scan', async (req, res) => {
     } catch (err) {
         console.error("[AUDIT] Scan error:", err);
         return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// --- AUDIT FIX: CLEAN TMP FILES IN RENDERS ---
+app.post('/api/audit/clean-tmp', async (req, res) => {
+    try {
+        const { targets } = req.body || {};
+        if (!targets || !Array.isArray(targets)) {
+            return res.status(400).json({ error: 'Missing targets array' });
+        }
+
+        let deletedCount = 0;
+        const deletedFiles = [];
+        const errors = [];
+
+        for (const t of targets) {
+            const renders = Array.isArray(t.renders) && t.renders.length > 0 
+                ? t.renders 
+                : (t.path ? [{ path: t.path, tmpFiles: t.tmpFiles }] : []);
+
+            for (const rnd of renders) {
+                const dirPath = rnd.path;
+                if (!dirPath || !(await fs.pathExists(dirPath))) continue;
+
+                let filesToDelete = [];
+                if (Array.isArray(rnd.tmpFiles) && rnd.tmpFiles.length > 0) {
+                    filesToDelete = rnd.tmpFiles;
+                } else {
+                    const dirEntries = await fs.readdir(dirPath);
+                    filesToDelete = dirEntries.filter(f => {
+                        const fl = f.toLowerCase();
+                        return fl.endsWith('.tmp') || fl.endsWith('.part') || fl.endsWith('.crdownload');
+                    });
+                }
+
+                for (const tmpFile of filesToDelete) {
+                    const fl = tmpFile.toLowerCase();
+                    // STRICT SAFETY: NEVER delete frames (.exr, .dpx, .png, .jpg, .mov, etc.)
+                    if (!fl.endsWith('.tmp') && !fl.endsWith('.part') && !fl.endsWith('.crdownload')) {
+                        console.warn("[AUDIT CLEAN-TMP] Refusing to delete non-tmp file:", tmpFile);
+                        continue;
+                    }
+
+                    const fullTmpPath = path.join(dirPath, tmpFile);
+                    try {
+                        if (await fs.pathExists(fullTmpPath)) {
+                            await fs.unlink(fullTmpPath);
+                            deletedCount++;
+                            deletedFiles.push(fullTmpPath.replace(/\\/g, '/'));
+                        }
+                    } catch (e) {
+                        console.error("[AUDIT CLEAN-TMP] Error unlinking:", fullTmpPath, e.message);
+                        errors.push({ file: fullTmpPath, error: e.message });
+                    }
+                }
+            }
+        }
+
+        res.json({ success: true, deletedCount, deletedFiles, errors });
+    } catch (err) {
+        console.error("[AUDIT] clean-tmp error:", err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
@@ -4449,19 +5000,15 @@ function getPythonExecutable() {
     const candidates = [
         path.join(__dirname, '../bin/python/python.exe'),
         'C:\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
+        'Z:\\INTERNO\\TOOLS\\_DEPOT\\runtimes\\python\\python.exe',
+        '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\_DEPOT\\runtimes\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
-        '\\\\LASP-VM\\Pipeta\\bin\\python\\python.exe',
-        '\\\\192.168.206.114\\Pipeta\\bin\\python\\python.exe',
+        '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe',
         'Z:\\INTERNO\\TOOLS\\Sammie-lasp\\python\\python.exe',
         'C:\\TOOLS\\Sammie-lasp\\python\\python.exe',
         // Fallback solo para entorno de desarrollo LASP-VM si existe S:
-        ...(fs.existsSync('S:\\INTERNO\\TOOLS') ? [
-            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\bin\\python\\python.exe',
-            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\python\\python.exe',
-            'S:\\INTERNO\\TOOLS\\GITHUB\\dependencias\\python\\python.exe'
-        ] : []),
         'C:\\Python39\\python.exe',
         'C:\\Python310\\python.exe',
         'C:\\Python311\\python.exe',
@@ -4748,6 +5295,9 @@ function startListening(retries = 10) {
     const server = app.listen(PORT, async () => {
         console.log(`Pipeta Core running at http://localhost:${PORT}`);
         console.log(`Version: ${VERSION}`);
+
+        // Limpiar órdenes huérfanas locales dejadas en 'processing' por reinicio o cierre abrupto
+        sanitizeZombieOrders();
 
         // Sincronizar catálogo desde la red al disco local SSD al iniciar (solo del último proyecto activo)
         if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
