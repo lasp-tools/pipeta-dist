@@ -662,69 +662,10 @@ async function updateDetailsPanel(item) {
     }
 }
 
-// --- PROPIEDADES PANEL COLLAPSE / EXPAND ---
-function togglePropertiesPanel(forceState) {
-    const panel = document.getElementById('toolsPanel-Browser');
-    const tab = document.getElementById('propertiesPanelExpandTab');
-    if (!panel) return;
-
-    let willBeVisible;
-    if (typeof forceState === 'boolean') {
-        willBeVisible = forceState;
-    } else {
-        willBeVisible = panel.classList.contains('collapsed');
-    }
-
-    if (willBeVisible) {
-        panel.classList.remove('collapsed');
-        if (tab) tab.style.display = 'none';
-        window.isPropertiesPanelVisible = true;
-    } else {
-        panel.classList.add('collapsed');
-        if (tab) tab.style.display = 'flex';
-        window.isPropertiesPanelVisible = false;
-    }
-
-    try {
-        localStorage.setItem('pipeta_properties_panel_visible', willBeVisible ? 'true' : 'false');
-    } catch (e) {}
-
-    // Update toolbar button if present
-    const btn = document.getElementById('btnTogglePropertiesToolbar');
-    if (btn) {
-        if (willBeVisible) {
-            btn.classList.add('active');
-            const img = btn.querySelector('img');
-            if (img) img.style.opacity = '1';
-        } else {
-            btn.classList.remove('active');
-            const img = btn.querySelector('img');
-            if (img) img.style.opacity = '0.4';
-        }
-    }
-}
-
-function initPropertiesPanelState() {
-    try {
-        const saved = localStorage.getItem('pipeta_properties_panel_visible');
-        if (saved === 'true') {
-            togglePropertiesPanel(true);
-        } else {
-            togglePropertiesPanel(false);
-        }
-    } catch (e) {
-        togglePropertiesPanel(false);
-    }
-}
-
+// --- PROPIEDADES PANEL (Retirado - No-op de compatibilidad) ---
+function togglePropertiesPanel() {}
 window.togglePropertiesPanel = togglePropertiesPanel;
-window.initPropertiesPanelState = initPropertiesPanelState;
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => initPropertiesPanelState());
-} else {
-    initPropertiesPanelState();
-}
+window.isPropertiesPanelVisible = false;
 
 window.initProjectCatalog = async function(projName) {
     if (!projName) {

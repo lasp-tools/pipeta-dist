@@ -365,25 +365,19 @@ class NamingValidator {
         const normPath = (path || '').replace(/\\/g, '/').toLowerCase();
         const normMedia = (roots.media || '').replace(/\\/g, '/').toLowerCase();
         const isMedia = normMedia && normPath.startsWith(normMedia);
-        const containerId = isMedia ? (currentBrowserMode === 'pipeta' ? 'pipeta-media-container' : 'tree-media')
-            : (currentBrowserMode === 'pipeta' ? 'pipeta-project-container' : 'tree-work');
+        const containerId = isMedia ? 'tree-media' : 'tree-work';
 
-        if (currentBrowserMode === 'pipeta') {
-            const container = document.getElementById(containerId);
-            if (container) restorePipetaPath(container, path);
-        } else {
-            if (typeof expandedPaths !== 'undefined') {
-                const sep = path.includes('/') ? '/' : '\\';
-                const segments = path.split(sep);
-                let currentBuild = segments[0];
-                for (let i = 1; i < segments.length - 1; i++) {
-                    currentBuild += sep + segments[i];
-                    expandedPaths.add(currentBuild);
-                }
-                refreshCurrentView();
-                window.selectedPaths.clear();
-                window.selectedPaths.add(path);
+        if (typeof expandedPaths !== 'undefined') {
+            const sep = path.includes('/') ? '/' : '\\';
+            const segments = path.split(sep);
+            let currentBuild = segments[0];
+            for (let i = 1; i < segments.length - 1; i++) {
+                currentBuild += sep + segments[i];
+                expandedPaths.add(currentBuild);
             }
+            refreshCurrentView();
+            window.selectedPaths.clear();
+            window.selectedPaths.add(path);
         }
     }
 

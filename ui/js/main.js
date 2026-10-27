@@ -116,28 +116,8 @@ const headerToolsTemplates = {
             <div class="toolbar-section-compact" title="Opciones de Visualización">
                 <span class="toolbar-section-label">View Options</span>
                 <div class="toolbar-section-content">
-                    <div class="toolbar-dropdown" id="browserModeDropdown">
-                        <button type="button" class="tool-btn" id="browserModeBtn" onclick="toggleBrowserModeDropdown(event)" title="${currentBrowserMode === 'pipeta' ? 'Vista Miller (Columnas)' : 'Vista Clásica (Split View)'}" style="display:inline-flex; align-items:center; gap:2px; padding:2px 4px; cursor:pointer;">
-                            <img src="icons/${currentBrowserMode === 'pipeta' ? 'view_miller.svg' : 'view_classic.svg'}" class="btn-icon-svg" style="width:14px; height:14px; pointer-events:none;">
-                            <span style="font-size:0.50rem; color:#888; margin-left:1px; line-height:1; pointer-events:none;">▾</span>
-                        </button>
-                        <div class="toolbar-dropdown-menu" id="browserModeDropdownMenu">
-                            <button type="button" class="toolbar-dropdown-item ${(!currentBrowserMode || currentBrowserMode === 'split') ? 'active' : ''}" onclick="selectBrowserMode('split', event)" title="Vista Clásica (Split View)">
-                                <img src="icons/view_classic.svg" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
-                            </button>
-                            <button type="button" class="toolbar-dropdown-item ${currentBrowserMode === 'pipeta' ? 'active' : ''}" onclick="selectBrowserMode('pipeta', event)" title="Vista Miller (Columnas)">
-                                <img src="icons/view_miller.svg" class="btn-icon-svg" style="width:16px; height:16px; pointer-events:none;">
-                            </button>
-                        </div>
-                    </div>
-                    <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo)" id="btnMirrorModeTool">
+                    <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo: Proyecto | Media)" id="btnMirrorModeTool">
                         <img src="icons/mirror.svg" class="btn-icon-svg" style="width:14px; height:14px;">
-                    </button>
-                    <button class="tool-btn ${window.isPropertiesPanelVisible === true ? 'active' : ''}" 
-                            id="btnTogglePropertiesToolbar" 
-                            onclick="togglePropertiesPanel()" 
-                            title="Panel de Propiedades (Alt+P | Clic para Mostrar/Ocultar)">
-                        <img src="icons/panel_properties.svg" class="btn-icon-svg" style="width:14px; height:14px; ${window.isPropertiesPanelVisible === true ? '' : 'opacity:0.4'}">
                     </button>
                     
                     <div style="width:2px"></div>
@@ -935,12 +915,10 @@ async function initApp() {
     // Set global mode (without triggering refresh yet)
     window.viewLocationMode = initialMode;
 
-    // 2b. Set Default Browser Mode (Classic Split vs Miller)
-    const initialBrowserMode = (settings && settings.defaultBrowserMode)
-        ? settings.defaultBrowserMode
-        : (localStorage.getItem('pipeta_browser_mode') || 'split');
+    // 2b. Set Default Browser Mode (Always Split View)
+    window.currentBrowserMode = 'split';
     if (typeof switchBrowserMode === 'function') {
-        switchBrowserMode(initialBrowserMode);
+        switchBrowserMode('split');
     }
 
     // 2c. Set Default Sync Comparison Mode (Drive vs Server)
@@ -1236,38 +1214,7 @@ function toggleMirrorAuditor() {
     toggleFileAuditor();
 }
 
-function toggleBrowserModeDropdown(e) {
-    if (e) {
-        e.stopPropagation();
-        e.preventDefault();
-    }
-    const menu = document.getElementById('browserModeDropdownMenu');
-    const btn = document.getElementById('browserModeBtn') || (e && e.currentTarget);
-    if (!menu || !btn) return;
-
-    const isOpen = menu.classList.contains('show');
-    closeAllToolbarDropdowns();
-
-    if (!isOpen) {
-        const rect = btn.getBoundingClientRect();
-        menu.style.position = 'fixed';
-        menu.style.top = (rect.bottom + 4) + 'px';
-        menu.style.left = rect.left + 'px';
-        menu.style.zIndex = '999999';
-        menu.classList.add('show');
-    }
-}
-
-function selectBrowserMode(mode, e) {
-    if (e) {
-        e.stopPropagation();
-        e.preventDefault();
-    }
-    closeAllToolbarDropdowns();
-    if (typeof switchBrowserMode === 'function') {
-        switchBrowserMode(mode);
-    }
-}
+// Miller View removed - standard Split View is permanent
 
 function closeAllToolbarDropdowns() {
     const menus = document.querySelectorAll('.toolbar-dropdown-menu');
@@ -1291,13 +1238,7 @@ window.closeAllToolbarDropdowns = closeAllToolbarDropdowns;
 
 // Shortcuts
 window.addEventListener('keydown', (e) => {
-    // Alt+P: Alternar Panel de Propiedades
-    if (e.altKey && (e.key === 'p' || e.key === 'P')) {
-        e.preventDefault();
-        if (typeof togglePropertiesPanel === 'function') {
-            togglePropertiesPanel();
-        }
-    }
+// Alt+P removed (Properties panel retired)
 });
 
 // Start

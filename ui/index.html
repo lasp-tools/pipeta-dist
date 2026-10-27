@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pipeta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
-    <link rel="stylesheet" href="css/theme.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/components.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/layout.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/browser.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/asset-designer.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/shot-designer.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.1.66">
-    <link rel="stylesheet" href="css/console.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/theme.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/components.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/layout.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/browser.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/asset-designer.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/shot-designer.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.1.67">
+    <link rel="stylesheet" href="css/console.css?v=v1.1.67">
 </head>
 
 <body>
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.1.66</span>
+                <span class="app-version" id="appVersion">v1.1.67</span>
             </div>
         </div>
 
@@ -189,56 +189,6 @@
                                 <div style="padding:10px; color:#666;">Cargando...</div>
                             </div>
                         </div>
-                    </div>
-                    <!-- Detalles Contextuales (Only for Split View) -->
-                    <div class="tools-panel collapsed" id="toolsPanel-Browser">
-                        <div class="panel-heading">
-                            <span>Propiedades</span>
-                            <button id="btnCollapseProperties" class="panel-collapse-btn" onclick="togglePropertiesPanel(false)" title="Ocultar Panel de Propiedades (Alt+P)">
-                                ▶
-                            </button>
-                        </div>
-                        <div class="prop-row">
-                            <span class="prop-label">Selección:</span>
-                            <h3 id="selectionName" style="margin:0;">-</h3>
-                        </div>
-                        <div class="prop-row">
-                            <span class="prop-label">Ruta Completa:</span>
-                            <div id="selectionPath"
-                                style="font-family:monospace; font-size:0.75rem; color:#888; word-break:break-all;">-
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Pestaña lateral para re-expandir cuando está oculto -->
-                    <div id="propertiesPanelExpandTab" onclick="togglePropertiesPanel(true)" title="Mostrar Panel de Propiedades (Alt+P)" class="properties-expand-tab" style="display:flex;">
-                        <span class="expand-chevron">◀</span>
-                        <span class="expand-text">PROPIEDADES</span>
-                    </div>
-                </div>
-
-                <!-- 2. PIPETA (MILLER COLUMNS) VIEW - SPLIT -->
-                <div id="browser-mode-pipeta"
-                    style="display:none; flex:1; height:100%; flex-direction:column; background:#111;">
-
-                    <div class="pipeta-pane">
-                        <div class="browser-header" style="background:#1a1a1a; border-bottom:1px solid #333;">
-                            <span style="color:var(--accent);">PROYECTO (Pipeta)</span>
-                            <span id="label-work-path-pipeta"
-                                style="font-family:monospace; color:#555; font-size:0.8rem;">Cargando...</span>
-                        </div>
-                        <div id="pipeta-project-breadcrumbs" class="pipeta-breadcrumbs"></div>
-                        <div id="pipeta-project-container" class="pipeta-scroll-area"></div>
-                    </div>
-
-                    <!-- BOTTOM: MEDIA PIPETA -->
-                    <div class="pipeta-pane">
-                        <div class="browser-header" style="background:#1a1a1a; border-bottom:1px solid #333;">
-                            <span style="color:#4caf50;">MEDIA (Pipeta)</span>
-                            <span id="label-media-path-pipeta"
-                                style="font-family:monospace; color:#555; font-size:0.8rem;">Cargando...</span>
-                        </div>
-                        <div id="pipeta-media-breadcrumbs" class="pipeta-breadcrumbs"></div>
-                        <div id="pipeta-media-container" class="pipeta-scroll-area"></div>
                     </div>
                 </div>
 
@@ -698,33 +648,33 @@
         style="display:none; top: 10vh; left: 15vw; width: 920px; height: 740px;"></div>
 
     <!-- SCRIPT MODULES -->
-    <script src="js/config.js?v=v1.1.66"></script>
-    <script src="js/state.js?v=v1.1.66"></script>
-    <script src="js/api.js?v=v1.1.66"></script>
-    <script src="js/ramon.js?v=v1.1.66"></script>
-    <script src="js/console.js?v=v1.1.66"></script>
-    <script src="js/selection.js?v=v1.1.66"></script>
-    <script src="js/inspector.js?v=v1.1.66"></script>
-    <script src="js/validator.js?v=v1.1.66"></script>
-    <script src="js/context-menu.js?v=v1.1.66"></script>
-    <script src="js/settings.js?v=v1.1.66"></script>
+    <script src="js/config.js?v=v1.1.67"></script>
+    <script src="js/state.js?v=v1.1.67"></script>
+    <script src="js/api.js?v=v1.1.67"></script>
+    <script src="js/ramon.js?v=v1.1.67"></script>
+    <script src="js/console.js?v=v1.1.67"></script>
+    <script src="js/selection.js?v=v1.1.67"></script>
+    <script src="js/inspector.js?v=v1.1.67"></script>
+    <script src="js/validator.js?v=v1.1.67"></script>
+    <script src="js/context-menu.js?v=v1.1.67"></script>
+    <script src="js/settings.js?v=v1.1.67"></script>
     <!-- Views -->
-    <script src="js/pipeta-view.js?v=v1.1.66"></script>
-    <script src="js/mirror.js?v=v1.1.66"></script>
-    <script src="js/split-view.js?v=v1.1.66"></script>
-    <script src="js/asset-designer.js?v=v1.1.66"></script>
-    <script src="js/shot-designer.js?v=v1.1.66"></script>
-    <script src="js/asset-creator.js?v=v1.1.66"></script>
-    <script src="js/shot-creator.js?v=v1.1.66"></script>
-    <script src="js/tutorials.js?v=v1.1.66"></script>
-    <script src="js/sync-analyzer.js?v=v1.1.66"></script>
-    <script src="js/sync-queue.js?v=v1.1.66"></script>
-    <script src="js/sync-conflict.js?v=v1.1.66"></script>
-    <script src="js/ia-ingest.js?v=v1.1.66"></script>
-    <script src="js/file-auditor.js?v=v1.1.66"></script>
-    <script src="js/shot-navigator.js?v=v1.1.66"></script>
+    <script src="js/pipeta-view.js?v=v1.1.67"></script>
+    <script src="js/mirror.js?v=v1.1.67"></script>
+    <script src="js/split-view.js?v=v1.1.67"></script>
+    <script src="js/asset-designer.js?v=v1.1.67"></script>
+    <script src="js/shot-designer.js?v=v1.1.67"></script>
+    <script src="js/asset-creator.js?v=v1.1.67"></script>
+    <script src="js/shot-creator.js?v=v1.1.67"></script>
+    <script src="js/tutorials.js?v=v1.1.67"></script>
+    <script src="js/sync-analyzer.js?v=v1.1.67"></script>
+    <script src="js/sync-queue.js?v=v1.1.67"></script>
+    <script src="js/sync-conflict.js?v=v1.1.67"></script>
+    <script src="js/ia-ingest.js?v=v1.1.67"></script>
+    <script src="js/file-auditor.js?v=v1.1.67"></script>
+    <script src="js/shot-navigator.js?v=v1.1.67"></script>
     <!-- Main Entry -->
-    <script src="js/main.js?v=v1.1.66"></script>
+    <script src="js/main.js?v=v1.1.67"></script>
 
 </body>
 

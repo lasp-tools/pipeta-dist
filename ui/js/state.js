@@ -457,27 +457,19 @@ function selectBlock(el, name) {
 }
 
 // --- VIEW SWITCHING ---
-// --- VIEW SWITCHING ---
+// --- VIEW SWITCHING (Split View is permanent standard) ---
 function switchBrowserMode(mode) {
-    currentBrowserMode = mode;
+    currentBrowserMode = 'split';
     try {
-        localStorage.setItem('pipeta_browser_mode', mode);
+        localStorage.setItem('pipeta_browser_mode', 'split');
     } catch(e){}
 
-    // Update Toolbars to reflect active state
-    updateHeaderTools('view-browser');
-
-    // Toggle Containers
-    const splitEl = document.getElementById('browser-mode-split');
-    const pipetaEl = document.getElementById('browser-mode-pipeta');
-
-    if (splitEl) splitEl.style.display = mode === 'split' ? 'flex' : 'none';
-    if (pipetaEl) pipetaEl.style.display = mode === 'pipeta' ? 'flex' : 'none';
-
-    if (mode === 'pipeta') {
-        const projCont = document.getElementById('pipeta-project-container');
-        if (projCont && projCont.children.length === 0) initPipetaView();
+    if (typeof updateHeaderTools === 'function') {
+        updateHeaderTools('view-browser');
     }
+
+    const splitEl = document.getElementById('browser-mode-split');
+    if (splitEl) splitEl.style.display = 'flex';
 }
 
 let _isRefreshingView = false;
@@ -512,11 +504,7 @@ async function refreshCurrentView(forceCatalog = false) {
             } catch(e) {}
         }
 
-        if (currentBrowserMode === 'split') {
-            if (typeof initBrowser === 'function') await initBrowser();
-        } else {
-            if (typeof initPipetaView === 'function') await initPipetaView();
-        }
+        if (typeof initBrowser === 'function') await initBrowser();
     } finally {
         _isRefreshingView = false;
     }

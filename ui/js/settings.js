@@ -2652,27 +2652,7 @@ const settings = {
                         </div>
                     </div>
 
-                    <!-- 2. VISTA POR DEFECTO DEL EXPLORADOR (CLÁSICA VS MILLER) -->
-                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
-                        <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Tipo de Vista del Explorador por Defecto</h4>
-                        <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
-                            Define la disposición visual de carpetas y archivos al iniciar Pipeta.
-                        </div>
-                        <div style="display:flex; gap:24px; flex-wrap:wrap;">
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
-                                <input type="radio" name="defaultBrowserMode" value="split" 
-                                    ${curBrowserMode === 'split' ? 'checked' : ''}
-                                    onchange="settings.defaultBrowserMode = 'split'; try { localStorage.setItem('pipeta_browser_mode', 'split'); if (typeof switchBrowserMode === 'function') switchBrowserMode('split'); } catch(e){}">
-                                <span>Vista Clásica (Split View / Árbol)</span>
-                            </label>
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
-                                <input type="radio" name="defaultBrowserMode" value="pipeta" 
-                                    ${curBrowserMode === 'pipeta' ? 'checked' : ''}
-                                    onchange="settings.defaultBrowserMode = 'pipeta'; try { localStorage.setItem('pipeta_browser_mode', 'pipeta'); if (typeof switchBrowserMode === 'function') switchBrowserMode('pipeta'); } catch(e){}">
-                                <span>Miller View (Columnas en cascada)</span>
-                            </label>
-                        </div>
-                    </div>
+
 
                     <!-- 3. COMPARACIÓN POR DEFECTO (EN MODO LOCAL) -->
                     <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
@@ -3009,7 +2989,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.66'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.67'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3040,11 +3020,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.66'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.67'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.66'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.67'}.zip</code>).
                             </div>
                         </div>
 
@@ -3085,7 +3065,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.66'}
+                            ${window.APP_VERSION || 'v1.1.67'}
                         </span>
                     </h3>
 
@@ -3097,7 +3077,7 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.66 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.67 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Limpieza de Barra Superior:</b> Se removieron de la barra superior derecha los botones de <i>Espacio en discos</i> (desactivando también su sondeo en segundo plano), <i>Maximizar canvas</i> y <i>Recargar sistema</i>, conservando exclusivamente el botón de cierre seguro.</li>
                                     <li><b>Reubicación de Carpeta de Salida:</b> Traslado del módulo de subcarpetas (<code>WIP</code> / <code>Ref</code> / <code>Export</code>) a la parte inferior izquierda del panel principal de Name Builder, permitiendo una grilla superior de 8 tokens balanceada y alineando las carpetas junto a la ruta canónica de salida.</li>
@@ -4080,8 +4060,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.66'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.66'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.67'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.67'}.zip`;
 
         if (btn) {
             btn.disabled = true;
