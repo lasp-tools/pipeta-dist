@@ -32,8 +32,8 @@ const CANONICAL_BASE_PRESETS = {
         defaultTagRoleA: "start1001",
         defaultTagRoleB: "inp",
         defaultTagRoleC: "i2v",
-        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
-        motorsImage: ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"],
+        motorsImage: ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"],
         framings: ["FLL", "CRP"],
         tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
         tagsB: ["inp", "ups", "mask", "clean", "elem"],
@@ -119,6 +119,10 @@ const settings = {
     },
 
     openExportPresetsTab: () => {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('presets_allow_publish')) {
+            alert("🔒 No tienes permisos para publicar o exportar presets.");
+            return;
+        }
         settings.open();
         settings.setCategory('exportar');
     },
@@ -136,53 +140,74 @@ const settings = {
         return false;
     },
 
-    loadPresets: async () => {
-        settings.presetsList = [];
-        const seenKeys = new Set();
-        const basePaths = [
-            "C:\\TOOLS\\APPS\\Pipeta\\presets",
-            settings.exportPresetsPath
-        ].filter(Boolean);
+    _presetsLoadedAt: 0,
+    _presetsLoadingPromise: null,
 
-        const subDirs = ['AssetDesigner', 'ShotDesigner'];
+    loadPresets: async (force = false) => {
+        if (!force && settings.presetsList && settings.presetsList.length > 0 && (Date.now() - settings._presetsLoadedAt < 60000)) {
+            return settings.presetsList;
+        }
+        if (!force && settings._presetsLoadingPromise) {
+            return settings._presetsLoadingPromise;
+        }
 
-        try {
-            if (window.API && API.fs && API.fs.getFiles) {
-                for (const basePath of basePaths) {
-                    for (const sub of subDirs) {
-                        const dir = basePath + "\\" + sub;
-                        try {
-                            const files = await API.fs.getFiles(dir);
-                            for (const f of files) {
-                                if (f.endsWith('.json')) {
-                                    const content = await API.fs.readFile(dir + "\\" + f);
-                                    if (content) {
-                                        try {
-                                            const p = JSON.parse(content);
-                                            const pId = p.id || f.replace('.json', '');
-                                            const pName = p.name || pId;
-                                            const type = sub.includes('Asset') ? 'asset' : 'shot';
-                                            const key = `${type}_${pId.toLowerCase()}`;
-                                            if (!seenKeys.has(key)) {
-                                                seenKeys.add(key);
-                                                settings.presetsList.push({
-                                                    id: pId,
-                                                    name: pName,
-                                                    type: type,
-                                                    fullPath: dir + "\\" + f
-                                                });
-                                            }
-                                        } catch (e) { }
+        settings._presetsLoadingPromise = (async () => {
+            const newPresets = [];
+            const seenKeys = new Set();
+            const localBasePath = "C:\\TOOLS\\APPS\\Pipeta\\presets";
+            const subDirs = ['AssetDesigner', 'ShotDesigner'];
+
+            const scanBasePath = async (basePath) => {
+                if (!basePath || !window.API || !API.fs || !API.fs.getFiles) return;
+                await Promise.all(subDirs.map(async (sub) => {
+                    const dir = basePath + "\\" + sub;
+                    try {
+                        const files = await API.fs.getFiles(dir);
+                        const jsonFiles = (files || []).filter(f => f.endsWith('.json'));
+                        await Promise.all(jsonFiles.map(async (f) => {
+                            try {
+                                const content = await API.fs.readFile(dir + "\\" + f);
+                                if (content) {
+                                    const p = JSON.parse(content);
+                                    const pId = p.id || f.replace('.json', '');
+                                    const pName = p.name || pId;
+                                    const type = sub.includes('Asset') ? 'asset' : 'shot';
+                                    const key = `${type}_${pId.toLowerCase()}`;
+                                    if (!seenKeys.has(key)) {
+                                        seenKeys.add(key);
+                                        newPresets.push({
+                                            id: pId,
+                                            name: pName,
+                                            type: type,
+                                            fullPath: dir + "\\" + f
+                                        });
                                     }
                                 }
-                            }
-                        } catch (errDir) {
-                            // Directory might not exist on network/local, ignore
-                        }
-                    }
+                            } catch (e) { }
+                        }));
+                    } catch (errDir) { }
+                }));
+            };
+
+            try {
+                await scanBasePath(localBasePath);
+                // Solo consultar la red (Z:) si el directorio local está vacío o se pidió forzado explícito
+                if ((newPresets.length === 0 || force) && settings.exportPresetsPath && settings.exportPresetsPath !== localBasePath) {
+                    await scanBasePath(settings.exportPresetsPath);
                 }
+                if (newPresets.length > 0 || settings.presetsList.length === 0) {
+                    settings.presetsList = newPresets;
+                }
+                settings._presetsLoadedAt = Date.now();
+            } catch (e) {
+                console.error("Error loading presets for settings", e);
+            } finally {
+                settings._presetsLoadingPromise = null;
             }
-        } catch (e) { console.error("Error loading presets for settings", e); }
+            return settings.presetsList;
+        })();
+
+        return settings._presetsLoadingPromise;
     },
 
     loadConfig: async () => {
@@ -256,10 +281,25 @@ const settings = {
         settings.devMode = false;
         try { localStorage.removeItem('pipeta_dev_mode'); } catch(e){}
         settings.updateDevModeBanner();
-        await settings.loadProjects();
-        await settings.loadConfig();
-        await settings.loadPresets(); // Pre-load presets for UI
+        await Promise.all([
+            settings.loadProjects(),
+            settings.loadConfig()
+        ]);
         settings.updateHeaderProjectSelector();
+        // Pre-cargar presets en segundo plano sin bloquear la apertura ni el arranque
+        settings.loadPresets().catch(() => {});
+    },
+
+    triggerGearSpin: () => {
+        const btnSettings = document.getElementById('btn-settings-toggle');
+        if (!btnSettings) return;
+        btnSettings.classList.remove('gear-clicking');
+        void btnSettings.offsetWidth;
+        btnSettings.classList.add('gear-clicking');
+        if (settings._gearSpinTimer) clearTimeout(settings._gearSpinTimer);
+        settings._gearSpinTimer = setTimeout(() => {
+            btnSettings.classList.remove('gear-clicking');
+        }, 450);
     },
 
     updateSidebarButtonsState: () => {
@@ -287,15 +327,32 @@ const settings = {
     },
 
     open: async () => {
-        if (!settings.container) await settings.init();
-        await settings.loadPresets();
+        settings.triggerGearSpin();
+        if (!settings.container) {
+            settings.container = document.getElementById('settings-window');
+        }
+        // Abrir la ventana de forma instantánea (0ms) en el primer frame
         settings.isVisible = true;
         settings.render();
-        settings.container.style.display = 'flex';
+        if (settings.container) settings.container.style.display = 'flex';
         settings.updateSidebarButtonsState();
+
+        // Refrescar datos en segundo plano sin congelar la apertura de la UI
+        if (!settings.projects || settings.projects.length === 0) {
+            settings.init().then(() => {
+                if (settings.isVisible) settings.render();
+            });
+        } else {
+            settings.loadPresets().then(() => {
+                if (settings.isVisible && (settings.currentCategory === 'proyecto' || settings.currentCategory === 'proyectos' || settings.currentCategory === 'avanzado')) {
+                    settings.render();
+                }
+            });
+        }
     },
 
     toggleOpen: async () => {
+        settings.triggerGearSpin();
         if (settings.isVisible) {
             settings.close();
         } else {
@@ -310,6 +367,9 @@ const settings = {
     },
 
     switchCategory(cat) {
+        if (cat === 'avanzado' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('settings_allow_advanced')) {
+            cat = 'interfaz';
+        }
         settings.currentCategory = cat;
         if (cat === 'proyecto' || cat === 'proyectos' || cat === 'avanzado') {
             settings.loadPresets().then(() => {
@@ -331,41 +391,40 @@ const settings = {
             }
 
             const files = await API.fs.getFiles(settings.projectsPath);
-            for (const f of files) {
-                if (f.endsWith('.json')) {
-                    const content = await API.fs.readFile(settings.projectsPath + "\\" + f);
-                    if (content) {
-                        try {
-                            const proj = JSON.parse(content);
-                            if (f === 'base.json' || proj.id === 'proj_base' || proj.isBase) {
-                                proj.isBase = true;
-                                proj.id = 'proj_base';
-                                proj.name = 'Proyecto Base';
-                            }
-                            proj._sourceFile = f;
+            const jsonFiles = (files || []).filter(f => f.endsWith('.json'));
+            await Promise.all(jsonFiles.map(async (f) => {
+                const content = await API.fs.readFile(settings.projectsPath + "\\" + f);
+                if (content) {
+                    try {
+                        const proj = JSON.parse(content);
+                        if (f === 'base.json' || proj.id === 'proj_base' || proj.isBase) {
+                            proj.isBase = true;
+                            proj.id = 'proj_base';
+                            proj.name = 'Proyecto Base';
+                        }
+                        proj._sourceFile = f;
 
-                            // Auto-sanitización de rutas corruptas (ej: si estupidamente_tuyo tiene roots.work apuntando a surf_love)
-                            const pNameClean = (proj.name || '').toLowerCase().trim();
-                            if (proj.roots && proj.roots.work && !proj.isBase && proj.id !== 'proj_base') {
-                                const normW = proj.roots.work.replace(/\\/g, '/').toLowerCase();
-                                if (pNameClean && pNameClean !== 'surf_love' && normW.includes('surf_love')) {
-                                    console.warn(`[PROJECT SANITIZE] Corrigiendo ruta desfasada en ${proj.name}: ${proj.roots.work}`);
-                                    const client = proj.client || 'cliente';
-                                    proj.roots.work = `Z:/${client}/${proj.name}`;
-                                    proj.roots.media = `Z:/INTERNO/MEDIA/${client}/${proj.name}`;
-                                    if (proj.roots.onlineWork) proj.roots.onlineWork = `G:/Unidades compartidas/${proj.name}`;
-                                    if (proj.roots.onlineMedia) proj.roots.onlineMedia = `G:/Unidades compartidas/${proj.name}_media`;
-                                    if (window.API && API.fs && API.fs.writeFile) {
-                                        API.fs.writeFile(settings.projectsPath + "\\" + f, JSON.stringify(proj, null, 2)).catch(() => {});
-                                    }
+                        // Auto-sanitización de rutas corruptas (ej: si estupidamente_tuyo tiene roots.work apuntando a surf_love)
+                        const pNameClean = (proj.name || '').toLowerCase().trim();
+                        if (proj.roots && proj.roots.work && !proj.isBase && proj.id !== 'proj_base') {
+                            const normW = proj.roots.work.replace(/\\/g, '/').toLowerCase();
+                            if (pNameClean && pNameClean !== 'surf_love' && normW.includes('surf_love')) {
+                                console.warn(`[PROJECT SANITIZE] Corrigiendo ruta desfasada en ${proj.name}: ${proj.roots.work}`);
+                                const client = proj.client || 'cliente';
+                                proj.roots.work = `Z:/${client}/${proj.name}`;
+                                proj.roots.media = `Z:/INTERNO/MEDIA/${client}/${proj.name}`;
+                                if (proj.roots.onlineWork) proj.roots.onlineWork = `G:/Unidades compartidas/${proj.name}`;
+                                if (proj.roots.onlineMedia) proj.roots.onlineMedia = `G:/Unidades compartidas/${proj.name}_media`;
+                                if (window.API && API.fs && API.fs.writeFile) {
+                                    API.fs.writeFile(settings.projectsPath + "\\" + f, JSON.stringify(proj, null, 2)).catch(() => {});
                                 }
                             }
+                        }
 
-                            loadedProjects.push(proj);
-                        } catch (e) { console.error("Error parsing proj", f, e); }
-                    }
+                        loadedProjects.push(proj);
+                    } catch (e) { console.error("Error parsing proj", f, e); }
                 }
-            }
+            }));
 
             // Deduplicación inteligente:
             // "aquee" manda sobre "aqee" (typo)
@@ -491,6 +550,10 @@ const settings = {
 
     saveProject: async () => {
         if (!settings.currentProject) return;
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('projects_allow_edit')) {
+            console.warn("[SETTINGS] Guardado de proyectos bloqueado para este usuario.");
+            return;
+        }
         const isBase = settings.currentProject.id === 'proj_base' || settings.currentProject.isBase;
         const fileName = isBase ? "base.json" : (settings.currentProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".json");
         const filePath = settings.projectsPath + "\\" + fileName;
@@ -516,6 +579,10 @@ const settings = {
     },
 
     restoreBaseProjectCanon: async () => {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('projects_allow_edit')) {
+            alert("🔒 No tienes permisos para modificar el Proyecto Base.");
+            return;
+        }
         settings.showConfirmModal({
             title: 'Restaurar Proyecto Base',
             icon: '↺',
@@ -538,6 +605,10 @@ const settings = {
     },
 
     newProject: async () => {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('projects_allow_edit')) {
+            alert("🔒 No tienes permisos para crear nuevos proyectos.");
+            return;
+        }
         const name = prompt("Nombre del nuevo proyecto:", "Nuevo Proyecto");
         if (!name) return;
 
@@ -563,6 +634,10 @@ const settings = {
 
     deleteProject: async () => {
         if (!settings.currentProject) return;
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('projects_allow_edit')) {
+            alert("🔒 No tienes permisos para eliminar proyectos.");
+            return;
+        }
         if (settings.currentProject.id === 'proj_base' || settings.currentProject.isBase) {
             settings.showToast("El Proyecto Base es la plantilla canónica maestra del sistema y no se puede eliminar.", "warn", 4);
             return;
@@ -596,6 +671,10 @@ const settings = {
 
     duplicateProject: () => {
         if (!settings.currentProject) return;
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('projects_allow_edit')) {
+            alert("🔒 No tienes permisos para duplicar proyectos.");
+            return;
+        }
         const copy = JSON.parse(JSON.stringify(settings.currentProject));
         copy.id = 'proj_' + Date.now();
         copy.isBase = false;
@@ -1048,7 +1127,7 @@ const settings = {
         settings.container.innerHTML = `
             <div class="settings-header">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <img src="icons/settings.svg" style="width:20px; filter:invert(1);">
+                    <img src="icons/settings.svg" style="width:22px; height:22px;">
                     <h2 style="margin:0; font-size:1.2rem;">Configuraciones</h2>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
@@ -1078,14 +1157,19 @@ const settings = {
     },
 
     renderMenu() {
+        const canAdvanced = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('settings_allow_advanced') : true;
+        const canPublish = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('presets_allow_publish') : true;
+        const canZip = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('export_portable_zip') : true;
+
         const items = [
             { id: 'interfaz', label: '🎨 Interfaz' },
             { id: 'shortcuts', label: '⌨️ Atajos de Teclado' },
             { id: 'proyecto', label: '📁 Proyectos' },
+            { id: 'ia_ingest', label: '🤖 IA Ingest' },
             { id: 'users', label: '👤 User Settings', restricted: true },
             { id: 'sincronizacion', label: '⚡ Sincronización' },
-            { id: 'avanzado', label: '⚙️ Avanzado' },
-            { id: 'exportar', label: '📦 Update / Export Presets' },
+            ...(canAdvanced ? [{ id: 'avanzado', label: '⚙️ Avanzado' }] : []),
+            ...((canPublish || canZip) ? [{ id: 'exportar', label: '📦 Update / Export Presets' }] : []),
             { id: 'version', label: '🚀 Versión / Patch Notes' }
         ];
 
@@ -1135,6 +1219,16 @@ const settings = {
         if (cat === 'statuses' || cat === 'workflow') {
             cat = 'avanzado';
             settings.localAccordionOpen = true;
+        }
+
+        if (cat === 'avanzado' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('settings_allow_advanced')) {
+            alert("🔒 Configuraciones avanzadas bloqueadas por política de usuario.");
+            return;
+        }
+
+        if (cat === 'exportar' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('presets_allow_publish') && !window.checkUserPermission('export_portable_zip')) {
+            alert("🔒 Esta sección se encuentra restringida por política de usuario.");
+            return;
         }
 
         const restricted = ['users'];
@@ -1425,8 +1519,7 @@ const settings = {
                     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:15px;">
                         <div>
                             <h3 style="margin:0; color:#fff; display:flex; align-items:center; gap:8px;">
-                                <span>⚡ Sincronización & Entorno de Red</span>
-                                <span style="font-size:0.75rem; background:var(--accent); color:#000; padding:2px 7px; border-radius:4px; font-weight:bold;">Pipeta Sync v2</span>
+                                <span>Sincronización & Entorno de Red</span>
                             </h3>
                             <p style="color:#888; margin:4px 0 0 0; font-size:0.85rem;">
                                 Detección inteligente de conectividad, catálogos offline para puestos sin internet y sincronización con almacenamiento central.
@@ -1443,7 +1536,7 @@ const settings = {
                             <div style="font-weight:bold; color:#fff; font-size:0.88rem; display:flex; align-items:center; gap:8px;">
                                 <span>📍 PERFIL DE UBICACIÓN:</span>
                                 <span style="color:${locMode === 'studio' ? '#4caf50' : (locMode === 'home' ? '#ff9800' : 'var(--accent)')}; font-weight:bold;">
-                                    ${locMode === 'studio' ? '🏢 Estudio / Sede' : (locMode === 'home' ? '🏠 Home Office' : '🤖 Detección Automática')}
+                                    ${locMode === 'studio' ? '🏢 Estudio / Sede' : (locMode === 'home' ? '🏠 Home Office' : 'Detección Automática')}
                                 </span>
                             </div>
                             <div style="font-size:0.75rem; color:#888; margin-top:3px;">
@@ -1479,7 +1572,7 @@ const settings = {
                     <!-- 1. DIAGNOSTICO EN TIEMPO REAL -->
                     <div style="background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
                         <div style="font-weight:bold; color:var(--accent); font-size:0.85rem; margin-bottom:10px; display:flex; justify-content:space-between;">
-                            <span>📡 ESTADO DEL ENTORNO LOCAL & CLOUD</span>
+                            <span>ESTADO DEL ENTORNO LOCAL & CLOUD</span>
                             ${env ? `<span style="color:#888; font-weight:normal; font-size:0.75rem;">Recomendación: <b style="color:#4caf50;">${env.recommendedMode === 'online_gdrive' ? 'Google Drive G:' : (env.recommendedMode === 'online_rclone' ? 'Rclone Cloud' : 'Catálogo Offline')}</b></span>` : ''}
                         </div>
                         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
@@ -1525,67 +1618,74 @@ const settings = {
                         </div>
                     </div>
 
-                    <!-- 2. MODO DE COMPARACION DEL ANALYZER -->
+                    <!-- 2. CONEXION DIRECTA SMB / UNC (SIN LETRA DE UNIDAD) -->
                     <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
-                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; margin-bottom:12px;">Modo de Comparación & Navegación (Sync Analyzer & Explorer)</div>
+                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; margin-bottom:4px;">🌐 Conexión al Servidor Central (SMB / UNC sin letra)</div>
+                        <div style="font-size:0.8rem; color:#888; margin-bottom:12px;">Para máquinas donde Z: es un disco virtual local. Permite copiar archivos directamente desde el almacenamiento central sin necesidad de montar unidades adicionales.</div>
+                        
+                        <div style="display:grid; grid-template-columns: 1fr 180px 180px auto; gap:10px; align-items:flex-end;">
+                            <div>
+                                <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Ruta UNC del Servidor:</label>
+                                <input type="text" id="setting-central-server-unc" class="input" value="${escapeHtml(settings.centralServerUnc || '\\\\192.168.206.116\\Z')}" 
+                                       style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-family:monospace; font-size:0.82rem;"
+                                       onchange="settings.centralServerUnc=this.value.trim(); settings.saveConfig();">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Usuario (opcional):</label>
+                                <input type="text" id="setting-central-server-user" class="input" value="${escapeHtml(settings.centralServerUser || '')}" placeholder="ej. lasp-artista"
+                                       style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;"
+                                       onchange="settings.centralServerUser=this.value.trim(); settings.saveConfig();">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Contraseña:</label>
+                                <input type="password" id="setting-central-server-pass" class="input" placeholder="••••••••"
+                                       style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;">
+                            </div>
+                            <button type="button" class="btn" onclick="settings.testUncConnection()" 
+                                    style="background:#222; border:1px solid var(--accent); color:var(--accent); font-weight:bold; padding:6px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; height:33px; white-space:nowrap;">
+                                🔌 Probar Conexión
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3. MOTOR DE TRANSFERENCIA EN BACKGROUND -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <div style="font-weight:bold; color:var(--accent); margin-bottom:10px; font-size:0.9rem;">Motor de Transferencia en Background</div>
                         <div style="display:flex; flex-direction:column; gap:10px;">
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'auto' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="auto" ${syncMode === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'auto')" style="margin-top:3px;">
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="auto" ${engine === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'auto')" style="margin-top:3px;">
                                 <div>
-                                    <div style="font-weight:bold; color:#eee; font-size:0.88rem;">🤖 Automático Inteligente (Recomendado)</div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
-                                        ${env && !env.hasInternet 
-                                            ? 'Equipo sin internet guardado: utiliza automáticamente los <b>Catálogos Offline</b> sin intentar acceder a la nube.' 
-                                            : 'Si la máquina tiene internet y disco G: mapeado, usa Google Drive directamente. Si no hay internet, conmuta a los <b>Catálogos Offline</b> en <code>Z:\\_SYNC_CACHE</code>.'}
-                                    </div>
+                                    <div style="font-weight:bold; color:#eee; font-size:0.85rem;">Automático (Recomendado)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa Rclone si está disponible para máxima velocidad; si no, copia nativa de Windows.</div>
                                 </div>
                             </label>
-                            <label style="display:flex; gap:12px; cursor:${env && !env.hasInternet ? 'not-allowed' : 'pointer'}; padding:8px 10px; border-radius:4px; align-items:flex-start; opacity:${env && !env.hasInternet ? '0.5' : '1'}; background:${syncMode === 'online_gdrive' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="online_gdrive" ${syncMode === 'online_gdrive' ? 'checked' : ''} ${env && !env.hasInternet ? 'disabled' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_gdrive')" style="margin-top:3px;">
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="rclone" ${engine === 'rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'rclone')" style="margin-top:3px;">
                                 <div>
-                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
-                                        <span>☁️ Forzar Google Drive Desktop (Disco G:)</span>
-                                        ${env && !env.hasInternet ? '<span style="color:#e57373; font-size:0.75rem;">(Deshabilitado: sin internet)</span>' : ''}
-                                    </div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
-                                        Lee y compara directamente contra <code>G:/Unidades compartidas/</code>.
-                                    </div>
+                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.85rem;">Forzar Rclone</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Intenta usar siempre Rclone.</div>
                                 </div>
                             </label>
-                            <label style="display:flex; gap:12px; cursor:${env && !env.hasInternet ? 'not-allowed' : 'pointer'}; padding:8px 10px; border-radius:4px; align-items:flex-start; opacity:${env && !env.hasInternet ? '0.5' : '1'}; background:${syncMode === 'online_rclone' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="online_rclone" ${syncMode === 'online_rclone' ? 'checked' : ''} ${env && !env.hasInternet ? 'disabled' : ''} onchange="settings.updateGlobalProp('syncMode', 'online_rclone')" style="margin-top:3px;">
+                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
+                                <input type="radio" name="copyEngine" value="native" ${engine === 'native' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'native')" style="margin-top:3px;">
                                 <div>
-                                    <div style="font-weight:bold; color:#9c27b0; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
-                                        <span>🚀 Forzar Rclone Cloud Directo</span>
-                                        ${env && !env.hasInternet ? '<span style="color:#e57373; font-size:0.75rem;">(Deshabilitado: sin internet)</span>' : ''}
-                                    </div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
-                                        Usa conexión cloud directa mediante binario de Rclone.
-                                    </div>
-                                </div>
-                            </label>
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start; background:${syncMode === 'offline_catalog' ? 'rgba(255,255,255,0.04)' : 'transparent'};">
-                                <input type="radio" name="syncMode" value="offline_catalog" ${syncMode === 'offline_catalog' ? 'checked' : ''} onchange="settings.updateGlobalProp('syncMode', 'offline_catalog')" style="margin-top:3px;">
-                                <div>
-                                    <div style="font-weight:bold; color:#ff9800; font-size:0.88rem;">🗄️ Forzar Catálogo Offline (Z:\\_SYNC_CACHE)</div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">
-                                        Usa exclusivamente los snapshots JSON guardados en el disco local o servidor central. Cero tráfico hacia internet.
-                                    </div>
+                                    <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">Forzar Copia Nativa (Windows)</div>
+                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa siempre el sistema de archivos de Windows.</div>
                                 </div>
                             </label>
                         </div>
                     </div>
 
-                    <!-- 3. DETECCION DE ENTORNO Z & OVERRIDE DE DESARROLLO -->
+                    <!-- 4. ENTORNO DE DISCO Z & OVERRIDE DE DESARROLLO (ABAJO DE TODO, SIN ICONOS) -->
                     ${(() => {
                         const currentOverride = window.zEnvOverride || 'auto';
                         const detectedLabel = typeof getZEnvStatusLabel === 'function' ? getZEnvStatusLabel() : 'Detectando...';
                         return `
-                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                 <div>
                                     <div style="font-weight:bold; color:#fff; font-size:0.9rem; display:flex; align-items:center; gap:8px;">
-                                        <span>🖥️ Entorno de Disco Z: (Detección & Override)</span>
+                                        <span>Entorno de Disco Z: (Detección & Override)</span>
                                         <span style="font-size:0.75rem; background:#1c2430; color:#88c0d0; padding:2px 6px; border-radius:4px;">${detectedLabel}</span>
                                     </div>
                                     <div style="font-size:0.8rem; color:#888; margin-top:3px;">
@@ -1599,7 +1699,7 @@ const settings = {
                                     <input type="radio" name="zEnvOverride" value="auto" ${currentOverride === 'auto' ? 'checked' : ''} 
                                            onchange="window.zEnvOverride='auto'; localStorage.setItem('pipeta_z_env_override', 'auto'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
                                     <div>
-                                        <div style="font-weight:bold; color:#eee; font-size:0.85rem;">🤖 Auto-detectar (Recomendado)</div>
+                                        <div style="font-weight:bold; color:#eee; font-size:0.85rem;">Auto-detectar (Recomendado)</div>
                                         <div style="font-size:0.76rem; color:#888; margin-top:2px;">Usa comandos nativos de Windows para identificar red vs vsubst.</div>
                                     </div>
                                 </label>
@@ -1607,7 +1707,7 @@ const settings = {
                                     <input type="radio" name="zEnvOverride" value="force_real" ${currentOverride === 'force_real' ? 'checked' : ''} 
                                            onchange="window.zEnvOverride='force_real'; localStorage.setItem('pipeta_z_env_override', 'force_real'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
                                     <div>
-                                        <div style="font-weight:bold; color:#4caf50; font-size:0.85rem;">🏢 Forzar: Z es Servidor Real</div>
+                                        <div style="font-weight:bold; color:#4caf50; font-size:0.85rem;">Forzar: Z es Servidor Real</div>
                                         <div style="font-size:0.76rem; color:#888; margin-top:2px;">Trata a Z: como almacenamiento central del estudio.</div>
                                     </div>
                                 </label>
@@ -1615,111 +1715,18 @@ const settings = {
                                     <input type="radio" name="zEnvOverride" value="force_fake" ${currentOverride === 'force_fake' ? 'checked' : ''} 
                                            onchange="window.zEnvOverride='force_fake'; localStorage.setItem('pipeta_z_env_override', 'force_fake'); settings.render(); if (typeof updateHeaderTools==='function') updateHeaderTools('view-browser');" style="margin-top:2px;">
                                     <div>
-                                        <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">💻 Forzar: Z es Falso / Scratch Local</div>
+                                        <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">Forzar: Z es Falso / Scratch Local</div>
                                         <div style="font-size:0.76rem; color:#888; margin-top:2px;">Habilita vista SERVER para consultar el catálogo del Servidor Central.</div>
                                     </div>
                                 </label>
                             </div>
                         </div>
-
-                        <!-- CONEXION DIRECTA SMB / UNC (SIN LETRA DE UNIDAD) -->
-                        <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
-                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem; margin-bottom:4px;">🌐 Conexión al Servidor Central (SMB / UNC sin letra)</div>
-                            <div style="font-size:0.8rem; color:#888; margin-bottom:12px;">Para máquinas donde Z: es un disco virtual local. Permite copiar archivos directamente desde el almacenamiento central sin necesidad de montar unidades adicionales.</div>
-                            
-                            <div style="display:grid; grid-template-columns: 1fr 180px 180px auto; gap:10px; align-items:flex-end;">
-                                <div>
-                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Ruta UNC del Servidor:</label>
-                                    <input type="text" id="setting-central-server-unc" class="input" value="${escapeHtml(settings.centralServerUnc || '\\\\192.168.206.116\\Z')}" 
-                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-family:monospace; font-size:0.82rem;"
-                                           onchange="settings.centralServerUnc=this.value.trim(); settings.saveConfig();">
-                                </div>
-                                <div>
-                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Usuario (opcional):</label>
-                                    <input type="text" id="setting-central-server-user" class="input" value="${escapeHtml(settings.centralServerUser || '')}" placeholder="ej. lasp-artista"
-                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;"
-                                           onchange="settings.centralServerUser=this.value.trim(); settings.saveConfig();">
-                                </div>
-                                <div>
-                                    <label style="font-size:0.75rem; color:#aaa; display:block; margin-bottom:4px;">Contraseña:</label>
-                                    <input type="password" id="setting-central-server-pass" class="input" placeholder="••••••••"
-                                           style="width:100%; background:#111; border:1px solid #333; color:#fff; padding:6px 8px; border-radius:4px; font-size:0.82rem;">
-                                </div>
-                                <button type="button" class="btn" onclick="settings.testUncConnection()" 
-                                        style="background:#222; border:1px solid var(--accent); color:var(--accent); font-weight:bold; padding:6px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; height:33px; white-space:nowrap;">
-                                    🔌 Probar Conexión
-                                </button>
-                            </div>
-                        </div>
                         `;
                     })()}
-
-                    <!-- 4. CATALOGOS DE PROYECTO INDEXADOS -->
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px; margin-bottom:20px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <div>
-                                <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">📦 Catálogos Indexados de Proyecto (Z:\\_SYNC_CACHE)</div>
-                                <div style="font-size:0.8rem; color:#888; margin-top:2px;">Snapshots livianos en JSON de las unidades compartidas de Google Drive para consulta offline instantánea.</div>
-                            </div>
-                        </div>
-                        
-                        <div style="display:flex; flex-direction:column; gap:8px;">
-                            ${projects.filter(p => !p.isBase && p.id !== 'proj_base').map(p => {
-                                const pName = p.name || p.projectCode || p.id;
-                                const cat = catalogs.find(c => c.project === pName);
-                                const sizeKb = cat ? (cat.size / 1024).toFixed(1) : 0;
-                                const mtime = cat ? new Date(cat.mtime).toLocaleString() : null;
-
-                                return `
-                                    <div style="display:flex; justify-content:space-between; align-items:center; background:#111; border:1px solid #2a2a2a; border-radius:6px; padding:10px 14px;">
-                                        <div>
-                                            <div style="font-weight:bold; color:#eee; font-size:0.88rem; display:flex; align-items:center; gap:8px;">
-                                                <span>📁 ${escapeHtml(pName)}</span>
-                                                ${cat ? `<span style="font-size:0.72rem; background:#1b5e20; color:#a5d6a7; padding:2px 6px; border-radius:3px;">Indexado (${sizeKb} KB)</span>` : `<span style="font-size:0.72rem; background:#333; color:#aaa; padding:2px 6px; border-radius:3px;">Sin Catálogo</span>`}
-                                            </div>
-                                            <div style="font-size:0.75rem; color:#777; margin-top:3px; font-family:monospace;">
-                                                ${cat ? `Última actualización: ${mtime} | Archivo: Z:/_SYNC_CACHE/${escapeHtml(pName)}.json` : `Ruta Drive: ${escapeHtml(p.roots?.onlineWork || 'G:/Unidades compartidas/' + pName)}`}
-                                            </div>
-                                        </div>
-                                        <button class="btn" onclick="settings.generateProjectCatalogNow('${escapeHtml(pName)}')" style="background:#222; border:1px solid #444; color:var(--accent); padding:6px 12px; border-radius:4px; font-size:0.8rem; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:5px;">
-                                            <span>⚡</span> <span>${cat ? 'Actualizar Catálogo' : 'Generar Catálogo'}</span>
-                                        </button>
-                                    </div>
-                                `;
-                            }).join('') || '<div style="color:#777; font-size:0.82rem; font-style:italic;">No hay proyectos activos configurados.</div>'}
-                        </div>
-                    </div>
-
-                    <!-- 5. MOTOR DE TRANSFERENCIA EN BACKGROUND -->
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:8px; padding:15px;">
-                        <div style="font-weight:bold; color:var(--accent); margin-bottom:10px; font-size:0.9rem;">Motor de Transferencia en Background</div>
-                        <div style="display:flex; flex-direction:column; gap:10px;">
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
-                                <input type="radio" name="copyEngine" value="auto" ${engine === 'auto' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'auto')" style="margin-top:3px;">
-                                <div>
-                                    <div style="font-weight:bold; color:#eee; font-size:0.85rem;">🤖 Automático (Recomendado)</div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa Rclone si está disponible para máxima velocidad; si no, copia nativa de Windows.</div>
-                                </div>
-                            </label>
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
-                                <input type="radio" name="copyEngine" value="rclone" ${engine === 'rclone' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'rclone')" style="margin-top:3px;">
-                                <div>
-                                    <div style="font-weight:bold; color:#4fc3f7; font-size:0.85rem;">🚀 Forzar Rclone</div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Intenta usar siempre Rclone.</div>
-                                </div>
-                            </label>
-                            <label style="display:flex; gap:12px; cursor:pointer; padding:8px 10px; border-radius:4px; align-items:flex-start;">
-                                <input type="radio" name="copyEngine" value="native" ${engine === 'native' ? 'checked' : ''} onchange="settings.updateGlobalProp('copyEngine', 'native')" style="margin-top:3px;">
-                                <div>
-                                    <div style="font-weight:bold; color:#ff9800; font-size:0.85rem;">📁 Forzar Copia Nativa (Windows)</div>
-                                    <div style="font-size:0.8rem; color:#888; margin-top:2px;">Usa siempre el sistema de archivos de Windows.</div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
                 `;
 
             case 'proyecto':
+                const canEditProjects = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('projects_allow_edit') : true;
                 const cp = settings.currentProject;
                 const baseProj = settings.getBaseProject();
                 const isBase = cp?.id === 'proj_base' || cp?.isBase;
@@ -2230,13 +2237,25 @@ const settings = {
                     `;
                 }
 
+                if (!canEditProjects && cp) {
+                    detailContentHtml = `
+                        <div style="background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.3); border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#ffb74d; font-size:0.8rem; display:flex; align-items:center; gap:8px;">
+                            <span>🔒</span>
+                            <span><b>Modo Solo Lectura:</b> La modificación de proyectos está bloqueada para tu usuario.</span>
+                        </div>
+                        <div style="pointer-events:none; opacity:0.75; user-select:none;">
+                            ${detailContentHtml}
+                        </div>
+                    `;
+                }
+
                 return `
                     <div style="display:grid; grid-template-columns: 210px 170px 1fr; gap:15px; height:100%; min-height:480px;">
                         <!-- Columna 1: Listado de Proyectos -->
                         <div style="border-right: 1px solid #333; padding-right:12px; display:flex; flex-direction:column;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                 <h4 style="margin:0; font-size:0.85rem; color:#aaa; text-transform:uppercase;">Proyectos (${settings.projects.length})</h4>
-                                <button class="btn" onclick="settings.newProject()" title="Nuevo Proyecto" style="padding:2px 8px; font-size:0.8rem; background:var(--accent); color:black; font-weight:bold;">+</button>
+                                ${canEditProjects ? '<button class="btn" onclick="settings.newProject()" title="Nuevo Proyecto" style="padding:2px 8px; font-size:0.8rem; background:var(--accent); color:black; font-weight:bold;">+</button>' : ''}
                             </div>
                             <div style="flex:1; overflow-y:auto; padding-right:4px;">
                                 ${projectOptions}
@@ -2259,12 +2278,16 @@ const settings = {
 
                             ${cp ? `
                                 <div style="display:flex; gap:10px; margin-top:20px; border-top:1px solid #333; padding-top:15px;">
-                                    ${isBase ? `
+                                    ${!canEditProjects ? `
+                                        <div style="flex:1; padding:8px 12px; background:rgba(255,152,0,0.06); border:1px solid rgba(255,152,0,0.25); border-radius:4px; color:#ffb74d; font-size:0.8rem; text-align:center;">
+                                            🔒 Edición y gestión de proyectos bloqueada por permisos de tu usuario.
+                                        </div>
+                                    ` : (isBase ? `
                                         <button class="btn" onclick="settings.restoreBaseProjectCanon()" style="flex:1; background:#2a2a2a; border:1px solid var(--accent); color:var(--accent); font-weight:bold; padding:8px; border-radius:4px; cursor:pointer;">↺ Restaurar Proyecto Base a Canon Oficial</button>
                                     ` : `
                                         <button class="btn" onclick="settings.duplicateProject()" style="flex:1; background:#2a2a2a; color:#eee; border:1px solid #444; padding:8px; border-radius:4px; cursor:pointer;">Duplicar Proyecto</button>
                                         <button class="btn" style="flex:1; background:rgba(244,67,54,0.1); border:1px solid #f44336; color:#f44336; padding:8px; border-radius:4px; cursor:pointer;" onclick="settings.deleteProject()">Eliminar Proyecto</button>
-                                    `}
+                                    `)}
                                 </div>
                             ` : ''}
                         </div>
@@ -2348,6 +2371,7 @@ const settings = {
                                     <th style="padding:8px;">Apellido</th>
                                     <th style="padding:8px;">Usuario LASP</th>
                                     <th style="padding:8px;">Rol</th>
+                                    <th style="padding:8px;">Excepciones</th>
                                     <th style="padding:8px;">Email</th>
                                     <th style="padding:8px;">Notas</th>
                                     <th style="padding:8px; text-align:right;">Acciones</th>
@@ -2384,6 +2408,17 @@ const settings = {
                                                 <span style="background:${roleObj.color}22; color:${roleObj.color}; border:1px solid ${roleObj.color}44; padding:2px 8px; border-radius:10px; font-size:0.72rem; font-weight:bold;">
                                                     ${roleObj.name}
                                                 </span>
+                                            </td>
+                                            <td style="padding:10px 8px;">
+                                                ${(() => {
+                                                    const ov = u.permissionOverrides || {};
+                                                    const blk = Object.values(ov).filter(v => v === false).length;
+                                                    const alw = Object.values(ov).filter(v => v === true).length;
+                                                    if (blk > 0 && alw > 0) return `<span style="background:rgba(255,152,0,0.15); color:#ffb74d; border:1px solid #ff980044; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:bold;">🛡️ ${blk} blq / ${alw} perm</span>`;
+                                                    if (blk > 0) return `<span style="background:rgba(244,67,54,0.15); color:#ef5350; border:1px solid #f4433644; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:bold;">🛡️ ${blk} bloqueo(s)</span>`;
+                                                    if (alw > 0) return `<span style="background:rgba(76,175,80,0.15); color:#81c784; border:1px solid #4caf5044; padding:2px 6px; border-radius:4px; font-size:0.72rem; font-weight:bold;">✓ ${alw} permiso(s)</span>`;
+                                                    return '<span style="color:#666; font-size:0.72rem;">Rol base</span>';
+                                                })()}
                                             </td>
                                             <td style="padding:10px 8px; color:#888; font-size:0.78rem;">${u.email || '—'}</td>
                                             <td style="padding:10px 8px; color:#888; font-size:0.78rem;">${u.notes || '—'}</td>
@@ -2513,6 +2548,71 @@ const settings = {
                 settings.localAccordionOpen = true;
                 settings.currentCategory = 'avanzado';
                 return settings.renderCategoryContent();
+
+            case 'ia_ingest':
+                const isWatcherActive = window.iaWatcherActive || (typeof isDownloadWatcherRunning === 'function' ? isDownloadWatcherRunning() : false);
+                const detectedFolder = window.iaWatcherFolder || (document.getElementById('iaWatcherDetectedFolder')?.innerText) || 'C:/Users/.../Downloads';
+                return `
+                    <h3 style="margin-top:0; margin-bottom:15px; color:#fff; display:flex; align-items:center; gap:8px;">
+                        <span>🤖 IA Ingest & Descargas</span>
+                    </h3>
+                    
+                    <!-- CAPTURA AUTOMÁTICA DE DESCARGAS -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <div>
+                                <h4 style="margin:0; color:var(--accent); font-size:0.95rem;">Captura Automática de Descargas</h4>
+                                <div style="font-size:0.82rem; color:#888; margin-top:3px; line-height:1.3;">
+                                    Monitorea la carpeta de descargas de tu navegador y envía automáticamente los archivos nuevos a la cola de IA Ingest.
+                                </div>
+                            </div>
+                            <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer;">
+                                <input type="checkbox" id="iaSettingsWatcherToggle" ${isWatcherActive ? 'checked' : ''} 
+                                       onchange="if (typeof toggleDownloadWatcher === 'function') toggleDownloadWatcher(this.checked); settings.render();"
+                                       style="opacity:0; width:0; height:0;">
+                                <span style="position:absolute; top:0; left:0; right:0; bottom:0; background:${isWatcherActive ? 'var(--accent)' : '#444'}; border-radius:24px; transition:0.3s;"></span>
+                                <span style="position:absolute; content:''; height:18px; width:18px; left:${isWatcherActive ? '22px' : '3px'}; bottom:3px; background:white; border-radius:50%; transition:0.3s;"></span>
+                            </label>
+                        </div>
+
+                        <div style="margin-top:12px; padding:10px; background:#111; border:1px solid #282828; border-radius:4px;">
+                            <div style="font-size:0.75rem; color:#aaa; margin-bottom:4px;">Carpeta de Descargas Monitoreada:</div>
+                            <div style="font-size:0.8rem; color:#4caf50; font-family:monospace; word-break:break-all;" id="iaSettingsWatcherDetectedFolder">
+                                ${escapeHtml(detectedFolder)}
+                            </div>
+                        </div>
+
+                        <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+                            <button class="tool-btn" style="width:100%; padding:8px 12px; font-size:0.8rem; background:#222; border:1px solid #555; text-align:center; color:#ffb74d; border-radius:4px; font-weight:bold; cursor:pointer;" 
+                                    onclick="if (typeof openChromeSettingsDownloads === 'function') openChromeSettingsDownloads();" 
+                                    title="Abre los ajustes de descargas de Chrome y copia la dirección al portapapeles">
+                                ⚙️ Abrir Ajustes Descargas Chrome
+                            </button>
+                            <div style="font-size:0.75rem; color:#888; line-height:1.4;">
+                                💡 <i>Recomendación: En la pestaña de Chrome que se abrirá, desactiva <b>"Preguntar dónde se guardará cada archivo"</b> para que las imágenes o videos generados se descarguen directamente sin abrir el diálogo de Windows y entren a la cola de Pipeta al instante.</i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GUARDADO AUTOMÁTICO DE TOKENS PERSONALIZADOS TRAS INGESTA -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 style="margin:0; color:var(--accent); font-size:0.95rem;">Guardar Tokens Personalizados tras Ingesta (Save after queue)</h4>
+                                <div style="font-size:0.82rem; color:#888; margin-top:3px; line-height:1.3;">
+                                    Guarda de forma permanente cualquier token personalizado manual nuevo (motores, resoluciones, encuadres, tags) en presets/ia_custom_tokens.json al ejecutar la ingesta.
+                                </div>
+                            </div>
+                            <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer;">
+                                <input type="checkbox" id="iaSettingsSaveTokensToggle" ${localStorage.getItem('pipeta_ia_save_custom_tokens') !== 'false' ? 'checked' : ''} 
+                                       onchange="localStorage.setItem('pipeta_ia_save_custom_tokens', this.checked); settings.render();"
+                                       style="opacity:0; width:0; height:0;">
+                                <span style="position:absolute; top:0; left:0; right:0; bottom:0; background:${localStorage.getItem('pipeta_ia_save_custom_tokens') !== 'false' ? 'var(--accent)' : '#444'}; border-radius:24px; transition:0.3s;"></span>
+                                <span style="position:absolute; content:''; height:18px; width:18px; left:${localStorage.getItem('pipeta_ia_save_custom_tokens') !== 'false' ? '22px' : '3px'}; bottom:3px; background:white; border-radius:50%; transition:0.3s;"></span>
+                            </label>
+                        </div>
+                    </div>
+                `;
 
             case 'interfaz':
                 const curViewMode = (settings.defaultViewMode === 'online') ? 'drive' : (settings.defaultViewMode || 'local');
@@ -2734,41 +2834,70 @@ const settings = {
                         </div>
                     </div>
 
-                    <div style="background:rgba(255,255,255,0.03); padding:15px; border-radius:6px; border:1px solid #333; margin-bottom:20px;">
-                        <h4 style="margin-top:0; margin-bottom:10px; color:var(--accent);">📋 Registro de Actividad (Logs)</h4>
-                        <p style="font-size:0.8rem; color:#888;">Los logs registran todas las operaciones de archivos (copia, renombrado, borrado, etc.) en archivos JSONL diarios.</p>
+                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <h4 style="margin:0; color:var(--accent); font-size:0.95rem;">Registro de Actividad & Diagnóstico (Logs)</h4>
+                                <p style="font-size:0.8rem; color:#888; margin:4px 0 0 0;">
+                                    Pipeta separa automáticamente el <b>registro de operaciones</b> de las funciones habituales del <b>registro exclusivo de errores</b>.
+                                </p>
+                            </div>
+                            <button type="button" class="btn" onclick="settings.generateDiagnosticReport()" 
+                                    style="background:var(--accent); color:#000; font-weight:bold; border-radius:4px; padding:8px 16px; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(255,152,0,0.25);"
+                                    title="Genera un reporte consolidado con entorno y errores, abre la carpeta de reportes y copia el texto al portapapeles">
+                                <span>📦 Generar Reporte de Error</span>
+                            </button>
+                        </div>
                         
                         <div class="config-group" style="margin-top:15px;">
-                            <label class="config-label">Registro activo</label>
+                            <label class="config-label">Registro activo en disco</label>
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
                                 <input type="checkbox" ${settings.loggingEnabled ? 'checked' : ''}
                                     onchange="settings.loggingEnabled = this.checked;">
-                                <span style="font-size:0.85rem; color:#ccc;">${settings.loggingEnabled ? 'Activado — se guardan logs de todas las operaciones' : 'Desactivado — no se registra actividad'}</span>
+                                <span style="font-size:0.85rem; color:#ccc;">${settings.loggingEnabled ? 'Activado — se guardan logs de operaciones (pipeta_fecha.log) y errores (pipeta_errors_fecha.log)' : 'Desactivado — no se registra actividad'}</span>
                             </label>
                         </div>
 
-                        <div class="config-group">
-                            <label class="config-label">Ruta de logs</label>
-                            <div style="display:flex; gap:8px;">
+                        <div class="config-group" style="margin-top:12px;">
+                            <label class="config-label">Acceso a Registros & Diagnóstico</label>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                                 <input class="config-input" type="text" value="${settings.logsPath}"
                                     onchange="settings.logsPath = this.value;" 
-                                    style="flex:1; font-family:monospace; font-size:0.8rem;">
+                                    style="flex:1; min-width:200px; font-family:monospace; font-size:0.8rem;">
+                                
                                 <button type="button" class="btn" onclick="settings.openLogsDirectory()" 
-                                    style="background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
-                                    title="Abrir carpeta de logs en el explorador de Windows">
-                                    <span>📂 Abrir Carpeta</span>
+                                    style="background:#282828; color:#fff; border:1px solid #444; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
+                                    title="Abrir carpeta principal de logs en Explorer">
+                                    <span>📂 Carpeta Logs</span>
                                 </button>
+                                
+                                <button type="button" class="btn" onclick="settings.openReportsFolder()" 
+                                    style="background:#282828; color:#4fc3f7; border:1px solid #00bcd488; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
+                                    title="Abrir carpeta de reportes generados">
+                                    <span>📁 Carpeta Reportes</span>
+                                </button>
+
                                 <button type="button" class="btn" onclick="settings.openLatestLogFile()" 
                                     style="background:#222; color:var(--accent); border:1px solid #444; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
-                                    title="Abrir directamente el archivo de log activo de hoy">
-                                    <span>📄 Abrir Log de Hoy</span>
+                                    title="Abrir el log de operaciones de hoy">
+                                    <span>📄 Log de Hoy</span>
+                                </button>
+
+                                <button type="button" class="btn" onclick="settings.openErrorLogFile()" 
+                                    style="background:#222; color:#f44336; border:1px solid #f4433688; border-radius:4px; padding:6px 12px; font-size:0.8rem; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:6px;" 
+                                    title="Abrir el archivo exclusivo de errores de hoy">
+                                    <span>⚠️ Log de Errores</span>
                                 </button>
                             </div>
-                            <div style="font-size:0.7rem; color:#555; margin-top:4px;">Formato: JSONL (un JSON por línea). Archivo diario: pipeta_YYYY-MM-DD.jsonl</div>
+                            <div style="font-size:0.75rem; color:#777; margin-top:8px;">
+                                Al pulsar <b>Generar Reporte de Error</b> se creará un archivo <code>reporte_fecha.txt</code> en <code>logs/reports/</code>, se abrirá la carpeta en Windows y el texto quedará copiado en tu portapapeles listo para enviar por Rock o chat.
+                            </div>
                         </div>
                     </div>
                 `;
             case 'exportar':
+                const canPublishPresets = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('presets_allow_publish') : true;
+                const canExportZip = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('export_portable_zip') : true;
                 return `
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">📦 Update / Export Presets</h3>
 
@@ -2811,6 +2940,7 @@ const settings = {
                     </p>
 
                     <!-- RECUADRO UNIFICADO: ELEMENTOS + DESTINO DE EXPORTACIÓN -->
+                    ${canPublishPresets ? `
                     <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
                         <div style="font-weight:bold; color:var(--accent); margin-bottom:10px; font-size:0.85rem;">Elementos a Exportar</div>
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:0.78rem;">
@@ -2869,15 +2999,17 @@ const settings = {
                             </div>
                         </div>
                     </div>
+                    ` : '<div style="padding:12px 16px; background:rgba(255,255,255,0.02); border:1px solid #282828; border-radius:6px; color:#888; font-size:0.8rem; margin-bottom:18px;">🔒 Publicación de Presets restringida por política de usuario.</div>'}
 
                     <!-- SECCIÓN: EMPAQUETAR VERSIÓN PORTABLE (.ZIP) -->
+                    ${canExportZip ? `
                     <div style="background:rgba(0,188,212,0.04); padding:18px; border-radius:8px; border:1px solid #00bcd444; margin-bottom:20px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <div style="font-weight:bold; color:#00bcd4; font-size:0.95rem; display:flex; align-items:center; gap:8px;">
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.43'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.66'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -2908,11 +3040,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.43'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.66'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.43'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.66'}.zip</code>).
                             </div>
                         </div>
 
@@ -2944,6 +3076,7 @@ const settings = {
                             </button>
                         </div>
                     </div>
+                    ` : '<div style="padding:12px 16px; background:rgba(255,255,255,0.02); border:1px solid #282828; border-radius:6px; color:#888; font-size:0.8rem; margin-bottom:18px;">🔒 Empaquetado portable (.zip) restringido por política de usuario.</div>'}
                 `;
             case 'version':
                 return `                    <div style="height:25px;"></div>
@@ -2952,7 +3085,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.43'}
+                            ${window.APP_VERSION || 'v1.1.66'}
                         </span>
                     </h3>
 
@@ -2964,7 +3097,65 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.43 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.66 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Limpieza de Barra Superior:</b> Se removieron de la barra superior derecha los botones de <i>Espacio en discos</i> (desactivando también su sondeo en segundo plano), <i>Maximizar canvas</i> y <i>Recargar sistema</i>, conservando exclusivamente el botón de cierre seguro.</li>
+                                    <li><b>Reubicación de Carpeta de Salida:</b> Traslado del módulo de subcarpetas (<code>WIP</code> / <code>Ref</code> / <code>Export</code>) a la parte inferior izquierda del panel principal de Name Builder, permitiendo una grilla superior de 8 tokens balanceada y alineando las carpetas junto a la ruta canónica de salida.</li>
+                                    <li><b>IA Ingest Name Builder Refactor:</b> Botones de módulo con fill sólido completo estilo Carpeta de Salida (naranja activo / oscuro inactivo), activables con un clic en cualquier parte del encabezado y sin borde perimetral iluminado.</li>
+                                    <li><b>TAG / ROLE Modular Independiente (A, B, C):</b> Separación en 3 módulos independientes para TAG A (Ref), TAG B (Compo, desactivado por default) y TAG C (Proceso, desactivado por default), eliminando la opción 'ninguno'.</li>
+                                    <li><b>Limpieza Visual y Separadores en Desplegables:</b> Remoción de emojis en todas las opciones de Motor, Framing y Tags, líneas divisorias claras y nombres limpios (<code>Auto</code>, <code>Higgsfield (metadata)</code>).</li>
+                                    <li><b>Modo Simple por Defecto y Tags Manuales:</b> Inicialización predeterminada en Modo Simple y habilitación del campo Manual en los selectores de Tag.</li>
+                                    <li><b>Send2 IA Ingest en Menú Contextual:</b> Icono canónico de IA Ingest y corrección definitiva del error de consola en <code>createObjectURL</code>.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.56</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Cola de Transferencias Concurrentes y Fast-Lane:</b> Procesamiento paralelo de refrescos de carpeta (<code>refresh_folder</code>) sin bloquear subidas/descargas pesadas, y descargas simultáneas configurables por Rol y Override de Usuario desde Pipeta Server.</li>
+                                    <li><b>Identificación de Refresco de Carpeta:</b> Visualización dedicada (<code>🔄 REFRESCO DE CARPETA</code>) con ruta inspeccionada en la cola de transferencias.</li>
+                                    <li><b>Persistencia de Prioridades en Server:</b> Sincronización inmediata de cambios de prioridad entre VM 121, VM 111, MongoDB y workers activos.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.53</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Resolución Universal de Rutas a Google Drive:</b> Mapeo automático de rutas locales (<code>Z:/INTERNO/MEDIA/...</code>, <code>S:/...</code>, <code>Z:/...</code>) a sus correspondientes Team Drives en Google Drive (<code>..._media</code> y <code>...</code>) al crear órdenes de subida para archivos nuevos no indexados en el catálogo.</li>
+                                    <li><b>Fallback a Disco Físico SMB:</b> Detección y listado inmediato de archivos nuevos en carpetas locales SMB cuando el catálogo modular en RAM aún no ha sincronizado la entrada.</li>
+                                    <li><b>Protección y Autocorrección en Worker y Servidor:</b> Autocorrección preventiva de rutas locales a rutas remotas antes de la invocación de Rclone, evitando cancelaciones por Team Drive no resuelto.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.51</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Telemetría y Registro de Flota Centralizado (Mecanismo A):</b> Latido periódico automático (cada 60 segundos y al iniciar) hacia el Pipeta Server (<code>192.168.206.121:3005</code>), reportando versión instalada, usuario de Ramón activo, usuario del sistema operativo y sede de red (Munro, Nonstop o Remoto), con respaldo offline tolerante a fallos en <code>_SYNC_CACHE/clients/</code>.</li>
+                                    <li><b>Huella de Arranque e Instalador (.bat) (Mecanismo B):</b> Registro asíncrono y no bloqueante en <code>Launch_Pipeta.bat</code> y <code>Actualizar_Pipeta_desde_Red.bat</code> para auditar de forma inmediata qué puestos de artistas cuentan con la aplicación instalada.</li>
+                                    <li><b>Diagnóstico y Logs en Dos Niveles:</b> Separación persistente de logs generales (<code>pipeta_YYYY-MM-DD.log</code>) y errores críticos (<code>pipeta_errors_YYYY-MM-DD.log</code>), con generador de reportes de diagnóstico y apertura directa en el Explorador de Windows.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.49</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Validador de Nomenclatura: Escaneo Integral Proyecto y Media:</b> Se corrigió la lógica de <code>Scan ALL</code> que utilizaba una ruta estática obsoleta de configuración. Ahora resuelve de forma dinámica y automática tanto el árbol de <b>Proyecto</b> como el de <b>Media</b> del proyecto activo, auditando ambos universos en una sola pasada.</li>
+                                    <li><b>Navegación Unificada a Ítems con Error:</b> El botón "Ir" ahora discrimina correctamente si el archivo/carpeta con error pertenece a Proyecto o a Media, enfocándolo y abriéndolo en su respectivo visor.</li>
+                                    <li><b>Diseño Visual Limpio:</b> Se removieron los íconos decorativos y badges obsoletos (escudo, mundo, carpeta y "v1.8") del encabezado y de los botones de escaneo para una interfaz más sobria y directa.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.44</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>File Auditor: Filtrado Canónico Estricto de Renders FullRes vs .mov:</b> Corrección en la auditoría de renders donde los archivos de compresión <code>.mov</code> contaminaban el listado de renders en memoria aunque la casilla <code>.mov</code> estuviese desactivada. Ahora el auditor respeta estrictamente los filtros activos, evaluando y mostrando únicamente las secuencias <code>fullres</code> reales.</li>
+                                    <li><b>Discriminación de Carpetas Vacías o Sin Frames de Media:</b> Se incorporó un filtro de medios válidos (<code>.exr</code>, <code>.dpx</code>, <code>.png</code>, etc.) que ignora carpetas vacías o abortadas antes de renderizar (como carpetas de versión sin frames), evaluando y reportando con total precisión cuál es la última versión real existente con archivos en Media.</li>
+                                    <li><b>Exploración Selectiva en Menú Contextual:</b> Se incorporaron accesos directos independientes para <code>Abrir Render (vXXX) en Explorer</code> (la versión específica con frames) y <code>Abrir Carpeta Media en Explorer</code> (la jerarquía <code>fullres</code> del plano), evitando navegaciones erróneas hacia carpetas de compresión (<code>nuke/mov</code>).</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.43</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>File Auditor: Fix Desacoplado para Archivos Temporales (.tmp):</b> La opción Fix ahora limpia exclusivamente los archivos <code>.tmp</code> residuales de los renders sin exigir ni encolar subidas o descargas hacia Google Drive (Upload/Download pueden permanecer apagados). Se habilita dinámicamente con texto orientativo <code>Fix (Borrar .tmp)</code> y actualiza el estado directamente a AL DÍA sin falsas alertas de error.</li>
                                     <li><b>Control de Caché en UI (Cache-Busting):</b> Se vincularon parámetros de versión en los scripts de la interfaz para forzar la recarga inmediata de los módulos en equipos de artistas conectados por red sin requerir recargas forzadas.</li>
@@ -3591,6 +3782,51 @@ const settings = {
         }
     },
 
+    openErrorLogFile: async () => {
+        try {
+            await fetch('/api/logs/open-errors-file', { method: 'POST' });
+        } catch(e) {
+            console.error("Open error log file error:", e);
+        }
+    },
+
+    openReportsFolder: async () => {
+        try {
+            await fetch('/api/logs/open-reports-folder', { method: 'POST' });
+        } catch(e) {
+            console.error("Open reports folder error:", e);
+        }
+    },
+
+    generateDiagnosticReport: async () => {
+        if (typeof PipetaConsole !== 'undefined' && typeof PipetaConsole.generateReport === 'function') {
+            await PipetaConsole.generateReport();
+        } else {
+            const curProj = settings.currentProject ? (settings.currentProject.name || settings.currentProject.id) : 'Desconocido';
+            const locMode = settings.syncEnvData?.locationMode || 'auto';
+            const zInfo = (typeof getZEnvStatusLabel === 'function') ? getZEnvStatusLabel() : 'Desconocido';
+            try {
+                const res = await fetch('/api/logs/generate-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project: curProj, locationMode: locMode, zInfo: zInfo })
+                }).then(r => r.json());
+                if (res && res.success) {
+                    if (navigator.clipboard && res.content) {
+                        await navigator.clipboard.writeText(res.content);
+                    }
+                    if (typeof settings.showToast === 'function') {
+                        settings.showToast('📦 Reporte generado en logs/reports/ y copiado al portapapeles', 'success', 4);
+                    } else {
+                        alert('✅ Reporte generado con éxito en logs/reports/ y copiado al portapapeles.');
+                    }
+                }
+            } catch(e) {
+                alert('Error al generar reporte: ' + e.message);
+            }
+        }
+    },
+
     openLogsDirectory: async () => {
         const logsDir = settings.logsPath || 'C:/TOOLS/APPS/Pipeta/logs';
         try {
@@ -3823,6 +4059,10 @@ const settings = {
     },
 
     runZipPackaging: async function() {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('export_portable_zip')) {
+            alert("🔒 No tienes permisos para generar versiones portables (.zip).");
+            return;
+        }
         return settings.executePackageZip();
     },
 
@@ -3840,8 +4080,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.43'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.43'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.66'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.66'}.zip`;
 
         if (btn) {
             btn.disabled = true;
@@ -3895,6 +4135,10 @@ const settings = {
     },
 
     confirmExportPresets: () => {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('presets_allow_publish')) {
+            alert("🔒 No tienes permisos para publicar presets.");
+            return;
+        }
         const targetInput = document.getElementById('expTargetPath');
         let targetRoot = (targetInput ? targetInput.value : '').trim();
         if (!targetRoot) {
@@ -3949,6 +4193,10 @@ const settings = {
     },
 
     executeExportPresets: async () => {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('presets_allow_publish')) {
+            alert("🔒 No tienes permisos para publicar presets.");
+            return;
+        }
         const targetInput = document.getElementById('expTargetPath');
         let targetRoot = (targetInput ? targetInput.value : '').trim();
         if (!targetRoot) {
@@ -4089,7 +4337,7 @@ const settings = {
         `).join('');
 
         overlay.innerHTML = `
-            <div style="background:#14171e; border:1px solid #28303d; border-radius:8px; width:480px; max-width:92vw; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.7); color:#eee;">
+            <div style="background:#14171e; border:1px solid #28303d; border-radius:8px; width:540px; max-width:92vw; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,0.7); color:#eee;">
                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #28303d; padding-bottom:12px; margin-bottom:16px;">
                     <b style="font-size:1.05rem; color:var(--accent);">${isEditing ? '✏️ Editar Usuario' : '👤 Nuevo Usuario'}</b>
                     <button class="icon-btn" onclick="settings.closeModalOverlay()" style="background:transparent; border:none; color:#888; font-size:1.2rem; cursor:pointer;">&times;</button>
@@ -4149,6 +4397,39 @@ const settings = {
                         <input id="modal-u-notes" type="text" value="${user?.notes || ''}" placeholder="" 
                                style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
                     </div>
+
+                    <!-- EXCEPCIONES DE PERMISOS POR USUARIO -->
+                    <div style="background:#101319; border:1px solid #232a35; border-radius:6px; padding:10px 12px; margin-top:4px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-weight:bold; color:var(--accent); font-size:0.78rem; text-transform:uppercase;">
+                                🛡️ Excepciones de Permisos por Usuario (Overrides)
+                            </span>
+                            <span style="color:#777; font-size:0.70rem;">Sobrescribe el Rol</span>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.74rem;">
+                            ${(() => {
+                                const uOv = user?.permissionOverrides || {};
+                                const perms = [
+                                    { key: 'explorer_allow_drive', label: '☁️ Drive (Explorar & Comparar)' },
+                                    { key: 'settings_allow_advanced', label: '🛠️ Ajustes Avanzados' },
+                                    { key: 'export_portable_zip', label: '📦 Exportar ZIP Portable' },
+                                    { key: 'presets_allow_publish', label: '🚀 Publicar Presets' },
+                                    { key: 'projects_allow_edit', label: '📁 Editar Proyectos' },
+                                    { key: 'ia_ingest_allow_higgsfield', label: '⚡ Higgsfield en IA Ingest' }
+                                ];
+                                return perms.map(p => `
+                                    <div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; padding:4px 6px; border-radius:4px; border:1px solid #252d3a;">
+                                        <span style="color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:4px;">${p.label}</span>
+                                        <select data-user-override-key="${p.key}" style="background:#0d1117; color:#eee; border:1px solid #333; border-radius:3px; padding:1px 4px; font-size:0.70rem;">
+                                            <option value="" ${uOv[p.key] === undefined ? 'selected' : ''}>Rol Base</option>
+                                            <option value="true" ${uOv[p.key] === true ? 'selected' : ''} style="color:#81c784;">✓ Permitir</option>
+                                            <option value="false" ${uOv[p.key] === false ? 'selected' : ''} style="color:#ef5350;">✗ Bloquear</option>
+                                        </select>
+                                    </div>
+                                `).join('');
+                            })()}
+                        </div>
+                    </div>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid #28303d; padding-top:14px;">
@@ -4197,6 +4478,14 @@ const settings = {
         if (!settings.usersData) settings.usersData = { users: [], roles: [] };
         if (!settings.usersData.users) settings.usersData.users = [];
 
+        const overrides = {};
+        document.querySelectorAll('[data-user-override-key]').forEach(sel => {
+            const k = sel.getAttribute('data-user-override-key');
+            const v = sel.value;
+            if (v === 'true') overrides[k] = true;
+            else if (v === 'false') overrides[k] = false;
+        });
+
         if (existingId) {
             const u = settings.usersData.users.find(x => x.id === existingId);
             if (u) {
@@ -4208,9 +4497,11 @@ const settings = {
                 u.email = email;
                 u.avatarColor = avatarColor;
                 u.notes = notes;
+                if (Object.keys(overrides).length > 0) u.permissionOverrides = overrides;
+                else delete u.permissionOverrides;
             }
         } else {
-            settings.usersData.users.push({
+            const newUserObj = {
                 id: 'u_' + username.replace(/[^a-zA-Z0-9_]/g, '_') + '_' + Date.now().toString().slice(-4),
                 username,
                 firstName,
@@ -4221,7 +4512,9 @@ const settings = {
                 avatarColor,
                 notes,
                 isSystem: false
-            });
+            };
+            if (Object.keys(overrides).length > 0) newUserObj.permissionOverrides = overrides;
+            settings.usersData.users.push(newUserObj);
         }
 
         await settings.saveUsersConfig();
@@ -4362,6 +4655,21 @@ const settings = {
                             ${permCheckbox('manageStatuses', 'Diseñador de Estados', '🏷️')}
                         </div>
                     </div>
+
+                    <!-- CATEGORÍA 6: SEGURIDAD, PRESETS & RESTRICCIONES -->
+                    <div style="margin-bottom:12px; background:#14171d; padding:10px; border-radius:6px; border:1px solid #232a35;">
+                        <div style="font-weight:bold; color:#ab47bc; font-size:0.8rem; margin-bottom:8px; text-transform:uppercase;">
+                            🔒 Seguridad, Presets & Restricciones
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                            ${permCheckbox('explorer_allow_drive', 'Acceso y Comparación con Drive', '☁️')}
+                            ${permCheckbox('settings_allow_advanced', 'Configuraciones Avanzadas', '🛠️')}
+                            ${permCheckbox('export_portable_zip', 'Empaquetar Versión Portable (.zip)', '📦')}
+                            ${permCheckbox('presets_allow_publish', 'Publicar Presets del Estudio', '🚀')}
+                            ${permCheckbox('projects_allow_edit', 'Editar / Crear Proyectos', '📁')}
+                            ${permCheckbox('ia_ingest_allow_higgsfield', 'Funciones e Integración Higgsfield IA', '⚡')}
+                        </div>
+                    </div>
                 </div>
 
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid #28303d; padding-top:14px;">
@@ -4392,7 +4700,8 @@ const settings = {
             'access_tool_naming_validator', 'access_tool_sync_analyze', 'access_tool_file_auditor', 'access_tool_asset_creator', 'access_tool_shot_creator',
             'assignAllShots', 'workflow_edit_statuses', 'workflow_create_folders', 'exportPackages',
             'explorer_create_folder', 'explorer_delete_items', 'explorer_rename_items', 'explorer_open_desktop',
-            'manageUsers', 'manageSettings', 'manageStatuses'
+            'manageUsers', 'manageSettings', 'manageStatuses',
+            'explorer_allow_drive', 'settings_allow_advanced', 'export_portable_zip', 'presets_allow_publish', 'projects_allow_edit', 'ia_ingest_allow_higgsfield'
         ];
 
         const permissions = {};

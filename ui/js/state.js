@@ -58,6 +58,87 @@ window.isRamonTaskInCurrentProject = function(task, specificProj = null) {
     return false;
 };
 
+// Helper universal para convertir cualquier ruta local (Z:, S:, C:, etc.) a su ruta equivalente en Google Drive
+window.resolveLocalToOnlinePath = function(localPath, projectName = null) {
+    if (!localPath || typeof localPath !== 'string') return '';
+    let norm = localPath.replace(/\\/g, '/').replace(/\/+$/, '');
+    
+    // Si ya es una ruta remota / Google Drive
+    if (norm.match(/^(?:G:\/|lasp-drive:|Unidades compartidas\/)/i)) {
+        return norm;
+    }
+
+    // Buscar el proyecto adecuado
+    let proj = null;
+    if (projectName && typeof settings !== 'undefined' && Array.isArray(settings.projects)) {
+        const cleanName = String(projectName).toLowerCase().trim();
+        proj = settings.projects.find(p => 
+            (p.name && p.name.toLowerCase() === cleanName) ||
+            (p.projectCode && p.projectCode.toLowerCase() === cleanName) ||
+            (p.code && p.code.toLowerCase() === cleanName) ||
+            (p.id && p.id.toLowerCase() === cleanName)
+        );
+    }
+    if (!proj && typeof settings !== 'undefined' && settings.currentProject) {
+        proj = settings.currentProject;
+    }
+
+    const stripDrive = (p) => (p || '').replace(/^[a-zA-Z]:/i, '').replace(/\/+$/, '').toLowerCase();
+    const normStripped = stripDrive(norm);
+
+    // Si tenemos raíces configuradas en el proyecto
+    if (proj && proj.roots) {
+        const mediaRoot = (proj.roots.media || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const workRoot = (proj.roots.work || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const onlineMedia = (proj.roots.onlineMedia || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const onlineWork = (proj.roots.onlineWork || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+        if (mediaRoot && onlineMedia) {
+            const mediaStripped = stripDrive(mediaRoot);
+            if (normStripped === mediaStripped) {
+                return onlineMedia;
+            }
+            if (normStripped.startsWith(mediaStripped + '/')) {
+                const sub = norm.substring(norm.length - (normStripped.length - mediaStripped.length));
+                return `${onlineMedia}${sub}`;
+            }
+        }
+
+        if (workRoot && onlineWork) {
+            const workStripped = stripDrive(workRoot);
+            if (normStripped === workStripped) {
+                return onlineWork;
+            }
+            if (normStripped.startsWith(workStripped + '/')) {
+                const sub = norm.substring(norm.length - (normStripped.length - workStripped.length));
+                return `${onlineWork}${sub}`;
+            }
+        }
+    }
+
+    // Heurística universal de respaldo:
+    // Si contiene /INTERNO/MEDIA/<cliente>/<proyecto>/...
+    const mediaRegex = /(?:^|\/|[a-zA-Z]:\/)INTERNO\/MEDIA\/([^\/]+)\/([^\/]+)(?:\/(.*))?$/i;
+    const mediaMatch = norm.match(mediaRegex);
+    if (mediaMatch) {
+        const pName = mediaMatch[2];
+        const rel = mediaMatch[3] ? `/${mediaMatch[3]}` : '';
+        return `G:/Unidades compartidas/${pName}_media${rel}`;
+    }
+
+    // Si contiene /<cliente>/<proyecto>/... (pero no INTERNO)
+    const workRegex = /(?:^|\/|[a-zA-Z]:\/)(?!INTERNO\/)([^\/]+)\/([^\/]+)(?:\/(.*))?$/i;
+    const workMatch = norm.match(workRegex);
+    if (workMatch) {
+        const pName = workMatch[2];
+        const rel = workMatch[3] ? `/${workMatch[3]}` : '';
+        return `G:/Unidades compartidas/${pName}${rel}`;
+    }
+
+    const fallbackProj = proj?.name || projectName || 'surf_love';
+    return `G:/Unidades compartidas/${fallbackProj}/${norm.split('/').pop()}`;
+};
+
 // Devuelve un Set con los nombres y códigos de planos/assets asignados al usuario en el proyecto actual
 window.getExplorerAssignedTaskNames = function() {
     let tasks = (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) ? Ramon.tasks : [];
@@ -568,8 +649,12 @@ function toggleSyncComparisonMode(targetMode) {
 window.toggleSyncComparisonMode = toggleSyncComparisonMode;
 
 async function setSyncComparisonMode(mode) {
+    if (mode === 'drive' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {
+        if (typeof PipetaConsole !== 'undefined') PipetaConsole.log('sync', 'Comparación contra Google Drive bloqueada por política de usuario.', 'warn');
+        mode = (typeof canUseServerMode === 'function' && canUseServerMode()) ? 'server' : 'off';
+    }
     if (mode === 'server' && (typeof canUseServerMode === 'function' && !canUseServerMode())) {
-        mode = 'drive';
+        mode = (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) ? 'off' : 'drive';
     }
     window.syncComparisonMode = mode;
     localStorage.setItem('pipeta_sync_comparison_mode', mode);
@@ -753,6 +838,10 @@ async function refreshSyncCatalogManual() {
 }
 
 async function switchViewLocation(mode) {
+    if (mode === 'drive' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {
+        if (typeof PipetaConsole !== 'undefined') PipetaConsole.log('system', 'Acceso a exploración de Google Drive bloqueado por política de usuario.', 'warn');
+        mode = 'local';
+    }
     if (mode === 'server' && (typeof canUseServerMode === 'function' && !canUseServerMode())) {
         mode = 'local';
     }

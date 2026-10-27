@@ -154,7 +154,7 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
     const localNames = new Set(((allRawItems || rawItems) || []).map(i => i.name.toLowerCase()));
 
     // 2. COMPARACIÓN LOCAL vs GOOGLE DRIVE
-    if (mode === 'local' && compMode === 'drive') {
+    if (mode === 'local' && compMode === 'drive' && (typeof window.checkUserPermission !== 'function' || window.checkUserPermission('explorer_allow_drive'))) {
         let driveItems = [];
         try {
             const dData = await fetchDir(dirPath, { localSource: 'drive_catalog' });
@@ -204,10 +204,15 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                     itemCopy.hasPendingSync = catItem.hasPendingSync;
                     itemCopy.pendingType = catItem.pendingType;
                     itemCopy.pendingCount = catItem.pendingCount;
+                    itemCopy.pendingUploadCount = catItem.pendingUploadCount || 0;
+                    itemCopy.pendingDownloadCount = catItem.pendingDownloadCount || 0;
                 }
             } else {
                 itemCopy.syncStatus = 'upload_drive';
                 itemCopy.targetLocalPath = item.path;
+                if (!itemCopy.onlinePath && typeof window.resolveLocalToOnlinePath === 'function') {
+                    itemCopy.onlinePath = window.resolveLocalToOnlinePath(item.path);
+                }
             }
             decorated.push(itemCopy);
         }
@@ -276,6 +281,8 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                     itemCopy.hasPendingSync = sMatch.hasPendingSync;
                     itemCopy.pendingType = sMatch.pendingType;
                     itemCopy.pendingCount = sMatch.pendingCount;
+                    itemCopy.pendingUploadCount = sMatch.pendingUploadCount || 0;
+                    itemCopy.pendingDownloadCount = sMatch.pendingDownloadCount || 0;
                 }
             } else {
                 itemCopy.syncStatus = 'upload_server';
@@ -301,6 +308,9 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
     }
     // 4. MODO EXPLORACIÓN DIRECTA DE DRIVE
     else if (mode === 'drive') {
+        if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {
+            return [];
+        }
         const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
         const oWork = (proj?.roots?.onlineWork || '').replace(/\\/g, '/');
         const oMedia = (proj?.roots?.onlineMedia || '').replace(/\\/g, '/');
@@ -465,62 +475,14 @@ function createTreeNode(item, level, containerId = '') {
     const icon = item.isDirectory ? '📁' : (item.isSequence ? '🎞️' : '📄');
     const arrow = item.isDirectory ? `<span class="tree-arrow" style="font-size:0.7em; color:#666; margin-right:4px;">▶</span>` : '';
 
-    // Insignias de Sincronización explícitas y transparentes
-    let badgeHtml = '';
-    const status = item.syncStatus;
-
-    if (status === 'matched_drive') {
-        if (item.isDirectory && item.hasPendingSync) {
-            const pCount = item.pendingCount ? ` (${item.pendingCount})` : '';
-            const isUp = item.pendingType === 'upload';
-            const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
-            const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')`;
-            badgeHtml = `<span class="sync-badge-action sync-badge-pending-folder" onclick="event.stopPropagation(); ${actionCall}" title="* Esta carpeta contiene ${item.pendingCount || 'varios'} archivo(s) pendientes de sincronizar con Google Drive">${actionText}${pCount}</span>`;
-        } else {
-            badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Sincronizado con Google Drive)">✓</span>`;
-        }
-    } else if (status === 'matched_server') {
-        if (item.isDirectory && item.hasPendingSync) {
-            const pCount = item.pendingCount ? ` (${item.pendingCount})` : '';
-            const isUp = item.pendingType === 'upload';
-            const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
-            const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')`;
-            badgeHtml = `<span class="sync-badge-action sync-badge-pending-folder" onclick="event.stopPropagation(); ${actionCall}" title="* Esta carpeta contiene ${item.pendingCount || 'varios'} archivo(s) pendientes de sincronizar con Servidor Central">${actionText}${pCount}</span>`;
-        } else {
-            badgeHtml = `<span class="sync-badge-ok" title="✓ En Local (Idéntico en Servidor Central)">✓</span>`;
-        }
-    } else if (status === 'upload_drive') {
-        const dest = item.onlinePath || 'Google Drive';
-        badgeHtml = `<span class="sync-badge-action sync-badge-upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Subir a Drive</span>`;
-    } else if (status === 'upload_server') {
-        const dest = item.serverPath || 'Servidor Central';
-        badgeHtml = `<span class="sync-badge-action sync-badge-upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">⬆️ Subir a Server</span>`;
-    } else if (status === 'ghost_drive') {
-        badgeHtml = `<span class="sync-badge-action sync-badge-download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Bajar de Drive</span>`;
-    } else if (status === 'ghost_server') {
-        badgeHtml = `<span class="sync-badge-action sync-badge-download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">⬇️ Bajar de Server</span>`;
-    } else if (status === 'partial_drive' || status === 'partial_server') {
-        const targetType = status === 'partial_server' ? 'server' : 'drive';
-        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
-        const missingCount = item.missingFramesCount || (item.missingFrames ? item.missingFrames.length : 1);
-        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#d08770; color:#fff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar los frames faltantes desde ${labelTarget}">⬇️* Bajar (${missingCount} faltantes)</span>`;
-    } else if (status === 'mismatch_drive' || status === 'mismatch_server') {
-        const targetType = status === 'mismatch_server' ? 'server' : 'drive';
-        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
-        const lMb = item.size ? (item.size / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
-        const rMb = item.remoteSize ? (item.remoteSize / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
-        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#bf616a; color:#fff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Diferencia de peso detectada (Local: ${lMb} ≠ ${labelTarget}: ${rMb}). Clic para re-descargar versión íntegra">⚠️* Peso difiere (${lMb} vs ${rMb})</span>`;
-    } else if (status === 'outdated_local') {
-        const targetType = (window.syncComparisonMode === 'server') ? 'server' : 'drive';
-        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
-        badgeHtml = `<span class="sync-badge-action sync-badge-download" style="background:#ebcb8b; color:#2e3440; font-weight:bold;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="El archivo en ${labelTarget} es más reciente que el local. Clic para actualizar">⬇️* Actualizar (Más nuevo)</span>`;
-    }
+    const { inlineHtml, rightHtml } = buildRowSyncBadges(item);
 
     row.innerHTML = `
-        <span style="display:flex; align-items:center; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-            ${arrow}${icon} <span style="margin-left:5px;">${item.name}</span>
+        <span style="display:flex; align-items:center; flex:1; overflow:hidden; min-width:0;">
+            ${arrow}${icon} <span class="node-name-text" style="margin-left:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.name}</span>
+            <span class="sync-badges-inline-slot">${inlineHtml}</span>
         </span>
-        ${badgeHtml}
+        <span class="sync-badges-right-slot">${rightHtml}</span>
     `;
 
     row.onclick = async (e) => {
@@ -807,42 +769,126 @@ window.initProjectCatalog = async function(projName) {
     }
 };
 
-function updateParentFolderBadge(wrapper) {
+const SVG_INLINE_UP = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4M5 11l7-7 7 7"/></svg>`;
+const SVG_INLINE_DOWN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M19 13l-7 7-7-7"/></svg>`;
+
+function buildRowSyncBadges(item) {
+    let inlineHtml = '';
+    let rightHtml = '';
+    const status = item ? item.syncStatus : null;
+    if (!status) return { inlineHtml, rightHtml };
+
+    if (status === 'matched_drive' || status === 'matched_server') {
+        const targetType = status === 'matched_server' ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Servidor Central' : 'Google Drive';
+        if (item.isDirectory && item.hasPendingSync) {
+            const upC = item.pendingUploadCount !== undefined
+                ? item.pendingUploadCount
+                : (item.pendingType === 'upload' ? (item.pendingCount || 1) : 0);
+            const downC = item.pendingDownloadCount !== undefined
+                ? item.pendingDownloadCount
+                : (item.pendingType === 'download' ? (item.pendingCount || 1) : 0);
+            const inlineBadges = [];
+            const rightBadges = [];
+            if (upC > 0) {
+                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Subir a ${labelTarget} (${upC} pendientes)">${SVG_INLINE_UP}</span>`);
+                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Esta carpeta contiene ${upC} elemento(s) nuevos en Z: pendientes de subir a ${labelTarget}">⬆️* Subir (${upC})</span>`);
+            }
+            if (downC > 0) {
+                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Bajar desde ${labelTarget} (${downC} pendientes)">${SVG_INLINE_DOWN}</span>`);
+                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Esta carpeta contiene ${downC} elemento(s) en ${labelTarget} pendientes de bajar a Z:">⬇️* Bajar (${downC})</span>`);
+            }
+            inlineHtml = inlineBadges.join('');
+            rightHtml = rightBadges.join('');
+        } else {
+            rightHtml = `<span class="sync-badge-ok" title="✓ En Local (Sincronizado con ${labelTarget})">✓</span>`;
+        }
+    } else if (status === 'upload_drive') {
+        const dest = item.onlinePath || 'Google Drive';
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">${SVG_INLINE_UP}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Subir a Drive</span>`;
+    } else if (status === 'upload_server') {
+        const dest = item.serverPath || 'Servidor Central';
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">${SVG_INLINE_UP}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">⬆️ Subir a Server</span>`;
+    } else if (status === 'ghost_drive') {
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Bajar de Drive</span>`;
+    } else if (status === 'ghost_server') {
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">⬇️ Bajar de Server</span>`;
+    } else if (status === 'partial_drive' || status === 'partial_server') {
+        const targetType = status === 'partial_server' ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        const missingCount = item.missingFramesCount || (item.missingFrames ? item.missingFrames.length : 1);
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar desde ${labelTarget}">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" style="background:rgba(0,229,255,0.15); border-color:#00e5ff; color:#00e5ff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar los frames faltantes desde ${labelTarget}">⬇️* Bajar (${missingCount} faltantes)</span>`;
+    } else if (status === 'mismatch_drive' || status === 'mismatch_server') {
+        const targetType = status === 'mismatch_server' ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        const lMb = item.size ? (item.size / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+        const rMb = item.remoteSize ? (item.remoteSize / (1024 * 1024)).toFixed(2) + ' MB' : '0 MB';
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Diferencia de peso detectada (${lMb} ≠ ${labelTarget}: ${rMb}). Clic para re-descargar">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" style="background:#bf616a; color:#fff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Diferencia de peso detectada (Local: ${lMb} ≠ ${labelTarget}: ${rMb}). Clic para re-descargar versión íntegra">⚠️* Peso difiere (${lMb} vs ${rMb})</span>`;
+    } else if (status === 'outdated_local') {
+        const targetType = (window.syncComparisonMode === 'server') ? 'server' : 'drive';
+        const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="El archivo en ${labelTarget} es más reciente que el local. Clic para actualizar">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" style="background:rgba(0,229,255,0.15); border-color:#00e5ff; color:#00e5ff; font-weight:bold;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="El archivo en ${labelTarget} es más reciente que el local. Clic para actualizar">⬇️* Actualizar (Más nuevo)</span>`;
+    }
+
+    return { inlineHtml, rightHtml };
+}
+
+function renderRowSyncBadges(row, item) {
+    if (!row || !item) return;
+    const { inlineHtml, rightHtml } = buildRowSyncBadges(item);
+    const inlineSlot = row.querySelector('.sync-badges-inline-slot');
+    if (inlineSlot) inlineSlot.innerHTML = inlineHtml;
+    const rightSlot = row.querySelector('.sync-badges-right-slot');
+    if (rightSlot) rightSlot.innerHTML = rightHtml;
+}
+
+window.buildRowSyncBadges = buildRowSyncBadges;
+window.renderRowSyncBadges = renderRowSyncBadges;
+
+function updateParentFolderBadge(wrapper, completedOrderType) {
     if (!wrapper || !wrapper._item || !wrapper._item.isDirectory) return;
     const item = wrapper._item;
     const row = wrapper._row || wrapper.querySelector('.tree-node');
     if (!row) return;
 
-    let remainingPending = 0;
+    let upC = item.pendingUploadCount !== undefined
+        ? item.pendingUploadCount
+        : (item.pendingType === 'upload' ? (item.pendingCount || 0) : 0);
+    let downC = item.pendingDownloadCount !== undefined
+        ? item.pendingDownloadCount
+        : (item.pendingType === 'download' ? (item.pendingCount || 0) : 0);
+
     if (wrapper._childrenContainer && wrapper._loaded) {
-        const childBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badge-action');
-        remainingPending = childBadges.length;
-    } else if (typeof item.pendingCount === 'number') {
-        remainingPending = Math.max(0, item.pendingCount - 1);
-        item.pendingCount = remainingPending;
+        const upBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badges-right-slot [data-badge-dir="upload"]');
+        const downBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badges-right-slot [data-badge-dir="download"]');
+        upC = upBadges.length;
+        downC = downBadges.length;
+    } else {
+        if (completedOrderType === 'upload' || completedOrderType === 'server_upload') {
+            upC = Math.max(0, upC - 1);
+        } else if (completedOrderType === 'download' || completedOrderType === 'server_download') {
+            downC = Math.max(0, downC - 1);
+        } else if (upC > 0 && downC === 0) {
+            upC = Math.max(0, upC - 1);
+        } else if (downC > 0) {
+            downC = Math.max(0, downC - 1);
+        }
     }
 
-    const badgeContainer = row.querySelector('.sync-badge-action') || row.querySelector('.sync-badge-ok');
-    if (remainingPending > 0) {
-        const isUp = item.pendingType === 'upload';
-        const actionText = isUp ? '⬆️* Subir' : '⬇️* Bajar';
-        const targetType = (item.syncStatus === 'matched_server' || item.syncStatus === 'ghost_server') ? 'server' : 'drive';
-        const actionCall = isUp ? `requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')` : `requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')`;
-        const newBadge = document.createElement('span');
-        newBadge.className = 'sync-badge-action sync-badge-pending-folder';
-        newBadge.onclick = (e) => { e.stopPropagation(); eval(actionCall); };
-        newBadge.title = `* Esta carpeta contiene ${remainingPending} archivo(s) pendientes de sincronizar`;
-        newBadge.innerText = `${actionText} (${remainingPending})`;
-        if (badgeContainer) badgeContainer.replaceWith(newBadge);
-    } else {
-        item.hasPendingSync = false;
-        item.pendingCount = 0;
-        const okBadge = document.createElement('span');
-        okBadge.className = 'sync-badge-ok';
-        okBadge.title = '✓ En Local (Sincronizado)';
-        okBadge.textContent = '✓';
-        if (badgeContainer) badgeContainer.replaceWith(okBadge);
-    }
+    item.pendingUploadCount = upC;
+    item.pendingDownloadCount = downC;
+    item.pendingCount = upC + downC;
+    item.hasPendingSync = item.pendingCount > 0;
+    item.pendingType = upC > 0 ? 'upload' : (downC > 0 ? 'download' : null);
+
+    renderRowSyncBadges(row, item);
 }
 
 async function refreshFolderChildrenInPlace(wrapper, item) {
@@ -897,6 +943,7 @@ async function refreshFolderChildrenInPlace(wrapper, item) {
 async function updateTransferredItemsInDOM(order) {
     if (!order || !order.items || order.items.length === 0) return false;
     let anyUpdated = false;
+    const orderType = order.type || (order.transferType === 'server' ? 'server_download' : 'download');
 
     for (const it of order.items) {
         const targetPath = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
@@ -919,18 +966,12 @@ async function updateTransferredItemsInDOM(order) {
 
                     if (wrapper._item) {
                         wrapper._item.isGhost = false;
-                        wrapper._item.syncStatus = order.transferType === 'server' ? 'matched_server' : 'matched_drive';
+                        wrapper._item.syncStatus = (order.transferType === 'server' || orderType.startsWith('server_')) ? 'matched_server' : 'matched_drive';
                         wrapper._item.hasPendingSync = false;
                         wrapper._item.pendingCount = 0;
-                    }
-
-                    const badgeAction = row.querySelector('.sync-badge-action');
-                    if (badgeAction) {
-                        const okBadge = document.createElement('span');
-                        okBadge.className = 'sync-badge-ok';
-                        okBadge.title = '✓ En Local (Sincronizado)';
-                        okBadge.textContent = '✓';
-                        badgeAction.replaceWith(okBadge);
+                        wrapper._item.pendingUploadCount = 0;
+                        wrapper._item.pendingDownloadCount = 0;
+                        renderRowSyncBadges(row, wrapper._item);
                     }
 
                     // Si es una carpeta y estaba abierta, refrescar solo sus hijos in-place
@@ -943,7 +984,7 @@ async function updateTransferredItemsInDOM(order) {
                     while (parentContainer) {
                         const parentWrapper = parentContainer.closest('.node-wrapper');
                         if (!parentWrapper) break;
-                        updateParentFolderBadge(parentWrapper);
+                        updateParentFolderBadge(parentWrapper, orderType);
                         parentContainer = parentWrapper.parentElement?.closest('.node-children');
                     }
                 }
@@ -958,15 +999,17 @@ async function updateTransferredItemsInDOM(order) {
                 const p = (row.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
                 if (p === normParent) {
                     const wrapper = row.closest('.node-wrapper');
-                    if (wrapper && wrapper._childrenContainer && wrapper._childrenContainer.style.display !== 'none') {
-                        await refreshFolderChildrenInPlace(wrapper, wrapper._item || { path: parentPath, isDirectory: true });
+                    if (wrapper) {
                         anyUpdated = true;
-                        updateParentFolderBadge(wrapper);
+                        if (wrapper._childrenContainer && wrapper._childrenContainer.style.display !== 'none') {
+                            await refreshFolderChildrenInPlace(wrapper, wrapper._item || { path: parentPath, isDirectory: true });
+                        }
+                        updateParentFolderBadge(wrapper, orderType);
                         let parentContainer = row.closest('.node-children');
                         while (parentContainer) {
                             const parentWrapper = parentContainer.closest('.node-wrapper');
                             if (!parentWrapper) break;
-                            updateParentFolderBadge(parentWrapper);
+                            updateParentFolderBadge(parentWrapper, orderType);
                             parentContainer = parentWrapper.parentElement?.closest('.node-children');
                         }
                     }
@@ -982,13 +1025,14 @@ async function updateTransferredItemsInDOM(order) {
             if (p === normTarget) {
                 anyUpdated = true;
                 block.classList.remove('sync-ghost');
-                const badgeAction = block.querySelector('.sync-badge-action');
-                if (badgeAction) {
+                const badges = block.querySelectorAll('.sync-badge-action');
+                badges.forEach(b => b.remove());
+                if (!block.querySelector('.sync-badge-ok')) {
                     const okSpan = document.createElement('span');
                     okSpan.className = 'sync-badge-ok';
                     okSpan.style.marginLeft = '8px';
                     okSpan.textContent = '✓';
-                    badgeAction.replaceWith(okSpan);
+                    block.appendChild(okSpan);
                 }
             }
         }

@@ -27,8 +27,15 @@
         "explorer_open_desktop": true,
         "manageUsers": true,
         "manageSettings": true,
-        "manageStatuses": true
-      }
+        "manageStatuses": true,
+        "explorer_allow_drive": true,
+        "settings_allow_advanced": true,
+        "export_portable_zip": true,
+        "presets_allow_publish": true,
+        "projects_allow_edit": true,
+        "ia_ingest_allow_higgsfield": true
+      },
+      "maxConcurrentDownloads": 4
     },
     {
       "id": "user",
@@ -57,8 +64,15 @@
         "explorer_open_desktop": true,
         "manageUsers": false,
         "manageSettings": false,
-        "manageStatuses": false
-      }
+        "manageStatuses": false,
+        "explorer_allow_drive": true,
+        "settings_allow_advanced": true,
+        "export_portable_zip": true,
+        "presets_allow_publish": true,
+        "projects_allow_edit": true,
+        "ia_ingest_allow_higgsfield": true
+      },
+      "maxConcurrentDownloads": 2
     },
     {
       "id": "lead",
@@ -86,8 +100,15 @@
         "explorer_open_desktop": true,
         "manageUsers": false,
         "manageSettings": false,
-        "manageStatuses": true
-      }
+        "manageStatuses": true,
+        "explorer_allow_drive": true,
+        "settings_allow_advanced": true,
+        "export_portable_zip": true,
+        "presets_allow_publish": true,
+        "projects_allow_edit": true,
+        "ia_ingest_allow_higgsfield": true
+      },
+      "maxConcurrentDownloads": 3
     }
   ],
   "users": [
@@ -101,7 +122,8 @@
       "email": "",
       "notes": "Administrador por defecto",
       "avatarColor": "#ff9800",
-      "isSystem": true
+      "isSystem": true,
+      "permissionOverrides": {}
     },
     {
       "id": "u_user",
@@ -113,7 +135,8 @@
       "email": "",
       "notes": "Usuario estándar por defecto",
       "avatarColor": "#00bcd4",
-      "isSystem": true
+      "isSystem": true,
+      "permissionOverrides": {}
     },
     {
       "id": "u_Mati_pastorino_5943",
@@ -121,12 +144,87 @@
       "firstName": "Matias",
       "lastName": "Pastorino",
       "laspUser": "lasp-mpastorino",
-      "role": "user",
+      "role": "admin",
       "email": "",
       "avatarColor": "#ff9800",
       "notes": "",
       "isSystem": false,
+      "authSource": "ramon",
+      "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_aavila_6106",
+      "username": "Ana Ávila",
+      "firstName": "Ana",
+      "lastName": "Avila",
+      "laspUser": "lasp-aavila",
+      "role": "lead",
+      "email": "",
+      "notes": "",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
       "authSource": "ramon"
+    },
+    {
+      "id": "u_lasp_aestevez_9816",
+      "username": "lasp-aestevez",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-aestevez",
+      "role": "lead",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en J790 (2026-10-26)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {},
+      "maxConcurrentDownloadsOverride": null
+    },
+    {
+      "id": "u_lasp_famato_6889",
+      "username": "lasp-famato",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-famato",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en M1080 (2026-10-26)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_pkozow_8453",
+      "username": "lasp-pkozow",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-pkozow",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en LASP-VIRT-020 (2026-10-26)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_daguero_1174",
+      "username": "lasp-daguero",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-daguero",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en G510 (2026-10-26)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
     }
   ],
   "activeUser": "admin",

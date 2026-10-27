@@ -602,10 +602,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     background: #172233; /* Slightly lighter slate-bluish tone */
     border: 1px solid #283c5a; /* Distinct clean border */
     border-radius: 6px;
-    padding: 2px 6px 3px 6px;
+    padding: 3px 7px;
+    height: 57px;
+    box-sizing: border-box;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
@@ -614,6 +617,8 @@
     flex-direction: column;
     gap: 3px;
     justify-content: center;
+    height: 57px;
+    box-sizing: border-box;
 }
 
 .toolbar-section-compact {
@@ -655,26 +660,31 @@
 }
 
 .toolbar-section-label {
-    font-size: 0.56rem;
+    font-size: 0.58rem;
     font-weight: 700;
     color: #6d8db5;
-    letter-spacing: 0.7px;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
     user-select: none;
+    text-align: center;
 }
 
 .toolbar-section-content {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 3px;
 }
 
 .toolbar-section-group .tool-btn {
-    padding: 3px 5px;
-    height: 25px;
+    padding: 3px 6px;
+    height: 28px;
     border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .toolbar-section-group .tool-btn:hover {

@@ -25,16 +25,16 @@
       "VEO3",
       "VO31",
       "GOMN",
-      "NBN2",
-      "NB2P"
+      "HFMC"
     ],
     "motorsImage": [
       "NB2P",
+      "NBN2",
+      "NBN21",
       "MJ",
       "FLUX",
-      "SD2",
-      "SD25",
-      "GOMN"
+      "GPT25S",
+      "GPT25F"
     ],
     "framings": [
       "FLL",

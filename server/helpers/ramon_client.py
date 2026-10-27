@@ -486,9 +486,35 @@ def do_projects():
         print(json.dumps({"success": False, "error": str(e)}))
 
 
+def do_users():
+    try:
+        admin_stub, _ = get_admin_stub()
+        raw = admin_stub.query("sthpw/login", order_bys=["login"])
+        users = []
+        for u in raw:
+            login = u.get("login") or ""
+            if not login or login == "admin":
+                continue
+            first_name = u.get("first_name") or ""
+            last_name = u.get("last_name") or ""
+            display_name = u.get("display_name") or f"{first_name} {last_name}".strip()
+            email = u.get("email") or ""
+            users.append({
+                "login": login,
+                "first_name": first_name,
+                "last_name": last_name,
+                "display_name": display_name,
+                "email": email
+            })
+        users.sort(key=lambda x: (x["display_name"] or x["login"]).lower())
+        print(json.dumps({"success": True, "users": users}))
+    except Exception as e:
+        print(json.dumps({"success": False, "error": str(e)}))
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(json.dumps({"success": False, "error": "Comando requerido: ping, login, tasks, project_tasks, projects"}))
+        print(json.dumps({"success": False, "error": "Comando requerido: ping, login, tasks, project_tasks, projects, users"}))
         sys.exit(1)
 
     cmd = sys.argv[1].lower()
@@ -507,5 +533,7 @@ if __name__ == "__main__":
         do_project_tasks(proj)
     elif cmd == "projects":
         do_projects()
+    elif cmd == "users":
+        do_users()
     else:
         print(json.dumps({"success": False, "error": f"Comando desconocido: {cmd}"}))

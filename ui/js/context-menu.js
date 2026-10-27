@@ -124,9 +124,10 @@ class ContextMenu {
         const labelSuffix = multi ? ` (${count})` : '';
 
         const compMode = window.syncComparisonMode || 'off';
+        const allowDrive = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('explorer_allow_drive') : true;
         const syncItems = [];
 
-        if (compMode === 'drive') {
+        if (compMode === 'drive' && allowDrive) {
             syncItems.push(
                 { separator: true },
                 { 
@@ -166,23 +167,28 @@ class ContextMenu {
                     label: `Bajar de Servidor Central${labelSuffix}`, 
                     icon: '🗄️⬇️', 
                     action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'server', path: p, isDir, name }) 
-                },
-                { 
-                    label: `Subir a Google Drive${labelSuffix}`, 
-                    icon: '☁️⬆️', 
-                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'drive', path: p, isDir, name }) 
-                },
-                { 
-                    label: `Bajar de Google Drive${labelSuffix}`, 
-                    icon: '☁️⬇️', 
-                    action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'drive', path: p, isDir, name }) 
                 }
             );
+            if (allowDrive) {
+                syncItems.push(
+                    { 
+                        label: `Subir a Google Drive${labelSuffix}`, 
+                        icon: '☁️⬆️', 
+                        action: (p) => window.SyncConflict?.executeSyncAction({ action: 'upload', targetType: 'drive', path: p, isDir, name }) 
+                    },
+                    { 
+                        label: `Bajar de Google Drive${labelSuffix}`, 
+                        icon: '☁️⬇️', 
+                        action: (p) => window.SyncConflict?.executeSyncAction({ action: 'download', targetType: 'drive', path: p, isDir, name }) 
+                    }
+                );
+            }
         }
 
         return [
             { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi), disabled: isServerView || isGhost },
             { label: 'Refrescar Carpeta', icon: '🔄', action: (p) => this.refreshFolder(p, isDir) },
+            { label: `Send2 IA Ingest${labelSuffix}`, icon: '<img src="icons/chip-ai.svg" style="width:15px; height:15px; object-fit:contain; vertical-align:middle; display:inline-block;">', action: (p) => this.sendToIaIngest(p, isDir, multi), disabled: isServerView || isGhost },
             ...syncItems,
             { separator: true },
             { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false), disabled: isGhost },
@@ -199,6 +205,28 @@ class ContextMenu {
     }
 
     // --- ACTIONS ---
+
+    async sendToIaIngest(targetPath, isDir, multi) {
+        let paths = [targetPath];
+        const isDirMap = { [targetPath]: isDir };
+
+        if (multi && window.selectedPaths && window.selectedPaths.size > 0) {
+            paths = Array.from(window.selectedPaths);
+            const selectedEls = document.querySelectorAll('.tree-node.selected, .pipeta-block.selected');
+            selectedEls.forEach(el => {
+                const p = el.getAttribute('data-path') || el._item?.path;
+                const d = el._item?.isDirectory || el.classList.contains('folder') || el.classList.contains('is-dir');
+                if (p) isDirMap[p] = !!d;
+            });
+        }
+
+        if (typeof window.enqueuePathsToIaBatch === 'function') {
+            await window.enqueuePathsToIaBatch(paths, { isDirMap });
+            if (typeof switchView === 'function') {
+                switchView('view-ia-ingest');
+            }
+        }
+    }
 
     async refreshFolder(targetPath, isDir) {
         let folderPath = targetPath;
@@ -224,7 +252,8 @@ class ContextMenu {
         try {
             const viewMode = window.viewLocationMode || 'local';
             const isServer = (viewMode === 'server') || (compMode === 'server');
-            const isDrive = (viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:');
+            const allowDrive = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('explorer_allow_drive') : true;
+            const isDrive = allowDrive && ((viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:'));
             const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
             const targetLabel = targetType === 'server' ? 'Servidor' : 'Drive';
 

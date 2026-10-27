@@ -142,14 +142,18 @@ const headerToolsTemplates = {
                     
                     <div style="width:2px"></div>
                     
-                    <!-- Location Switcher: LOCAL | DRIVE | SERVER (solo habilitado si la máquina tiene acceso a red interna de estudio) -->
+                    <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
                     <div style="display:flex; background:#0e141f; border-radius:3px; padding:1px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
                         <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1;"
                                 onclick="switchViewLocation('local')" title="${(typeof isExternalMachine === 'function' && isExternalMachine()) ? 'Disco Z Local' : ((typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)')}">LOCAL</button>
-                        <button class="tool-btn ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'active' : ''}" 
-                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${(window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') ? 'background:#5e81ac; color:#fff;' : ''}"
-                                onclick="switchViewLocation('drive')" title="Google Drive (G: o Catálogo Offline en Z:\\_SYNC_CACHE)">DRIVE</button>
+                        
+                        ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
+                        <button class="tool-btn ${window.viewLocationMode === 'drive' ? 'active' : ''}" 
+                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
+                                onclick="switchViewLocation('drive')" title="Google Drive (Catálogo en la nube)">DRIVE</button>
+                        ` : ''}
+
                         ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                         <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
                                 style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
@@ -214,24 +218,28 @@ const headerToolsTemplates = {
         <div class="toolbar-section-group" title="Comparar archivos locales contra catálogo Drive o Servidor central">
             <span class="toolbar-section-label">Comparar</span>
             <div class="toolbar-section-content">
+                
+                ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
-                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
-                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Clic para activar/desactivar)">☁️ DRIVE</button>
+                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
+                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">☁️ DRIVE</button>
+                ` : ''}
+
                 ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
-                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
+                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; margin-left:2px; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
                         onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">🗄️ SERVER</button>
                 ` : ''}
                 <button class="tool-btn ${window.deepCompareMode ? 'active' : ''}" 
                         id="btn-deep-compare"
-                        style="padding: 2px 8px; font-size: 0.70rem; height: auto; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b;' : ''}"
+                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b;' : ''}"
                         onclick="toggleDeepCompareMode()" 
                         title="Deep Compare: Compara peso y fecha además de nombres (Clic para activar/desactivar)">
                     🔬 DEEP
                 </button>
                 ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
                 <button class="tool-btn" 
-                        style="padding: 2px 6px; font-size: 0.70rem; height: auto; margin-left:2px; background:#223042;" 
+                        style="padding: 0 6px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; background:#223042;" 
                         onclick="refreshSyncCatalogManual()" title="Refrescar catálogo en caché (${window.syncComparisonMode === 'server' ? 'Servidor' : 'Google Drive'})">🔄</button>
                 ` : ''}
             </div>
@@ -453,7 +461,7 @@ const headerToolsTemplates = {
             forceWorker: localStorage.getItem('pipeta_hf_force_worker') === 'true'
         };
         const isWorkerActive = !!hfOptions.forceWorker;
-        const isSuiteOpen = window.hfToolbarOpen === true || localStorage.getItem('pipeta_hf_toolbar_open') === 'true';
+        const isSuiteOpen = window.hfToolbarOpen === true || (window.hfToolbarOpen === undefined && localStorage.getItem('pipeta_hf_toolbar_open_v2') === 'true');
 
         return `
         <!-- HIGGSFIELD AI TOOLBAR SUITE (Collapsible / Expandable) -->
@@ -481,6 +489,14 @@ const headerToolsTemplates = {
                             + Cargar a Cola
                         </button>
                     </div>
+
+                    <!-- Botón Forzar Higgsfield -->
+                    <button type="button" class="tool-btn" 
+                            style="height:42px; padding:0 8px; font-size:0.75rem; border-radius:4px; color:#ffb74d; border-color:#555; background:#222; white-space:nowrap;" 
+                            onclick="handleForceHiggsfieldOnSelected()" 
+                            title="Forzar consulta de metadata de Higgsfield para los elementos seleccionados en la cola">
+                        ⚡ Forzar Higgsfield
+                    </button>
 
                     <!-- Botón Use Worker (sin icono) -->
                     <button type="button" id="hfForceWorkerBtn" class="tool-btn ${isWorkerActive ? 'active' : ''}" 
@@ -513,10 +529,10 @@ const headerToolsTemplates = {
             <div class="toolbar-section-content">
                 <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
                     <button class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
                             onclick="switchIaWorkMode('advanced')" title="Modo Avanzado (Builder modular, tokens y cola por lotes)">ADVANCED</button>
                     <button class="tool-btn ${window.iaWorkMode === 'simple' ? 'active' : ''}" 
-                            style="padding: 2px 8px; font-size: 0.72rem; height: auto;"
+                            style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
                             onclick="switchIaWorkMode('simple')" title="Modo Simple (Flujo rápido simplificado)">SIMPLE</button>
                 </div>
             </div>
@@ -722,6 +738,7 @@ function switchView(viewId) {
         if (viewId === 'view-ia-ingest') {
             if (typeof initIaIngest === 'function') initIaIngest();
             else if (typeof updateIaResolution === 'function') updateIaResolution();
+            if (typeof switchIaWorkMode === 'function') switchIaWorkMode(window.iaWorkMode || 'simple');
         }
     }
 
@@ -764,10 +781,29 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 window.checkUserPermission = (permKey) => {
     const uData = window.cachedUsersData || settings?.usersData;
     if (!uData) return true;
-    const active = uData.activeUser || 'admin';
-    const user = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
+
+    // Resolve active user identity (from Ramon session or config)
+    let active = uData.activeUser;
+    if (!active && window.Ramon?.session?.user) {
+        active = window.Ramon.session.user.login || window.Ramon.session.user.username;
+    }
+    if (!active) active = 'admin';
+
+    const user = (uData.users || []).find(u => 
+        u.username === active || 
+        u.laspUser === active || 
+        (u.laspUser && u.laspUser.replace('lasp-', '') === active) ||
+        u.id === active
+    );
     if (!user) return true;
     if (user.role === 'admin' || user.username === 'admin') return true; // Full admin access
+
+    // 1. Explicit user-level override takes highest priority
+    if (user.permissionOverrides && typeof user.permissionOverrides[permKey] === 'boolean') {
+        return user.permissionOverrides[permKey];
+    }
+
+    // 2. Role permissions fallback
     const role = (uData.roles || []).find(r => r.id === user.role);
     if (!role || !role.permissions) return true;
     return role.permissions[permKey] !== false;
@@ -777,10 +813,6 @@ window.applyRolePermissionsToUI = async () => {
     try {
         const uData = await API.users.get();
         window.cachedUsersData = uData;
-        const active = uData.activeUser || 'admin';
-        const user = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
-        const isAdmin = user?.role === 'admin' || user?.username === 'admin';
-        const role = (uData.roles || []).find(r => r.id === (user?.role || 'user'));
 
         // 1. Sidebar Buttons
         const sidebarMap = {
@@ -799,15 +831,11 @@ window.applyRolePermissionsToUI = async () => {
             const title = btn.getAttribute('title');
             const reqPerm = sidebarMap[title];
             if (reqPerm) {
-                let allowed = isAdmin;
-                if (!allowed && role?.permissions) {
-                    if (reqPerm === 'access_tool_creator') {
-                        allowed = (role.permissions.access_tool_asset_creator !== false || role.permissions.access_tool_shot_creator !== false);
-                    } else {
-                        allowed = role.permissions[reqPerm] !== false;
-                    }
-                } else if (!allowed) {
-                    allowed = true;
+                let allowed = true;
+                if (reqPerm === 'access_tool_creator') {
+                    allowed = window.checkUserPermission('access_tool_asset_creator') || window.checkUserPermission('access_tool_shot_creator');
+                } else {
+                    allowed = window.checkUserPermission(reqPerm);
                 }
                 if (allowed) {
                     btn.style.opacity = '1';
@@ -826,7 +854,7 @@ window.applyRolePermissionsToUI = async () => {
         // 2. Header Tools
         document.querySelectorAll('[data-perm-tool]').forEach(el => {
             const pKey = el.getAttribute('data-perm-tool');
-            const allowed = isAdmin || (role?.permissions ? role.permissions[pKey] !== false : true);
+            const allowed = window.checkUserPermission(pKey);
             if (allowed) {
                 el.style.opacity = '1';
                 el.style.filter = 'none';
@@ -837,6 +865,42 @@ window.applyRolePermissionsToUI = async () => {
                 el.style.pointerEvents = 'none';
             }
         });
+
+        // 3. Drive Explorer Permissions (explorer_allow_drive)
+        const canDrive = window.checkUserPermission('explorer_allow_drive');
+        if (!canDrive) {
+            if (window.viewLocationMode === 'drive' || window.viewLocationMode === 'online') {
+                if (typeof switchViewLocation === 'function') switchViewLocation('local');
+            }
+            if (window.syncComparisonMode === 'drive') {
+                if (typeof toggleSyncComparisonMode === 'function') {
+                    toggleSyncComparisonMode('server');
+                } else {
+                    window.syncComparisonMode = 'off';
+                }
+            }
+        }
+
+        // 4. Presets Publish Buttons (presets_allow_publish)
+        const canPublishPresets = window.checkUserPermission('presets_allow_publish');
+        document.querySelectorAll('button[onclick*="openExportPresetsTab"]').forEach(b => {
+            b.style.display = canPublishPresets ? '' : 'none';
+        });
+
+        // 5. Higgsfield AI Ingest Restrictions (ia_ingest_allow_higgsfield)
+        const canHiggsfield = window.checkUserPermission('ia_ingest_allow_higgsfield');
+        const hfBtn = document.getElementById('iaHfItemToggleBtn');
+        if (hfBtn) {
+            hfBtn.style.display = canHiggsfield ? '' : 'none';
+        }
+        document.querySelectorAll('button[onclick*="handleForceHiggsfieldOnSelected"]').forEach(b => {
+            b.style.display = canHiggsfield ? '' : 'none';
+        });
+        document.querySelectorAll('select option[value="auto_hf"], select option[value="HFMC"]').forEach(opt => {
+            opt.disabled = !canHiggsfield;
+            opt.hidden = !canHiggsfield;
+        });
+
     } catch(e) {
         console.warn("Could not apply role permissions:", e);
     }
@@ -895,8 +959,8 @@ async function initApp() {
     updateHeaderTools('view-browser');
 
     // 6. Start Disk Monitor
-    updateDiskMonitor();
-    setInterval(updateDiskMonitor, 30000); // Every 30s
+    // Disk monitor disabled
+
 
     // 7. Check Rclone Status
     checkRcloneStatus();
@@ -1238,3 +1302,48 @@ window.addEventListener('keydown', (e) => {
 
 // Start
 document.addEventListener('DOMContentLoaded', () => initApp());
+
+
+// Live Reconnect & Auto-Reload on Server Restart / Reinstall
+(function setupLiveServerWatcher() {
+    let initialBootTime = null;
+    let lastKnownConfigSync = null;
+
+    async function pingServer() {
+        try {
+            const res = await fetch('/api/version', { 
+                cache: 'no-store',
+                signal: AbortSignal.timeout(5000) 
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const currentBoot = data.serverBootTime || data.version;
+                if (initialBootTime === null) {
+                    initialBootTime = currentBoot;
+                    lastKnownConfigSync = data.lastConfigSync || 0;
+                } else if (initialBootTime && data.serverBootTime && initialBootTime !== data.serverBootTime) {
+                    console.log('[PIPETA] Servidor local reiniciado / actualizado. Recargando pestaña activa...');
+                    window.location.reload();
+                    return;
+                }
+
+                // Detectar actualización de configuraciones en caliente
+                if (lastKnownConfigSync !== null && data.lastConfigSync && data.lastConfigSync > lastKnownConfigSync) {
+                    lastKnownConfigSync = data.lastConfigSync;
+                    console.log('[PIPETA] ⚙️ Configuraciones maestras sincronizadas en caliente.');
+                    if (window.PipetaConsole && typeof PipetaConsole.push === 'function') {
+                        PipetaConsole.push('info', '⚙️ Configuraciones de proyectos, permisos y usuarios actualizadas desde el servidor central.');
+                    }
+                    if (typeof applyRolePermissionsToUI === 'function') {
+                        applyRolePermissionsToUI();
+                    }
+                }
+            }
+        } catch (e) {
+            // Server busy - do not trigger page reload
+        }
+    }
+
+    setInterval(pingServer, 5000);
+    setTimeout(pingServer, 1000);
+})();

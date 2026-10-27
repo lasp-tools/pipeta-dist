@@ -106,6 +106,88 @@ let currentOrder = null;
 let teamDrivesMap = null;
 let activeRcloneProc = null;
 
+// Pool de Concurrencia y Carril Rápido (Fast-Lane)
+const activeTransfers = new Map(); // orderId -> { id, user, type, startedAt }
+const activeFastTasks = new Set(); // orderId de refresh_folder / query_higgsfield_job
+const activeRcloneProcs = new Map(); // orderId -> ChildProcess
+const MAX_WORKER_CONCURRENT_TRANSFERS = 4;
+const MAX_FAST_CONCURRENT_TASKS = 4;
+
+let cachedUsersConfig = null;
+let cachedUsersConfigTime = 0;
+
+function loadWorkerUsersConfig() {
+    const now = Date.now();
+    if (cachedUsersConfig && (now - cachedUsersConfigTime < 5000)) {
+        return cachedUsersConfig;
+    }
+    const candidates = [
+        path.join(CACHE_ROOT, 'users_config.json'),
+        'Z:/_SYNC_CACHE/users_config.json',
+        'Z:/INTERNO/TOOLS/GITHUB/TOOLS/APPS/Pipeta/presets/users_config.json',
+        path.join(__dirname, '../presets/users_config.json')
+    ];
+    for (const p of candidates) {
+        try {
+            if (p && fs.existsSync(p)) {
+                cachedUsersConfig = fs.readJsonSync(p);
+                cachedUsersConfigTime = now;
+                return cachedUsersConfig;
+            }
+        } catch (e) {}
+    }
+    return cachedUsersConfig || { roles: [], users: [] };
+}
+
+function getUserMaxConcurrentTransfers(username) {
+    try {
+        const cfg = loadWorkerUsersConfig();
+        const rawUser = String(username || '').trim().toLowerCase();
+        const cleanUser = rawUser.replace(/^lasp-/, '');
+        const users = Array.isArray(cfg.users) ? cfg.users : [];
+        const roles = Array.isArray(cfg.roles) ? cfg.roles : [];
+
+        const userObj = users.find(u => {
+            const uLasp = String(u.laspUser || '').trim().toLowerCase();
+            const uName = String(u.username || '').trim().toLowerCase();
+            const uId = String(u.id || '').trim().toLowerCase();
+            return (rawUser && (uLasp === rawUser || uName === rawUser || uId === rawUser || uLasp === `lasp-${cleanUser}`));
+        });
+
+        // 1. Override específico por usuario
+        if (userObj && userObj.maxConcurrentDownloadsOverride !== undefined && userObj.maxConcurrentDownloadsOverride !== null && userObj.maxConcurrentDownloadsOverride !== '' && userObj.maxConcurrentDownloadsOverride !== 'inherit') {
+            const ov = parseInt(userObj.maxConcurrentDownloadsOverride, 10);
+            if (Number.isFinite(ov) && ov >= 1) {
+                return Math.min(6, Math.max(1, ov));
+            }
+        }
+
+        // 2. Límite configurado en el Rol del usuario
+        const roleId = (userObj && userObj.role) ? userObj.role : (cfg.defaultRamonRole || 'user');
+        const roleObj = roles.find(r => r.id === roleId);
+        if (roleObj && Number.isFinite(Number(roleObj.maxConcurrentDownloads)) && Number(roleObj.maxConcurrentDownloads) >= 1) {
+            return Math.min(6, Math.max(1, parseInt(roleObj.maxConcurrentDownloads, 10)));
+        }
+
+        // 3. Fallback por defecto según jerarquía de rol
+        if (roleId === 'admin') return 3;
+        if (roleId === 'lead') return 2;
+        return 1;
+    } catch (e) {
+        return 1;
+    }
+}
+
+function syncLegacyProcessingFlags() {
+    isProcessing = activeTransfers.size > 0;
+    if (activeTransfers.size === 0) {
+        currentOrder = null;
+    } else {
+        const firstKey = activeTransfers.keys().next().value;
+        currentOrder = activeTransfers.size === 1 ? firstKey : `${firstKey} (+${activeTransfers.size - 1} en paralelo)`;
+    }
+}
+
 function log(msg, ...args) {
     const timestamp = new Date().toLocaleTimeString('es-ES', { hour12: false });
     console.log(`[${timestamp}] [WORKER] ${msg}`, ...args);
@@ -129,10 +211,22 @@ function getDrives() {
 /**
  * Resuelve una ruta a su Team Drive ID y ruta relativa dentro del drive
  */
-function resolveRemoteInfo(fullPath) {
-    const norm = normalizeSlash(fullPath);
+function resolveRemoteInfo(fullPath, projectName = null) {
+    let norm = normalizeSlash(fullPath);
     let driveName = '';
     let relPath = '';
+
+    // Si la ruta recibida no parece un destino de Google Drive (ej: viene como Z:/INTERNO/MEDIA/... o Z:/...),
+    // intentar resolverla automáticamente a su equivalente en Google Drive
+    if (!norm.match(/(?:Unidades compartidas\/|lasp-drive:)/i)) {
+        if (typeof catalogGenerator.resolveLocalToOnlinePath === 'function') {
+            const resolved = catalogGenerator.resolveLocalToOnlinePath(norm, projectName);
+            if (resolved && resolved !== norm && resolved.match(/(?:Unidades compartidas\/|lasp-drive:)/i)) {
+                log(`[RESOLVE WORKER] Ruta corregida de local a Drive: '${norm}' -> '${resolved}'`);
+                norm = normalizeSlash(resolved);
+            }
+        }
+    }
 
     const match = norm.match(/(?:Unidades compartidas\/|lasp-drive:)([^/]+)(?:\/(.*))?$/i);
     if (match) {
@@ -145,7 +239,19 @@ function resolveRemoteInfo(fullPath) {
     }
 
     const drives = getDrives();
-    const teamDriveId = drives[driveName] || null;
+    let teamDriveId = drives[driveName] || null;
+
+    // Fallback: si no matchea exacto, probar con sufijo _media o sin él si coincide con projectName
+    if (!teamDriveId && projectName) {
+        const pNorm = String(projectName).toLowerCase().trim();
+        if (drives[pNorm]) {
+            teamDriveId = drives[pNorm];
+            driveName = pNorm;
+        } else if (drives[`${pNorm}_media`]) {
+            teamDriveId = drives[`${pNorm}_media`];
+            driveName = `${pNorm}_media`;
+        }
+    }
 
     return { driveName, relPath, teamDriveId };
 }
@@ -203,6 +309,10 @@ function updateHeartbeat(status = 'idle', activeTask = null) {
             lastPing: new Date().toISOString(),
             rcloneAvailable: fs.existsSync(RCLONE_EXE),
             rcloneConf: RCLONE_CONF,
+            engine: 'concurrent-v2',
+            activeTransfersCount: (() => { try { return activeTransfers.size; } catch (e) { return 0; } })(),
+            activeFastCount: (() => { try { return activeFastTasks.size; } catch (e) { return 0; } })(),
+            maxConcurrentTransfers: (() => { try { return MAX_WORKER_CONCURRENT_TRANSFERS; } catch (e) { return 1; } })(),
             system: {
                 totalMem: os.totalmem(),
                 freeMem: os.freemem(),
@@ -270,7 +380,7 @@ function formatSpeed(bytesPerSec) {
 /**
  * Ejecuta Rclone en segundo plano capturando métricas de progreso (--stats 1s --use-json-log)
  */
-function runRcloneWithProgress(args, onProgress) {
+function runRcloneWithProgress(args, onProgress, orderId = null) {
     return new Promise((resolve, reject) => {
         const rcloneExe = findRcloneExe();
         const fullArgs = [
@@ -285,6 +395,7 @@ function runRcloneWithProgress(args, onProgress) {
             stdio: ['ignore', 'pipe', 'pipe']
         });
         activeRcloneProc = proc;
+        if (orderId) activeRcloneProcs.set(orderId, proc);
 
         let stderrBuffer = '';
         let stdoutBuffer = '';
@@ -344,12 +455,14 @@ function runRcloneWithProgress(args, onProgress) {
         });
 
         proc.on('error', (err) => {
-            activeRcloneProc = null;
+            if (activeRcloneProc === proc) activeRcloneProc = null;
+            if (orderId) activeRcloneProcs.delete(orderId);
             reject(err);
         });
 
         proc.on('close', (code) => {
-            activeRcloneProc = null;
+            if (activeRcloneProc === proc) activeRcloneProc = null;
+            if (orderId) activeRcloneProcs.delete(orderId);
             if (stderrBuffer) handleLine(stderrBuffer);
             if (stdoutBuffer) handleLine(stdoutBuffer);
             if (code === 0) {
@@ -376,6 +489,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
     }
 
     const isDir = !!item.isDir;
+    const orderId = orderData?.id || null;
 
     if (type === 'download') {
         const onlinePath = item.onlinePath || item.path;
@@ -404,7 +518,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 '--transfers', '4',
                 '--checkers', '8'
             ];
-            await runRcloneWithProgress(args, onProgress);
+            await runRcloneWithProgress(args, onProgress, orderId);
         } else {
             fs.ensureDirSync(path.dirname(targetLocal));
             const args = [
@@ -415,7 +529,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 '--drive-team-drive', remote.teamDriveId
             ];
             try {
-                await runRcloneWithProgress(args, onProgress);
+                await runRcloneWithProgress(args, onProgress, orderId);
             } catch (copyErr) {
                 // Fallback con directory copy si copyto falla por rutas complejas de Google Drive
                 const targetDir = path.dirname(targetLocal);
@@ -431,7 +545,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                     '--drive-team-drive', remote.teamDriveId,
                     '--include', `${fileName}*`
                 ];
-                await runRcloneWithProgress(fallbackArgs, onProgress);
+                await runRcloneWithProgress(fallbackArgs, onProgress, orderId);
             }
         }
     } else if (type === 'upload') {
@@ -461,6 +575,15 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
             }
         }
 
+        if (!onlineTarget || (!onlineTarget.toLowerCase().startsWith('g:/') && !onlineTarget.toLowerCase().includes('unidades compartidas') && !onlineTarget.toLowerCase().startsWith('lasp-drive:'))) {
+            if (typeof catalogGenerator.resolveLocalToOnlinePath === 'function') {
+                const autoResolved = catalogGenerator.resolveLocalToOnlinePath(onlineTarget || localSource, orderData?.project);
+                if (autoResolved) {
+                    onlineTarget = autoResolved;
+                }
+            }
+        }
+
         if (!onlineTarget) {
             throw new Error(`Parámetros de ruta incompletos para subida: local='${localSource}', onlineTarget='${onlineTarget}'`);
         }
@@ -469,7 +592,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
             throw new Error(`El archivo o carpeta de origen no existe localmente: ${localSource}`);
         }
 
-        const remote = resolveRemoteInfo(onlineTarget);
+        const remote = resolveRemoteInfo(onlineTarget, orderData?.project);
         if (!remote.teamDriveId) {
             throw new Error(`No se pudo resolver el Team Drive de Google Drive para: ${onlineTarget}`);
         }
@@ -486,7 +609,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 '--transfers', '4',
                 '--checkers', '8'
             ];
-            await runRcloneWithProgress(args, onProgress);
+            await runRcloneWithProgress(args, onProgress, orderId);
         } else {
             const args = [
                 '--config', rcloneConf,
@@ -495,7 +618,7 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 `lasp-drive:${remote.relPath}`,
                 '--drive-team-drive', remote.teamDriveId
             ];
-            await runRcloneWithProgress(args, onProgress);
+            await runRcloneWithProgress(args, onProgress, orderId);
         }
     } else if (type === 'higgsfield_ingest') {
         const hfApi = require('./higgsfield_api');
@@ -517,174 +640,95 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
 }
 
 /**
- * Revisa la cola de órdenes en Z:\_SYNC_CACHE\requests\ y directorios candidatos
+ * Ejecuta operaciones livianas de catálogo/metadatos en un carril paralelo (Fast-Lane) sin bloquear transferencias
  */
-async function processQueue() {
-    if (isProcessing) return;
-
-    // Verificar si la cola global está pausada
-    const pauseFlag = path.join(CACHE_ROOT, 'queue_paused.flag');
-    if (fs.existsSync(pauseFlag)) {
-        updateHeartbeat('paused', null);
-        return;
-    }
-
-    const candidateDirs = getCandidateOrdersDirs();
-    const seenOrders = new Set();
-    const pendingOrders = [];
-
-    for (const dir of candidateDirs) {
-        if (!fs.existsSync(dir)) continue;
-        let files = [];
-        try {
-            files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
-        } catch (e) {
-            continue;
-        }
-
-        for (const file of files) {
-            const fullPath = path.join(dir, file);
-            try {
-                const data = fs.readJsonSync(fullPath);
-                if (data && data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
-                    if (!seenOrders.has(data.id)) {
-                        seenOrders.add(data.id);
-                        pendingOrders.push({ data, fullPath, dir });
-                    }
-                }
-            } catch (e) {}
-        }
-    }
-
-    if (pendingOrders.length === 0) return;
-
-    // Ordenar por prioridad DESC y desempate FIFO por createdAt ASC
-    pendingOrders.sort((a, b) => {
-        const getPriority = (d) => {
-            if (Number.isFinite(d.priority)) return d.priority;
-            if (d.type === 'higgsfield_ingest' || d.type === 'refresh_folder') return 80;
-            return 50;
-        };
-        const pA = getPriority(a.data);
-        const pB = getPriority(b.data);
-        if (pB !== pA) return pB - pA;
-        return new Date(a.data.createdAt) - new Date(b.data.createdAt);
-    });
-
-    // Reclamar atómicamente la primera orden libre (seguro ante múltiples workers concurrentes)
-    let selected = null;
-    let orderData = null;
-    let pendingOrderFile = null;
-
-    for (const cand of pendingOrders) {
-        try {
-            const fresh = fs.readJsonSync(cand.fullPath);
-            if (fresh && fresh.status === 'pending') {
-                fresh.status = 'processing';
-                fresh.worker = WORKER_ID;
-                fresh.workerHostname = os.hostname();
-                fresh.startedAt = new Date().toISOString();
-                saveOrderDataAcrossCandidates(fresh, cand.fullPath);
-
-                const check = fs.readJsonSync(cand.fullPath);
-                if (check && check.worker === WORKER_ID && check.status === 'processing') {
-                    selected = cand;
-                    orderData = check;
-                    pendingOrderFile = cand.fullPath;
-                    break;
-                }
-            }
-        } catch (claimErr) {
-            continue;
-        }
-    }
-
-    if (!selected || !orderData) return;
-
-    isProcessing = true;
-    currentOrder = orderData.id;
+async function executeFastOrder(orderData, pendingOrderFile) {
     const startTime = Date.now();
+    activeFastTasks.add(orderData.id);
 
-    // Petición de refresco quirúrgico de subcarpeta específica
-    if (orderData.type === 'refresh_folder') {
-        const targetType = orderData.targetType || (orderData.path?.toLowerCase().startsWith('g:') ? 'drive' : 'server');
-        log(`🔄 Petición de refresco de carpeta recibida: [${orderData.project}] '${orderData.path}' (${targetType.toUpperCase()}) (Usuario: ${orderData.user})`);
-        orderData.status = 'processing';
-        orderData.worker = WORKER_ID;
-        orderData.startedAt = new Date().toISOString();
-        saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+    try {
+        if (orderData.type === 'refresh_folder') {
+            const targetType = orderData.targetType || (orderData.path?.toLowerCase().startsWith('g:') ? 'drive' : 'server');
+            log(`🔄 [FAST-LANE] Refresco de carpeta en paralelo: [${orderData.project}] '${orderData.path}' (${targetType.toUpperCase()}) (Usuario: ${orderData.user})`);
+            orderData.status = 'processing';
+            orderData.worker = WORKER_ID;
+            orderData.startedAt = new Date().toISOString();
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
 
-        updateHeartbeat('refreshing_folder', { project: orderData.project, path: orderData.path });
-
-        try {
-            let res;
-            if (typeof catalogGenerator.refreshSubCatalog === 'function') {
-                res = await catalogGenerator.refreshSubCatalog(orderData.project, orderData.path, targetType);
-            } else {
-                res = await catalogGenerator.refreshCatalogSubfolder(orderData.project, orderData.path);
+            if (activeTransfers.size === 0) {
+                updateHeartbeat('refreshing_folder', { project: orderData.project, path: orderData.path });
             }
-            orderData.result = res;
-            orderData.status = (res && res.success) ? 'completed' : 'failed';
-            orderData.completedAt = new Date().toISOString();
-            orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
-            orderData.processedBy = WORKER_ID;
+
+            try {
+                let res;
+                if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+                    res = await catalogGenerator.refreshSubCatalog(orderData.project, orderData.path, targetType);
+                } else {
+                    res = await catalogGenerator.refreshCatalogSubfolder(orderData.project, orderData.path);
+                }
+                orderData.result = res;
+                orderData.status = (res && res.success) ? 'completed' : 'failed';
+                orderData.completedAt = new Date().toISOString();
+                orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+                orderData.processedBy = WORKER_ID;
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                log(`✅ [FAST-LANE] Refresco de carpeta '${orderData.path}' (${targetType.toUpperCase()}) completado (${res?.itemsCount || 0} items)`);
+            } catch (err) {
+                log(`❌ [FAST-LANE] Error al refrescar carpeta '${orderData.path}': ${err.message}`);
+                orderData.status = 'failed';
+                orderData.error = err.message;
+                orderData.completedAt = new Date().toISOString();
+                orderData.processedBy = WORKER_ID;
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            }
+            return;
+        }
+
+        if (orderData.type === 'query_higgsfield_job') {
+            const jobId = orderData.jobId;
+            log(`⚡ [FAST-LANE] Consulta de Job Higgsfield recibida: ${jobId} (Usuario: ${orderData.user})`);
+            orderData.status = 'processing';
+            orderData.worker = WORKER_ID;
+            orderData.startedAt = new Date().toISOString();
             saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
-            log(`✅ Refresco de carpeta '${orderData.path}' (${targetType.toUpperCase()}) completado por Worker (${res.itemsCount || 0} items)`);
-        } catch (err) {
-            log(`❌ Error al refrescar carpeta '${orderData.path}': ${err.message}`);
-            orderData.status = 'failed';
-            orderData.error = err.message;
-            orderData.completedAt = new Date().toISOString();
-            orderData.processedBy = WORKER_ID;
-            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
-        } finally {
-            isProcessing = false;
-            currentOrder = null;
+
+            try {
+                const hfApi = require('./higgsfield_api');
+                const details = await hfApi.fetchJobDetails(jobId);
+                orderData.result = details;
+                orderData.status = (details && details.success) ? 'completed' : 'failed';
+                orderData.completedAt = new Date().toISOString();
+                orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+                orderData.processedBy = WORKER_ID;
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                log(`✅ [FAST-LANE] Consulta de Job ${jobId} completada con éxito`);
+            } catch (err) {
+                log(`❌ [FAST-LANE] Error al consultar Job ${jobId}: ${err.message}`);
+                orderData.status = 'failed';
+                orderData.error = err.message;
+                orderData.completedAt = new Date().toISOString();
+                orderData.processedBy = WORKER_ID;
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            }
+            return;
+        }
+    } finally {
+        activeFastTasks.delete(orderData.id);
+        if (activeTransfers.size === 0 && activeFastTasks.size === 0) {
             updateHeartbeat('idle', null);
         }
-        return;
     }
+}
 
-    // Petición de consulta de metadata de Higgsfield para clientes offline
-    if (orderData.type === 'query_higgsfield_job') {
-        const jobId = orderData.jobId;
-        log(`⚡ [HIGGSFIELD WORKER] Petición de consulta de Job recibida: ${jobId} (Usuario: ${orderData.user})`);
-        orderData.status = 'processing';
-        orderData.worker = WORKER_ID;
-        orderData.startedAt = new Date().toISOString();
-        saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
-
-        updateHeartbeat('querying_higgsfield', { jobId });
-
-        try {
-            const hfApi = require('./higgsfield_api');
-            const details = await hfApi.fetchJobDetails(jobId);
-            orderData.result = details;
-            orderData.status = (details && details.success) ? 'completed' : 'failed';
-            orderData.completedAt = new Date().toISOString();
-            orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
-            orderData.processedBy = WORKER_ID;
-            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
-            log(`✅ [HIGGSFIELD WORKER] Consulta de Job ${jobId} completada con éxito`);
-        } catch (err) {
-            log(`❌ [HIGGSFIELD WORKER] Error al consultar Job ${jobId}: ${err.message}`);
-            orderData.status = 'failed';
-            orderData.error = err.message;
-            orderData.completedAt = new Date().toISOString();
-            orderData.processedBy = WORKER_ID;
-            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
-        } finally {
-            isProcessing = false;
-            currentOrder = null;
-            updateHeartbeat('idle', null);
-        }
-        return;
-    }
-
+/**
+ * Ejecuta una transferencia pesada (download / upload / higgsfield_ingest) dentro del Pool Concurrente
+ */
+async function executeHeavyOrder(orderData, pendingOrderFile) {
+    const startTime = Date.now();
     const itemsCount = Array.isArray(orderData.items) ? orderData.items.length : 0;
-    log(`🔔 Nueva orden tomada: ${orderData.id} [${orderData.type.toUpperCase()}] de usuario '${orderData.user}' (${itemsCount} items)`);
+    const userLimit = getUserMaxConcurrentTransfers(orderData.user);
+    log(`🔔 Orden tomada en Pool (${activeTransfers.size}/${MAX_WORKER_CONCURRENT_TRANSFERS}): ${orderData.id} [${orderData.type.toUpperCase()}] de '${orderData.user}' (Cupo usuario: ${userLimit}) (${itemsCount} items)`);
 
-    // Marcar como en proceso
     orderData.status = 'processing';
     orderData.worker = WORKER_ID;
     orderData.startedAt = new Date().toISOString();
@@ -692,6 +736,7 @@ async function processQueue() {
 
     updateHeartbeat('processing', {
         orderId: orderData.id,
+        activeCount: activeTransfers.size,
         type: orderData.type,
         project: orderData.project,
         itemsTotal: orderData.items.length
@@ -706,10 +751,14 @@ async function processQueue() {
         let wasCancelled = false;
 
         for (let i = 0; i < orderData.items.length; i++) {
-            // Comprobar si la orden fue cancelada antes de iniciar el siguiente item
+            // Comprobar si la orden fue cancelada o si cambió su prioridad antes de iniciar el siguiente item
             try {
                 const fresh = fs.readJsonSync(pendingOrderFile);
-                if (fresh.status === 'cancelled') {
+                if (fresh && Number.isFinite(fresh.priority)) {
+                    orderData.priority = fresh.priority;
+                    if (fresh.priorityUpdatedAt) orderData.priorityUpdatedAt = fresh.priorityUpdatedAt;
+                }
+                if (fresh && fresh.status === 'cancelled') {
                     wasCancelled = true;
                     orderData.status = 'cancelled';
                     orderData.cancelledAt = fresh.cancelledAt || new Date().toISOString();
@@ -720,7 +769,7 @@ async function processQueue() {
             } catch (e) {}
 
             const item = orderData.items[i];
-            log(`  [${i + 1}/${orderData.items.length}] Procesando ${item.name || item.relPath || item.path}...`);
+            log(`  [${orderData.id}] [${i + 1}/${orderData.items.length}] Procesando ${item.name || item.relPath || item.path}...`);
 
             const itemProgressCallback = (p) => {
                 const baseItemWeight = 100 / orderData.items.length;
@@ -743,17 +792,22 @@ async function processQueue() {
                 if (now - lastProgressWrite >= 800) {
                     lastProgressWrite = now;
 
-                    // Chequear si se solicitó cancelación durante la transferencia
+                    // Chequear si se solicitó cancelación o cambio de prioridad durante la transferencia
                     try {
                         const fresh = fs.readJsonSync(pendingOrderFile);
-                        if (fresh.status === 'cancelled') {
+                        if (fresh && Number.isFinite(fresh.priority)) {
+                            orderData.priority = fresh.priority;
+                            if (fresh.priorityUpdatedAt) orderData.priorityUpdatedAt = fresh.priorityUpdatedAt;
+                        }
+                        if (fresh && fresh.status === 'cancelled') {
                             wasCancelled = true;
                             orderData.status = 'cancelled';
                             orderData.cancelledAt = fresh.cancelledAt || new Date().toISOString();
                             orderData.cancelledBy = fresh.cancelledBy || 'user';
                             log(`🛑 Cancelación durante transferencia detectada para orden ${orderData.id}. Abortando Rclone...`);
-                            if (activeRcloneProc) {
-                                try { activeRcloneProc.kill(); } catch (kErr) {}
+                            const procToKill = activeRcloneProcs.get(orderData.id);
+                            if (procToKill) {
+                                try { procToKill.kill(); } catch (kErr) {}
                             }
                         }
                     } catch (e) {}
@@ -761,7 +815,8 @@ async function processQueue() {
                     if (!wasCancelled) {
                         saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
                         updateHeartbeat('processing', {
-                            orderId: orderData.id,
+                            orderId: currentOrder || orderData.id,
+                            activeCount: activeTransfers.size,
                             type: orderData.type,
                             project: orderData.project,
                             progress: orderData.progress
@@ -775,14 +830,23 @@ async function processQueue() {
                 successCount++;
             } catch (err) {
                 if (wasCancelled) {
-                    log(`  ⏹ Transferencia de item interrumpida por cancelación de la orden`);
+                    log(`  ⏹ Transferencia de item interrumpida por cancelación de la orden ${orderData.id}`);
                     break;
                 }
                 failedCount++;
-                log(`  ❌ Error en item ${item.name}: ${err.message}`);
+                log(`  ❌ Error en item ${item.name} (${orderData.id}): ${err.message}`);
                 errors.push({ item: item.name, error: err.message });
             }
         }
+
+        // Sincronizar prioridad final desde disco por si fue editada en el último segundo
+        try {
+            const freshFinal = fs.readJsonSync(pendingOrderFile);
+            if (freshFinal && Number.isFinite(freshFinal.priority)) {
+                orderData.priority = freshFinal.priority;
+                if (freshFinal.priorityUpdatedAt) orderData.priorityUpdatedAt = freshFinal.priorityUpdatedAt;
+            }
+        } catch (e) {}
 
         if (wasCancelled) {
             orderData.status = 'cancelled';
@@ -860,9 +924,140 @@ async function processQueue() {
         orderData.completedAt = new Date().toISOString();
         saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
     } finally {
-        isProcessing = false;
-        currentOrder = null;
-        updateHeartbeat('idle', null);
+        activeTransfers.delete(orderData.id);
+        syncLegacyProcessingFlags();
+        updateHeartbeat(activeTransfers.size > 0 ? 'processing' : 'idle', currentOrder);
+    }
+}
+
+/**
+ * Revisa la cola de órdenes en Z:\_SYNC_CACHE\requests\ y directorios candidatos
+ * Despacha inmediatamente tareas livianas (Fast-Lane) y administra el Pool Concurrente por Rol/Usuario
+ */
+async function processQueue() {
+    const candidateDirs = getCandidateOrdersDirs();
+    const seenOrders = new Set();
+    const pendingFastOrders = [];
+    const pendingHeavyOrders = [];
+
+    for (const dir of candidateDirs) {
+        if (!fs.existsSync(dir)) continue;
+        let files = [];
+        try {
+            files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+        } catch (e) {
+            continue;
+        }
+
+        for (const file of files) {
+            const fullPath = path.join(dir, file);
+            try {
+                const data = fs.readJsonSync(fullPath);
+                if (data && data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
+                    if (!seenOrders.has(data.id) && !activeTransfers.has(data.id) && !activeFastTasks.has(data.id)) {
+                        seenOrders.add(data.id);
+                        if (data.type === 'refresh_folder' || data.type === 'query_higgsfield_job') {
+                            pendingFastOrders.push({ data, fullPath, dir });
+                        } else {
+                            pendingHeavyOrders.push({ data, fullPath, dir });
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+
+    // 1. CARRIL RÁPIDO (FAST-LANE): Ejecutar refresh_folder / query_higgsfield_job en paralelo sin esperar descargas/subidas
+    if (pendingFastOrders.length > 0 && activeFastTasks.size < MAX_FAST_CONCURRENT_TASKS) {
+        pendingFastOrders.sort((a, b) => new Date(a.data.createdAt || 0) - new Date(b.data.createdAt || 0));
+        for (const cand of pendingFastOrders) {
+            if (activeFastTasks.size >= MAX_FAST_CONCURRENT_TASKS) break;
+            try {
+                const fresh = fs.readJsonSync(cand.fullPath);
+                if (fresh && fresh.status === 'pending') {
+                    fresh.status = 'processing';
+                    fresh.worker = WORKER_ID;
+                    fresh.workerHostname = os.hostname();
+                    fresh.startedAt = new Date().toISOString();
+                    saveOrderDataAcrossCandidates(fresh, cand.fullPath);
+
+                    const check = fs.readJsonSync(cand.fullPath);
+                    if (check && check.worker === WORKER_ID && check.status === 'processing') {
+                        executeFastOrder(check, cand.fullPath).catch(e => log(`Error en Fast-Lane (${check.id}): ${e.message}`));
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+
+    // Verificar si la cola global de transferencias pesadas está pausada
+    const pauseFlag = path.join(CACHE_ROOT, 'queue_paused.flag');
+    if (fs.existsSync(pauseFlag)) {
+        if (activeTransfers.size === 0) updateHeartbeat('paused', null);
+        return;
+    }
+
+    // 2. POOL DE TRANSFERENCIAS PESADAS: Evaluar slots disponibles y cupos por Rol / Override de Usuario
+    if (pendingHeavyOrders.length === 0 || activeTransfers.size >= MAX_WORKER_CONCURRENT_TRANSFERS) {
+        return;
+    }
+
+    // Ordenar por prioridad DESC y desempate FIFO por createdAt ASC
+    pendingHeavyOrders.sort((a, b) => {
+        const getPriority = (d) => {
+            if (Number.isFinite(d.priority)) return d.priority;
+            if (d.type === 'higgsfield_ingest') return 80;
+            return 50;
+        };
+        const pA = getPriority(a.data);
+        const pB = getPriority(b.data);
+        if (pB !== pA) return pB - pA;
+        return new Date(a.data.createdAt || 0) - new Date(b.data.createdAt || 0);
+    });
+
+    for (const cand of pendingHeavyOrders) {
+        if (activeTransfers.size >= MAX_WORKER_CONCURRENT_TRANSFERS) break;
+
+        const orderUser = String(cand.data.user || 'artista').trim().toLowerCase();
+        const userMaxAllowed = getUserMaxConcurrentTransfers(orderUser);
+
+        // Contar cuántas transferencias activas tiene este usuario actualmente en el pool
+        let userCurrentActive = 0;
+        for (const activeInfo of activeTransfers.values()) {
+            if (activeInfo.user === orderUser) {
+                userCurrentActive++;
+            }
+        }
+
+        // Si el usuario ya alcanzó su límite de concurrencia por Rol/Override, saltar a la siguiente orden
+        if (userCurrentActive >= userMaxAllowed) {
+            continue;
+        }
+
+        try {
+            const fresh = fs.readJsonSync(cand.fullPath);
+            if (fresh && fresh.status === 'pending') {
+                fresh.status = 'processing';
+                fresh.worker = WORKER_ID;
+                fresh.workerHostname = os.hostname();
+                fresh.startedAt = new Date().toISOString();
+                saveOrderDataAcrossCandidates(fresh, cand.fullPath);
+
+                const check = fs.readJsonSync(cand.fullPath);
+                if (check && check.worker === WORKER_ID && check.status === 'processing') {
+                    activeTransfers.set(check.id, {
+                        id: check.id,
+                        user: orderUser,
+                        type: check.type,
+                        startedAt: Date.now()
+                    });
+                    syncLegacyProcessingFlags();
+                    executeHeavyOrder(check, cand.fullPath).catch(e => log(`Error en Heavy Pool (${check.id}): ${e.message}`));
+                }
+            }
+        } catch (claimErr) {
+            continue;
+        }
     }
 }
 

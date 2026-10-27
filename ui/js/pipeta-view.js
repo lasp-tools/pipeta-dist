@@ -397,24 +397,28 @@ function buildItemsForSyncOrder(item, operationType, targetType) {
         }));
     }
     if (item.isSequence && Array.isArray(item.items) && item.items.length > 0) {
-        return item.items.map(f => ({
-            name: f.name,
-            isDir: false,
-            relativePath: f.relativePath || f.name,
-            serverPath: f.serverPath || f.path,
-            onlinePath: f.onlinePath || f.path,
-            localPath: f.path || f.targetLocalPath,
-            targetLocalPath: f.targetLocalPath || f.path,
-            targetServerPath: f.serverPath || f.path,
-            size: f.size || 0
-        }));
+        return item.items.map(f => {
+            const fOnline = f.onlinePath || (typeof window.resolveLocalToOnlinePath === 'function' ? window.resolveLocalToOnlinePath(f.path) : f.path);
+            return {
+                name: f.name,
+                isDir: false,
+                relativePath: f.relativePath || f.name,
+                serverPath: f.serverPath || f.path,
+                onlinePath: fOnline,
+                localPath: f.path || f.targetLocalPath,
+                targetLocalPath: f.targetLocalPath || f.path,
+                targetServerPath: f.serverPath || f.path,
+                size: f.size || 0
+            };
+        });
     }
+    const resolvedOnline = item.onlinePath || (typeof window.resolveLocalToOnlinePath === 'function' ? window.resolveLocalToOnlinePath(item.path) : item.path);
     const src = targetType === 'server'
         ? (operationType === 'download' ? (item.serverPath || item.onlinePath || item.path) : item.path)
         : (operationType === 'download' ? (item.onlinePath || item.path) : item.path);
     const dest = targetType === 'server'
         ? (operationType === 'download' ? (item.targetLocalPath || item.path) : (item.serverPath || item.path))
-        : (operationType === 'download' ? (item.targetLocalPath || item.path) : (item.onlinePath || item.path));
+        : (operationType === 'download' ? (item.targetLocalPath || item.path) : resolvedOnline);
 
     return [{
         name: item.name,
@@ -431,6 +435,12 @@ function buildItemsForSyncOrder(item, operationType, targetType) {
 
 async function requestDownloadGhostItem(item, e, forcedTargetType) {
     if (e) e.stopPropagation();
+    const resolvedTarget = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
+    if (resolvedTarget === 'drive' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {
+        if (typeof PipetaConsole !== 'undefined') PipetaConsole.log('sync', 'Descarga desde Google Drive bloqueada por política de usuario.', 'warn');
+        alert("🔒 Acción sobre Google Drive bloqueada por permisos de tu usuario.");
+        return;
+    }
     const isDir = !!item.isDirectory || !!item.isDir;
     const typeLabel = isDir ? 'Carpeta' : (item.isSequence ? 'Secuencia' : 'Archivo');
     const targetType = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
@@ -478,17 +488,28 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
             const data = await res.json();
             if (data.success) {
                 if (e && e.target) {
-                    e.target.innerHTML = '⏳ Descargando...';
-                    e.target.style.opacity = '0.6';
-                    e.target.style.pointerEvents = 'none';
+                    const row = e.target.closest('.tree-node') || e.target.closest('.pipeta-block');
+                    if (row) {
+                        const badges = row.querySelectorAll('.sync-badge-action, .sync-badge-inline');
+                        badges.forEach(b => {
+                            b.innerHTML = b.classList.contains('sync-badge-inline') ? '⏳' : '⏳ Descargando...';
+                            b.style.opacity = '0.6';
+                            b.style.pointerEvents = 'none';
+                        });
+                    } else {
+                        e.target.innerHTML = '⏳ Descargando...';
+                        e.target.style.opacity = '0.6';
+                        e.target.style.pointerEvents = 'none';
+                    }
                 }
                 const toastMsg = `Descarga desde Server iniciada para: ${displaySeqName}`;
-                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                if (typeof window.showSyncNotification === 'function') {
+                    window.showSyncNotification(toastMsg, 'info', 4, `Destino: ${dest}`);
+                } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(toastMsg, 'info', 4, `Destino: ${dest}`);
                 }
                 if (window.syncQueueUI) {
                     window.syncQueueUI.fetchStatus();
-                    window.syncQueueUI.open();
                 }
                 if (typeof PipetaConsole !== 'undefined') {
                     PipetaConsole.log('sync', `[DESCARGA SERVER] Iniciada transferencia: ${displaySeqName} (${transferItems.length} ítems) -> ${dest}`, 'pending');
@@ -543,19 +564,30 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
         const data = await res.json();
         if (data.success) {
             if (e && e.target) {
-                e.target.innerHTML = '⏳ Descargando...';
-                e.target.style.opacity = '0.6';
-                e.target.style.pointerEvents = 'none';
+                const row = e.target.closest('.tree-node') || e.target.closest('.pipeta-block');
+                if (row) {
+                    const badges = row.querySelectorAll('.sync-badge-action, .sync-badge-inline');
+                    badges.forEach(b => {
+                        b.innerHTML = b.classList.contains('sync-badge-inline') ? '⏳' : '⏳ Descargando...';
+                        b.style.opacity = '0.6';
+                        b.style.pointerEvents = 'none';
+                    });
+                } else {
+                    e.target.innerHTML = '⏳ Descargando...';
+                    e.target.style.opacity = '0.6';
+                    e.target.style.pointerEvents = 'none';
+                }
             }
             const toastMsg = `Orden de descarga #${data.orderId.slice(-6)} encolada para: ${item.name}`;
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            if (typeof window.showSyncNotification === 'function') {
+                window.showSyncNotification(toastMsg, 'success', 4, `Destino: ${dest}`);
+            } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 settings.showToast(toastMsg, 'success', 4, `Destino: ${dest}`);
             } else {
                 alert(`✅ ${toastMsg}`);
             }
             if (window.syncQueueUI) {
                 window.syncQueueUI.fetchStatus();
-                window.syncQueueUI.open();
             }
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', `[DESCARGA DRIVE] Orden #${data.orderId.slice(-6)} encolada para Worker: ${item.name} (${typeLabel}) -> ${dest}`, 'pending');
@@ -576,6 +608,12 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
 
 async function requestUploadLocalItem(item, e, forcedTargetType) {
     if (e) e.stopPropagation();
+    const resolvedTarget = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
+    if (resolvedTarget === 'drive' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {
+        if (typeof PipetaConsole !== 'undefined') PipetaConsole.log('sync', 'Subida a Google Drive bloqueada por política de usuario.', 'warn');
+        alert("🔒 Acción sobre Google Drive bloqueada por permisos de tu usuario.");
+        return;
+    }
     const isDir = !!item.isDirectory || !!item.isDir;
     const typeLabel = isDir ? 'Carpeta' : (item.isSequence ? 'Secuencia' : 'Archivo');
     const targetType = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
@@ -621,17 +659,28 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
             const data = await res.json();
             if (data.success) {
                 if (e && e.target) {
-                    e.target.innerHTML = '⏳ Subiendo...';
-                    e.target.style.opacity = '0.6';
-                    e.target.style.pointerEvents = 'none';
+                    const row = e.target.closest('.tree-node') || e.target.closest('.pipeta-block');
+                    if (row) {
+                        const badges = row.querySelectorAll('.sync-badge-action, .sync-badge-inline');
+                        badges.forEach(b => {
+                            b.innerHTML = b.classList.contains('sync-badge-inline') ? '⏳' : '⏳ Subiendo...';
+                            b.style.opacity = '0.6';
+                            b.style.pointerEvents = 'none';
+                        });
+                    } else {
+                        e.target.innerHTML = '⏳ Subiendo...';
+                        e.target.style.opacity = '0.6';
+                        e.target.style.pointerEvents = 'none';
+                    }
                 }
                 const toastMsg = `Subida a Server Central iniciada para: ${item.name}`;
-                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                if (typeof window.showSyncNotification === 'function') {
+                    window.showSyncNotification(toastMsg, 'info', 4, `Destino: ${dest}`);
+                } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                     settings.showToast(toastMsg, 'info', 4, `Destino: ${dest}`);
                 }
                 if (window.syncQueueUI) {
                     window.syncQueueUI.fetchStatus();
-                    window.syncQueueUI.open();
                 }
                 if (typeof PipetaConsole !== 'undefined') {
                     PipetaConsole.log('sync', `[SUBIDA SERVER] Iniciada transferencia: ${item.name} (${transferItems.length} ítems) -> ${dest}`, 'pending');
@@ -653,7 +702,13 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
 
     // 2. SUBIDA A GOOGLE DRIVE (Vía Worker / Rclone)
     const src = item.path;
-    const dest = item.onlinePath || `Google Drive (${proj})`;
+    let dest = item.onlinePath;
+    if (!dest && typeof window.resolveLocalToOnlinePath === 'function') {
+        dest = window.resolveLocalToOnlinePath(src, proj);
+    }
+    if (!dest) {
+        dest = `Google Drive (${proj})`;
+    }
 
     const confirmed = await showSyncConfirmDialog({
         title: 'Subir a Google Drive',
@@ -691,7 +746,7 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
                 window.pipetaSyncCatalogLookup.byLocalPath.set(normLocal, {
                     name: item.name,
                     targetLocalPath: item.path,
-                    onlinePath: item.onlinePath || `Google Drive (${proj})`,
+                    onlinePath: dest,
                     isDir: isDir
                 });
                 const parent = normLocal.substring(0, normLocal.lastIndexOf('/'));
@@ -709,20 +764,31 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
             }
 
             if (e && e.target) {
-                e.target.innerHTML = '⏳ Subiendo...';
-                e.target.style.opacity = '0.6';
-                e.target.style.pointerEvents = 'none';
+                const row = e.target.closest('.tree-node') || e.target.closest('.pipeta-block');
+                if (row) {
+                    const badges = row.querySelectorAll('.sync-badge-action, .sync-badge-inline');
+                    badges.forEach(b => {
+                        b.innerHTML = b.classList.contains('sync-badge-inline') ? '⏳' : '⏳ Subiendo...';
+                        b.style.opacity = '0.6';
+                        b.style.pointerEvents = 'none';
+                    });
+                } else {
+                    e.target.innerHTML = '⏳ Subiendo...';
+                    e.target.style.opacity = '0.6';
+                    e.target.style.pointerEvents = 'none';
+                }
             }
 
             const toastMsg = `Orden de subida #${data.orderId.slice(-6)} encolada para: ${item.name}`;
-            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            if (typeof window.showSyncNotification === 'function') {
+                window.showSyncNotification(toastMsg, 'success', 4, `Origen: ${item.path}`);
+            } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 settings.showToast(toastMsg, 'success', 4, `Origen: ${item.path}`);
             } else {
                 alert(`✅ ${toastMsg}`);
             }
             if (window.syncQueueUI) {
                 window.syncQueueUI.fetchStatus();
-                window.syncQueueUI.open();
             }
             if (typeof PipetaConsole !== 'undefined') {
                 PipetaConsole.log('sync', `[SUBIDA DRIVE] Orden #${data.orderId.slice(-6)} encolada para Worker: ${item.name} desde ${item.path}`, 'pending');
@@ -884,7 +950,12 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
                         isDir: !!(d.isDirectory || d.isDir),
                         onlinePath: d.onlinePath || d.path,
                         targetLocalPath: d.targetLocalPath || (parentPath ? parentPath.replace(/\/+$/, '') + '/' + d.name : d.path),
-                        size: d.size || 0
+                        size: d.size || 0,
+                        hasPendingSync: !!d.hasPendingSync,
+                        pendingType: d.pendingType,
+                        pendingCount: d.pendingCount || 0,
+                        pendingUploadCount: d.pendingUploadCount || 0,
+                        pendingDownloadCount: d.pendingDownloadCount || 0
                     }));
                 }
             } catch (e) {}
@@ -974,14 +1045,35 @@ async function renderPipetaColumn(container, items, colIndex, containerId, paren
 
         // Capa de Sincronización
         if (syncActive) {
-            const inRemote = remoteChildrenByName.has(item.name.toLowerCase());
-            if (inRemote) {
+            const rMatch = remoteChildrenByName.get(item.name.toLowerCase());
+            if (rMatch) {
                 block.classList.add('sync-matched');
-                const okBadge = document.createElement('span');
-                okBadge.className = 'sync-badge-ok';
-                okBadge.innerText = '✓';
-                okBadge.title = syncMode === 'server' ? '✓ Idéntico en Servidor Central' : '✓ Sincronizado con Google Drive';
-                block.appendChild(okBadge);
+                if (item.isDirectory && rMatch.hasPendingSync) {
+                    const upC = rMatch.pendingUploadCount || (rMatch.pendingType === 'upload' ? (rMatch.pendingCount || 1) : 0);
+                    const downC = rMatch.pendingDownloadCount || (rMatch.pendingType === 'download' ? (rMatch.pendingCount || 1) : 0);
+                    if (upC > 0) {
+                        const upPend = document.createElement('span');
+                        upPend.className = 'sync-badge-action sync-badge-pending-folder';
+                        upPend.innerHTML = `⬆️* Subir (${upC})`;
+                        upPend.title = `* Contiene ${upC} elemento(s) pendientes de subir`;
+                        upPend.onclick = (e) => requestUploadLocalItem(item, e, syncMode);
+                        block.appendChild(upPend);
+                    }
+                    if (downC > 0) {
+                        const downPend = document.createElement('span');
+                        downPend.className = 'sync-badge-action sync-badge-pending-folder-down';
+                        downPend.innerHTML = `⬇️* Bajar (${downC})`;
+                        downPend.title = `* Contiene ${downC} elemento(s) pendientes de bajar`;
+                        downPend.onclick = (e) => requestDownloadGhostItem(rMatch, e, syncMode);
+                        block.appendChild(downPend);
+                    }
+                } else {
+                    const okBadge = document.createElement('span');
+                    okBadge.className = 'sync-badge-ok';
+                    okBadge.innerText = '✓';
+                    okBadge.title = syncMode === 'server' ? '✓ Idéntico en Servidor Central' : '✓ Sincronizado con Google Drive';
+                    block.appendChild(okBadge);
+                }
             } else {
                 block.classList.add('sync-pending-upload');
                 const upBtn = document.createElement('span');

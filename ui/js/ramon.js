@@ -13,6 +13,20 @@ const Ramon = {
     currentProcessFilter: 'ALL',
     currentStatusFilter: 'ALL',
 
+    // --- TELEMETRIA DE USUARIO ACTIVO ---
+    notifyTelemetryActiveUser: () => {
+        try {
+            const u = Ramon.session?.user;
+            const mode = Ramon.session?.mode || 'local';
+            const userLogin = mode === 'ramon' ? (u?.login || u?.username || '') : (u?.username || u?.laspUser || u?.login || '');
+            fetch('/api/telemetry/active-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: userLogin })
+            }).catch(() => {});
+        } catch (e) {}
+    },
+
     // --- INICIALIZACION ---
     init: async () => {
         console.log("[RAMON] Inicializando controlador de autenticación...");
@@ -31,6 +45,7 @@ const Ramon = {
             console.log(`[RAMON] Sesión recordada encontrada (${savedSession.mode}):`, savedSession.user.login || savedSession.user.username);
             Ramon.session = savedSession;
             Ramon.applySessionToHeader();
+            Ramon.notifyTelemetryActiveUser();
 
             // Restaurar tareas cacheadas desde sessionStorage si existen
             try {
@@ -311,6 +326,7 @@ const Ramon = {
 
                 Ramon.hideLoginModal();
                 Ramon.applySessionToHeader();
+                Ramon.notifyTelemetryActiveUser();
 
                 // Si el login fue contra Ramón remoto (WAN / puerto 8075), re-detectar entorno para ajustar UI de inmediato
                 if (res.server && (res.server.includes('8075') || res.server.includes('https://') || res.server.includes('ramon.lasp.co'))) {
@@ -376,6 +392,7 @@ const Ramon = {
 
             Ramon.hideLoginModal();
             Ramon.applySessionToHeader();
+            Ramon.notifyTelemetryActiveUser();
         } catch (e) {
             alert("Error al activar usuario local: " + e.message);
         }
@@ -385,6 +402,7 @@ const Ramon = {
     logout: () => {
         try { localStorage.removeItem('pipeta_session'); } catch(e){}
         Ramon.session = null;
+        Ramon.notifyTelemetryActiveUser();
         Ramon.showLoginModal();
     },
 

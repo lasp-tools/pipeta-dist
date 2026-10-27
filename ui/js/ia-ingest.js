@@ -14,11 +14,11 @@ window.hfOptions = {
 
 let hfExecutor = window.hfOptions.forceWorker ? 'worker' : 'local';
 const HF_JOB_UUID_REGEX = /([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
-window.hfToolbarOpen = localStorage.getItem('pipeta_hf_toolbar_open') === 'true';
+window.hfToolbarOpen = localStorage.getItem('pipeta_hf_toolbar_open_v2') === 'true';
 
 function toggleHfToolbarSuite() {
-    window.hfToolbarOpen = !(window.hfToolbarOpen === true || localStorage.getItem('pipeta_hf_toolbar_open') === 'true');
-    localStorage.setItem('pipeta_hf_toolbar_open', window.hfToolbarOpen);
+    window.hfToolbarOpen = !(window.hfToolbarOpen === true);
+    localStorage.setItem('pipeta_hf_toolbar_open_v2', window.hfToolbarOpen);
     const drawer = document.getElementById('hfToolbarDrawer');
     const btn = document.getElementById('hfToolbarToggleBtn');
     const arrow = document.getElementById('hfToolbarArrow');
@@ -49,6 +49,10 @@ function toggleHfToolbarSuite() {
 function updateIaHfToggleBtnUI() {
     const btn = document.getElementById('iaHfItemToggleBtn');
     if (!btn) return;
+    if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('ia_ingest_allow_higgsfield')) {
+        btn.style.display = 'none';
+        return;
+    }
 
     const activeItem = iaBatchQueue.find(i => iaSelectedIds.has(i.id)) || (iaSelectedIds.size === 0 ? iaBatchQueue[0] : null);
     if (!activeItem) {
@@ -78,6 +82,10 @@ function updateIaHfToggleBtnUI() {
 }
 
 async function toggleHiggsfieldOnSelectedItem() {
+    if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('ia_ingest_allow_higgsfield')) {
+        showIaAlert("🔒 Función de Higgsfield bloqueada por política de usuario", "#ff9800");
+        return;
+    }
     const targetItems = iaSelectedIds.size > 0 
         ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
         : (iaBatchQueue.length > 0 ? [iaBatchQueue[0]] : []);
@@ -316,6 +324,10 @@ async function handleHfDirectLoad(inputVal = null) {
 }
 
 async function handleForceHiggsfieldOnSelected() {
+    if (typeof window.checkUserPermission === 'function' && !window.checkUserPermission('ia_ingest_allow_higgsfield')) {
+        showIaAlert("🔒 Función de Higgsfield bloqueada por política de usuario", "#ff9800");
+        return;
+    }
     const selectedItems = iaBatchQueue.filter(i => iaSelectedIds.has(i.id));
     const itemsToProcess = selectedItems.length > 0 ? selectedItems : (iaBatchQueue.length === 1 ? [iaBatchQueue[0]] : []);
     const directInputVal = (document.getElementById('hfDirectInput')?.value || '').trim();
@@ -413,7 +425,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initIaDropZone();
     loadCustomTokens();
     updateHfForceWorkerUI();
-    setTimeout(() => {
+    updateAllIaTokenModulesUI();
+    switchIaWorkMode(window.iaWorkMode || 'simple');
+    setTimeout(async () => {
+        await checkIaDriveType();
         refreshIaHierarchy();
     }, 200);
 });
@@ -421,6 +436,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 1. GESTIÓN DE CONTEXTO DE SHOT (EXPLORADOR GUIADO / MANUAL) ---
 let iaContextMode = 'guided'; // 'guided' | 'manual'
 let iaOnlyMyTasks = localStorage.getItem('pipeta_ia_only_my_tasks') === 'true';
+let iaIsVsubs = false;
+let iaForceSmb = localStorage.getItem('pipeta_ia_force_smb') === 'true';
 let iaHierarchy = {
     episodes: [],
     scenes: [],
@@ -429,6 +446,51 @@ let iaHierarchy = {
 let iaSelectedEp = '';
 let iaSelectedSeq = '';
 let iaSelectedShot = '';
+
+async function checkIaDriveType() {
+    try {
+        const res = await fetch('/api/ia/drive-info');
+        const data = await res.json();
+        iaIsVsubs = !!data.isVsubs;
+        const btn = document.getElementById('iaForceSmbBtn');
+        if (btn) {
+            if (iaIsVsubs) {
+                btn.style.display = 'inline-flex';
+                updateIaForceSmbBtnUI();
+            } else {
+                btn.style.display = 'none';
+                iaForceSmb = false;
+            }
+        }
+    } catch(e) {
+        iaIsVsubs = false;
+    }
+}
+
+function toggleIaForceSmb() {
+    iaForceSmb = !iaForceSmb;
+    try { localStorage.setItem('pipeta_ia_force_smb', iaForceSmb); } catch(e){}
+    updateIaForceSmbBtnUI();
+    refreshIaHierarchy();
+}
+
+function updateIaForceSmbBtnUI() {
+    const btn = document.getElementById('iaForceSmbBtn');
+    if (!btn) return;
+    if (iaForceSmb && iaIsVsubs) {
+        btn.style.background = 'rgba(0, 229, 255, 0.25)';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+        btn.style.fontWeight = 'bold';
+        btn.title = 'Shots de Red (SMB): ACTIVO (Buscando desde Servidor Central / Catálogo de Red)';
+    } else {
+        btn.style.background = '#222';
+        btn.style.borderColor = '#444';
+        btn.style.color = '#aaa';
+        btn.style.fontWeight = 'normal';
+        btn.title = 'Shots de Red (SMB): INACTIVO (Buscando solo en tu Z: local)';
+    }
+}
 
 function updateIaMyTasksButtonUI() {
     const btn = document.getElementById('iaMyTasksFilterBtn');
@@ -575,11 +637,6 @@ function toggleIaOnlyMyTasks() {
     }
 }
 
-window.initIaIngest = function() {
-    updateIaMyTasksButtonUI();
-    refreshIaHierarchy();
-};
-
 function setIaContextMode(mode) {
     iaContextMode = mode;
     const guidedBox = document.getElementById('iaGuidedContextBox');
@@ -634,8 +691,8 @@ function getEffectiveIaPresets() {
         defaultTagRoleA: "start1001",
         defaultTagRoleB: "inp",
         defaultTagRoleC: "i2v",
-        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
-        motorsImage: ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"],
+        motorsImage: ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"],
         framings: ["FLL", "CRP"],
         tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
         tagsB: ["inp", "ups", "mask", "clean", "elem"],
@@ -662,8 +719,8 @@ function getEffectiveIaPresets() {
             defaultTagRoleA: typeof proj.iaPresets.defaultTagRoleA !== 'undefined' ? proj.iaPresets.defaultTagRoleA : baseIa.defaultTagRoleA,
             defaultTagRoleB: typeof proj.iaPresets.defaultTagRoleB !== 'undefined' ? proj.iaPresets.defaultTagRoleB : baseIa.defaultTagRoleB,
             defaultTagRoleC: typeof proj.iaPresets.defaultTagRoleC !== 'undefined' ? proj.iaPresets.defaultTagRoleC : baseIa.defaultTagRoleC,
-            motorsVideo: Array.isArray(proj.iaPresets.motorsVideo) && proj.iaPresets.motorsVideo.length > 0 ? proj.iaPresets.motorsVideo : (baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"]),
-            motorsImage: Array.isArray(proj.iaPresets.motorsImage) && proj.iaPresets.motorsImage.length > 0 ? proj.iaPresets.motorsImage : (baseIa.motorsImage || ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"]),
+            motorsVideo: Array.isArray(proj.iaPresets.motorsVideo) && proj.iaPresets.motorsVideo.length > 0 ? proj.iaPresets.motorsVideo : (baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"]),
+            motorsImage: Array.isArray(proj.iaPresets.motorsImage) && proj.iaPresets.motorsImage.length > 0 ? proj.iaPresets.motorsImage : (baseIa.motorsImage || ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"]),
             framings: Array.isArray(proj.iaPresets.framings) && proj.iaPresets.framings.length > 0 ? proj.iaPresets.framings : baseIa.framings,
             tagsA: Array.isArray(proj.iaPresets.tagsA) && proj.iaPresets.tagsA.length > 0 ? proj.iaPresets.tagsA : baseIa.tagsA,
             tagsB: Array.isArray(proj.iaPresets.tagsB) && proj.iaPresets.tagsB.length > 0 ? proj.iaPresets.tagsB : baseIa.tagsB,
@@ -679,8 +736,8 @@ function getEffectiveIaPresets() {
         defaultTagRoleA: typeof baseIa.defaultTagRoleA !== 'undefined' ? baseIa.defaultTagRoleA : "start1001",
         defaultTagRoleB: typeof baseIa.defaultTagRoleB !== 'undefined' ? baseIa.defaultTagRoleB : "inp",
         defaultTagRoleC: typeof baseIa.defaultTagRoleC !== 'undefined' ? baseIa.defaultTagRoleC : "i2v",
-        motorsVideo: baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "NBN2", "NB2P"],
-        motorsImage: baseIa.motorsImage || ["NB2P", "MJ", "FLUX", "SD2", "SD25", "GOMN"],
+        motorsVideo: baseIa.motorsVideo || ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"],
+        motorsImage: baseIa.motorsImage || ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"],
         framings: baseIa.framings || ["FLL", "CRP"],
         tagsA: baseIa.tagsA || ["start1001", "end1100", "f1001", "ref", "ref1050"],
         tagsB: baseIa.tagsB || ["inp", "ups", "mask", "clean", "elem"],
@@ -693,7 +750,7 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
     const effective = getEffectiveIaPresets();
     const isSimple = window.iaWorkMode === 'simple';
 
-    // 1. Motor Select (Agrupado en Video e Imagen)
+    // 1. Motor Select (Agrupado en Video e Imagen, sin emojis, nombres canónicos limpios)
     const motorSel = document.getElementById('tokMotorSelect');
     if (motorSel) {
         const curVal = motorSel.value;
@@ -701,35 +758,71 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
         const iList = effective.motorsImage || [];
 
         let html = '';
-        html += `<option value="auto">📐 Auto (Preset del Proyecto)</option>`;
-        html += `<option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>`;
+        html += `<option value="auto">Auto</option>`;
+        const canHf = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('ia_ingest_allow_higgsfield') : true;
+        if (canHf) {
+            html += `<option value="auto_hf">Higgsfield (metadata)</option>`;
+        }
+        html += `<option disabled>──────────</option>`;
         if (vList.length > 0) {
-            html += `<optgroup label="🎬 Motores de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+            html += `<optgroup label="Motores de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
         }
         if (iList.length > 0) {
-            html += `<optgroup label="🖼️ Motores de Imagen">` + iList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+            html += `<optgroup label="Motores de Imagen">` + iList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
         }
         if (!isSimple) {
-            html += `<option value="custom">✍️ Manual / Otro...</option>`;
+            html += `<option disabled>──────────</option>`;
+            html += `<option value="custom">Manual</option>`;
         }
         motorSel.innerHTML = html;
 
         const allMotors = [...vList, ...iList, 'auto', 'auto_hf'];
-        if (!forceDefaults && curVal && (allMotors.includes(curVal) || curVal === 'custom')) {
+        if (!forceDefaults && curVal && (allMotors.includes(curVal) || (!isSimple && curVal === 'custom'))) {
             motorSel.value = curVal;
         } else {
             motorSel.value = 'auto';
         }
     }
 
-    // 2. Framing Select
+    // 1b. Resolución Select (Manual solo en modo Avanzado)
+    const resSel = document.getElementById('tokResSelect');
+    if (resSel) {
+        const curRes = resSel.value;
+        const standardResolutions = [
+            { val: "FHD", label: "FHD (1920x1080)" },
+            { val: "UHD", label: "UHD (3840x2160)" },
+            { val: "HD", label: "HD (1280x720)" },
+            { val: "SQ1K", label: "SQ1K (1024x1024)" },
+            { val: "UW2K", label: "UW2K (2560x1080)" },
+            { val: "1344x768", label: "1344x768" },
+            { val: "1536x864", label: "1536x864" },
+            { val: "2206x946", label: "2206x946" }
+        ];
+        let rHtml = '<option value="auto">Auto</option><option value="auto_hf">Higgsfield (metadata)</option><option disabled>──────────</option>';
+        rHtml += standardResolutions.map(r => `<option value="${r.val}">${r.label}</option>`).join('');
+        if (!isSimple) {
+            rHtml += '<option disabled>──────────</option><option value="custom">Manual</option>';
+        }
+        resSel.innerHTML = rHtml;
+        const validRes = ['auto', 'auto_hf', ...standardResolutions.map(r => r.val)];
+        if (!forceDefaults && curRes && (validRes.includes(curRes) || (!isSimple && curRes === 'custom'))) {
+            resSel.value = curRes;
+        } else {
+            resSel.value = 'auto';
+        }
+    }
+
+    // 2. Framing Select (Sin emojis, manual solo en modo Avanzado)
     const framingSel = document.getElementById('tokFramingSelect');
     if (framingSel) {
         const curVal = framingSel.value;
         const list = effective.framings || ["FLL", "CRP"];
-        framingSel.innerHTML = list.map(f => `<option value="${f}">${f}</option>`).join('') +
-            (!isSimple ? `<option value="custom">✍️ Manual / Otro...</option>` : '');
-        if (!forceDefaults && curVal && (list.includes(curVal) || curVal === 'custom')) {
+        let html = list.map(f => `<option value="${f}">${f}</option>`).join('');
+        if (!isSimple) {
+            html += `<option disabled>──────────</option><option value="custom">Manual</option>`;
+        }
+        framingSel.innerHTML = html;
+        if (!forceDefaults && curVal && (list.includes(curVal) || (!isSimple && curVal === 'custom'))) {
             framingSel.value = curVal;
         } else if (effective.defaultFraming && list.includes(effective.defaultFraming)) {
             framingSel.value = effective.defaultFraming;
@@ -738,68 +831,72 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
         }
     }
 
-    // 3. Tag Level A
+    // 3. Tag Level A (Sin emojis, sin opción 'ninguno', manual permitido en Simple y Avanzado)
     const tagASel = document.getElementById('tokTagALevel');
     if (tagASel) {
         const curVal = tagASel.value;
-        const list = effective.tagsA || ["start1001", "end1100", "f1001", "ref", "ref1050"];
-        tagASel.innerHTML = `<option value="">- Nivel A (Ninguno) -</option>` +
-            list.map(t => `<option value="${t}">${t}</option>`).join('') +
-            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        const list = effective.tagsA || ["ref", "start1001", "end1100", "f1001", "ref1050"];
+        tagASel.innerHTML = list.map(t => `<option value="${t}">${t}</option>`).join('') +
+            `<option disabled>──────────</option><option value="custom">Manual</option>`;
         
-        const targetA = (typeof effective.defaultTagRoleA !== 'undefined') ? effective.defaultTagRoleA : 'start1001';
+        const targetA = (typeof effective.defaultTagRoleA !== 'undefined') ? effective.defaultTagRoleA : 'ref';
         if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
             tagASel.value = curVal;
         } else if (targetA && list.includes(targetA)) {
             tagASel.value = targetA;
-        } else {
-            tagASel.value = '';
+        } else if (list.length > 0) {
+            tagASel.value = list[0];
         }
     }
 
-    // 4. Tag Level B
+    // 4. Tag Level B (Sin emojis, sin opción 'ninguno', manual solo en modo Avanzado)
     const tagBSel = document.getElementById('tokTagBLevel');
     if (tagBSel) {
         const curVal = tagBSel.value;
         const list = effective.tagsB || ["inp", "ups", "mask", "clean", "elem"];
-        tagBSel.innerHTML = `<option value="">- Nivel B (Ninguno) -</option>` +
-            list.map(t => `<option value="${t}">${t}</option>`).join('') +
-            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        let html = list.map(t => `<option value="${t}">${t}</option>`).join('');
+        if (!isSimple) {
+            html += `<option disabled>──────────</option><option value="custom">Manual</option>`;
+        }
+        tagBSel.innerHTML = html;
         
         const targetB = (typeof effective.defaultTagRoleB !== 'undefined') ? effective.defaultTagRoleB : 'inp';
-        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
+        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || (!isSimple && curVal === 'custom'))) {
             tagBSel.value = curVal;
         } else if (targetB && list.includes(targetB)) {
             tagBSel.value = targetB;
-        } else {
-            tagBSel.value = '';
+        } else if (list.length > 0) {
+            tagBSel.value = list[0];
         }
     }
 
-    // 5. Tag Level C
+    // 5. Tag Level C (Sin emojis, sin opción 'ninguno', manual solo en modo Avanzado)
     const tagCSel = document.getElementById('tokTagCLevel');
     if (tagCSel) {
         const curVal = tagCSel.value;
         const list = effective.tagsC || ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"];
-        tagCSel.innerHTML = `<option value="">- Nivel C (Ninguno) -</option>` +
-            list.map(t => `<option value="${t}">${t}</option>`).join('') +
-            (!isSimple ? `<option value="custom">✍️ Manual</option>` : '');
+        let html = list.map(t => `<option value="${t}">${t}</option>`).join('');
+        if (!isSimple) {
+            html += `<option disabled>──────────</option><option value="custom">Manual</option>`;
+        }
+        tagCSel.innerHTML = html;
         
         const targetC = (typeof effective.defaultTagRoleC !== 'undefined') ? effective.defaultTagRoleC : 'i2v';
-        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || curVal === 'custom')) {
+        if (!forceDefaults && curVal !== undefined && (list.includes(curVal) || (!isSimple && curVal === 'custom'))) {
             tagCSel.value = curVal;
         } else if (targetC && list.includes(targetC)) {
             tagCSel.value = targetC;
-        } else {
-            tagCSel.value = '';
+        } else if (list.length > 0) {
+            tagCSel.value = list[0];
         }
     }
 }
 
 async function refreshIaHierarchy() {
     updateIaMyTasksButtonUI();
+    updateIaForceSmbBtnUI();
     populateIaTokenSelectsFromProject();
-    const { workRoot, mediaRoot } = getIaProjectRoots();
+    const { workRoot, mediaRoot, project } = getIaProjectRoots();
     const epSelect = document.getElementById('iaEpSelect');
     const seqSelect = document.getElementById('iaSeqSelect');
     const shotSelect = document.getElementById('iaShotSelect');
@@ -811,11 +908,21 @@ async function refreshIaHierarchy() {
     if (shotSelect) { shotSelect.innerHTML = '<option value="">-- Shot --</option>'; shotSelect.disabled = true; }
 
     try {
-        let epDir = workRoot + '/episodios';
-        let dirData = await API.fetchDir(epDir);
         let rawEpisodes = [];
-        if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
-            rawEpisodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        if (iaIsVsubs && iaForceSmb) {
+            const pName = project?.name || 'surf_love';
+            const catRes = await fetch(`/api/ia/catalog-hierarchy?project=${encodeURIComponent(pName)}&type=episodes`);
+            const catData = await catRes.json();
+            if (catData && catData.items && Array.isArray(catData.items)) {
+                rawEpisodes = catData.items;
+            }
+        }
+        if (rawEpisodes.length === 0) {
+            let epDir = workRoot + '/episodios';
+            let dirData = await API.fetchDir(epDir);
+            if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
+                rawEpisodes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            }
         }
 
         if (iaOnlyMyTasks) {
@@ -855,7 +962,7 @@ async function refreshIaHierarchy() {
 
 async function handleIaEpChange(ep) {
     iaSelectedEp = ep;
-    const { workRoot } = getIaProjectRoots();
+    const { workRoot, project } = getIaProjectRoots();
     const seqSelect = document.getElementById('iaSeqSelect');
     const shotSelect = document.getElementById('iaShotSelect');
 
@@ -870,11 +977,21 @@ async function handleIaEpChange(ep) {
     }
 
     try {
-        let seqDir = `${workRoot}/episodios/${ep}/secuencias`;
-        let dirData = await API.fetchDir(seqDir);
         let rawScenes = [];
-        if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
-            rawScenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        if (iaIsVsubs && iaForceSmb) {
+            const pName = project?.name || 'surf_love';
+            const catRes = await fetch(`/api/ia/catalog-hierarchy?project=${encodeURIComponent(pName)}&type=scenes&ep=${encodeURIComponent(ep)}`);
+            const catData = await catRes.json();
+            if (catData && catData.items && Array.isArray(catData.items)) {
+                rawScenes = catData.items;
+            }
+        }
+        if (rawScenes.length === 0) {
+            let seqDir = `${workRoot}/episodios/${ep}/secuencias`;
+            let dirData = await API.fetchDir(seqDir);
+            if (dirData && dirData.items && !dirData.error && dirData.exists !== false) {
+                rawScenes = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            }
         }
 
         if (iaOnlyMyTasks) {
@@ -909,7 +1026,7 @@ async function handleIaEpChange(ep) {
 
 async function handleIaSeqChange(seq) {
     iaSelectedSeq = seq;
-    const { workRoot } = getIaProjectRoots();
+    const { workRoot, project } = getIaProjectRoots();
     const shotSelect = document.getElementById('iaShotSelect');
 
     if (!shotSelect) return;
@@ -922,16 +1039,25 @@ async function handleIaSeqChange(seq) {
     }
 
     try {
-        let shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}/shots`;
-        let dirData = await API.fetchDir(shotDir);
-        if (dirData.error || !dirData.items || dirData.items.length === 0) {
-            shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}`;
-            dirData = await API.fetchDir(shotDir);
-        }
-
         let rawShots = [];
-        if (dirData && dirData.items) {
-            rawShots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+        if (iaIsVsubs && iaForceSmb) {
+            const pName = project?.name || 'surf_love';
+            const catRes = await fetch(`/api/ia/catalog-hierarchy?project=${encodeURIComponent(pName)}&type=shots&ep=${encodeURIComponent(iaSelectedEp)}&seq=${encodeURIComponent(seq)}`);
+            const catData = await catRes.json();
+            if (catData && catData.items && Array.isArray(catData.items)) {
+                rawShots = catData.items;
+            }
+        }
+        if (rawShots.length === 0) {
+            let shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}/shots`;
+            let dirData = await API.fetchDir(shotDir);
+            if (dirData.error || !dirData.items || dirData.items.length === 0) {
+                shotDir = `${workRoot}/episodios/${iaSelectedEp}/secuencias/${seq}`;
+                dirData = await API.fetchDir(shotDir);
+            }
+            if (dirData && dirData.items) {
+                rawShots = dirData.items.filter(i => i.isDirectory && !i.name.startsWith('.') && !i.name.startsWith('_')).map(i => i.name);
+            }
         }
 
         if (iaOnlyMyTasks) {
@@ -1033,12 +1159,14 @@ async function updateIaResolution() {
 
 // --- 2. GESTIÓN DE CUSTOM INPUTS Y CONSTRUCCIÓN DE TOKENS ---
 function getIaTokenValues(item = null, versionOverride = null) {
-    const shotIdOn = document.getElementById('tokShotIdToggle')?.checked;
-    const motorOn = document.getElementById('tokMotorToggle')?.checked;
-    const resOn = document.getElementById('tokResToggle')?.checked;
-    const framingOn = document.getElementById('tokFramingToggle')?.checked;
-    const tagOn = document.getElementById('tokTagToggle')?.checked;
-    const verOn = document.getElementById('tokVerToggle')?.checked;
+    const shotIdOn = document.getElementById('tokShotIdToggle')?.checked !== false;
+    const motorOn = document.getElementById('tokMotorToggle')?.checked !== false;
+    const resOn = document.getElementById('tokResToggle')?.checked !== false;
+    const framingOn = document.getElementById('tokFramingToggle')?.checked !== false;
+    const tagAOn = item && typeof item.tagAOn !== 'undefined' ? item.tagAOn : (document.getElementById('tokTagAToggle')?.checked !== false);
+    const tagBOn = item && typeof item.tagBOn !== 'undefined' ? item.tagBOn : (document.getElementById('tokTagBToggle')?.checked === true);
+    const tagCOn = item && typeof item.tagCOn !== 'undefined' ? item.tagCOn : (document.getElementById('tokTagCToggle')?.checked === true);
+    const verOn = document.getElementById('tokVerToggle')?.checked !== false;
 
     const shotId = document.getElementById('iaShotIdInput')?.value.trim() || '';
 
@@ -1120,7 +1248,7 @@ function getIaTokenValues(item = null, versionOverride = null) {
         framing = choice === 'custom' ? (framingCustomEl?.value.trim() || '') : choice;
     }
 
-    // 4. Tags Niveles A-B-C
+    // 4. Tags Niveles A-B-C (Independientes)
     let tagA = '', tagB = '', tagC = '';
     if (item) {
         tagA = item.tagAChoice === 'custom' ? (item.customTagA || '') : (item.tagAChoice || '');
@@ -1140,7 +1268,11 @@ function getIaTokenValues(item = null, versionOverride = null) {
         tagC = tagCSel?.value === 'custom' ? (tagCCustomEl?.value.trim() || '') : (tagCSel?.value || '');
     }
 
-    const tagRole = [tagA, tagB, tagC].filter(Boolean).join('-');
+    const tagParts = [];
+    if (tagAOn && tagA) tagParts.push(tagA);
+    if (tagBOn && tagB) tagParts.push(tagB);
+    if (tagCOn && tagC) tagParts.push(tagC);
+    const tagRole = tagParts.join('-');
 
     // 5. Versión
     const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
@@ -1151,7 +1283,7 @@ function getIaTokenValues(item = null, versionOverride = null) {
     if (motorOn && motor) prefixTokens.push(motor);
     if (resOn && resolution) prefixTokens.push(resolution);
     if (framingOn && framing) prefixTokens.push(framing);
-    if (tagOn && tagRole) prefixTokens.push(tagRole);
+    if (tagRole) prefixTokens.push(tagRole);
 
     const tokens = [...prefixTokens];
     if (verOn && version) tokens.push(version);
@@ -1163,6 +1295,74 @@ function getIaTokenValues(item = null, versionOverride = null) {
         version,
         ext: item?.ext || ''
     };
+}
+
+// --- NAME BUILDER TOKEN TOGGLE MODULES (FULL FILL BUTTONS) ---
+function toggleIaTokenModule(tokenKey) {
+    const keyMap = {
+        shotId: { toggle: 'tokShotIdToggle', card: 'tokCard_shotId', btn: 'tokBtn_shotId' },
+        motor: { toggle: 'tokMotorToggle', card: 'tokCard_motor', btn: 'tokBtn_motor' },
+        res: { toggle: 'tokResToggle', card: 'tokCard_res', btn: 'tokBtn_res' },
+        framing: { toggle: 'tokFramingToggle', card: 'tokCard_framing', btn: 'tokBtn_framing' },
+        tagA: { toggle: 'tokTagAToggle', card: 'tokCard_tagA', btn: 'tokBtn_tagA' },
+        tagB: { toggle: 'tokTagBToggle', card: 'tokCard_tagB', btn: 'tokBtn_tagB' },
+        tagC: { toggle: 'tokTagCToggle', card: 'tokCard_tagC', btn: 'tokBtn_tagC' },
+        ver: { toggle: 'tokVerToggle', card: 'tokCard_ver', btn: 'tokBtn_ver' }
+    };
+    const conf = keyMap[tokenKey];
+    if (!conf) return;
+
+    const toggle = document.getElementById(conf.toggle);
+    if (!toggle) return;
+
+    toggle.checked = !toggle.checked;
+    updateIaTokenModuleUI(tokenKey);
+
+    // Propagar a ítems seleccionados si es un switch de Tag
+    if (['tagA', 'tagB', 'tagC'].includes(tokenKey)) {
+        const propKey = tokenKey + 'On';
+        const targets = iaSelectedIds.size > 0 
+            ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
+            : iaBatchQueue.filter(i => i.checked);
+        targets.forEach(item => { item[propKey] = toggle.checked; });
+    }
+
+    updateIaPreview();
+}
+
+function updateIaTokenModuleUI(tokenKey) {
+    const keyMap = {
+        shotId: { toggle: 'tokShotIdToggle', card: 'tokCard_shotId', btn: 'tokBtn_shotId' },
+        motor: { toggle: 'tokMotorToggle', card: 'tokCard_motor', btn: 'tokBtn_motor' },
+        res: { toggle: 'tokResToggle', card: 'tokCard_res', btn: 'tokBtn_res' },
+        framing: { toggle: 'tokFramingToggle', card: 'tokCard_framing', btn: 'tokBtn_framing' },
+        tagA: { toggle: 'tokTagAToggle', card: 'tokCard_tagA', btn: 'tokBtn_tagA' },
+        tagB: { toggle: 'tokTagBToggle', card: 'tokCard_tagB', btn: 'tokBtn_tagB' },
+        tagC: { toggle: 'tokTagCToggle', card: 'tokCard_tagC', btn: 'tokBtn_tagC' },
+        ver: { toggle: 'tokVerToggle', card: 'tokCard_ver', btn: 'tokBtn_ver' }
+    };
+    const conf = keyMap[tokenKey];
+    if (!conf) return;
+
+    const toggle = document.getElementById(conf.toggle);
+    const card = document.getElementById(conf.card);
+    const btn = document.getElementById(conf.btn);
+    if (!toggle || !card || !btn) return;
+
+    const isOn = toggle.checked;
+    if (isOn) {
+        card.classList.add('ia-token-card-active');
+        card.classList.remove('ia-token-card-inactive');
+        btn.classList.add('active');
+    } else {
+        card.classList.remove('ia-token-card-active');
+        card.classList.add('ia-token-card-inactive');
+        btn.classList.remove('active');
+    }
+}
+
+function updateAllIaTokenModulesUI() {
+    ['shotId', 'motor', 'res', 'framing', 'tagA', 'tagB', 'tagC', 'ver'].forEach(updateIaTokenModuleUI);
 }
 
 // --- 3. ACTUALIZACIÓN DE PREVIEW Y TABLA ---
@@ -1282,7 +1482,7 @@ function detectMediaDimensions(item) {
     return new Promise((resolve) => {
         if (!item) return resolve(null);
         let src = '';
-        if (item.file) {
+        if (item.file && (item.file instanceof Blob || (typeof File !== 'undefined' && item.file instanceof File))) {
             try { src = URL.createObjectURL(item.file); } catch(e) {}
         } else if (item.originalPath && !item.originalPath.startsWith('[')) {
             src = `/api/ia/file-preview?path=${encodeURIComponent(item.originalPath)}`;
@@ -1398,7 +1598,7 @@ async function openCurrentPreviewExternally() {
     // Si tenemos activeItem.file en memoria y la ruta no es absoluta en disco
     const isAbsolute = localPath && (localPath.includes(':') || localPath.startsWith('\\\\')) && !localPath.startsWith('http');
     let fileDataBase64 = null;
-    if (!isAbsolute && activeItem.file) {
+    if (!isAbsolute && activeItem.file && (activeItem.file instanceof Blob || (typeof File !== 'undefined' && activeItem.file instanceof File))) {
         showIaAlert("⏳ Preparando video para abrir en Windows...", "#2196f3");
         fileDataBase64 = await new Promise((resolve) => {
             const reader = new FileReader();
@@ -1462,20 +1662,20 @@ function updateIaMediaPreview(activeItem) {
     }
 
     let previewUrl = '';
-    if (activeItem.file) {
+    if (activeItem.file && (activeItem.file instanceof Blob || (typeof File !== 'undefined' && activeItem.file instanceof File))) {
         try {
             previewUrl = URL.createObjectURL(activeItem.file);
         } catch(e) {
             console.error("Object URL error", e);
         }
+    } else if (activeItem.originalPath && (activeItem.originalPath.includes(':') || activeItem.originalPath.startsWith('/') || activeItem.originalPath.startsWith('\\\\')) && !activeItem.originalPath.startsWith('[')) {
+        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
     } else if (activeItem.destination) {
         previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.destination)}`;
-    } else if (activeItem.targetPath && !activeItem.targetPath.startsWith('[')) {
-        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.targetPath)}`;
-    } else if (activeItem.originalPath && (activeItem.originalPath.includes(':') || activeItem.originalPath.startsWith('/') || activeItem.originalPath.startsWith('\\\\'))) {
-        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.originalPath)}`;
     } else if (activeItem.sourceUrl) {
         previewUrl = activeItem.sourceUrl;
+    } else if (activeItem.targetPath && !activeItem.targetPath.startsWith('[')) {
+        previewUrl = `/api/ia/file-preview?path=${encodeURIComponent(activeItem.targetPath)}`;
     }
 
     const ext = (activeItem.ext || '').toLowerCase();
@@ -1549,22 +1749,22 @@ function handleIaFileSelect(input) {
                 originalPath: originalPath,
                 ext: ext,
                 subfolder: initialSubfolder,
-                motorChoice: detectedHfId ? 'auto_hf' : 'auto',
+                motorChoice: 'auto',
                 customMotor: '',
                 motor: itemMotor,
-                resChoice: detectedHfId ? 'auto_hf' : 'auto',
+                resChoice: 'auto',
                 customRes: '',
                 autoResTag: 'FHD',
-                framingChoice: detectedHfId ? 'FLL' : (document.getElementById('tokFramingSelect')?.value || 'FLL'),
+                framingChoice: (document.getElementById('tokFramingSelect')?.value || 'FLL'),
                 customFraming: '',
                 tagAChoice: '',
                 customTagA: '',
                 tagBChoice: '',
                 customTagB: '',
-                tagCChoice: detectedHfId ? 'v2v' : '',
+                tagCChoice: '',
                 customTagC: '',
                 version: '',
-                isHiggsfield: !!detectedHfId,
+                isHiggsfield: false,
                 hfJobId: detectedHfId || null,
                 higgsfieldData: null,
                 canonicalName: '',
@@ -1578,11 +1778,6 @@ function handleIaFileSelect(input) {
 
             // Autodetectar dimensiones para cada archivo en segundo plano
             autoDetectResolutionForActiveItem(newItem);
-
-            // Si el archivo proviene de Higgsfield (contiene UUID), consultar metadata en segundo plano
-            if (detectedHfId) {
-                enrichItemWithHiggsfield(newItem, detectedHfId);
-            }
         });
 
         document.getElementById('iaFileNameDisplay').innerText = `${iaBatchQueue.length} archivo(s) en lista`;
@@ -1590,6 +1785,156 @@ function handleIaFileSelect(input) {
         syncBuilderControlsWithSelection();
         updateIaPreview();
     }
+}
+
+function detectIaShotFromPath(p) {
+    if (!p) return null;
+    const cleanP = p.replace(/\\/g, '/');
+    const shotsMatch = cleanP.match(/\/shots\/([^\/]+)/i);
+    if (shotsMatch && shotsMatch[1] && !shotsMatch[1].startsWith('.')) {
+        return shotsMatch[1];
+    }
+    const segments = cleanP.split('/');
+    for (const seg of segments) {
+        if (/^[a-z0-9]+_[a-z0-9]+_[a-z0-9]+_\d{3,4}$/i.test(seg)) {
+            return seg;
+        }
+    }
+    return null;
+}
+
+async function enqueuePathsToIaBatch(paths = [], options = {}) {
+    if (!Array.isArray(paths) || paths.length === 0) return;
+
+    // 1. Detectar si alguna ruta pertenece a un shot de VFX
+    let detectedShotId = null;
+    for (const p of paths) {
+        const shot = detectIaShotFromPath(p);
+        if (shot) {
+            detectedShotId = shot;
+            break;
+        }
+    }
+
+    if (detectedShotId) {
+        handleIaShotChange(detectedShotId);
+        const parts = detectedShotId.split('_');
+        if (parts.length >= 4) {
+            const ep = parts[1];
+            const seq = parts[2];
+            iaSelectedEp = ep;
+            iaSelectedSeq = seq;
+            iaSelectedShot = detectedShotId;
+            const epSel = document.getElementById('iaEpSelect');
+            const seqSel = document.getElementById('iaSeqSelect');
+            const shotSel = document.getElementById('iaShotSelect');
+            if (epSel) epSel.value = ep;
+            if (seqSel) { seqSel.value = seq; seqSel.disabled = false; }
+            if (shotSel) { shotSel.value = detectedShotId; shotSel.disabled = false; }
+        }
+    }
+
+    const MEDIA_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'exr', 'tiff', 'tif', 'bmp']);
+
+    async function collectFiles(itemPath, isDirectory) {
+        if (!isDirectory) {
+            const ext = (itemPath.split('.').pop() || '').toLowerCase();
+            if (MEDIA_EXTS.has(ext)) {
+                return [itemPath];
+            }
+            return [];
+        }
+        try {
+            const res = await API.fetchDir(itemPath);
+            let files = [];
+            if (res && res.items && Array.isArray(res.items)) {
+                for (const child of res.items) {
+                    if (child.name.startsWith('.') || child.name.startsWith('_')) continue;
+                    const childFiles = await collectFiles(child.path, child.isDirectory);
+                    files = files.concat(childFiles);
+                }
+            }
+            return files;
+        } catch(e) {
+            return [];
+        }
+    }
+
+    let allMediaPaths = [];
+    for (const p of paths) {
+        const isDir = options.isDirMap ? !!options.isDirMap[p] : false;
+        const collected = await collectFiles(p, isDir);
+        allMediaPaths = allMediaPaths.concat(collected);
+    }
+
+    if (allMediaPaths.length === 0) {
+        showIaAlert("⚠️ No se encontraron archivos de imagen o video válidos en la selección", "#ff9800");
+        return;
+    }
+
+    const initialSubfolder = iaActiveSubfolders.has('wip') ? 'root'
+        : (iaActiveSubfolders.has('ref') ? 'ref'
+        : (iaActiveSubfolders.has('export') ? 'export' : 'root'));
+
+    for (const p of allMediaPaths) {
+        const normP = p.replace(/\\/g, '/');
+        const fileName = normP.split('/').pop();
+        const ext = '.' + (fileName.split('.').pop() || '').toLowerCase();
+        const isVideo = ['.mp4', '.mov'].includes(ext);
+        const effective = getEffectiveIaPresets();
+        const itemMotor = isVideo
+            ? (effective.defaultVideoEngine || 'SD2')
+            : (effective.defaultImageEngine || 'NB2P');
+        const detectedHfId = extractHfJobId(fileName);
+
+        const newItem = {
+            id: 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            file: null,
+            originalName: fileName,
+            originalPath: normP,
+            ext: ext,
+            subfolder: initialSubfolder,
+            motorChoice: 'auto',
+            customMotor: '',
+            motor: itemMotor,
+            resChoice: 'auto',
+            customRes: '',
+            autoResTag: 'FHD',
+            framingChoice: (document.getElementById('tokFramingSelect')?.value || 'FLL'),
+            customFraming: '',
+            tagAOn: true,
+            tagAChoice: '',
+            customTagA: '',
+            tagBOn: false,
+            tagBChoice: '',
+            customTagB: '',
+            tagCOn: false,
+            tagCChoice: '',
+            customTagC: '',
+            version: '',
+            isHiggsfield: false,
+            hfJobId: detectedHfId || null,
+            higgsfieldData: null,
+            canonicalName: '',
+            targetFolder: '',
+            targetPath: '',
+            checked: true,
+            status: 'Pendiente'
+        };
+        iaBatchQueue.push(newItem);
+        iaSelectedIds.add(newItem.id);
+        autoDetectResolutionForActiveItem(newItem);
+    }
+
+    const nameDisp = document.getElementById('iaFileNameDisplay');
+    const metaDisp = document.getElementById('iaFileMetaDisplay');
+    if (nameDisp) nameDisp.innerText = `${iaBatchQueue.length} archivo(s) en lista`;
+    if (metaDisp) metaDisp.innerText = `Haz clic en una fila abajo para ajustarla individualmente`;
+
+    renderIaBatchTable();
+    syncBuilderControlsWithSelection();
+    updateIaPreview();
+    showIaAlert(`✓ ${allMediaPaths.length} archivo(s) enviados a IA Ingest`, "#4caf50");
 }
 
 let iaLastSelectedIdx = -1;
@@ -1733,7 +2078,20 @@ function syncBuilderControlsWithSelection() {
             framingCustom.value = activeItem.customFraming || '';
         }
 
-        // Tags
+        // Tags (Switches y Niveles Independientes)
+        if (typeof activeItem.tagAOn !== 'undefined') {
+            const toggleA = document.getElementById('tokTagAToggle');
+            if (toggleA) { toggleA.checked = !!activeItem.tagAOn; updateIaTokenModuleUI('tagA'); }
+        }
+        if (typeof activeItem.tagBOn !== 'undefined') {
+            const toggleB = document.getElementById('tokTagBToggle');
+            if (toggleB) { toggleB.checked = !!activeItem.tagBOn; updateIaTokenModuleUI('tagB'); }
+        }
+        if (typeof activeItem.tagCOn !== 'undefined') {
+            const toggleC = document.getElementById('tokTagCToggle');
+            if (toggleC) { toggleC.checked = !!activeItem.tagCOn; updateIaTokenModuleUI('tagC'); }
+        }
+
         const tagASel = document.getElementById('tokTagALevel');
         const tagACustom = document.getElementById('tokTagACustom');
         if (tagASel) tagASel.value = activeItem.tagAChoice || '';
@@ -2146,7 +2504,7 @@ function populateCustomOptions(selectId, customArray = []) {
 }
 
 async function saveCustomTokensIfRequested() {
-    const saveChecked = document.getElementById('iaSaveCustomCheck')?.checked;
+    const saveChecked = localStorage.getItem('pipeta_ia_save_custom_tokens') !== 'false';
     const isDev = typeof settings !== 'undefined' && settings.devMode;
     if (!saveChecked && !isDev) return;
 
@@ -2275,7 +2633,7 @@ async function executeIaIngestBatch() {
                 sourceFilePath = item.originalPath;
             } 
             
-            if (item.file) {
+            if (item.file && (item.file instanceof Blob || (typeof File !== 'undefined' && item.file instanceof File))) {
                 fileDataBase64 = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => {
@@ -2420,10 +2778,11 @@ async function executeIaIngestBatch() {
 }
 
 // --- 8.5 WORK MODE SWITCHER (ADVANCED / SIMPLE) ---
-window.iaWorkMode = 'advanced';
+window.iaWorkMode = localStorage.getItem('pipeta_ia_work_mode') || 'simple';
 
 function switchIaWorkMode(mode) {
     window.iaWorkMode = mode;
+    localStorage.setItem('pipeta_ia_work_mode', mode);
     if (typeof updateHeaderTools === 'function') {
         updateHeaderTools('view-ia-ingest');
     }
@@ -2431,8 +2790,8 @@ function switchIaWorkMode(mode) {
     const isSimple = mode === 'simple';
     
     // 1. Target Context: Forzar Explorador y ocultar switcher de manual
-    const modeBtnContainer = document.getElementById('iaModeGuidedBtn')?.parentElement;
-    if (modeBtnContainer) modeBtnContainer.style.display = isSimple ? 'none' : 'flex';
+    const switcher = document.getElementById('iaTargetModeSwitcher') || document.getElementById('iaModeGuidedBtn')?.parentElement;
+    if (switcher) switcher.style.display = isSimple ? 'none' : 'flex';
     if (isSimple) setIaContextMode('guided');
 
     // 2. Watcher Container: Ocultar en Simple
@@ -2472,36 +2831,39 @@ function switchIaWorkMode(mode) {
         }
     }
 
-    const motorCustom = document.getElementById('tokMotorCustom');
-    if (motorCustom && isSimple) motorCustom.style.display = 'none';
-
-    const resCustom = document.getElementById('tokResCustom');
-    if (resCustom && isSimple) resCustom.style.display = 'none';
-
-    const framingCustom = document.getElementById('tokFramingCustom');
-    if (framingCustom && isSimple) framingCustom.style.display = 'none';
-
-    ['tokTagACustom', 'tokTagBCustom', 'tokTagCCustom'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el && isSimple) el.style.display = 'none';
-    });
-
-    const saveCustomContainer = document.getElementById('iaSaveCustomCheck')?.parentElement;
-    if (saveCustomContainer) saveCustomContainer.style.display = isSimple ? 'none' : 'flex';
-
     populateIaTokenSelectsFromProject();
 
+    // En Simple mode, ocultar custom inputs excepto Tag A
+    const motorCustom = document.getElementById('tokMotorCustom');
+    if (motorCustom) motorCustom.style.display = (!isSimple && document.getElementById('tokMotorSelect')?.value === 'custom') ? 'block' : 'none';
+
+    const resCustom = document.getElementById('tokResCustom');
+    if (resCustom) resCustom.style.display = (!isSimple && document.getElementById('tokResSelect')?.value === 'custom') ? 'block' : 'none';
+
+    const framingCustom = document.getElementById('tokFramingCustom');
+    if (framingCustom) framingCustom.style.display = (!isSimple && document.getElementById('tokFramingSelect')?.value === 'custom') ? 'block' : 'none';
+
+    const tagBCustom = document.getElementById('tokTagBCustom');
+    if (tagBCustom) tagBCustom.style.display = (!isSimple && document.getElementById('tokTagBLevel')?.value === 'custom') ? 'block' : 'none';
+
+    const tagCCustom = document.getElementById('tokTagCCustom');
+    if (tagCCustom) tagCCustom.style.display = (!isSimple && document.getElementById('tokTagCLevel')?.value === 'custom') ? 'block' : 'none';
+
+    // Tag A permite manual en ambos modos
+    const tagACustom = document.getElementById('tokTagACustom');
+    if (tagACustom) tagACustom.style.display = (document.getElementById('tokTagALevel')?.value === 'custom') ? 'block' : 'none';
+
     if (isSimple) {
-        // En Modo Simple, asegurar defaults de niveles B y C en vacío (Ninguno) y A según subcarpeta
-        const tagB = document.getElementById('tokTagBLevel');
-        if (tagB) tagB.value = '';
-        const tagC = document.getElementById('tokTagCLevel');
-        if (tagC) tagC.value = '';
+        // En Modo Simple, asegurar defaults de niveles B y C apagados (unchecked)
+        const tagBToggle = document.getElementById('tokTagBToggle');
+        if (tagBToggle) { tagBToggle.checked = false; updateIaTokenModuleUI('tagB'); }
+        const tagCToggle = document.getElementById('tokTagCToggle');
+        if (tagCToggle) { tagCToggle.checked = false; updateIaTokenModuleUI('tagC'); }
 
         const isRefSubfolder = typeof iaActiveSubfolders !== 'undefined' && iaActiveSubfolders.has('ref');
         const tagA = document.getElementById('tokTagALevel');
-        if (tagA) {
-            tagA.value = isRefSubfolder ? 'ref' : '';
+        if (tagA && !tagA.value) {
+            tagA.value = isRefSubfolder ? 'ref' : 'start1001';
         }
 
         showIaAlert("⚡ Modo Simple activo (Flujo directo y simplificado)", "#03A9F4");
@@ -2514,17 +2876,32 @@ function switchIaWorkMode(mode) {
 
 // --- 9. CHROME DOWNLOAD WATCHER CLIENT ---
 let iaWatcherTimer = null;
+window.iaWatcherActive = false;
+window.iaWatcherFolder = '';
+
+window.openIaIngestSettings = async function() {
+    if (typeof settings !== 'undefined') {
+        await settings.open();
+        settings.setCategory('ia_ingest');
+    }
+};
 
 async function toggleDownloadWatcher(active) {
     const statusEl = document.getElementById('iaWatcherStatus');
     const folderEl = document.getElementById('iaWatcherDetectedFolder');
+    const settingsFolderEl = document.getElementById('iaSettingsWatcherDetectedFolder');
+    const settingsToggle = document.getElementById('iaSettingsWatcherToggle');
+
+    window.iaWatcherActive = !!active;
 
     if (active) {
         try {
             const res = await fetch('/api/ia/start-download-watcher');
             const data = await res.json();
             if (data && data.success) {
+                window.iaWatcherFolder = data.folder;
                 if (folderEl) folderEl.innerHTML = `Ruta autodetectada: <b style="color:var(--accent);">${escapeHtml(data.folder)}</b>`;
+                if (settingsFolderEl) settingsFolderEl.innerText = data.folder;
                 if (statusEl) statusEl.innerHTML = `<span style="color:#4caf50;">● Monitoreo de descargas ACTIVO</span>`;
                 showIaAlert(`Captura automática activa en ${data.folder}`, "#4caf50");
                 if (!iaWatcherTimer) {
@@ -2669,11 +3046,14 @@ function initIaDropZone() {
     };
 }
 
-function initIaIngest() {
+async function initIaIngest() {
     initIaResizer();
     initIaDropZone();
     loadCustomTokens();
     updateHfForceWorkerUI();
+    updateAllIaTokenModulesUI();
+    switchIaWorkMode(window.iaWorkMode || 'simple');
+    await checkIaDriveType();
     refreshIaHierarchy();
     updateIaResolution();
 }
@@ -2681,6 +3061,13 @@ function initIaIngest() {
 window.initIaIngest = initIaIngest;
 window.initIaDropZone = initIaDropZone;
 window.refreshIaHierarchy = refreshIaHierarchy;
+window.checkIaDriveType = checkIaDriveType;
+window.toggleIaForceSmb = toggleIaForceSmb;
+window.openIaIngestSettings = openIaIngestSettings;
+window.enqueuePathsToIaBatch = enqueuePathsToIaBatch;
+window.detectIaShotFromPath = detectIaShotFromPath;
+window.toggleIaTokenModule = toggleIaTokenModule;
+window.updateIaTokenModuleUI = updateIaTokenModuleUI;
 window.setIaContextMode = setIaContextMode;
 window.handleIaEpChange = handleIaEpChange;
 window.handleIaSeqChange = handleIaSeqChange;

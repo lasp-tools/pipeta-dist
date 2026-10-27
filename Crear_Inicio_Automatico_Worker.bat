@@ -9,11 +9,14 @@ echo ======================================================================
 echo.
 
 set "SCRIPT_DIR=%~dp0"
-set "BAT_PATH=%SCRIPT_DIR%Launch_Pipeta_Worker.bat"
+set "BAT_PATH=%SCRIPT_DIR%Launch_Worker.bat"
+if not exist "%BAT_PATH%" (
+    set "BAT_PATH=%SCRIPT_DIR%Launch_Pipeta_Worker.bat"
+)
 
 if not exist "%BAT_PATH%" (
-    echo [ERROR] No se encontro el archivo:
-    echo   %BAT_PATH%
+    echo [ERROR] No se encontro el archivo Launch_Worker.bat en:
+    echo   %SCRIPT_DIR%
     echo.
     pause
     exit /b 1

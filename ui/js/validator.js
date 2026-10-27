@@ -37,7 +37,7 @@ class NamingValidator {
 
         this.container.innerHTML = `
             <div class="validator-header" onmousedown="namingValidator.startDrag(event)">
-                <span style="display:flex; align-items:center; gap:10px;">🛡️ Validador de Nomenclatura <span style="font-size:0.7em; color:#666;">v1.8</span></span>
+                <span style="display:flex; align-items:center; gap:10px;">Validador de Nomenclatura</span>
                 <div class="win-controls">
                     <button onclick="namingValidator.minimize(this)">-</button>
                     <button onclick="namingValidator.toggle()">×</button>
@@ -47,8 +47,8 @@ class NamingValidator {
                 <!-- CONTROLS -->
                 <div class="val-controls" style="flex-shrink:0;">
                     <div style="display:flex; gap:5px;">
-                        <button class="action-btn-small" style="flex:1;" onclick="namingValidator.runScan(true)">🌎 Scan ALL</button>
-                        <button class="action-btn-small" style="flex:1;" onclick="namingValidator.runScan(false)">📂 Scan Selection</button>
+                        <button class="action-btn-small" style="flex:1;" onclick="namingValidator.runScan(true)">Scan ALL</button>
+                        <button class="action-btn-small" style="flex:1;" onclick="namingValidator.runScan(false)">Scan Selection</button>
                     </div>
                     
                     <div style="display:flex; gap:15px; padding:10px 0; border-bottom:1px solid #333;">
@@ -151,19 +151,46 @@ class NamingValidator {
 
     // --- SCAN LOGIC ---
 
+    _getRoots() {
+        const isOnline = window.viewLocationMode === 'online' || window.viewLocationMode === 'drive';
+        const proj = (typeof settings !== 'undefined') ? settings.currentProject : null;
+        if (typeof getCurrentRoots === 'function') {
+            return getCurrentRoots();
+        }
+        return {
+            work: isOnline 
+                ? (proj?.roots?.onlineWork || proj?.roots?.work || '') 
+                : (proj?.roots?.work || (typeof ROOTS !== 'undefined' ? ROOTS.work : '')),
+            media: isOnline 
+                ? (proj?.roots?.onlineMedia || proj?.roots?.media || '') 
+                : (proj?.roots?.media || (typeof ROOTS !== 'undefined' ? ROOTS.media : ''))
+        };
+    }
+
     async runScan(isGlobal) {
-        if (typeof ROOTS === 'undefined') {
-            alert("Error: Configuración ROOTS no encontrada.");
-            return;
+        this.isLastScanGlobal = !!isGlobal;
+        const roots = this._getRoots();
+
+        const targets = [];
+        if (isGlobal) {
+            if (roots.work) targets.push({ path: roots.work.replace(/\\/g, '/'), label: 'Proyecto' });
+            if (roots.media) targets.push({ path: roots.media.replace(/\\/g, '/'), label: 'Media' });
+
+            if (targets.length === 0) {
+                alert("⚠️ No se encontraron las rutas de Proyecto ni Media del proyecto activo.");
+                return;
+            }
+            this.currentScanPath = targets.map(t => t.path).join(' ; ');
+        } else {
+            let startPath = selectedContextPath;
+            if (!startPath) {
+                alert("⚠️ Selecciona primero una carpeta en el árbol.");
+                return;
+            }
+            this.currentScanPath = startPath;
+            targets.push({ path: startPath.replace(/\\/g, '/'), label: 'Selección' });
         }
 
-        let startPath = isGlobal ? ROOTS.work : selectedContextPath;
-        if (!startPath) {
-            alert("⚠️ Selecciona primero una carpeta en el árbol.");
-            return;
-        }
-
-        this.currentScanPath = startPath;
         const list = document.getElementById('val-results-list');
         list.innerHTML = '';
 
@@ -172,7 +199,10 @@ class NamingValidator {
         statusEl.style.color = '#ff9800';
 
         if (typeof PipetaConsole !== 'undefined') {
-            PipetaConsole.log('audit', `[NAMING VALIDATOR] 🛡️ Escaneando nomenclatura en: ${startPath} (${isGlobal ? 'Proyecto completo' : 'Selección'})`, 'info');
+            const desc = isGlobal 
+                ? `Proyecto (${roots.work}) y Media (${roots.media})` 
+                : `Selección (${targets[0].path})`;
+            PipetaConsole.log('audit', `[NAMING VALIDATOR] Escaneando nomenclatura en: ${desc}`, 'info');
         }
 
         document.getElementById('val-fix-all').disabled = true;
@@ -184,14 +214,17 @@ class NamingValidator {
         await new Promise(r => setTimeout(r, 50));
 
         try {
-            await this.scanRecursively(startPath);
+            for (const t of targets) {
+                if (statusEl) statusEl.innerText = `Escaneando ${t.label}... (${this.scannedCount} items)`;
+                await this.scanRecursively(t.path);
+            }
 
             statusEl.innerText = `Completo. ${this.scannedCount} items analizados.`;
             statusEl.style.color = '#4caf50';
 
             if (typeof PipetaConsole !== 'undefined') {
                 const level = this.issues.length > 0 ? 'warn' : 'ok';
-                PipetaConsole.log('audit', `[NAMING VALIDATOR] 🛡️ Escaneo finalizado: ${this.scannedCount} elementos analizados, ${this.issues.length} no conformes encontrados.`, level);
+                PipetaConsole.log('audit', `[NAMING VALIDATOR] Escaneo finalizado: ${this.scannedCount} elementos analizados, ${this.issues.length} no conformes encontrados.`, level);
             }
 
             this.renderResults();
@@ -212,7 +245,8 @@ class NamingValidator {
             if (statusEl) statusEl.innerText = `Escaneando... (${this.scannedCount})`;
         }
 
-        const data = await API.fetchDir(path);
+        const fetchOpts = this.isLastScanGlobal ? {} : { force: true, localSource: 'z_local' };
+        const data = await API.fetchDir(path, fetchOpts);
 
         if (data.error || !data.items) return;
 
@@ -327,7 +361,10 @@ class NamingValidator {
     }
 
     navigateToItemPath(path) {
-        const isMedia = path.startsWith(ROOTS.media);
+        const roots = this._getRoots();
+        const normPath = (path || '').replace(/\\/g, '/').toLowerCase();
+        const normMedia = (roots.media || '').replace(/\\/g, '/').toLowerCase();
+        const isMedia = normMedia && normPath.startsWith(normMedia);
         const containerId = isMedia ? (currentBrowserMode === 'pipeta' ? 'pipeta-media-container' : 'tree-media')
             : (currentBrowserMode === 'pipeta' ? 'pipeta-project-container' : 'tree-work');
 
@@ -420,7 +457,8 @@ class NamingValidator {
 
             console.log(`Renaming: "${issue.path}" -> "${newPath}"`);
 
-            const res = await API.fs.rename(issue.path, newPath);
+            const curProj = (typeof settings !== 'undefined' && settings.currentProject) ? (settings.currentProject.name || settings.currentProject.id) : '';
+            const res = await API.fs.rename(issue.path, newPath, curProj);
             if (res.error) {
                 errors.push(`${issue.currentBytes}: ${res.error}`);
                 if (typeof PipetaConsole !== 'undefined') {
@@ -447,7 +485,7 @@ class NamingValidator {
         `;
 
         // Refresh MAIN Window logic behind modal
-        this.runScan(this.currentScanPath === ROOTS.work);
+        this.runScan(this.isLastScanGlobal);
         refreshCurrentView();
 
         // Auto Close Modal Only

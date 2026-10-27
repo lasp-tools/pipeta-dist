@@ -53,6 +53,9 @@ if exist "Z:\INTERNO\TOOLS\_DEPOT" (
     robocopy "Z:\INTERNO\TOOLS\_DEPOT" "S:\INTERNO\TOOLS\_DEPOT" /MIR /R:2 /W:2 /MT:16 /NFL /NDL /NJH /NJS
 )
 
+echo [5/5] Actualizando version oficial del estudio en _SYNC_CACHE...
+powershell -NoProfile -Command "$ver = (Get-Content '%SRC%\Iniciar_Pipeta.bat' | Select-String 'APP_VERSION=(v[0-9\.]+)').Matches.Groups[1].Value; if ($ver) { $json = '{\"version\": \"' + $ver + '\", \"updatedAt\": \"' + (Get-Date).ToString('o') + '\"}'; if (-not (Test-Path 'S:\_SYNC_CACHE')) { New-Item -ItemType Directory -Path 'S:\_SYNC_CACHE' -Force | Out-Null }; Set-Content -Path 'S:\_SYNC_CACHE\studio_version.json' -Value $json; if (Test-Path 'Z:\_SYNC_CACHE') { Set-Content -Path 'Z:\_SYNC_CACHE\studio_version.json' -Value $json }; Write-Host ('Version registrada: ' + $ver); }"
+
 echo.
 echo ============================================================
 echo   OK: Pipeta ha sido publicada con exito en S: (Z: del estudio)

@@ -521,6 +521,9 @@
             let payloadItem = {};
             if (action === 'upload') {
                 let onlineTarget = catItem?.onlinePath || null;
+                if (!onlineTarget && typeof window.resolveLocalToOnlinePath === 'function') {
+                    onlineTarget = window.resolveLocalToOnlinePath(localPath, proj);
+                }
                 if (isCopy && onlineTarget) {
                     onlineTarget = computeCopyPath(onlineTarget, isDir);
                 }

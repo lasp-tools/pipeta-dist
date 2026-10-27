@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pipeta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
-    <link rel="stylesheet" href="css/theme.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/layout.css">
-    <link rel="stylesheet" href="css/browser.css">
-    <link rel="stylesheet" href="css/asset-designer.css">
-    <link rel="stylesheet" href="css/shot-designer.css">
-    <link rel="stylesheet" href="css/sync-analyzer.css">
-    <link rel="stylesheet" href="css/console.css">
+    <link rel="stylesheet" href="css/theme.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/components.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/layout.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/browser.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/asset-designer.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/shot-designer.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.1.66">
+    <link rel="stylesheet" href="css/console.css?v=v1.1.66">
 </head>
 
 <body>
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.1.43</span>
+                <span class="app-version" id="appVersion">v1.1.66</span>
             </div>
         </div>
 
@@ -71,37 +71,6 @@
                 </button>
             </div>
 
-            <!-- DISK USAGE BARS (COLLAPSIBLE / DEFAULT HIDDEN) -->
-            <div class="disk-monitor" id="disk-monitor" style="display:none;">
-                <div class="disk-bars-inner">
-                    <div class="disk-bar-wrap" title="Disco Local (Z:)">
-                        <span class="disk-label">Z:</span>
-                        <div class="disk-bar-track">
-                            <div class="disk-bar-fill" id="disk-bar-z" style="width:0%"></div>
-                            <span class="disk-bar-text" id="disk-pct-z">—</span>
-                        </div>
-                    </div>
-                    <div class="disk-bar-wrap" title="Disco Online (G:)">
-                        <span class="disk-label">G:</span>
-                        <div class="disk-bar-track">
-                            <div class="disk-bar-fill" id="disk-bar-m" style="width:0%"></div>
-                            <span class="disk-bar-text" id="disk-pct-m">—</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- BOTON DISCOS DESPLEGABLE -->
-            <button type="button" class="control-btn" id="btnToggleDisks" title="Espacio en Discos (Z: / G:)" onclick="toggleDiskMonitor()">
-                <img src="icons/hdd.svg" class="btn-icon-svg" style="width:16px; height:16px;">
-            </button>
-
-            <button class="control-btn" title="Maximizar Canvas / Modo Pantalla Completa" onclick="toggleCanvasFullscreen()">
-                <span style="font-size:0.9rem;">🔲</span>
-            </button>
-            <button class="control-btn" title="Recargar Sistema (Reinicia Servidor + Sync)" onclick="reloadApp()">
-                <img src="icons/reload.svg" class="btn-icon-svg">
-            </button>
             <button class="control-btn danger" title="Cerrar Aplicación (Apagar Servidor)" onclick="closeApp()">
                 <img src="icons/close.svg" class="btn-icon-svg">
             </button>
@@ -420,8 +389,13 @@
                                         title="Mis Tareas (Filtrar solo mis shots asignados en Ramón)">
                                     <img src="icons/ramon.png" style="width:13px; height:13px; object-fit:contain; opacity:0.4; filter:grayscale(100%);">
                                 </button>
+                                <button id="iaForceSmbBtn" onclick="toggleIaForceSmb()" 
+                                        style="display:none; background:#222; border:1px solid #444; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:0.75rem; color:#aaa; line-height:1; height:20px;"
+                                        title="Forzar búsqueda de episodios y shots directamente desde el almacenamiento/catálogo de Red (SMB)">
+                                    📡 Red
+                                </button>
                             </div>
-                            <div style="display:flex; gap:3px; font-size:0.75rem;">
+                            <div id="iaTargetModeSwitcher" style="display:none; gap:3px; font-size:0.75rem;">
                                 <button id="iaModeGuidedBtn" onclick="setIaContextMode('guided')" style="padding:2px 7px; border:none; border-radius:3px; background:var(--accent); color:black; font-weight:bold; cursor:pointer;" title="Seleccionar desde estructura de carpetas de Pipeta">Explorador</button>
                                 <button id="iaModeManualBtn" onclick="setIaContextMode('manual')" style="padding:2px 7px; border:none; border-radius:3px; background:#333; color:#aaa; cursor:pointer;" title="Ingresar Shot ID a mano">Manual</button>
                             </div>
@@ -469,45 +443,22 @@
 
                         <hr style="border:none; border-top:1px solid #333; margin:2px 0;">
 
-                        <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">2. CARGAR ARCHIVOS</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">2. CARGAR ARCHIVOS</div>
+                            <button type="button" class="tool-btn" onclick="openIaIngestSettings()" style="width:24px; height:24px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:0.85rem; border-radius:4px; background:#222; border:1px solid #444; cursor:pointer;" title="Ajustes de IA Ingest y Descargas">⚙️</button>
+                        </div>
                         <div id="iaDropZone" style="border:2px dashed #444; border-radius:6px; padding:15px; text-align:center; background:#111; cursor:pointer;" onclick="document.getElementById('iaFileInput').click()">
                             <div style="font-size:1.5rem;">📥</div>
                             <div style="font-size:0.85rem; color:#ccc; margin-top:5px;" id="iaFileNameDisplay">Arrastra uno o varios archivos aquí</div>
                             <div style="font-size:0.75rem; color:#777; margin-top:3px;" id="iaFileMetaDisplay">Formatos: .png, .jpg, .mp4, .webp, .mov</div>
                             <input type="file" id="iaFileInput" multiple style="display:none;" onchange="handleIaFileSelect(this)">
                         </div>
-
-                        <!-- Watcher de Descargas de Chrome (Captura Automática a la Cola) -->
-                        <div style="background:#222; border:1px solid #333; border-radius:6px; padding:10px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.75rem; color:var(--accent); font-weight:bold;">CAPTURA AUTOMÁTICA DE DESCARGAS</span>
-                                <input type="checkbox" id="iaWatcherToggle" onchange="toggleDownloadWatcher(this.checked)">
-                            </div>
-                            <div style="font-size:0.72rem; color:#4caf50; font-family:monospace; margin-bottom:8px;" id="iaWatcherDetectedFolder" title="Ruta monitoreada automáticamente">
-                                Ruta monitoreada automáticamente
-                            </div>
-                            
-                            <button class="tool-btn" style="width:100%; padding:6px; font-size:0.75rem; background:#333; border-color:#555; text-align:center; color:#ffb74d; margin-bottom:4px;" onclick="openChromeSettingsDownloads()" title="Abre los ajustes de descargas de Chrome y copia la dirección al portapapeles">
-                                ⚙️ Abrir Ajustes Descargas Chrome
-                            </button>
-                            <div style="font-size:0.68rem; color:#888; line-height:1.2;">
-                                💡 <i>En la pestaña de Chrome desactiva <b>"Preguntar dónde se guardará cada archivo"</b> para descarga directa sin ventana.</i>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Panel Derecho: Builder Modular de Tokens (Soporta Personalización Manual) -->
                     <div style="flex:1; background:#181818; border:1px solid #333; border-radius:8px; padding:15px; display:flex; flex-direction:column; gap:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. NAME BUILDER</div>
-                                <button type="button" id="iaHfItemToggleBtn" class="tool-btn" 
-                                        style="width:26px; height:26px; padding:0; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; background:#222; border:1px solid #444; color:#888; cursor:pointer;" 
-                                        onclick="toggleHiggsfieldOnSelectedItem()" 
-                                        title="Higgsfield AI: Clic para forzar o alternar modo Higgsfield en este archivo">
-                                    <img src="icons/higgsfield.png" style="width:16px; height:16px; border-radius:2px; pointer-events:none;">
-                                </button>
-                            </div>
+                            <div style="font-weight:bold; color:var(--accent); font-size:0.9rem;">3. NAME BUILDER</div>
                             <div style="font-size:0.75rem; color:#888;" id="iaMultiSelectNotice">Selecciona ítems abajo para editar en lote</div>
                         </div>
 
@@ -515,46 +466,49 @@
                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:10px;">
                             
                             <!-- Token Shot ID -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">SHOT ID</span>
-                                    <input type="checkbox" id="tokShotIdToggle" checked onchange="updateIaPreview()">
-                                </div>
-                                <div id="tokShotIdVal" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">SURF_B03_066_1200</div>
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_shotId">
+                                <button type="button" id="tokBtn_shotId" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('shotId')">SHOT ID</button>
+                                <input type="checkbox" id="tokShotIdToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('shotId'); updateIaPreview();">
+                                <div id="tokShotIdVal" style="font-family:monospace; font-size:0.85rem; color:var(--accent); text-align:center; padding:3px 0;">SURF_B03_066_1200</div>
                             </div>
 
                             <!-- Token Motor -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">MOTOR</span>
-                                    <input type="checkbox" id="tokMotorToggle" checked onchange="updateIaPreview()">
-                                </div>
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_motor">
+                                <button type="button" id="tokBtn_motor" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('motor')">MOTOR</button>
+                                <input type="checkbox" id="tokMotorToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('motor'); updateIaPreview();">
                                 <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaMotorChange(this.value)">
-                                    <option value="auto">📐 Auto (Preset del Proyecto)</option>
-                                    <option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>
-                                    <option value="SD2">SD2 (Seedance v2.0)</option>
-                                    <option value="SD25">SD25 (Seedance v2.5)</option>
-                                    <option value="SD5P">SD5P (Seedream v5 Pro)</option>
-                                    <option value="HFMC">HFMC (Motion Control)</option>
-                                    <option value="VEO3">VEO3 (Google Veo v3.0)</option>
-                                    <option value="VO31">VO31 (Google Veo v3.1)</option>
-                                    <option value="GOMN">GOMN (Gemini / Veo Omni)</option>
-                                    <option value="NBN2">NBN2 (Nano Banana 2)</option>
-                                    <option value="NB2P">NB2P (Nano Banana 2 Pro)</option>
-                                    <option value="custom">✍️ Manual / Otro...</option>
+                                    <option value="auto">Auto</option>
+                                    <option value="auto_hf">Higgsfield (metadata)</option>
+                                    <option disabled>──────────</option>
+                                    <optgroup label="Motores de Video">
+                                        <option value="SD2">SD2</option>
+                                        <option value="SD25">SD25</option>
+                                        <option value="VEO3">VEO3</option>
+                                        <option value="VO31">VO31</option>
+                                        <option value="GOMN">GOMN</option>
+                                        <option value="HFMC">HFMC</option>
+                                    </optgroup>
+                                    <optgroup label="Motores de Imagen">
+                                        <option value="NB2P">NB2P</option>
+                                        <option value="NBN2">NBN2</option>
+                                        <option value="NBN21">NBN21</option>
+                                        <option value="MJ">MJ</option>
+                                        <option value="FLUX">FLUX</option>
+                                        <option value="GPT25S">GPT25S</option>
+                                        <option value="GPT25F">GPT25F</option>
+                                    </optgroup>
                                 </select>
                                 <input id="tokMotorCustom" class="prop-input" placeholder="Manual (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaMotorCustomChange(this.value)">
                             </div>
 
                             <!-- Token Res -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">RESOLUCIÓN</span>
-                                    <input type="checkbox" id="tokResToggle" checked onchange="updateIaPreview()">
-                                </div>
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_res">
+                                <button type="button" id="tokBtn_res" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('res')">RESOLUCIÓN</button>
+                                <input type="checkbox" id="tokResToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('res'); updateIaPreview();">
                                 <select id="tokResSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaResChange(this.value)">
-                                    <option value="auto">📐 Auto (Detección General / Píxeles)</option>
-                                    <option value="auto_hf">⚡ Auto Higgsfield (Metadata Job)</option>
+                                    <option value="auto">Auto</option>
+                                    <option value="auto_hf">Higgsfield (metadata)</option>
+                                    <option disabled>──────────</option>
                                     <option value="FHD">FHD (1920x1080)</option>
                                     <option value="UHD">UHD (3840x2160)</option>
                                     <option value="HD">HD (1280x720)</option>
@@ -563,86 +517,70 @@
                                     <option value="1344x768">1344x768</option>
                                     <option value="1536x864">1536x864</option>
                                     <option value="2206x946">2206x946</option>
-                                    <option value="custom">✍️ Manual / Otro...</option>
                                 </select>
                                 <input id="tokResCustom" class="prop-input" placeholder="Manual (ej: 1920x1200)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaResCustomChange(this.value)">
                             </div>
 
                             <!-- Token Framing -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">FRAMING</span>
-                                    <input type="checkbox" id="tokFramingToggle" checked onchange="updateIaPreview()">
-                                </div>
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_framing">
+                                <button type="button" id="tokBtn_framing" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('framing')">FRAMING</button>
+                                <input type="checkbox" id="tokFramingToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('framing'); updateIaPreview();">
                                 <select id="tokFramingSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaFramingChange(this.value)">
                                     <option value="FLL">FLL (Full / Canvas)</option>
                                     <option value="CRP">CRP (Crop / Parche)</option>
-                                    <option value="custom">✍️ Manual / Otro...</option>
                                 </select>
                                 <input id="tokFramingCustom" class="prop-input" placeholder="Manual (ej: PAN)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaFramingCustomChange(this.value)">
                             </div>
 
-                            <!-- Token Tag / Role -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px; grid-column: span 2;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">TAG / ROLE (Niveles A-B-C)</span>
-                                    <input type="checkbox" id="tokTagToggle" checked onchange="updateIaPreview()">
-                                </div>
-                                <div style="display:flex; gap:4px; margin-bottom:4px;">
-                                    <select id="tokTagALevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagAChange(this.value)">
-                                        <option value="">- Nivel A (Ref) -</option>
-                                        <option value="start1001">start1001</option>
-                                        <option value="end1100">end1100</option>
-                                        <option value="f1001">f1001</option>
-                                        <option value="ref">ref</option>
-                                        <option value="custom">✍️ Manual</option>
-                                    </select>
-                                    <select id="tokTagBLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagBChange(this.value)">
-                                        <option value="">- Nivel B (Compo) -</option>
-                                        <option value="inp">inp (Inpaint)</option>
-                                        <option value="ups">ups (Upscale)</option>
-                                        <option value="mask">mask (Máscara)</option>
-                                        <option value="clean">clean (Cleanplate)</option>
-                                        <option value="elem">elem (Elemento)</option>
-                                        <option value="custom">✍️ Manual</option>
-                                    </select>
-                                    <select id="tokTagCLevel" class="prop-input" style="padding:3px; font-size:0.75rem;" onchange="handleIaTagCChange(this.value)">
-                                        <option value="">- Nivel C (Proceso) -</option>
-                                        <option value="i2v" selected>i2v</option>
-                                        <option value="t2i">t2i</option>
-                                        <option value="i2i">i2i</option>
-                                        <option value="t2v">t2v</option>
-                                        <option value="v2v">v2v</option>
-                                        <option value="m2v">m2v</option>
-                                        <option value="custom">✍️ Manual</option>
-                                    </select>
-                                </div>
-                                <div style="display:flex; gap:4px;">
-                                    <input id="tokTagACustom" class="prop-input" placeholder="Manual A" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagACustomChange(this.value)">
-                                    <input id="tokTagBCustom" class="prop-input" placeholder="Manual B" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagBCustomChange(this.value)">
-                                    <input id="tokTagCCustom" class="prop-input" placeholder="Manual C" style="padding:2px 4px; font-size:0.75rem; display:none;" oninput="handleIaTagCCustomChange(this.value)">
-                                </div>
+                            <!-- Token Tag A (Ref) -->
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_tagA">
+                                <button type="button" id="tokBtn_tagA" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('tagA')">TAG A (Ref)</button>
+                                <input type="checkbox" id="tokTagAToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('tagA'); updateIaPreview();">
+                                <select id="tokTagALevel" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaTagAChange(this.value)">
+                                    <option value="ref">ref</option>
+                                    <option value="start1001">start1001</option>
+                                    <option value="end1100">end1100</option>
+                                    <option value="f1001">f1001</option>
+                                    <option disabled>──────────</option>
+                                    <option value="custom">Manual</option>
+                                </select>
+                                <input id="tokTagACustom" class="prop-input" placeholder="Manual A" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaTagACustomChange(this.value)">
+                            </div>
+
+                            <!-- Token Tag B (Compo) - Apagado por defecto -->
+                            <div class="ia-token-card ia-token-card-inactive" id="tokCard_tagB">
+                                <button type="button" id="tokBtn_tagB" class="ia-token-mod-btn" onclick="toggleIaTokenModule('tagB')">TAG B (Compo)</button>
+                                <input type="checkbox" id="tokTagBToggle" style="display:none;" onchange="updateIaTokenModuleUI('tagB'); updateIaPreview();">
+                                <select id="tokTagBLevel" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaTagBChange(this.value)">
+                                    <option value="inp">inp (Inpaint)</option>
+                                    <option value="ups">ups (Upscale)</option>
+                                    <option value="mask">mask (Máscara)</option>
+                                    <option value="clean">clean (Cleanplate)</option>
+                                    <option value="elem">elem (Elemento)</option>
+                                </select>
+                                <input id="tokTagBCustom" class="prop-input" placeholder="Manual B" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaTagBCustomChange(this.value)">
+                            </div>
+
+                            <!-- Token Tag C (Proceso) - Apagado por defecto -->
+                            <div class="ia-token-card ia-token-card-inactive" id="tokCard_tagC">
+                                <button type="button" id="tokBtn_tagC" class="ia-token-mod-btn" onclick="toggleIaTokenModule('tagC')">TAG C (Proceso)</button>
+                                <input type="checkbox" id="tokTagCToggle" style="display:none;" onchange="updateIaTokenModuleUI('tagC'); updateIaPreview();">
+                                <select id="tokTagCLevel" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaTagCChange(this.value)">
+                                    <option value="i2v">i2v</option>
+                                    <option value="t2i">t2i</option>
+                                    <option value="i2i">i2i</option>
+                                    <option value="t2v">t2v</option>
+                                    <option value="v2v">v2v</option>
+                                    <option value="m2v">m2v</option>
+                                </select>
+                                <input id="tokTagCCustom" class="prop-input" placeholder="Manual C" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaTagCCustomChange(this.value)">
                             </div>
 
                             <!-- Token Version -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">VERSIÓN</span>
-                                    <input type="checkbox" id="tokVerToggle" checked onchange="updateIaPreview()">
-                                </div>
-                                <input id="tokVerInput" class="prop-input" value="v001" style="padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50;" oninput="updateIaPreview()">
-                            </div>
-
-                            <!-- Carpeta de Salida /IA/ (Botones Turneables WIP / Ref / Export) -->
-                            <div style="background:#222; border:1px solid #333; border-radius:6px; padding:8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                    <span style="font-size:0.75rem; color:#aaa; font-weight:bold;">CARPETA DE SALIDA</span>
-                                </div>
-                                <div class="ia-subfolder-toggles" style="width:100%; display:flex; gap:4px;">
-                                    <button type="button" id="iaToggleBtnWip" class="ia-subfolder-toggle-btn active-wip" onclick="iaToggleSubfolder('wip')" style="flex:1;" title="Salida a raíz: /IA/ (Archivos de trabajo y generación directa)">WIP</button>
-                                    <button type="button" id="iaToggleBtnRef" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('ref')" style="flex:1;" title="Salida a subcarpeta: /IA/ref/ (Imágenes y videos de referencia)">Ref</button>
-                                    <button type="button" id="iaToggleBtnExport" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('export')" style="flex:1;" title="Salida a subcarpeta: /IA/export/ (Entregables y exportaciones finales)">Export</button>
-                                </div>
+                            <div class="ia-token-card ia-token-card-active" id="tokCard_ver">
+                                <button type="button" id="tokBtn_ver" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('ver')">VERSIÓN</button>
+                                <input type="checkbox" id="tokVerToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('ver'); updateIaPreview();">
+                                <input id="tokVerInput" class="prop-input" value="v001" style="padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50; text-align:center;" oninput="updateIaPreview()">
                             </div>
 
                         </div>
@@ -671,11 +609,19 @@
                             </div>
                         </div>
 
-                        <!-- Acciones Principales e Ingesta -->
-                        <div style="display:flex; justify-content:flex-end; align-items:center; gap:15px; margin-top:5px;">
-                            <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--accent); cursor:pointer;" title="Guarda de forma permanente cualquier token personalizado manual en presets/ia_custom_tokens.json al ingestar">
-                                <input type="checkbox" id="iaSaveCustomCheck" checked> 💾 Save after queue
-                            </label>
+                        <!-- Acciones Principales e Ingesta + Carpeta de Salida -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:15px; margin-top:5px; flex-wrap:wrap;">
+                            <!-- Carpeta de Salida /IA/ (Botones Turneables WIP / Ref / Export en la parte inferior izquierda) -->
+                            <div style="display:flex; align-items:center; gap:10px; background:#1c1c1c; border:1px solid #333; border-radius:6px; padding:4px 10px; height:40px; box-sizing:border-box;">
+                                <span style="font-size:0.75rem; font-weight:bold; color:#aaa; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">CARPETA DE SALIDA</span>
+                                <div class="ia-subfolder-toggles" style="display:flex; gap:5px; height:100%;">
+                                    <button type="button" id="iaToggleBtnWip" class="ia-subfolder-toggle-btn active-wip" onclick="iaToggleSubfolder('wip')" style="height:28px; padding:0 14px;" title="Salida a raíz: /IA/ (Archivos de trabajo y generación directa)">WIP</button>
+                                    <button type="button" id="iaToggleBtnRef" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('ref')" style="height:28px; padding:0 14px;" title="Salida a subcarpeta: /IA/ref/ (Imágenes y videos de referencia)">Ref</button>
+                                    <button type="button" id="iaToggleBtnExport" class="ia-subfolder-toggle-btn" onclick="iaToggleSubfolder('export')" style="height:28px; padding:0 14px;" title="Salida a subcarpeta: /IA/export/ (Entregables y exportaciones finales)">Export</button>
+                                </div>
+                            </div>
+
+                            <!-- Botón Ingestar -->
                             <button class="tool-btn" style="width:auto; padding:0 24px; height:40px; background:var(--accent); border-color:var(--accent); color:black; font-weight:bold; font-size:0.92rem;" onclick="executeIaIngestBatch()">
                                 🚀 Ingestar Lista Seleccionada
                             </button>
@@ -698,7 +644,6 @@
                             <span style="font-size:0.8rem; color:#aaa;" id="iaQueueTotalInfo">(0 archivos en lista)</span>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem; color:#ffb74d; border-color:#ffb74d;" onclick="handleForceHiggsfieldOnSelected()" title="Forzar consulta de metadata de Higgsfield para los elementos seleccionados">⚡ Forzar Higgsfield</button>
                             <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(true)">✔ Marcar Todos</button>
                             <button type="button" class="tool-btn" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaSetAllBatchCheck(false)">✖ Desmarcar Todos</button>
                             <button type="button" class="tool-btn danger" style="width:auto; padding:3px 10px; font-size:0.75rem;" onclick="iaClearCompletedBatch()">🧹 Limpiar Completados</button>
@@ -753,33 +698,33 @@
         style="display:none; top: 10vh; left: 15vw; width: 920px; height: 740px;"></div>
 
     <!-- SCRIPT MODULES -->
-    <script src="js/config.js?v=v1.1.43"></script>
-    <script src="js/state.js?v=v1.1.43"></script>
-    <script src="js/api.js?v=v1.1.43"></script>
-    <script src="js/ramon.js?v=v1.1.43"></script>
-    <script src="js/console.js?v=v1.1.43"></script>
-    <script src="js/selection.js?v=v1.1.43"></script>
-    <script src="js/inspector.js?v=v1.1.43"></script>
-    <script src="js/validator.js?v=v1.1.43"></script>
-    <script src="js/context-menu.js?v=v1.1.43"></script>
-    <script src="js/settings.js?v=v1.1.43"></script>
+    <script src="js/config.js?v=v1.1.66"></script>
+    <script src="js/state.js?v=v1.1.66"></script>
+    <script src="js/api.js?v=v1.1.66"></script>
+    <script src="js/ramon.js?v=v1.1.66"></script>
+    <script src="js/console.js?v=v1.1.66"></script>
+    <script src="js/selection.js?v=v1.1.66"></script>
+    <script src="js/inspector.js?v=v1.1.66"></script>
+    <script src="js/validator.js?v=v1.1.66"></script>
+    <script src="js/context-menu.js?v=v1.1.66"></script>
+    <script src="js/settings.js?v=v1.1.66"></script>
     <!-- Views -->
-    <script src="js/pipeta-view.js?v=v1.1.43"></script>
-    <script src="js/mirror.js?v=v1.1.43"></script>
-    <script src="js/split-view.js?v=v1.1.43"></script>
-    <script src="js/asset-designer.js?v=v1.1.43"></script>
-    <script src="js/shot-designer.js?v=v1.1.43"></script>
-    <script src="js/asset-creator.js?v=v1.1.43"></script>
-    <script src="js/shot-creator.js?v=v1.1.43"></script>
-    <script src="js/tutorials.js?v=v1.1.43"></script>
-    <script src="js/sync-analyzer.js?v=v1.1.43"></script>
-    <script src="js/sync-queue.js?v=v1.1.43"></script>
-    <script src="js/sync-conflict.js?v=v1.1.43"></script>
-    <script src="js/ia-ingest.js?v=v1.1.43"></script>
-    <script src="js/file-auditor.js?v=v1.1.43"></script>
-    <script src="js/shot-navigator.js?v=v1.1.43"></script>
+    <script src="js/pipeta-view.js?v=v1.1.66"></script>
+    <script src="js/mirror.js?v=v1.1.66"></script>
+    <script src="js/split-view.js?v=v1.1.66"></script>
+    <script src="js/asset-designer.js?v=v1.1.66"></script>
+    <script src="js/shot-designer.js?v=v1.1.66"></script>
+    <script src="js/asset-creator.js?v=v1.1.66"></script>
+    <script src="js/shot-creator.js?v=v1.1.66"></script>
+    <script src="js/tutorials.js?v=v1.1.66"></script>
+    <script src="js/sync-analyzer.js?v=v1.1.66"></script>
+    <script src="js/sync-queue.js?v=v1.1.66"></script>
+    <script src="js/sync-conflict.js?v=v1.1.66"></script>
+    <script src="js/ia-ingest.js?v=v1.1.66"></script>
+    <script src="js/file-auditor.js?v=v1.1.66"></script>
+    <script src="js/shot-navigator.js?v=v1.1.66"></script>
     <!-- Main Entry -->
-    <script src="js/main.js?v=v1.1.43"></script>
+    <script src="js/main.js?v=v1.1.66"></script>
 
 </body>
 

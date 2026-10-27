@@ -1846,9 +1846,11 @@ class FileAuditor {
         }
 
         const workPath = item.workPath || item.scriptPath || '';
-        const mediaPath = item.mediaPath || (item.renders && item.renders[0]?.path) || '';
-        const primaryPath = workPath || mediaPath;
+        const renderPath = (item.renders && item.renders[0]?.path) || '';
+        const mediaPath = item.mediaPath || (renderPath ? renderPath.replace(/\/[^\/]+$/, '') : '');
+        const primaryPath = workPath || renderPath || mediaPath;
         const hasTmp = item.hasTmpFiles || item.hasOnlyTmpBadFiles || (item.badFiles && item.badFiles.some(f => f.toLowerCase().endsWith('.tmp'))) || (item.tmpFiles && item.tmpFiles.length > 0);
+        const renderVer = (item.renders && item.renders[0]?.versionStr) || '';
 
         cm.innerHTML = `
             ${hasTmp ? `
@@ -1862,9 +1864,14 @@ class FileAuditor {
                     <span>📂</span> <span>Abrir Proyecto en Explorer</span>
                 </div>
             ` : ''}
-            ${mediaPath ? `
+            ${renderPath ? `
+                <div onclick="fileAuditor.openInExplorer('${renderPath.replace(/\\/g, '\\\\')}')" style="padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseenter="this.style.background='#2e2e2e'" onmouseleave="this.style.background='transparent'">
+                    <span>🎬</span> <span>Abrir Render (${renderVer}) en Explorer</span>
+                </div>
+            ` : ''}
+            ${mediaPath && mediaPath !== renderPath ? `
                 <div onclick="fileAuditor.openInExplorer('${mediaPath.replace(/\\/g, '\\\\')}')" style="padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:8px;" onmouseenter="this.style.background='#2e2e2e'" onmouseleave="this.style.background='transparent'">
-                    <span>🎬</span> <span>Abrir Media en Explorer</span>
+                    <span>📁</span> <span>Abrir Carpeta Media en Explorer</span>
                 </div>
             ` : ''}
             <div style="height:1px; background:#333; margin:4px 0;"></div>

@@ -30,6 +30,8 @@ class SyncQueueUI {
         this.processedCompletedOrderIds = new Set();
         this.isInitialFetchDone = false;
         this.sessionStartTime = Date.now();
+        this.lastQueriedUserKey = null;
+        this.inlineToastTimeout = null;
         this.isMaximized = false; // Por defecto siempre ventana flotante al abrir Pipeta
         this.prevBounds = null;
         this.onlyMyTasks = true;
@@ -109,8 +111,9 @@ class SyncQueueUI {
             }
             this.prevWorkerAlive = isAlive;
 
-            // Si es el primer ciclo de fetch exitoso, inicializar órdenes ya terminadas para no disparar refrescos masivos del pasado
-            if (!this.isInitialFetchDone && resOrders && resOrders.success) {
+            // Si es el primer ciclo de fetch exitoso o cambió de usuario, inicializar órdenes ya terminadas para no disparar refrescos masivos del pasado
+            const userKey = `${userInfo.username}_${this.onlyMyTasks}`;
+            if ((!this.isInitialFetchDone || this.lastQueriedUserKey !== userKey) && resOrders && resOrders.success) {
                 for (const o of this.orders) {
                     if (o.status === 'completed' || o.status === 'completed_with_errors' || o.status === 'failed') {
                         this.processedCompletedOrderIds.add(o.id);
@@ -118,18 +121,24 @@ class SyncQueueUI {
                     this.prevOrderStates.set(o.id, o.status);
                 }
                 this.isInitialFetchDone = true;
+                this.lastQueriedUserKey = userKey;
             }
 
             // Detect & log order transitions and trigger automatic folder refresh
+            const transferTypes = ['download', 'upload', 'server_download', 'server_upload', 'higgsfield_ingest'];
             for (const order of this.orders) {
                 const prev = this.prevOrderStates.get(order.id);
                 const isFinished = order.status === 'completed' || order.status === 'completed_with_errors';
+                const isTransfer = transferTypes.includes(order.type);
 
-                if (isFinished && !this.processedCompletedOrderIds.has(order.id)) {
+                if (isFinished && isTransfer && !this.processedCompletedOrderIds.has(order.id)) {
                     this.processedCompletedOrderIds.add(order.id);
-                    const completedTime = order.completedAt ? new Date(order.completedAt).getTime() : 0;
-                    const isStartupOrder = !this.isInitialFetchDone || (completedTime > 0 && completedTime < this.sessionStartTime) || (Date.now() - this.sessionStartTime < 4000);
-                    this.triggerOrderCompletionRefresh(order, isStartupOrder);
+                    // Solo activar actualización de árbol si fue una transición en vivo observada en esta sesión
+                    if (prev === 'pending' || prev === 'processing') {
+                        this.triggerOrderCompletionRefresh(order, false);
+                    }
+                } else if (isFinished && !this.processedCompletedOrderIds.has(order.id)) {
+                    this.processedCompletedOrderIds.add(order.id);
                 }
 
                 if (prev && prev !== order.status) {
@@ -206,13 +215,9 @@ class SyncQueueUI {
                 } catch(e) {}
             }
 
-            // 5. Refrescar la vista actual de carpetas locales de forma dirigida in-place
-            let domUpdated = false;
+            // 5. Refrescar la vista actual de carpetas locales de forma dirigida in-place (SIN wiping del árbol para evitar parpadeos)
             if (typeof window.updateTransferredItemsInDOM === 'function') {
-                domUpdated = await window.updateTransferredItemsInDOM(order);
-            }
-            if (!domUpdated && typeof refreshCurrentView === 'function') {
-                await refreshCurrentView(false);
+                await window.updateTransferredItemsInDOM(order);
             }
 
             // 6. Si Sync Analyzer está abierto, refrescar también su escaneo si aplica
@@ -222,7 +227,7 @@ class SyncQueueUI {
                 } catch (e) {}
             }
 
-            // 7. Notificación: si es orden previa de inicio, va a consola; si es durante el trabajo activo, mostrar toast
+            // 7. Notificación: si es orden previa de inicio va a consola; si es durante el trabajo activo, mostrar notificación inteligente
             if (isStartupOrder) {
                 if (typeof PipetaConsole !== 'undefined') {
                     const firstItemName = order.items?.[0]?.name || 'elemento';
@@ -230,15 +235,14 @@ class SyncQueueUI {
                     const nameStr = more > 0 ? `${firstItemName} (+${more})` : firstItemName;
                     PipetaConsole.log('sync', `[Inicio] Estado previo sincronizado: ${typeLabel} #${shortId} (${nameStr})`, 'ok');
                 }
-            } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+            } else {
                 const firstItemName = order.items?.[0]?.name || 'elemento';
                 const more = (order.items?.length || 1) - 1;
                 const nameStr = more > 0 ? `${firstItemName} (+${more})` : firstItemName;
-                settings.showToast(`✅ ${typeLabel} completada: ${nameStr}`, 'success', 3, 'Carpeta local y estado actualizados');
+                window.showSyncNotification(`✅ ${typeLabel} completada: ${nameStr}`, 'success', 3, 'Carpeta local y estado actualizados');
             }
         } catch (err) {
             console.error('[SYNC QUEUE] Error al actualizar estado post-transferencia:', err);
-            if (typeof refreshCurrentView === 'function') refreshCurrentView(true);
         }
     }
 
@@ -387,6 +391,15 @@ class SyncQueueUI {
                 <div style="display:flex; gap:10px;">
                     <span id="sync-queue-summary" style="color:#888; font-size:0.75rem;"></span>
                 </div>
+            </div>
+
+            <!-- INLINE NOTIFICATION BAR -->
+            <div id="sync-queue-toast-bar" style="display:none; background:#1e293b; border-bottom:1px solid #334155; padding:8px 14px; font-size:0.8rem; align-items:center; justify-content:space-between; transition:all 0.2s ease;">
+                <div id="sync-queue-toast-text" style="display:flex; flex-direction:column; gap:2px; color:#f1f5f9; min-width:0; overflow:hidden;">
+                    <span id="sync-queue-toast-title" style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+                    <span id="sync-queue-toast-sub" style="font-size:0.73rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+                </div>
+                <button onclick="document.getElementById('sync-queue-toast-bar').style.display='none'" style="background:transparent; border:none; color:#64748b; cursor:pointer; font-size:0.9rem; padding:0 4px; line-height:1; flex-shrink:0;">✕</button>
             </div>
 
             <!-- SUBNAV TABS -->
@@ -632,6 +645,14 @@ class SyncQueueUI {
                 typeLabel = 'INGESTA HIGGSFIELD';
                 typeIcon = '⚡';
                 typeColor = '#c6ff00';
+            } else if (order.type === 'refresh_folder') {
+                typeLabel = 'REFRESCO DE CARPETA';
+                typeIcon = '🔄';
+                typeColor = '#ffb74d';
+            } else if (order.type === 'query_higgsfield_job') {
+                typeLabel = 'CONSULTA HIGGSFIELD';
+                typeIcon = '⚡';
+                typeColor = '#c6ff00';
             }
 
             const progress = order.progress;
@@ -682,6 +703,17 @@ class SyncQueueUI {
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:6px;">
+                        ${order.type === 'refresh_folder' ? `
+                            <div style="background:#0c0e12; border:1px solid #1a202c; border-radius:4px; padding:8px 10px; font-size:0.78rem;">
+                                <div style="font-weight:bold; color:#ffb74d; display:flex; justify-content:space-between;">
+                                    <span>📁 Inspección de catálogo (${(order.targetType || 'drive').toUpperCase()})</span>
+                                    <span style="color:#888; font-size:0.7rem;">⚡ Carril Rápido</span>
+                                </div>
+                                <div style="font-size:0.7rem; color:#ccc; margin-top:4px; word-break:break-all; line-height:1.4;">
+                                    <span style="color:#888;">Ruta consultada:</span> ${order.path || 'Subcarpeta de proyecto'}
+                                </div>
+                            </div>
+                        ` : ''}
                         ${(order.items || []).map(it => {
                             const sizeStr = it.size ? ` (${formatQueueBytes(it.size)})` : '';
                             let pathInfoHtml = '';
@@ -783,6 +815,9 @@ class SyncQueueUI {
             else if (order.type === 'upload') typeLabel = '📤 Subida Drive';
             else if (order.type === 'server_download') typeLabel = '📥 Descarga Server';
             else if (order.type === 'server_upload') typeLabel = '📤 Subida Server';
+            else if (order.type === 'refresh_folder') typeLabel = '🔄 Refresco Carpeta';
+            else if (order.type === 'higgsfield_ingest') typeLabel = '⚡ Ingesta Higgsfield';
+            else if (order.type === 'query_higgsfield_job') typeLabel = '⚡ Consulta Higgsfield';
 
             const statusColor = isOk ? '#4caf50' : (isCancelled ? '#9e9e9e' : (isPartial ? '#ff9800' : '#f44336'));
             const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isCancelled ? `🛑 Cancelada (${order.cancelledBy || 'usuario'})` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló'));
@@ -792,7 +827,7 @@ class SyncQueueUI {
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                         <div style="display:flex; align-items:center; gap:6px;">
                             <b style="color:#fff;">${typeLabel}:</b>
-                            <span style="color:#aaa;">${(order.items || []).map(i => i.name).join(', ') || order.id}</span>
+                            <span style="color:#aaa;">${(order.items || []).map(i => i.name).join(', ') || order.path || order.id}</span>
                         </div>
                         <span style="font-size:0.75rem; font-weight:bold; color:${statusColor};">${statusLabel}</span>
                     </div>
@@ -837,7 +872,47 @@ class SyncQueueUI {
             document.onmouseup = null;
         };
     }
+
+    showInlineToast(message, type = 'info', durationSec = 3, subtext = '') {
+        const bar = document.getElementById('sync-queue-toast-bar');
+        if (!bar) return;
+        const titleEl = document.getElementById('sync-queue-toast-title');
+        const subEl = document.getElementById('sync-queue-toast-sub');
+        if (titleEl) titleEl.textContent = message;
+        if (subEl) {
+            subEl.textContent = subtext || '';
+            subEl.style.display = subtext ? 'block' : 'none';
+        }
+        if (type === 'success') {
+            bar.style.background = 'rgba(46, 125, 50, 0.25)';
+            bar.style.borderBottom = '1px solid #4caf50';
+            if (titleEl) titleEl.style.color = '#a5d6a7';
+        } else if (type === 'error') {
+            bar.style.background = 'rgba(244, 67, 54, 0.25)';
+            bar.style.borderBottom = '1px solid #f44336';
+            if (titleEl) titleEl.style.color = '#ef9a9a';
+        } else {
+            bar.style.background = 'rgba(0, 229, 255, 0.15)';
+            bar.style.borderBottom = '1px solid #00e5ff';
+            if (titleEl) titleEl.style.color = '#e0f7fa';
+        }
+        bar.style.display = 'flex';
+        if (this.inlineToastTimeout) clearTimeout(this.inlineToastTimeout);
+        if (durationSec > 0) {
+            this.inlineToastTimeout = setTimeout(() => {
+                if (bar) bar.style.display = 'none';
+            }, durationSec * 1000);
+        }
+    }
 }
+
+window.showSyncNotification = function(message, type = 'info', durationSec = 3, subtext = '') {
+    if (window.syncQueueUI && window.syncQueueUI.isVisible) {
+        window.syncQueueUI.showInlineToast(message, type, durationSec, subtext);
+    } else if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+        settings.showToast(message, type, durationSec, subtext);
+    }
+};
 
 // Inicializar cuando cargue el DOM
 if (document.readyState === 'loading') {

@@ -5,20 +5,25 @@ const open = require('open');
 const fs = require('fs-extra'); // Replaces 'fs' with 'fs-extra'
 
 const app = express();
+const SERVER_BOOT_TIME = Date.now();
+let hasActiveBrowserClient = false;
+
+// Middleware para detectar pestañas activas del navegador
+app.use((req, res, next) => {
+    const ua = req.headers['user-agent'] || '';
+    if (ua.includes('Mozilla') || ua.includes('Chrome') || ua.includes('Safari') || ua.includes('Edg')) {
+        hasActiveBrowserClient = true;
+    }
+    next();
+});
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.43";
+const VERSION = "v1.1.66";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
 // We use OS Temp dir because local files might be wiped by Robocopy /MIR from M: source
 const RESTART_FLAG_FILE = path.join(os.tmpdir(), 'pipeta_restarting.flag');
-let shouldOpenBrowser = true;
-
-if (fs.existsSync(RESTART_FLAG_FILE)) {
-    console.log("[INIT] Recovering from System Restart. Browser auto-open suppressed.");
-    shouldOpenBrowser = false;
-    try { fs.removeSync(RESTART_FLAG_FILE); } catch (e) { }
-}
+try { if (fs.existsSync(RESTART_FLAG_FILE)) fs.removeSync(RESTART_FLAG_FILE); } catch (e) { }
 
 const { spawn, execSync } = require('child_process');
 
@@ -66,14 +71,20 @@ function getLocalSyncCacheDir() {
 }
 
 // ================================================================
-// PIPETA SYSTEM LOGGER (Backend & Disk Persistence)
-// ================================================================
+// PIPETA SYSTEM LOGGER (Backend & Disk Persistence - Dual Mode)
 const LOGS_DIR = path.join(__dirname, '../logs');
+const REPORTS_DIR = path.join(LOGS_DIR, 'reports');
 fs.ensureDirSync(LOGS_DIR);
+fs.ensureDirSync(REPORTS_DIR);
 
 function getTodayLogPath() {
     const today = new Date().toISOString().split('T')[0];
     return path.join(LOGS_DIR, `pipeta_${today}.log`);
+}
+
+function getTodayErrorLogPath() {
+    const today = new Date().toISOString().split('T')[0];
+    return path.join(LOGS_DIR, `pipeta_errors_${today}.log`);
 }
 
 function writeServerLog(source, type, message, status = 'info') {
@@ -82,6 +93,12 @@ function writeServerLog(source, type, message, status = 'info') {
         const timeStr = now.toISOString().replace('T', ' ').substring(0, 23);
         const logLine = `[${timeStr}] [${source.toUpperCase()}] [${type.toUpperCase()}/${status.toUpperCase()}] ${message}\n`;
         fs.appendFileSync(getTodayLogPath(), logLine, 'utf8');
+
+        // Si es error o advertencia crítica, escribir al archivo exclusivo de errores
+        const isErr = status === 'error' || type === 'error' || status === 'critical' || status === 'CRITICAL' || status === 'ERROR';
+        if (isErr) {
+            fs.appendFileSync(getTodayErrorLogPath(), logLine, 'utf8');
+        }
     } catch (e) {}
 }
 
@@ -101,7 +118,7 @@ console.log = function(...args) {
 console.error = function(...args) {
     origConsoleError.apply(console, args);
     try {
-        const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        const msg = args.map(a => typeof a === 'object' ? (a.stack || JSON.stringify(a)) : String(a)).join(' ');
         writeServerLog('server', 'error', msg, 'error');
     } catch(e) {}
 };
@@ -114,21 +131,49 @@ console.warn = function(...args) {
     } catch(e) {}
 };
 
+// Global Node Process Protection
+process.on('uncaughtException', (err) => {
+    origConsoleError("[CRITICAL UNCAUGHT EXCEPTION]", err);
+    try {
+        writeServerLog('server', 'error', `[UNCAUGHT EXCEPTION] ${err.stack || err.message}`, 'critical');
+    } catch(e) {}
+});
+
+process.on('unhandledRejection', (reason) => {
+    origConsoleError("[UNHANDLED PROMISE REJECTION]", reason);
+    try {
+        const rStr = (reason && reason.stack) ? reason.stack : String(reason);
+        writeServerLog('server', 'error', `[UNHANDLED REJECTION] ${rStr}`, 'error');
+    } catch(e) {}
+});
+
 // --- LOGS API ---
 app.post('/api/logs/append', (req, res) => {
     try {
         const { entries } = req.body;
         if (Array.isArray(entries) && entries.length > 0) {
             const todayLog = getTodayLogPath();
-            let chunk = '';
+            const todayErrorLog = getTodayErrorLogPath();
+            let chunkAll = '';
+            let chunkErrors = '';
+
             for (const entry of entries) {
                 const timeStr = entry.isoTime ? entry.isoTime.replace('T', ' ').substring(0, 23) : new Date().toISOString().replace('T', ' ').substring(0, 23);
                 const source = (entry.source || 'ui').toUpperCase();
                 const type = (entry.type || 'log').toUpperCase();
                 const status = (entry.status || 'info').toUpperCase();
-                chunk += `[${timeStr}] [${source}] [${type}/${status}] ${entry.message}\n`;
+                const line = `[${timeStr}] [${source}] [${type}/${status}] ${entry.message}\n`;
+                chunkAll += line;
+
+                if (status === 'ERROR' || type === 'ERROR' || status === 'CRITICAL') {
+                    chunkErrors += line;
+                }
             }
-            fs.appendFileSync(todayLog, chunk, 'utf8');
+
+            fs.appendFileSync(todayLog, chunkAll, 'utf8');
+            if (chunkErrors.length > 0) {
+                fs.appendFileSync(todayErrorLog, chunkErrors, 'utf8');
+            }
         }
         res.json({ success: true });
     } catch (err) {
@@ -141,9 +186,120 @@ app.post('/api/logs/open-folder', (req, res) => {
     try {
         fs.ensureDirSync(LOGS_DIR);
         const { exec } = require('child_process');
-        exec(`explorer.exe "${LOGS_DIR.replace(/\//g, '\\')}"`);
+        exec(`explorer.exe "${LOGS_DIR.replace(/\//g, '\\\\')}"`);
         res.json({ success: true, path: LOGS_DIR });
     } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/logs/open-reports-folder', (req, res) => {
+    try {
+        fs.ensureDirSync(REPORTS_DIR);
+        const { exec } = require('child_process');
+        exec(`explorer.exe "${REPORTS_DIR.replace(/\//g, '\\\\')}"`);
+        res.json({ success: true, path: REPORTS_DIR });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/logs/open-errors-file', (req, res) => {
+    try {
+        const errorFile = getTodayErrorLogPath();
+        if (!fs.existsSync(errorFile)) {
+            fs.writeFileSync(errorFile, `[${new Date().toISOString()}] [SYSTEM/OK] No se registraron errores hoy.\n`, 'utf8');
+        }
+        const { exec } = require('child_process');
+        exec(`notepad.exe "${errorFile.replace(/\//g, '\\\\')}"`);
+        res.json({ success: true, path: errorFile });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/logs/generate-report', (req, res) => {
+    try {
+        const body = req.body || {};
+        fs.ensureDirSync(REPORTS_DIR);
+
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        const reportFileName = `reporte_${stamp}.txt`;
+        const reportFilePath = path.join(REPORTS_DIR, reportFileName);
+
+        const os = require('os');
+        const hostname = os.hostname();
+        const user = process.env.USERNAME || process.env.USER || 'desconocido';
+
+        // Leer errores recientes de hoy
+        const errorLogPath = getTodayErrorLogPath();
+        let errorLines = [];
+        if (fs.existsSync(errorLogPath)) {
+            errorLines = fs.readFileSync(errorLogPath, 'utf8').split('\n').filter(Boolean);
+        }
+
+        // Leer últimas 40 operaciones de hoy
+        const mainLogPath = getTodayLogPath();
+        let recentActions = [];
+        if (fs.existsSync(mainLogPath)) {
+            const all = fs.readFileSync(mainLogPath, 'utf8').split('\n').filter(Boolean);
+            recentActions = all.slice(-40);
+        }
+
+        let reportText = `======================================================================\n`;
+        reportText += `   REPORTE DE DIAGNÓSTICO & ERRORES - PIPETA ${VERSION}\n`;
+        reportText += `======================================================================\n`;
+        reportText += `Fecha / Hora:     ${now.toLocaleString('es-AR')}\n`;
+        reportText += `Equipo:           ${hostname}\n`;
+        reportText += `Usuario Windows:  ${user}\n`;
+        reportText += `Versión Pipeta:   ${VERSION}\n`;
+        reportText += `Proyecto Activo:  ${body.project || 'No definido'}\n`;
+        reportText += `Modo de Red:      ${body.locationMode || 'auto'}\n`;
+        reportText += `Disco Z Estado:   ${body.zInfo || 'Auto-detect'}\n`;
+        reportText += `Plataforma:       ${os.platform()} ${os.release()} (${os.arch()})\n`;
+        reportText += `----------------------------------------------------------------------\n\n`;
+
+        if (body.lastError) {
+            reportText += `[ÚLTIMO ERROR REGISTRADO EN UI]:\n`;
+            reportText += `${body.lastError}\n\n`;
+        }
+
+        reportText += `[ERRORES REGISTRADOS HOY (${errorLines.length})]:\n`;
+        if (errorLines.length === 0) {
+            reportText += `  (No se encontraron errores registrados en el log de hoy)\n\n`;
+        } else {
+            reportText += errorLines.slice(-30).map(l => `  ${l}`).join('\n') + `\n\n`;
+        }
+
+        reportText += `[BREADCRUMBS: ÚLTIMAS ${recentActions.length} ACCIONES PREVIAS]:\n`;
+        if (recentActions.length === 0) {
+            reportText += `  (Sin actividad registrada)\n\n`;
+        } else {
+            reportText += recentActions.map(l => `  ${l}`).join('\n') + `\n\n`;
+        }
+
+        reportText += `======================================================================\n`;
+        reportText += `FIN DEL REPORTE - Archivo: ${reportFilePath}\n`;
+        reportText += `======================================================================\n`;
+
+        fs.writeFileSync(reportFilePath, reportText, 'utf8');
+
+        // Abrir la carpeta en explorer seleccionando el archivo
+        try {
+            const { exec } = require('child_process');
+            exec(`explorer.exe /select,"${reportFilePath.replace(/\//g, '\\\\')}"`);
+        } catch(e) {}
+
+        res.json({
+            success: true,
+            filePath: reportFilePath,
+            filename: reportFileName,
+            content: reportText
+        });
+    } catch (err) {
+        origConsoleError("[LOGS] Error generating report:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -177,11 +333,301 @@ app.get('/api/logs/recent', (req, res) => {
     }
 });
 
+// ================================================================
+// PIPETA CLIENT TELEMETRY & FLEET REGISTRATION (Mecanismo A)
+// ================================================================
+let activeRamonUser = '';
+try {
+    const lastUserFile = path.join(getLocalSyncCacheDir(), 'last_ramon_user.json');
+    if (fs.existsSync(lastUserFile)) {
+        const uData = fs.readJsonSync(lastUserFile);
+        if (uData && uData.user) {
+            activeRamonUser = String(uData.user).trim();
+        }
+    }
+} catch (e) {}
+
+function getAllLocalIps() {
+    const out = [];
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) out.push(iface.address);
+            }
+        }
+    } catch (e) {}
+    return out;
+}
+
+function getPrimaryLocalIp() {
+    // Prioridad: placa principal del estudio (206) > Nonstop (106) > cualquier 192.168.* (ej. 200) > otra
+    const ips = getAllLocalIps();
+    const pick = ips.find(a => a.startsWith('192.168.206.'))
+        || ips.find(a => a.startsWith('192.168.106.'))
+        || ips.find(a => a.startsWith('192.168.'))
+        || ips[0];
+    if (pick) return pick;
+    return getPrimaryLocalIpLegacy();
+}
+
+function getPrimaryLocalIpLegacy() {
+    try {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    if (iface.address.startsWith('192.168.')) {
+                        return iface.address;
+                    }
+                }
+            }
+        }
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    return iface.address;
+                }
+            }
+        }
+    } catch (e) {}
+    return '127.0.0.1';
+}
+
+function getSedeFromIp(ip) {
+    if (!ip) return 'Remoto';
+    if (ip.startsWith('192.168.206.') || ip.startsWith('192.168.200.')) return 'Munro';
+    if (ip.startsWith('192.168.106.')) return 'Nonstop';
+    return 'Remoto';
+}
+
+let isRemoteUpdating = false;
+function executeRemoteUpdate() {
+    if (isRemoteUpdating) return;
+    isRemoteUpdating = true;
+    console.log('[PIPETA REMOTE UPDATE] 🚨 Solicitud de actualización remota recibida desde Pipeta Server. Ejecutando actualizador...');
+    try {
+        const updaterBat = path.join(__dirname, '..', 'Actualizar_Pipeta_desde_Red.bat');
+        const fallbackBat = 'C:\\TOOLS\\APPS\\Pipeta\\Actualizar_Pipeta_desde_Red.bat';
+        const targetBat = fs.existsSync(updaterBat) ? updaterBat : (fs.existsSync(fallbackBat) ? fallbackBat : null);
+        if (targetBat) {
+            const { spawn } = require('child_process');
+            const child = spawn('cmd.exe', ['/c', 'start', '""', targetBat], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            child.unref();
+            setTimeout(() => {
+                process.exit(0);
+            }, 1500);
+        } else {
+            console.error('[PIPETA REMOTE UPDATE ERROR] No se encontró Actualizar_Pipeta_desde_Red.bat');
+        }
+    } catch(err) {
+        console.error('[PIPETA REMOTE UPDATE ERROR]', err);
+    }
+}
+
+
+let lastConfigSyncTimestamp = 0;
+
+async function syncConfigsFromMasterNetwork() {
+    console.log('[CONFIG SYNC] ⚙️ Sincronizando presets, proyectos y permisos desde el servidor maestro...');
+    const localPresets = path.join(__dirname, '../presets');
+    const zPresets = 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets';
+    const sPresets = 'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets';
+    fs.ensureDirSync(localPresets);
+
+    let bundleDownloaded = false;
+    // 1. Intentar descargar el bundle maestro por HTTP desde Pipeta Server (0 SMB)
+    try {
+        const resp = await fetch('http://192.168.206.121:3005/api/server/presets/bundle', {
+            signal: AbortSignal.timeout(4000)
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.success && data.bundle) {
+                const b = data.bundle;
+                const targetDirs = [localPresets];
+                if (fs.existsSync('Z:\\INTERNO\\TOOLS')) targetDirs.push(zPresets);
+                if (fs.existsSync('S:\\INTERNO\\TOOLS')) targetDirs.push(sPresets);
+
+                for (const td of targetDirs) {
+                    try {
+                        fs.ensureDirSync(td);
+                        if (b['users_config.json']) fs.writeJsonSync(path.join(td, 'users_config.json'), b['users_config.json'], { spaces: 2 });
+                        if (b['pipeline_config.json']) fs.writeJsonSync(path.join(td, 'pipeline_config.json'), b['pipeline_config.json'], { spaces: 2 });
+                        if (b['status_config.json']) fs.writeJsonSync(path.join(td, 'status_config.json'), b['status_config.json'], { spaces: 2 });
+                        if (b['Projects']) {
+                            const ptd = path.join(td, 'Projects');
+                            fs.ensureDirSync(ptd);
+                            for (const [pfn, pcontent] of Object.entries(b['Projects'])) {
+                                fs.writeJsonSync(path.join(ptd, pfn), pcontent, { spaces: 2 });
+                            }
+                        }
+                    } catch(dErr) {}
+                }
+                bundleDownloaded = true;
+                console.log('[CONFIG SYNC] ✅ Configuraciones maestras hidratadas por HTTP desde Pipeta Server en local y Z/S.');
+            }
+        }
+    } catch(httpErr) {}
+
+    // 2. Si no se pudo por HTTP, usar fallback mediante Robocopy desde S:/Z:
+    if (!bundleDownloaded) {
+        const candidateMasterDirs = [
+            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
+            'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
+            '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets'
+        ];
+
+        let foundMaster = null;
+        for (const d of candidateMasterDirs) {
+            if (fs.existsSync(path.join(d, 'users_config.json'))) {
+                foundMaster = d;
+                break;
+            }
+        }
+
+        if (foundMaster && foundMaster.toLowerCase() !== localPresets.toLowerCase()) {
+            try {
+                const { execSync } = require('child_process');
+                execSync(`robocopy "${foundMaster}" "${localPresets}" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS`, { timeout: 15000 });
+                console.log(`[CONFIG SYNC] ✅ Presets y configuraciones actualizados desde ${foundMaster}`);
+            } catch(e) {}
+        }
+    }
+
+    // 3. Sincronizar catálogo modular de proyectos si el módulo está disponible
+    try {
+        if (catalogGenerator && typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+            catalogGenerator.syncLocalCacheFromNetwork(null);
+            console.log('[CONFIG SYNC] ✅ Catálogos de proyectos sincronizados.');
+        }
+    } catch(e) {}
+
+    lastConfigSyncTimestamp = Date.now();
+    return true;
+}
+
+async function sendClientTelemetryPing() {
+    try {
+        const hostname = os.hostname() || process.env.COMPUTERNAME || 'unknown';
+        const ip = getPrimaryLocalIp();
+        const windowsUser = process.env.USERNAME || (os.userInfo && os.userInfo().username) || '';
+        const sede = getSedeFromIp(ip);
+
+        const payload = {
+            hostname: hostname,
+            ip: ip,
+            version: VERSION,
+            user: activeRamonUser || '',
+            ramonUser: activeRamonUser || '',
+            windowsUser: windowsUser,
+            osUser: windowsUser,
+            sede: sede,
+            uptime: Math.round(process.uptime()),
+            lastConfigSync: lastConfigSyncTimestamp,
+            ips: getAllLocalIps(),
+            pid: process.pid,
+            source: 'client_ping'
+        };
+
+        let httpSuccess = false;
+        try {
+            const resp = await fetch('http://192.168.206.121:3005/api/server/telemetry/client-ping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(2500)
+            });
+            if (resp.ok) {
+                httpSuccess = true;
+                try {
+                    const data = await resp.json();
+                    if (data && (data.command === 'update' || data.command === 'reinstall')) {
+                        executeRemoteUpdate();
+                    } else if (data && data.command === 'sync_config') {
+                        syncConfigsFromMasterNetwork().then(() => {
+                            setTimeout(() => {
+                                sendClientTelemetryPing().catch(() => {});
+                            }, 800);
+                        });
+                    }
+                } catch(e) {}
+            }
+        } catch (httpErr) {
+            // Error de conexión o timeout con Pipeta Server (192.168.206.121:3005)
+        }
+
+        // Comprobar si hay bandera de actualización en red
+        try {
+            const flagDirs = ['Z:/_SYNC_CACHE/flags', '//192.168.206.116/Z/_SYNC_CACHE/flags'];
+            for (const fd of flagDirs) {
+                const fPath = path.join(fd, `update_${hostname.toLowerCase()}.flag`);
+                if (fs.existsSync(fPath)) {
+                    try { fs.removeSync(fPath); } catch(e) {}
+                    executeRemoteUpdate();
+                    break;
+                }
+            }
+        } catch(e) {}
+
+        // Fallback resiliente a carpeta compartida de red si HTTP falla
+        if (!httpSuccess) {
+            try {
+                const fileName = `client_${hostname}.json`;
+                const netDirs = [
+                    'Z:/_SYNC_CACHE/clients',
+                    '//192.168.206.116/Z/_SYNC_CACHE/clients'
+                ];
+                for (const dir of netDirs) {
+                    try {
+                        fs.ensureDirSync(dir);
+                        fs.writeJsonSync(path.join(dir, fileName), payload, { spaces: 2 });
+                        break;
+                    } catch (dErr) {}
+                }
+            } catch (diskErr) {}
+        }
+    } catch (err) {}
+}
+
+app.post('/api/telemetry/active-user', (req, res) => {
+    try {
+        const user = (req.body && req.body.user) ? String(req.body.user).trim() : '';
+        activeRamonUser = user;
+        try {
+            const lastUserFile = path.join(getLocalSyncCacheDir(), 'last_ramon_user.json');
+            fs.writeJsonSync(lastUserFile, { user: activeRamonUser, updatedAt: new Date().toISOString() });
+        } catch (e) {}
+        sendClientTelemetryPing().catch(() => {});
+        res.json({ success: true, activeRamonUser });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // --- API ENDPOINTS ---
+
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', version: VERSION, uptime: process.uptime() });
+});
+
+
+app.post('/api/app/sync-configs', async (req, res) => {
+    try {
+        const ok = await syncConfigsFromMasterNetwork();
+        res.json({ success: ok, lastConfigSync: lastConfigSyncTimestamp });
+    } catch(err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 app.get('/api/version', (req, res) => {
     res.json({
         version: VERSION,
+        serverBootTime: SERVER_BOOT_TIME,
         rclone: { available: rcloneAvailable, version: rcloneVersion }
     });
 });
@@ -276,7 +722,7 @@ async function runEnvironmentDetection() {
     // 2. Si no fue subst, verificar recurso de red con comando net use dirigido específicamente a Z:
     if (zInfo.isRealServer) {
         try {
-            const netOut = execSync('cmd.exe /c "net use z:"', { encoding: 'utf8', timeout: 1500 });
+            const netOut = execSync('cmd.exe /c "net use z:"', { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
             const m = netOut.match(/(?:Nombre remoto|Remote name)\s+([^\r\n]+)/i);
             if (m) {
                 zInfo = { isRealServer: true, type: 'network', target: m[1].trim() };
@@ -737,26 +1183,28 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
 
         // Invalidar caché en memoria del servidor
         if (typeof serverDirCache !== 'undefined') {
-            serverDirCache.delete(safeP.toLowerCase());
+            serverDirCache.clear();
         }
         if (typeof catalogGenerator.clearMemoryCaches === 'function') {
             catalogGenerator.clearMemoryCaches();
+        }
+
+        // Si Z: es el servidor de red real y la carpeta existe físicamente, actualizar también el sub-catálogo de servidor
+        if (!isExternal && cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function' && fs.existsSync(safeP)) {
+            try {
+                const srvModularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
+                if (catType === 'server' && srvModularRes && srvModularRes.success) {
+                    return res.json(srvModularRes);
+                }
+            } catch (localModularErr) {
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
+            }
         }
 
         // 1. Si es Server:
         if (catType === 'server') {
             if (isExternal) {
                 return res.status(404).json({ success: false, isExternal: true, error: 'Catálogo de servidor no disponible en modo remoto' });
-            }
-            if (cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
-                try {
-                    const modularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
-                    if (modularRes && modularRes.success) {
-                        return res.json(modularRes);
-                    }
-                } catch (localModularErr) {
-                    console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
-                }
             }
         }
 
@@ -1325,6 +1773,30 @@ app.post('/api/sync/request-upload', async (req, res) => {
         }
 
         const isServer = transferType === 'server' || type === 'server_upload';
+
+        // Sanitizar onlinePath para órdenes de subida a Drive si faltan o si se enviaron rutas locales
+        const sanitizedItems = items.map(it => {
+            const itemCopy = { ...it };
+            if (!isServer) {
+                const currentOnline = itemCopy.onlinePath || itemCopy.targetOnlinePath;
+                const isAlreadyDrive = currentOnline && (
+                    currentOnline.toLowerCase().startsWith('g:/') ||
+                    currentOnline.toLowerCase().includes('unidades compartidas') ||
+                    currentOnline.toLowerCase().startsWith('lasp-drive:')
+                );
+                if (!isAlreadyDrive) {
+                    const localP = itemCopy.localPath || itemCopy.path || itemCopy.targetLocalPath;
+                    const resolvedOnline = (typeof catalogGenerator.resolveLocalToOnlinePath === 'function')
+                        ? catalogGenerator.resolveLocalToOnlinePath(localP, project)
+                        : null;
+                    if (resolvedOnline) {
+                        itemCopy.onlinePath = resolvedOnline;
+                    }
+                }
+            }
+            return itemCopy;
+        });
+
         const orderId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const priority = Math.min(100, Math.max(1, Number(req.body.priority) || 50));
         const orderData = {
@@ -1335,7 +1807,7 @@ app.post('/api/sync/request-upload', async (req, res) => {
             createdAt: new Date().toISOString(),
             status: isServer ? 'processing' : 'pending',
             priority,
-            items
+            items: sanitizedItems
         };
 
         const filePath = saveOrderInCandidateDirs(orderId, orderData);
@@ -1943,29 +2415,60 @@ app.get('/api/fs/list', (req, res) => {
         if (requestedPath) {
             let safeP = decodeURIComponent(requestedPath).replace(/\\/g, '/');
             const lowerSafeP = safeP.toLowerCase();
+            const cacheModeKey = `${localSource || source || onlineEngine || 'local'}:${lowerSafeP}`;
 
-            // 1. Mem cache fast-path para listados de red o locales (0 ms SMB)
-            if (!forceRefresh && serverDirCache.has(lowerSafeP)) {
-                const cached = serverDirCache.get(lowerSafeP);
+            // 1. Mem cache fast-path para listados de red o locales (0 ms SMB), separado por origen (local vs drive_catalog vs server_catalog)
+            if (!forceRefresh && !localSource && !source && serverDirCache.has(cacheModeKey)) {
+                const cached = serverDirCache.get(cacheModeKey);
                 if (Date.now() - cached.time < SERVER_CACHE_TTL) {
                     return res.json({ path: safeP, items: cached.items, exists: true, fromCache: true });
                 }
             }
 
-            // 2. AUTO-CATÁLOGO SERVER (DB EN RAM):
-            // Si el equipo tiene Z: mapeado por red SMB (puestos del estudio) y no se fuerza refresco físico,
-            // consultar PRIMERO el catálogo del servidor en memoria (0 ms SMB, respuesta instantánea de la DB).
+            // 2. LISTADO HÍBRIDO SMB + CATÁLOGO SERVER (DB EN RAM):
+            // Si el equipo tiene Z: mapeado por red SMB, combinamos la lectura rápida de nombres del directorio físico (readdirSync sin statSync)
+            // con los metadatos precalculados (size, mtime) del catálogo en memoria para garantizar visibilidad en tiempo real de carpetas nuevas (0 ms statSync).
             const isNetworkZ = (typeof catalogGenerator.isZDriveNetwork === 'function')
                 ? catalogGenerator.isZDriveNetwork()
                 : true;
 
-            if (isNetworkZ && !forceRefresh && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive') {
-                if (typeof catalogGenerator.listFromModularCatalog === 'function') {
-                    const serverItems = catalogGenerator.listFromModularCatalog(safeP, 'server');
-                    if (serverItems !== null) {
-                        serverDirCache.set(lowerSafeP, { time: Date.now(), items: serverItems });
-                        return res.json({ path: safeP, items: serverItems, exists: true, fromCatalog: true, isServer: true });
-                    }
+            if (isNetworkZ && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive' && localSource !== 'server_catalog' && source !== 'server') {
+                const serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
+                    ? catalogGenerator.listFromModularCatalog(safeP, 'server')
+                    : null;
+
+                if (fs.existsSync(safeP)) {
+                    try {
+                        const diskEntries = fs.readdirSync(safeP, { withFileTypes: true });
+                        const srvMap = new Map();
+                        if (Array.isArray(serverItems)) {
+                            for (const si of serverItems) {
+                                if (si && si.name) srvMap.set(si.name.toLowerCase(), si);
+                            }
+                        }
+                        const mergedItems = diskEntries.map(entry => {
+                            const isDir = entry.isDirectory();
+                            const fullItemPath = path.join(safeP, entry.name).replace(/\\/g, '/');
+                            const catMatch = srvMap.get(entry.name.toLowerCase());
+                            return {
+                                name: entry.name,
+                                isDirectory: isDir,
+                                path: fullItemPath,
+                                size: catMatch ? (catMatch.size || 0) : 0,
+                                mtime: catMatch ? (catMatch.mtime || catMatch.modTime || null) : null,
+                                modTime: catMatch ? (catMatch.modTime || catMatch.mtime || null) : null
+                            };
+                        });
+                        mergedItems.sort((a, b) => {
+                            if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+                            return a.isDirectory ? -1 : 1;
+                        });
+                        serverDirCache.set(cacheModeKey, { time: Date.now(), items: mergedItems });
+                        return res.json({ path: safeP, items: mergedItems, exists: true, fromCatalog: false, isServer: true });
+                    } catch (e) {}
+                } else if (!forceRefresh && serverItems !== null && serverItems.length > 0) {
+                    serverDirCache.set(cacheModeKey, { time: Date.now(), items: serverItems });
+                    return res.json({ path: safeP, items: serverItems, exists: true, fromCatalog: true, isServer: true });
                 }
             }
 
@@ -2144,9 +2647,9 @@ app.get('/api/fs/list', (req, res) => {
             return a.isDirectory ? -1 : 1;
         });
 
-        serverDirCache.set(targetPath.toLowerCase(), { time: Date.now(), items: result });
+        serverDirCache.set(`local:${targetPath.toLowerCase()}`, { time: Date.now(), items: result });
         if (typeof lowerSafeP !== 'undefined') {
-            serverDirCache.set(lowerSafeP, { time: Date.now(), items: result });
+            serverDirCache.set(`local:${lowerSafeP}`, { time: Date.now(), items: result });
         }
 
         res.json({
@@ -2233,10 +2736,58 @@ app.post('/api/fs/mkdir', async (req, res) => {
 });
 
 app.post('/api/fs/rename', async (req, res) => {
-    const { oldPath, newPath } = req.body;
+    let { oldPath, newPath, project } = req.body;
     if (!oldPath || !newPath) return res.status(400).json({ error: "Missing paths" });
+
+    oldPath = oldPath.replace(/\\/g, '/');
+    newPath = newPath.replace(/\\/g, '/');
+
     try {
+        // Idempotencia: Si oldPath ya no existe pero newPath sí existe, ya fue renombrado con éxito
+        if (!fs.existsSync(oldPath)) {
+            if (fs.existsSync(newPath)) {
+                if (typeof serverDirCache !== 'undefined') {
+                    const parentOld = path.dirname(oldPath).replace(/\\/g, '/').toLowerCase();
+                    const parentNew = path.dirname(newPath).replace(/\\/g, '/').toLowerCase();
+                    serverDirCache.delete(parentOld);
+                    serverDirCache.delete(parentNew);
+                    serverDirCache.delete(oldPath.toLowerCase());
+                    serverDirCache.delete(newPath.toLowerCase());
+                }
+                if (typeof catalogGenerator !== 'undefined') {
+                    if (typeof catalogGenerator.recordRenamedItem === 'function') {
+                        try { catalogGenerator.recordRenamedItem(project, oldPath, newPath); } catch (e) {}
+                    }
+                    if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+                        catalogGenerator.clearMemoryCaches();
+                    }
+                }
+                return res.json({ success: true, alreadyRenamed: true });
+            }
+            return res.status(404).json({ error: `El archivo origen no existe: ${oldPath}` });
+        }
+
         await fs.rename(oldPath, newPath);
+
+        // Invalidar cachés en memoria
+        if (typeof serverDirCache !== 'undefined') {
+            const parentOld = path.dirname(oldPath).replace(/\\/g, '/').toLowerCase();
+            const parentNew = path.dirname(newPath).replace(/\\/g, '/').toLowerCase();
+            serverDirCache.delete(parentOld);
+            serverDirCache.delete(parentNew);
+            serverDirCache.delete(oldPath.toLowerCase());
+            serverDirCache.delete(newPath.toLowerCase());
+        }
+
+        if (typeof catalogGenerator !== 'undefined') {
+            if (typeof catalogGenerator.recordRenamedItem === 'function') {
+                try { catalogGenerator.recordRenamedItem(project, oldPath, newPath); } catch (e) {}
+            }
+            if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+                catalogGenerator.clearMemoryCaches();
+            }
+        }
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -2857,7 +3408,7 @@ $dest = 'C:\\TOOLS\\APPS\\Pipeta'
 if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
 
 # 1. Sincronizar archivos principales directamente desde el origen detectado
-& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets bin tools node_modules /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
 
 # 2. Sincronizar presets base sin sobreescribir configuraciones locales
@@ -2901,7 +3452,8 @@ Write-Output "UPDATE_SUCCESS:$foundSource"
 app.post('/api/app/create-desktop-shortcut', async (req, res) => {
     const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
     const localDir = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta' : path.resolve(__dirname, '..');
-    const batPath = path.join(localDir, 'Launch_Pipeta.bat');
+    const batName = fs.existsSync(path.join(localDir, 'Launch_Pipeta.bat')) ? 'Launch_Pipeta.bat' : 'Iniciar_Pipeta.bat';
+    const batPath = path.join(localDir, batName);
     const icoPath = path.join(localDir, 'Pipeta.ico');
 
     const psScript = `
@@ -4108,6 +4660,10 @@ app.post('/api/audit/scan', async (req, res) => {
                                                     // If an empty directory has NO media frames, it is NOT an existing render!
                                                     if (actualFrames.length === 0) continue;
 
+                                                    const MEDIA_EXTS = new Set(['.exr', '.dpx', '.png', '.jpg', '.jpeg', '.tif', '.tiff', '.mov', '.mp4']);
+                                                    const hasValidMedia = actualFrames.some(f => MEDIA_EXTS.has(path.extname(f).toLowerCase()));
+                                                    if (!hasValidMedia) continue;
+
                                                     const badFiles = [];
                                                     if (!isTcl && actualFrames.length > 0) {
                                                         for (const ff of actualFrames) {
@@ -4218,6 +4774,20 @@ app.post('/api/audit/scan', async (req, res) => {
                                 }
                                 foundRenders.sort((a, b) => b.versionNum - a.versionNum);
 
+                                let canonicalMediaPath = shotMediaPath;
+                                const fullresCandidates = [
+                                    path.join(shotMediaPath, 'nuke', 'fullres'),
+                                    path.join(shotMediaPath, procName, 'fullres'),
+                                    path.join(shotMediaPath, 'nuke'),
+                                    path.join(shotMediaPath, procName)
+                                ];
+                                for (const cand of fullresCandidates) {
+                                    if (await fs.pathExists(cand)) {
+                                        canonicalMediaPath = cand;
+                                        break;
+                                    }
+                                }
+
                                 const shotRecord = {
                                     key: `${ep}/${seq}/${shot}/${procName}`,
                                     ep,
@@ -4232,7 +4802,8 @@ app.post('/api/audit/scan', async (req, res) => {
                                     latestScriptNum: latestScript ? latestScript.num : null,
                                     latestScriptName: latestScript ? latestScript.name : null,
                                     scriptPath: procWorkPath,
-                                    renders: foundRenders,
+                                    mediaPath: canonicalMediaPath.replace(/\\/g, '/'),
+                                    renders: [],
                                     badFiles: [],
                                     sceneStatus: 'no-script',
                                     renderStatus: 'no-script',
@@ -4259,6 +4830,14 @@ app.post('/api/audit/scan', async (req, res) => {
                                     if (r.type === 'tcl') return !!config.checkTclExt;
                                     return true;
                                 });
+
+                                targetRenders.sort((a, b) => {
+                                    if (b.versionNum !== a.versionNum) return b.versionNum - a.versionNum;
+                                    const typeOrder = { fullres: 1, mov: 2, tcl: 3 };
+                                    return (typeOrder[a.type] || 9) - (typeOrder[b.type] || 9);
+                                });
+
+                                shotRecord.renders = targetRenders;
 
                                 const matchingRender = targetRenders.find(r => latestScript && r.versionNum === latestScript.num);
                                 const highestRender = targetRenders[0] || null;
@@ -4482,7 +5061,9 @@ app.post('/api/app/restart', (req, res) => {
         if (process.env.PIPETA_SUPERVISED !== '1') {
             try {
                 const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
-                const batPath = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat' : path.join(__dirname, '../Launch_Pipeta.bat');
+                const baseDir = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta' : path.join(__dirname, '..');
+                const batName = fs.existsSync(path.join(baseDir, 'Launch_Pipeta.bat')) ? 'Launch_Pipeta.bat' : 'Iniciar_Pipeta.bat';
+                const batPath = path.join(baseDir, batName);
                 const { spawn } = require('child_process');
                 spawn('cmd.exe', ['/c', 'start', '""', batPath], {
                     detached: true,
@@ -4496,6 +5077,155 @@ app.post('/api/app/restart', (req, res) => {
 });
 
 // --- IA PIPELINE ENDPOINTS ---
+
+app.get('/api/ia/drive-info', (req, res) => {
+    try {
+        const isNet = (typeof catalogGenerator.isZDriveNetwork === 'function')
+            ? catalogGenerator.isZDriveNetwork()
+            : true;
+        const isVsubs = (process.platform === 'win32' && !isNet);
+        const hasSmb = fs.existsSync('S:/') || fs.existsSync('//192.168.206.116/Z');
+        res.json({
+            isVsubs,
+            isNetworkZ: isNet,
+            hasSmbStorage: hasSmb
+        });
+    } catch (e) {
+        res.json({ isVsubs: false, isNetworkZ: true, hasSmbStorage: false });
+    }
+});
+
+app.get('/api/ia/catalog-hierarchy', (req, res) => {
+    try {
+        const projName = String(req.query.project || 'surf_love').replace(/^proj_/i, '').trim();
+        const type = (req.query.type || 'episodes').trim(); // 'episodes' | 'scenes' | 'shots'
+        const ep = (req.query.ep || '').trim();
+        const seq = (req.query.seq || '').trim();
+
+        function findServerCacheDir(pName) {
+            const candidates = [
+                path.join('C:/TOOLS/APPS/Pipeta/_SYNC_CACHE/projects', pName, 'server'),
+                path.join('Z:/_SYNC_CACHE/projects', pName, 'server'),
+                path.join('S:/_SYNC_CACHE/projects', pName, 'server'),
+                path.join('//192.168.206.116/Z/_SYNC_CACHE/projects', pName, 'server')
+            ];
+            for (const c of candidates) {
+                if (fs.existsSync(c)) return c;
+            }
+            return null;
+        }
+
+        const cacheDir = findServerCacheDir(projName);
+
+        if (type === 'episodes') {
+            let episodes = [];
+            if (cacheDir) {
+                const manifestPath = path.join(cacheDir, 'manifest.json');
+                if (fs.existsSync(manifestPath)) {
+                    try {
+                        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+                        episodes = Object.keys(manifest.subCatalogs || {})
+                            .filter(k => k.startsWith('episodios/') && !k.includes('_root'))
+                            .map(k => k.replace('episodios/', ''))
+                            .filter(e => !['templates', 'VFX-Edits', 'XXX', 'Old'].includes(e));
+                    } catch(e) {}
+                }
+            }
+            if (episodes.length === 0) {
+                const rootsToTry = ['S:/', '//192.168.206.116/Z/'];
+                for (const r of rootsToTry) {
+                    const epDir = path.join(r, projName, 'episodios');
+                    if (fs.existsSync(epDir)) {
+                        episodes = fs.readdirSync(epDir, { withFileTypes: true })
+                            .filter(d => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('_'))
+                            .map(d => d.name);
+                        break;
+                    }
+                }
+            }
+            episodes.sort();
+            return res.json({ project: projName, type, items: episodes });
+        }
+
+        if (type === 'scenes') {
+            if (!ep) return res.status(400).json({ error: "ep parameter required" });
+            let scenes = new Set();
+            if (cacheDir) {
+                const epFile = path.join(cacheDir, 'episodios', `${ep}.json`);
+                if (fs.existsSync(epFile)) {
+                    try {
+                        const data = JSON.parse(fs.readFileSync(epFile, 'utf8'));
+                        for (const it of (data.flatList || [])) {
+                            const rel = (it.relPath || '').replace(/\\/g, '/');
+                            const mSeq = rel.match(new RegExp(`^episodios/${ep}/secuencias/([^/]+)`, 'i'));
+                            if (mSeq) scenes.add(mSeq[1]);
+                        }
+                    } catch(e) {}
+                }
+            }
+            if (scenes.size === 0) {
+                const rootsToTry = ['S:/', '//192.168.206.116/Z/'];
+                for (const r of rootsToTry) {
+                    const seqDir = path.join(r, projName, 'episodios', ep, 'secuencias');
+                    if (fs.existsSync(seqDir)) {
+                        fs.readdirSync(seqDir, { withFileTypes: true })
+                            .filter(d => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('_'))
+                            .forEach(d => scenes.add(d.name));
+                        break;
+                    }
+                }
+            }
+            return res.json({ project: projName, ep, type, items: Array.from(scenes).sort() });
+        }
+
+        if (type === 'shots') {
+            if (!ep || !seq) return res.status(400).json({ error: "ep and seq parameters required" });
+            let shots = new Set();
+            if (cacheDir) {
+                const epFile = path.join(cacheDir, 'episodios', `${ep}.json`);
+                if (fs.existsSync(epFile)) {
+                    try {
+                        const data = JSON.parse(fs.readFileSync(epFile, 'utf8'));
+                        const prefix = `episodios/${ep}/secuencias/${seq}/`;
+                        for (const it of (data.flatList || [])) {
+                            const rel = (it.relPath || '').replace(/\\/g, '/');
+                            if (rel.startsWith(prefix)) {
+                                const sub = rel.substring(prefix.length);
+                                const parts = sub.split('/');
+                                let shotName = parts[0];
+                                if (shotName.toLowerCase() === 'shots' && parts.length > 1) shotName = parts[1];
+                                if (shotName && shotName.toLowerCase() !== 'shots' && !shotName.startsWith('.') && !shotName.startsWith('_')) {
+                                    shots.add(shotName);
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                }
+            }
+            if (shots.size === 0) {
+                const rootsToTry = ['S:/', '//192.168.206.116/Z/'];
+                for (const r of rootsToTry) {
+                    let shotDir = path.join(r, projName, 'episodios', ep, 'secuencias', seq, 'shots');
+                    if (!fs.existsSync(shotDir)) {
+                        shotDir = path.join(r, projName, 'episodios', ep, 'secuencias', seq);
+                    }
+                    if (fs.existsSync(shotDir)) {
+                        fs.readdirSync(shotDir, { withFileTypes: true })
+                            .filter(d => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('_') && d.name.toLowerCase() !== 'shots')
+                            .forEach(d => shots.add(d.name));
+                        break;
+                    }
+                }
+            }
+            return res.json({ project: projName, ep, seq, type, items: Array.from(shots).sort() });
+        }
+
+        return res.status(400).json({ error: "Invalid type. Must be episodes, scenes, or shots" });
+    } catch(err) {
+        console.error("Catalog hierarchy error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 app.get('/api/ia/config', (req, res) => {
     res.json({
@@ -5299,6 +6029,12 @@ function startListening(retries = 10) {
         // Limpiar órdenes huérfanas locales dejadas en 'processing' por reinicio o cierre abrupto
         sanitizeZombieOrders();
 
+
+
+        // Sincronizar configuraciones maestras y permisos de usuarios desde Pipeta Server al arrancar
+
+        syncConfigsFromMasterNetwork().catch(() => {});
+
         // Sincronizar catálogo desde la red al disco local SSD al iniciar (solo del último proyecto activo)
         if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
             try {
@@ -5323,16 +6059,30 @@ function startListening(retries = 10) {
             } catch(e) {}
         }
 
-        const noBrowser = process.argv.includes('--no-browser');
-        if (shouldOpenBrowser && !noBrowser) {
-            try {
-                await open(`http://localhost:${PORT}`);
-            } catch (e) {
-                console.log("Failed to auto-open browser:", e);
+        // Deteccion inteligente: esperar 2.2s para verificar si ya existe una pestaña viva de Pipeta
+        setTimeout(async () => {
+            const noBrowser = process.argv.includes('--no-browser') || process.argv.includes('--restart') || process.env.PIPETA_NO_BROWSER === '1';
+            if (!noBrowser && !hasActiveBrowserClient) {
+                console.log(`[BOOT] No se detectó pestaña de navegador previa activa. Abriendo http://localhost:${PORT}...`);
+                try {
+                    await open(`http://localhost:${PORT}`);
+                } catch (e) {
+                    try {
+                        require('child_process').exec(`start "" "http://localhost:${PORT}"`);
+                    } catch(err) {}
+                }
+            } else if (hasActiveBrowserClient) {
+                console.log(`[BOOT] Pestaña de navegador existente detectada y reconectada. Omitiendo apertura de pestaña duplicada.`);
             }
-        } else {
-            console.log("[INFO] Browser launch skipped (Restart Recovery or --no-browser active).");
-        }
+        }, 2200);
+
+        // Telemetria periodica hacia Pipeta Server (Mecanismo A)
+        setTimeout(() => {
+            sendClientTelemetryPing().catch(() => {});
+        }, 1500);
+        setInterval(() => {
+            sendClientTelemetryPing().catch(() => {});
+        }, 10000);
     });
 
     server.on('error', (err) => {

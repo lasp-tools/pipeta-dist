@@ -96,11 +96,11 @@ const API = {
                 body: JSON.stringify({ path })
             }).then(r => r.json());
         },
-        rename: async (oldPath, newPath) => {
+        rename: async (oldPath, newPath, project) => {
             return await fetch('/api/fs/rename', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldPath, newPath })
+                body: JSON.stringify({ oldPath, newPath, project })
             }).then(r => r.json());
         },
         copy: async (src, dest) => {

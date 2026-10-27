@@ -217,6 +217,48 @@ const PipetaConsole = {
         }
     },
 
+    async generateReport(userNote = '') {
+        const curProj = (typeof settings !== 'undefined' && settings.currentProject) 
+            ? (settings.currentProject.name || settings.currentProject.id) : 'Desconocido';
+        const locMode = (typeof settings !== 'undefined' && settings.syncEnvData) 
+            ? (settings.syncEnvData.locationMode || 'auto') : 'auto';
+        const zInfo = (typeof getZEnvStatusLabel === 'function') 
+            ? getZEnvStatusLabel() : 'Desconocido';
+
+        const lastError = this.entries.filter(e => e.status === 'error' || e.type === 'error').pop()?.message || '';
+
+        try {
+            const res = await fetch('/api/logs/generate-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project: curProj,
+                    locationMode: locMode,
+                    zInfo: zInfo,
+                    lastError: lastError,
+                    userNote: userNote
+                })
+            }).then(r => r.json());
+
+            if (res && res.success) {
+                if (navigator.clipboard && res.content) {
+                    await navigator.clipboard.writeText(res.content);
+                }
+
+                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                    settings.showToast('📦 Reporte generado en logs/reports/ y copiado al portapapeles', 'success', 4);
+                } else {
+                    alert('✅ Reporte generado con éxito en logs/reports/ y copiado al portapapeles.');
+                }
+                return res;
+            } else {
+                alert('No se pudo generar el reporte: ' + (res?.error || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error al generar reporte: ' + e.message);
+        }
+    },
+
     async copyLogs() {
         if (this.entries.length === 0) {
             alert('La consola está vacía.');
@@ -367,6 +409,13 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // Mirror console.error to PipetaConsole
+const _nativeConsoleWarn = window.console.warn;
+window.console.warn = function(...args) {
+    _nativeConsoleWarn.apply(console, args);
+    const msg = args.map(a => (a && a.message) ? a.message : (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+    PipetaConsole.log('warn', msg, 'warn');
+};
+
 const _nativeConsoleError = window.console.error;
 window.console.error = function(...args) {
     _nativeConsoleError.apply(window.console, args);

@@ -405,37 +405,106 @@
 }
 
 .sync-badge-download {
-    background: rgba(136, 192, 208, 0.2);
-    border: 1px solid #88c0d0;
-    color: #88c0d0;
+    background: rgba(0, 229, 255, 0.15);
+    border: 1px solid #00e5ff;
+    color: #00e5ff;
 }
 
 .sync-badge-download:hover {
-    background: #88c0d0;
-    color: #14161a;
+    background: #00e5ff;
+    color: #0f1217;
 }
 
 .sync-badge-upload {
-    background: rgba(235, 203, 139, 0.2);
-    border: 1px solid #ebcb8b;
-    color: #ebcb8b;
+    background: rgba(255, 152, 0, 0.18);
+    border: 1px solid #ff9800;
+    color: #ff9800;
 }
 
 .sync-badge-upload:hover {
-    background: #ebcb8b;
-    color: #14161a;
+    background: #ff9800;
+    color: #0f1217;
 }
 
 .sync-badge-pending-folder {
-    background: rgba(235, 203, 139, 0.22);
-    border: 1px dashed #ebcb8b;
-    color: #ebcb8b;
+    background: rgba(255, 152, 0, 0.18);
+    border: 1px dashed #ff9800;
+    color: #ff9800;
     letter-spacing: 0.2px;
 }
 
 .sync-badge-pending-folder:hover {
-    background: #ebcb8b;
-    color: #14161a;
+    background: #ff9800;
+    color: #0f1217;
+}
+
+.sync-badge-pending-folder-down {
+    background: rgba(0, 229, 255, 0.15);
+    border: 1px dashed #00e5ff;
+    color: #00e5ff;
+    letter-spacing: 0.2px;
+}
+
+.sync-badge-pending-folder-down:hover {
+    background: #00e5ff;
+    color: #0f1217;
+}
+
+.sync-badge-inline {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 1px !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    line-height: 1 !important;
+    height: auto !important;
+    flex-shrink: 0;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.sync-badge-inline:hover {
+    transform: scale(1.28) !important;
+    background: transparent !important;
+}
+
+.sync-badge-inline svg {
+    display: block;
+    pointer-events: none;
+}
+
+.sync-badge-inline.sync-arrow-up {
+    color: #ff9800 !important;
+}
+
+.sync-badge-inline.sync-arrow-up:hover {
+    filter: drop-shadow(0 0 6px rgba(255, 152, 0, 0.9));
+}
+
+.sync-badge-inline.sync-arrow-down {
+    color: #00e5ff !important;
+}
+
+.sync-badge-inline.sync-arrow-down:hover {
+    filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.9));
+}
+
+.sync-badges-inline-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
+.sync-badges-right-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 .sync-badge-ok {

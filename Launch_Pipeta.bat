@@ -1,154 +1,119 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.43"
+set "APP_VERSION=v1.1.66"
 set "APP_PORT=3002"
-set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
-set "SERVER_DIR=%LOCAL_DIR%\server"
-set "NETWORK_DIR=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-if not exist "%NETWORK_DIR%\server\server.js" set "NETWORK_DIR=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-if not exist "%NETWORK_DIR%\server\server.js" (
-    if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-        set "NETWORK_DIR=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-    )
-)
-set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 set "PIPETA_SUPERVISED=1"
 
-title %APP_NAME% %APP_VERSION% Manager
+title %APP_NAME% %APP_VERSION% - Puerto %APP_PORT%
 
-:: Si Pipeta ya esta corriendo en segundo plano, verificar que coincida la version exacta
-if not exist "%RESTART_FLAG%" (
-    curl.exe -s -f -m 1 http://localhost:%APP_PORT%/api/version >nul 2>&1
-    if !errorlevel! equ 0 (
-        for /f "tokens=*" %%v in ('curl.exe -s -m 1 http://localhost:%APP_PORT%/api/version 2^>nul') do (
-            echo "%%v" | findstr /c:"\"%APP_VERSION%\"" >nul 2>&1
-            if !errorlevel! equ 0 (
-                echo ====================================================
-                echo   %APP_NAME% - %APP_VERSION%
-                echo ====================================================
-                echo [INFO] Pipeta %APP_VERSION% ya se encuentra en ejecucion en segundo plano.
-                echo [INFO] Abriendo aplicacion en el navegador...
-                start "" "http://localhost:%APP_PORT%"
-                ping 127.0.0.1 -n 2 >nul
-                exit
-            ) else (
-                echo [INFO] Detectada version anterior en ejecucion. Cerrando para actualizar a %APP_VERSION%...
-                for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":%APP_PORT% *LISTENING"') do (
-                    taskkill /F /PID %%a >nul 2>&1
-                )
-                timeout /t 1 >nul
-            )
-        )
-    )
-)
-
-:: 1. Detectar si estamos ejecutando desde el disco local C:
-if /i "%~dp0"=="%LOCAL_DIR%\" goto :RUN_LOCAL
-
-:: 2. Si no estamos en C:, somos el lanzador desde Red (Z:) -> Sincronizar y transferir ejecucion a C:
-echo ====================================================
-echo   %APP_NAME% - %APP_VERSION% (Sincronizador)
-echo ====================================================
-echo [INFO] Sincronizando archivos a disco local en %LOCAL_DIR%...
-
-if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
-
-robocopy "%~dp0." "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
-
-if exist "%~dp0presets" (
-    if not exist "%LOCAL_DIR%\presets" mkdir "%LOCAL_DIR%\presets"
-    robocopy "%~dp0presets" "%LOCAL_DIR%\presets" /E /XO /NFL /NDL /NJH /NJS /R:0 /W:0
-)
-
-echo [INFO] Sincronizacion completada.
-echo [INFO] Lanzando instancia local segura de Pipeta...
-timeout /t 1 >nul
-
-start "" "%LOCAL_DIR%\Launch_Pipeta.bat"
-exit
-
-:RUN_LOCAL
-title %APP_NAME% %APP_VERSION% (LOCAL RUNTIME - Port %APP_PORT%)
 echo ====================================================
 echo   %APP_NAME% - %APP_VERSION% (Disco Local)
 echo   Puerto: %APP_PORT%
 echo ====================================================
 echo.
 
-:START_SERVER
-echo [INFO] Verificando puerto %APP_PORT%...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":%APP_PORT% *LISTENING"') do (
-    taskkill /F /PID %%a >nul 2>&1
+:: 1. Procesar argumentos de inicio
+for %%a in (%*) do (
+    if /i "%%a"=="--no-browser" set "PIPETA_NO_BROWSER=1"
+    if /i "%%a"=="--restart" set "PIPETA_NO_BROWSER=1"
 )
 
-cd /d "%SERVER_DIR%"
+set "SCRIPT_DIR=%~dp0"
+set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
+set "SERVER_DIR=%LOCAL_DIR%\server"
+if not exist "%SERVER_DIR%\server.js" (
+    if exist "%SCRIPT_DIR%server\server.js" (
+        set "SERVER_DIR=%SCRIPT_DIR%server"
+    )
+)
 
-set "NODE_BIN=node"
-where node >nul 2>&1
-if %errorlevel% neq 0 (
-    if not exist "%LOCAL_DIR%\bin\node\node.exe" (
-        echo [INFO] Runtimes no detectados en disco local.
-        echo [INFO] Hidratando dependencias desde el deposito central...
+:: 2. Detectar binario de Node.js (preferir local portable)
+set "NODE_BIN="
+if exist "%LOCAL_DIR%\bin\node\node.exe" (
+    set "NODE_BIN=%LOCAL_DIR%\bin\node\node.exe"
+) else if exist "%SCRIPT_DIR%bin\node\node.exe" (
+    set "NODE_BIN=%SCRIPT_DIR%bin\node\node.exe"
+) else (
+    where node.exe >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "NODE_BIN=node.exe"
+    )
+)
+
+:: Auto-hidratar dependencias y runtimes si falta Node.js en equipo nuevo
+if "%NODE_BIN%"=="" (
+    echo [INFO] Node.js no detectado en este puesto.
+    echo [INFO] Buscando paquete portable en deposito central...
+    
+    set "DEPOT_ZIP="
+    if exist "S:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
+        set "DEPOT_ZIP=S:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+    ) else if exist "Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
         set "DEPOT_ZIP=Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
-        if not exist "!DEPOT_ZIP!" (
-            if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
-                set "DEPOT_ZIP=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
-            )
-        )
-        if exist "!DEPOT_ZIP!" (
-            echo [INFO] Extrayendo dependencias con tar nativo en %LOCAL_DIR%...
+    ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
+        set "DEPOT_ZIP=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
+    )
+    
+    if not "!DEPOT_ZIP!"=="" (
+        echo [INFO] Descargando runtimes portables...
+        if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
+        copy /y "!DEPOT_ZIP!" "%LOCAL_DIR%\pipeta_dependencies.zip" >nul
+        if !errorlevel! equ 0 (
+            tar.exe -xf "%LOCAL_DIR%\pipeta_dependencies.zip" -C "%LOCAL_DIR%"
+            del /f /q "%LOCAL_DIR%\pipeta_dependencies.zip" >nul 2>&1
+        ) else (
             tar.exe -xf "!DEPOT_ZIP!" -C "%LOCAL_DIR%"
         )
-    )
-    if exist "%LOCAL_DIR%\bin\node\node.exe" (
-        set "NODE_BIN=%LOCAL_DIR%\bin\node\node.exe"
-    ) else if exist "Z:\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe" (
-        set "NODE_BIN=Z:\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe"
-    ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe" (
-        set "NODE_BIN=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\runtimes\node\node.exe"
-    ) else (
-        echo [ERROR] No se encontro Node.js en el sistema ni en bin\node\node.exe ni en el _DEPOT.
-        pause
-        exit /b 1
+        if exist "%LOCAL_DIR%\bin\node\node.exe" (
+            set "NODE_BIN=%LOCAL_DIR%\bin\node\node.exe"
+            echo [OK] Runtimes portables instalados exitosamente.
+        )
     )
 )
 
-echo [INFO] Iniciando Servidor en Puerto %APP_PORT%...
+if "%NODE_BIN%"=="" (
+    echo [ERROR] No se encontro Node.js en bin\node\node.exe ni en el sistema.
+    pause
+    exit /b 1
+)
+
+:: 3. Iniciar servidor
+cd /d "%SERVER_DIR%"
 set "PORT=%APP_PORT%"
-"%NODE_BIN%" server.js
+
+:START_SERVER
+echo [INFO] Iniciando %APP_NAME% %APP_VERSION% en puerto %APP_PORT%...
+
+if "%PIPETA_NO_BROWSER%"=="1" (
+    "%NODE_BIN%" server.js --no-browser
+) else (
+    "%NODE_BIN%" server.js %*
+)
 set "EXIT_CODE=%errorlevel%"
 
-:: Si hay flag de reinicio o codigo 42, reiniciamos limpiamente sin colgar
+set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 if exist "%RESTART_FLAG%" (
-    echo.
-    echo [INFO] Reinicio solicitado por la aplicacion. Sincronizando y relanzando...
-    if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
-    )
-    timeout /t 1 >nul
+    del /f /q "%RESTART_FLAG%" >nul 2>&1
+    set "PIPETA_NO_BROWSER=1"
+    ping 127.0.0.1 -n 3 >nul
     goto :START_SERVER
 )
 
 if %EXIT_CODE% equ 42 (
-    echo.
-    echo [INFO] Reinicio solicitado (codigo 42). Relanzando servidor...
-    if exist "%NETWORK_DIR%" (
-        robocopy "%NETWORK_DIR%" "%LOCAL_DIR%" /MIR /XD .git .gemini presets logs _SYNC_CACHE credentials bin tools node_modules /XF *.log *.tmp /NFL /NDL /NJH /NJS /R:0 /W:0
-    )
-    timeout /t 1 >nul
+    echo [INFO] Reinicio solicitado con codigo 42. Relanzando servidor...
+    set "PIPETA_NO_BROWSER=1"
+    ping 127.0.0.1 -n 3 >nul
     goto :START_SERVER
 )
 
-:: Salida limpia (cierre de aplicacion)
 if %EXIT_CODE% equ 0 (
     echo [INFO] Servidor cerrado correctamente.
-    exit
+    exit /b 0
 )
 
-:: En caso de terminacion forzosa o error no intencional, permitir relanzar presionando una tecla
 echo.
-echo [ERROR] El servidor se cerro (codigo %EXIT_CODE%).
-echo Presione una tecla para reintentar el inicio...
-pause >nul
+echo [WARN] El servidor finalizo con codigo %EXIT_CODE%.
+echo [INFO] Reintentando en 3 segundos... Presione Ctrl+C para detener.
+ping 127.0.0.1 -n 4 >nul
 goto :START_SERVER

@@ -108,10 +108,13 @@ function syncLocalCacheFromNetwork(projectName = null) {
     try {
         fs.ensureDirSync(LOCAL_CACHE_DIR);
 
-        // 0. Si se solicita un proyecto, intentar hidratar el paquete completo por HTTP desde Pipeta Server (0 SMB)
+        // 0. Si se solicita un proyecto y aún no existe localmente, hidratar el paquete inicial por HTTP desde Pipeta Server
         if (projectName) {
-            const bundleOk = fetchProjectBundleFromCentralServer(projectName);
-            if (bundleOk) return;
+            const cleanP = String(projectName).replace(/^proj_/i, '').trim();
+            const localProjDir = path.join(MODULAR_PROJECTS_DIR, cleanP);
+            if (!fs.existsSync(path.join(localProjDir, 'drive', 'manifest.json'))) {
+                fetchProjectBundleFromCentralServer(projectName);
+            }
         }
 
         
@@ -377,6 +380,82 @@ function getAllProjectConfigs() {
         if (conf) configs.push(conf);
     }
     return configs;
+}
+
+/**
+ * Convierte cualquier ruta local (Z:, S:, C:, etc.) a su ruta equivalente canónica en Google Drive
+ */
+function resolveLocalToOnlinePath(localPath, projectName = null) {
+    if (!localPath || typeof localPath !== 'string') return '';
+    let norm = normalizeSlash(localPath).replace(/\/+$/, '');
+    
+    // Si ya es una ruta remota / Google Drive
+    if (norm.match(/^(?:G:\/|lasp-drive:|Unidades compartidas\/)/i)) {
+        return norm;
+    }
+
+    let cfg = projectName ? getProjectConfig(projectName) : null;
+    let allConfigs = [];
+    if (cfg) {
+        allConfigs = [cfg];
+    } else {
+        allConfigs = getAllProjectConfigs();
+    }
+
+    const stripDrive = (p) => (p || '').replace(/^[a-zA-Z]:/i, '').replace(/\/+$/, '').toLowerCase();
+    const normStripped = stripDrive(norm);
+
+    for (const c of allConfigs) {
+        if (!c || !c.roots) continue;
+        const mediaRoot = (c.roots.media || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const workRoot = (c.roots.work || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const onlineMedia = (c.roots.onlineMedia || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        const onlineWork = (c.roots.onlineWork || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+        if (mediaRoot && onlineMedia) {
+            const mediaStripped = stripDrive(mediaRoot);
+            if (normStripped === mediaStripped) {
+                return onlineMedia;
+            }
+            if (normStripped.startsWith(mediaStripped + '/')) {
+                const sub = norm.substring(norm.length - (normStripped.length - mediaStripped.length));
+                return `${onlineMedia}${sub}`;
+            }
+        }
+
+        if (workRoot && onlineWork) {
+            const workStripped = stripDrive(workRoot);
+            if (normStripped === workStripped) {
+                return onlineWork;
+            }
+            if (normStripped.startsWith(workStripped + '/')) {
+                const sub = norm.substring(norm.length - (normStripped.length - workStripped.length));
+                return `${onlineWork}${sub}`;
+            }
+        }
+    }
+
+    // Heurística universal de respaldo:
+    // Si contiene /INTERNO/MEDIA/<cliente>/<proyecto>/...
+    const mediaRegex = /(?:^|\/|[a-zA-Z]:\/)INTERNO\/MEDIA\/([^\/]+)\/([^\/]+)(?:\/(.*))?$/i;
+    const mediaMatch = norm.match(mediaRegex);
+    if (mediaMatch) {
+        const pName = mediaMatch[2];
+        const rel = mediaMatch[3] ? `/${mediaMatch[3]}` : '';
+        return `G:/Unidades compartidas/${pName}_media${rel}`;
+    }
+
+    // Si contiene /<cliente>/<proyecto>/... (pero no INTERNO)
+    const workRegex = /(?:^|\/|[a-zA-Z]:\/)(?!INTERNO\/)([^\/]+)\/([^\/]+)(?:\/(.*))?$/i;
+    const workMatch = norm.match(workRegex);
+    if (workMatch) {
+        const pName = workMatch[2];
+        const rel = workMatch[3] ? `/${workMatch[3]}` : '';
+        return `G:/Unidades compartidas/${pName}${rel}`;
+    }
+
+    const fallbackProj = cfg?.name || projectName || 'surf_love';
+    return `G:/Unidades compartidas/${fallbackProj}/${norm.split('/').pop()}`;
 }
 
 /**
@@ -1390,10 +1469,39 @@ function fileExistsFast(filePath) {
     }
 }
 
+const subCatalogFreshnessCache = new Map();
 function resolveModularSubCatalogFile(projectName, type, subFile) {
     const localPrimary = path.join(MODULAR_PROJECTS_DIR, projectName, type, subFile);
     try {
-        if (fs.existsSync(localPrimary)) return localPrimary;
+        if (fs.existsSync(localPrimary)) {
+            if (!global.isExternalMachine) {
+                const now = Date.now();
+                const lastCheck = subCatalogFreshnessCache.get(localPrimary) || 0;
+                if (now - lastCheck > 30000) {
+                    subCatalogFreshnessCache.set(localPrimary, now);
+                    const netChecks = [
+                        path.join('S:/_SYNC_CACHE/projects', projectName, type, subFile),
+                        path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile),
+                        path.join(UNC_CACHE, 'projects', projectName, type, subFile)
+                    ];
+                    try {
+                        const localSt = fs.statSync(localPrimary);
+                        for (const nc of netChecks) {
+                            if (path.resolve(nc).toLowerCase() === path.resolve(localPrimary).toLowerCase()) continue;
+                            if (fs.existsSync(nc)) {
+                                const netSt = fs.statSync(nc);
+                                if (netSt.mtimeMs > localSt.mtimeMs + 500) {
+                                    fs.copySync(nc, localPrimary, { overwrite: true });
+                                    subCatalogMemoryCache.delete(localPrimary);
+                                }
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+            return localPrimary;
+        }
     } catch(e) {}
 
     const localAlt = path.join(CACHE_ROOT, 'projects', projectName, type, subFile);
@@ -1432,10 +1540,134 @@ function resolveModularSubCatalogFile(projectName, type, subFile) {
 }
 
 const pendingSyncCache = new Map();
+const SEQ_IMG_REGEX = /^(.*?[._\-]|\D+)(\d+)(\.(?:exr|dpx|png|jpg|jpeg|tiff|tif|tga|cin|ari))$/i;
+const JUNK_FILE_REGEX = /(?:\.tmp|\.bak|\.autosave|thumbs\.db|\.ds_store)$/i;
+
+function extractLogicalFilesMap(flatList) {
+    const map = new Map();
+    if (!Array.isArray(flatList)) return map;
+    for (const item of flatList) {
+        if (item.isDir || item.isDirectory) continue;
+        const rel = (item.relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        if (!rel || rel.toLowerCase().includes('_gsdata_')) continue;
+        const lastSlash = rel.lastIndexOf('/');
+        const parentRel = lastSlash === -1 ? '' : rel.substring(0, lastSlash);
+        const name = lastSlash === -1 ? rel : rel.substring(lastSlash + 1);
+        if (JUNK_FILE_REGEX.test(name)) continue;
+
+        const m = name.match(SEQ_IMG_REGEX);
+        const logicalKey = m
+            ? (parentRel + '/' + m[1] + '###' + m[3]).toLowerCase()
+            : rel.toLowerCase();
+
+        const existing = map.get(logicalKey);
+        if (existing) {
+            existing.count++;
+        } else {
+            map.set(logicalKey, { parentRel: parentRel.toLowerCase(), count: 1 });
+        }
+    }
+    return map;
+}
+
+function computeSubCatalogFolderDiff(projectName, subFile, driveData) {
+    const folderStats = new Map();
+    if (global.isExternalMachine || !driveData) return folderStats;
+
+    const srvSubPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
+    if (!srvSubPath) return folderStats;
+
+    let serverData = null;
+    try {
+        serverData = fs.readJsonSync(srvSubPath);
+    } catch (e) {
+        return folderStats;
+    }
+    if (!serverData || !Array.isArray(serverData.flatList)) return folderStats;
+
+    const driveLogical = extractLogicalFilesMap(driveData.flatList);
+    const serverLogical = extractLogicalFilesMap(serverData.flatList);
+
+    const addAncestors = (parentRelLower, field) => {
+        let rootSt = folderStats.get('__root__');
+        if (!rootSt) {
+            rootSt = { upload: 0, download: 0 };
+            folderStats.set('__root__', rootSt);
+        }
+        rootSt[field]++;
+
+        let cur = parentRelLower;
+        while (cur) {
+            let st = folderStats.get(cur);
+            if (!st) {
+                st = { upload: 0, download: 0 };
+                folderStats.set(cur, st);
+            }
+            st[field]++;
+            const idx = cur.lastIndexOf('/');
+            cur = idx === -1 ? '' : cur.substring(0, idx);
+        }
+    };
+
+    for (const [k, sEntry] of serverLogical.entries()) {
+        const dEntry = driveLogical.get(k);
+        if (!dEntry || sEntry.count > dEntry.count) {
+            addAncestors(sEntry.parentRel, 'upload');
+        }
+    }
+
+    for (const [k, dEntry] of driveLogical.entries()) {
+        const sEntry = serverLogical.get(k);
+        if (!sEntry || dEntry.count > sEntry.count) {
+            addAncestors(dEntry.parentRel, 'download');
+        }
+    }
+
+    return folderStats;
+}
+
+function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
+    const subFilePath = resolveModularSubCatalogFile(projectName, type, subFile);
+    if (!subFilePath) return null;
+
+    let srvMtime = 0;
+    if (type === 'drive' && !global.isExternalMachine) {
+        const srvPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
+        if (srvPath) {
+            try { srvMtime = fs.statSync(srvPath).mtimeMs; } catch (e) {}
+        }
+    }
+
+    try {
+        const st = fs.statSync(subFilePath);
+        const compositeMtime = `${st.mtimeMs}_${srvMtime}`;
+        const cached = subCatalogMemoryCache.get(subFilePath);
+        if (cached && cached.mtime === compositeMtime) {
+            return cached;
+        }
+        const data = fs.readJsonSync(subFilePath);
+        const indexRes = buildSubCatalogIndex(data);
+        const folderStats = (type === 'drive' && !global.isExternalMachine)
+            ? computeSubCatalogFolderDiff(projectName, subFile, data)
+            : new Map();
+        const cacheEntry = {
+            mtime: compositeMtime,
+            parentIndex: indexRes.parentMap,
+            pendingFolders: indexRes.pendingDownloadFolders,
+            pendingCountMap: indexRes.pendingCountMap,
+            folderStats,
+            data
+        };
+        subCatalogMemoryCache.set(subFilePath, cacheEntry);
+        return cacheEntry;
+    } catch (e) {
+        return null;
+    }
+}
 
 function checkSubCatalogPendingSync(projectName, type, subFile) {
     if (!global.isExternalMachine && type === 'server') {
-        return { hasPending: false, count: 0 };
+        return { hasPending: false, count: 0, uploadCount: 0, downloadCount: 0 };
     }
     const cacheKey = `${projectName}_${type}_${subFile}`.toLowerCase();
     const now = Date.now();
@@ -1443,9 +1675,28 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
         const cached = pendingSyncCache.get(cacheKey);
         if (now - cached.time < 60000) return cached.data;
     }
+
+    if (type === 'drive' && !global.isExternalMachine) {
+        const entry = getOrBuildSubCatalogCacheEntry(projectName, 'drive', subFile);
+        if (entry && entry.folderStats) {
+            const rootSt = entry.folderStats.get('__root__') || { upload: 0, download: 0 };
+            const up = rootSt.upload || 0;
+            const down = rootSt.download || 0;
+            const res = {
+                hasPending: (up > 0 || down > 0),
+                count: up > 0 ? up : down,
+                uploadCount: up,
+                downloadCount: down,
+                pendingType: (up > 0 && down > 0) ? 'both' : (up > 0 ? 'upload' : 'download')
+            };
+            pendingSyncCache.set(cacheKey, { time: now, data: res });
+            return res;
+        }
+    }
+
     const subFilePath = resolveModularSubCatalogFile(projectName, type, subFile);
     if (!subFilePath) {
-        const res = { hasPending: false, count: 0 };
+        const res = { hasPending: false, count: 0, uploadCount: 0, downloadCount: 0 };
         pendingSyncCache.set(cacheKey, { time: now, data: res });
         return res;
     }
@@ -1460,11 +1711,11 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
                 missing = data.flatList.length;
             }
         }
-        const res = { hasPending: missing > 0, count: missing };
+        const res = { hasPending: missing > 0, count: missing, uploadCount: 0, downloadCount: missing, pendingType: 'download' };
         pendingSyncCache.set(cacheKey, { time: now, data: res });
         return res;
     } catch(e) {
-        return { hasPending: false, count: 0 };
+        return { hasPending: false, count: 0, uploadCount: 0, downloadCount: 0 };
     }
 }
 
@@ -1524,6 +1775,17 @@ function buildSubCatalogIndex(subCatalog) {
     return { parentMap, pendingDownloadFolders, pendingCountMap };
 }
 
+function applyPendingStatusToFolderItem(targetItem, upCount, downCount) {
+    if (upCount > 0 || downCount > 0) {
+        targetItem.hasPendingSync = true;
+        targetItem.pendingUploadCount = upCount;
+        targetItem.pendingDownloadCount = downCount;
+        targetItem.pendingType = (upCount > 0 && downCount > 0) ? 'both' : (upCount > 0 ? 'upload' : 'download');
+        targetItem.pendingCount = upCount > 0 ? upCount : downCount;
+    }
+    return targetItem;
+}
+
 function listFromModularCatalog(requestedPath, type = 'server') {
     if (type === 'server' && global.isExternalMachine) return null;
     const norm = normalizeSlash(requestedPath);
@@ -1557,47 +1819,57 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         };
     });
 
-    // Raíz de Work o Media -> Devolver hijos directos desde manifest en 0 ms
-    if (lowerNorm === rootPath) {
-        const rawChildren = category === 'work' ? manifest.rootChildren?.work : manifest.rootChildren?.media;
-        const sanitized = sanitizeManifestChildren(rawChildren);
+    const decorateRootChildrenWithPending = (sanitizedList) => {
         if (category === 'work') {
-            for (const rChild of sanitized) {
-                if (rChild.name.toLowerCase() === 'episodios') {
-                    // Verificar si algún episodio tiene archivos faltantes
+            for (const rChild of sanitizedList) {
+                const nameLower = rChild.name.toLowerCase();
+                if (nameLower === 'episodios') {
                     const eps = manifest.episodiosChildren || [];
+                    let totalUp = 0;
+                    let totalDown = 0;
                     for (const ep of eps) {
                         const epStatus = checkSubCatalogPendingSync(projectName, type, `episodios/${ep.name}.json`);
                         if (epStatus.hasPending) {
-                            rChild.hasPendingSync = true;
-                            rChild.pendingType = 'download';
-                            rChild.pendingCount = (rChild.pendingCount || 0) + epStatus.count;
+                            totalUp += (epStatus.uploadCount || 0);
+                            totalDown += (epStatus.downloadCount || 0);
                         }
                     }
-                } else if (rChild.name.toLowerCase() === 'assets2d') {
+                    applyPendingStatusToFolderItem(rChild, totalUp, totalDown);
+                } else if (nameLower === 'assets2d') {
                     const a2Status = checkSubCatalogPendingSync(projectName, type, 'assets2D.json');
                     if (a2Status.hasPending) {
-                        rChild.hasPendingSync = true;
-                        rChild.pendingType = 'download';
-                        rChild.pendingCount = a2Status.count;
+                        applyPendingStatusToFolderItem(rChild, a2Status.uploadCount || 0, a2Status.downloadCount || 0);
                     }
-                } else if (rChild.name.toLowerCase() === 'assets3d') {
+                } else if (nameLower === 'assets3d') {
                     const a3Status = checkSubCatalogPendingSync(projectName, type, 'assets3D.json');
                     if (a3Status.hasPending) {
-                        rChild.hasPendingSync = true;
-                        rChild.pendingType = 'download';
-                        rChild.pendingCount = a3Status.count;
+                        applyPendingStatusToFolderItem(rChild, a3Status.uploadCount || 0, a3Status.downloadCount || 0);
                     }
                 }
             }
+        } else if (category === 'media') {
+            for (const rChild of sanitizedList) {
+                if (rChild.name.toLowerCase() === '_gsdata_') continue;
+                const mStatus = checkSubCatalogPendingSync(projectName, type, `media/${rChild.name}.json`);
+                if (mStatus.hasPending) {
+                    applyPendingStatusToFolderItem(rChild, mStatus.uploadCount || 0, mStatus.downloadCount || 0);
+                }
+            }
         }
-        return sanitized;
+        return sanitizedList;
+    };
+
+    // Raíz de Work o Media -> Devolver hijos directos desde manifest
+    if (lowerNorm === rootPath) {
+        const rawChildren = category === 'work' ? manifest.rootChildren?.work : manifest.rootChildren?.media;
+        return decorateRootChildrenWithPending(sanitizeManifestChildren(rawChildren));
     }
 
     const rel = lowerNorm.substring(rootPath.length).replace(/^\/+/, '');
     const parts = rel.split('/').filter(Boolean);
     if (parts.length === 0) {
-        return category === 'work' ? sanitizeManifestChildren(manifest.rootChildren?.work) : sanitizeManifestChildren(manifest.rootChildren?.media);
+        const rawChildren = category === 'work' ? manifest.rootChildren?.work : manifest.rootChildren?.media;
+        return decorateRootChildrenWithPending(sanitizeManifestChildren(rawChildren));
     }
 
     let subFile = '';
@@ -1612,9 +1884,7 @@ function listFromModularCatalog(requestedPath, type = 'server') {
                 for (const ep of epsList) {
                     const epStatus = checkSubCatalogPendingSync(projectName, type, `episodios/${ep.name}.json`);
                     if (epStatus.hasPending) {
-                        ep.hasPendingSync = true;
-                        ep.pendingType = 'download';
-                        ep.pendingCount = epStatus.count;
+                        applyPendingStatusToFolderItem(ep, epStatus.uploadCount || 0, epStatus.downloadCount || 0);
                     }
                 }
                 return epsList;
@@ -1627,9 +1897,8 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         subFile = `media/${parts[0]}.json`;
     }
 
-    const subFilePath = resolveModularSubCatalogFile(projectName, type, subFile);
-
-    if (!subFilePath) {
+    const cacheEntry = getOrBuildSubCatalogCacheEntry(projectName, type, subFile);
+    if (!cacheEntry) {
         if (subFile.startsWith('episodios/')) {
             const rootSubFile = resolveModularSubCatalogFile(projectName, type, 'episodios/_root.json');
             if (rootSubFile) return [];
@@ -1637,23 +1906,7 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         return null;
     }
 
-    let cacheEntry = null;
-    try {
-        const st = fs.statSync(subFilePath);
-        const cached = subCatalogMemoryCache.get(subFilePath);
-        if (cached && cached.mtime === st.mtimeMs) {
-            cacheEntry = cached;
-        } else {
-            const data = fs.readJsonSync(subFilePath);
-            const indexRes = buildSubCatalogIndex(data);
-            cacheEntry = { mtime: st.mtimeMs, parentIndex: indexRes.parentMap, pendingFolders: indexRes.pendingDownloadFolders, pendingCountMap: indexRes.pendingCountMap, data };
-            subCatalogMemoryCache.set(subFilePath, cacheEntry);
-        }
-    } catch(e) {
-        return null;
-    }
-
-    if (!cacheEntry || !cacheEntry.parentIndex) return null;
+    if (!cacheEntry.parentIndex) return null;
     const lowerNormStripped = lowerNorm.replace(/^[a-zA-Z]:/, '');
     const zVariant = lowerNorm.replace(/^[a-zA-Z]:/, 'z:');
     const cVariant = lowerNorm.replace(/^[a-zA-Z]:/, 'c:');
@@ -1685,6 +1938,8 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         }
     }
 
+    const canDoLiveShotLookahead = (type === 'drive' && !global.isExternalMachine && parts.length >= 2 && children.length <= 20);
+
     return children.map(c => {
         let localExists = false;
         if (c.localExists !== undefined && existingNamesSet === null) {
@@ -1692,10 +1947,58 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         } else if (existingNamesSet) {
             localExists = existingNamesSet.has((c.name || '').toLowerCase());
         }
-        return {
+
+        const copyItem = {
             ...c,
             localExists
         };
+
+        if (copyItem.isDirectory && cacheEntry.folderStats) {
+            const childRel = (rel ? `${rel}/${c.name}` : c.name).toLowerCase();
+            const fSt = cacheEntry.folderStats.get(childRel);
+            let upC = fSt ? (fSt.upload || 0) : 0;
+            let downC = fSt ? (fSt.download || 0) : 0;
+
+            // Live 1-level lookahead en carpetas de plano/asset para detectar archivos recién creados en Z: aún no escaneados por el Worker
+            if (canDoLiveShotLookahead && copyItem.targetLocalPath) {
+                try {
+                    let physPath = copyItem.targetLocalPath;
+                    const sAlt = physPath.replace(/^Z:/i, 'S:');
+                    if (!fs.existsSync(physPath) && fs.existsSync(sAlt)) physPath = sAlt;
+                    if (fs.existsSync(physPath)) {
+                        const diskEntries = fs.readdirSync(physPath, { withFileTypes: true });
+                        const childDriveKey = copyItem.targetLocalPath.toLowerCase();
+                        const driveChildItems = cacheEntry.parentIndex.get(childDriveKey) || [];
+                        const driveChildNames = new Set(driveChildItems.map(di => (di.name || '').toLowerCase()));
+
+                        const uncatalogedSeqs = new Set();
+                        let directMissingInDrive = 0;
+                        for (const de of diskEntries) {
+                            if (de.name.toLowerCase() === '_gsdata_' || JUNK_FILE_REGEX.test(de.name)) continue;
+                            if (!driveChildNames.has(de.name.toLowerCase())) {
+                                const m = !de.isDirectory() ? de.name.match(SEQ_IMG_REGEX) : null;
+                                if (m) {
+                                    const seqK = (m[1] + '###' + m[3]).toLowerCase();
+                                    if (!uncatalogedSeqs.has(seqK)) {
+                                        uncatalogedSeqs.add(seqK);
+                                        directMissingInDrive++;
+                                    }
+                                } else {
+                                    directMissingInDrive++;
+                                }
+                            }
+                        }
+                        if (directMissingInDrive > upC) {
+                            upC = directMissingInDrive;
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            applyPendingStatusToFolderItem(copyItem, upC, downC);
+        }
+
+        return copyItem;
     });
 }
 
@@ -1716,7 +2019,7 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
         return { success: true, fallback: true };
     }
 
-    const normTarget = normalizeSlash(targetPath);
+    const normTarget = normalizeSlash(targetPath).replace(/^S:/i, 'Z:');
     const lowerNorm = normTarget.toLowerCase();
 
     let isWork = false;
@@ -1763,11 +2066,14 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
 
     if (!isWork && !isMedia) {
         rel = normTarget.replace(/^[A-Za-z]:\//, '').replace(/^\/+/, '');
+        const mediaPrefixRegex = new RegExp('^interno/media/(?:[^/]+/' + projectName + '|[^/]+)/?', 'i');
+        const workPrefixRegex = new RegExp('^(?:interno/)?(?:[^/]+/' + projectName + '|' + projectName + ')/?', 'i');
         if (rel.toLowerCase().startsWith('interno/media/')) {
             isMedia = true;
-            rel = rel.substring('interno/media/'.length).replace(/^\/+/, '');
+            rel = rel.replace(mediaPrefixRegex, '').replace(/^\/+/, '');
         } else {
             isWork = true;
+            rel = rel.replace(workPrefixRegex, '').replace(/^\/+/, '');
         }
     }
 
@@ -1810,32 +2116,39 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
 
     const outDir = path.join(MODULAR_PROJECTS_DIR, projectName, type);
     const subFilePath = path.join(outDir, subFile);
+    const existingSubPath = resolveModularSubCatalogFile(projectName, type, subFile);
+    const isPartialSubfolder = rel && scanRel && rel.toLowerCase() !== scanRel.toLowerCase() && rel.toLowerCase().startsWith(scanRel.toLowerCase() + '/') && existingSubPath && fs.existsSync(existingSubPath);
+    const effectiveScanRel = isPartialSubfolder ? rel : scanRel;
 
-    console.log(`[REFRESH SUB-CATALOG] (${type.toUpperCase()}) Proyecto: ${projectName}, Sub-catálogo: ${subFile}, Rel: ${scanRel}`);
+    console.log(`[REFRESH SUB-CATALOG] (${type.toUpperCase()}) Proyecto: ${projectName}, Sub-catálogo: ${subFile}, Rel: ${effectiveScanRel} (Parcial: ${!!isPartialSubfolder})`);
 
     let scanned = [];
+    let targetFolderExists = false;
     if (type === 'server') {
-        const rootPhysicalBase = isWork
+        let rootPhysicalBase = isWork
             ? (config.roots?.work ? normalizeSlash(config.roots.work) : 'Z:/' + (config.client || '') + '/' + projectName)
             : (config.roots?.media ? normalizeSlash(config.roots.media) : 'Z:/INTERNO/MEDIA/' + (config.client || '') + '/' + projectName);
-        
-        const fullPhysical = scanRel ? path.join(rootPhysicalBase, scanRel) : rootPhysicalBase;
+        const sCandidate = rootPhysicalBase.replace(/^Z:/i, 'S:');
+        if (fs.existsSync(sCandidate)) {
+            rootPhysicalBase = sCandidate;
+        }
+        const fullPhysical = effectiveScanRel ? path.join(rootPhysicalBase, effectiveScanRel) : rootPhysicalBase;
         if (fs.existsSync(fullPhysical)) {
+            targetFolderExists = true;
             scanned = await scanDirectoryRecursive(fullPhysical);
         }
     } else {
         const onlineRoot = isWork ? config.roots.onlineWork : config.roots.onlineMedia;
-        const fullOnlineSub = scanRel ? `${onlineRoot}/${scanRel}` : onlineRoot;
+        const fullOnlineSub = effectiveScanRel ? `${onlineRoot}/${effectiveScanRel}` : onlineRoot;
         try {
             scanned = scanWithRclone(fullOnlineSub);
+            if (Array.isArray(scanned) && scanned.length > 0) targetFolderExists = true;
         } catch (e) {
             console.warn(`[REFRESH SUB-CATALOG] Error rclone en ${fullOnlineSub}:`, e.message);
         }
     }
 
-    const newItems = [];
-    let byteCount = 0;
-    let fileCount = 0;
+    const scannedItems = [];
     let itemId = Date.now();
 
     const rootLogical = isWork 
@@ -1844,7 +2157,7 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
     const rootLocal = isWork ? config.roots?.work : config.roots?.media;
 
     for (const raw of scanned) {
-        const itemRel = scanRel ? `${scanRel}/${raw.relPath}` : raw.relPath;
+        const itemRel = effectiveScanRel ? `${effectiveScanRel}/${raw.relPath}` : raw.relPath;
         const ext = raw.isDir ? '' : path.extname(raw.name).toLowerCase();
         const size = raw.size || 0;
 
@@ -1867,10 +2180,64 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
             processed.targetLocalPath = `${rootLocal}/${itemRel}`;
         }
 
-        newItems.push(processed);
+        scannedItems.push(processed);
+    }
 
-        if (!raw.isDir) {
-            byteCount += size;
+    let finalItems = scannedItems;
+    if (isPartialSubfolder) {
+        try {
+            const existingData = fs.readJsonSync(existingSubPath);
+            const prefixLower = effectiveScanRel.toLowerCase();
+            const kept = (existingData.flatList || []).filter(item => {
+                const r = (item.relPath || '').replace(/\\/g, '/').toLowerCase();
+                if (targetFolderExists) {
+                    return !r.startsWith(prefixLower + '/');
+                }
+                return r !== prefixLower && !r.startsWith(prefixLower + '/');
+            });
+
+            if (targetFolderExists) {
+                const existingRels = new Set(kept.map(i => (i.relPath || '').replace(/\\/g, '/').toLowerCase()));
+                const relSegs = effectiveScanRel.split('/').filter(Boolean);
+                let accum = '';
+                for (let i = 0; i < relSegs.length; i++) {
+                    accum = accum ? `${accum}/${relSegs[i]}` : relSegs[i];
+                    if (accum.toLowerCase() === scanRel.toLowerCase()) continue;
+                    if (!existingRels.has(accum.toLowerCase())) {
+                        const dirObj = {
+                            id: `${type}_${category}_${itemId++}`,
+                            category,
+                            name: relSegs[i],
+                            relPath: accum,
+                            ext: '',
+                            isDir: true,
+                            size: 0,
+                            modTime: new Date().toISOString()
+                        };
+                        if (type === 'server') {
+                            dirObj.serverPath = `${rootLogical}/${accum}`;
+                            dirObj.targetLocalPath = `${rootLocal}/${accum}`;
+                        } else {
+                            dirObj.onlinePath = `${rootLogical}/${accum}`;
+                            dirObj.targetLocalPath = `${rootLocal}/${accum}`;
+                        }
+                        kept.push(dirObj);
+                        existingRels.add(accum.toLowerCase());
+                    }
+                }
+            }
+
+            finalItems = kept.concat(scannedItems);
+        } catch (e) {
+            finalItems = scannedItems;
+        }
+    }
+
+    let byteCount = 0;
+    let fileCount = 0;
+    for (const it of finalItems) {
+        if (!it.isDir && !it.isDirectory) {
+            byteCount += (it.size || 0);
             fileCount++;
         }
     }
@@ -1883,14 +2250,15 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
         category: category,
         prefix: scanRel,
         file: subFile,
-        stats: { itemCount: newItems.length, fileCount, byteCount },
-        flatList: newItems
+        stats: { itemCount: finalItems.length, fileCount, byteCount },
+        flatList: finalItems
     }, { spaces: 2 });
 
     subCatalogMemoryCache.delete(subFilePath);
+    pendingSyncCache.clear();
 
     if (manifest.subCatalogs && manifest.subCatalogs[subKey]) {
-        manifest.subCatalogs[subKey].itemCount = newItems.length;
+        manifest.subCatalogs[subKey].itemCount = finalItems.length;
         manifest.subCatalogs[subKey].fileCount = fileCount;
         manifest.subCatalogs[subKey].byteCount = byteCount;
         manifest.generatedAt = new Date().toISOString();
@@ -1899,8 +2267,8 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
         manifestMemoryCache.delete(manifestPath);
     }
 
-    // Replicar a red central (Z:/_SYNC_CACHE) si existe
-    const centralCacheDirs = ['Z:/_SYNC_CACHE']
+    // Replicar a red central (S:/_SYNC_CACHE y Z:/_SYNC_CACHE) si existe
+    const centralCacheDirs = ['S:/_SYNC_CACHE', 'Z:/_SYNC_CACHE']
         .filter(r => fs.existsSync(r) && path.resolve(LOCAL_CACHE_DIR).toLowerCase() !== path.resolve(r).toLowerCase());
     for (const cDir of centralCacheDirs) {
         try {
@@ -1917,7 +2285,7 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
     return {
         success: true,
         subCatalog: subFile,
-        itemsCount: newItems.length,
+        itemsCount: finalItems.length,
         fileCount,
         byteCount
     };
@@ -2069,6 +2437,195 @@ function recordTransferredItem(projectName, item, type = 'drive') {
                     fs.writeJsonSync(p, cat, { spaces: 2 });
                 }
             } catch (e) {}
+        }
+    }
+
+    clearMemoryCaches();
+    return true;
+}
+
+/**
+ * Actualiza en caliente los catálogos modulares y monolíticos cuando un archivo o carpeta es renombrado.
+ */
+function recordRenamedItem(projectName, oldPath, newPath) {
+    if (!oldPath || !newPath) return false;
+
+    const normOld = normalizeSlash(oldPath);
+    const normNew = normalizeSlash(newPath);
+    const oldName = path.basename(normOld);
+    const newName = path.basename(normNew);
+    const lowerOld = normOld.toLowerCase();
+
+    function replacePrefix(str, oPref, nPref) {
+        if (!str) return str;
+        const sNorm = normalizeSlash(str);
+        if (sNorm.toLowerCase() === oPref.toLowerCase()) {
+            return nPref;
+        }
+        if (sNorm.toLowerCase().startsWith(oPref.toLowerCase() + '/')) {
+            return nPref + sNorm.substring(oPref.length);
+        }
+        return str;
+    }
+
+    if (!projectName && typeof findProjectManifestForPath === 'function') {
+        const pInfo = findProjectManifestForPath(normOld, 'server') || findProjectManifestForPath(normOld, 'drive');
+        if (pInfo && pInfo.project) projectName = pInfo.project;
+    }
+    if (!projectName) {
+        const m = normOld.match(/[\\/]([a-zA-Z0-9_\-]+)[\\/](?:workflow|episodios|assets2D|assets3D|_Out|_ET_InPost)/i);
+        if (m) projectName = m[1];
+    }
+    if (!projectName) return false;
+
+    const targetRoots = [
+        path.join(LOCAL_CACHE_DIR, 'projects'),
+        'Z:/_SYNC_CACHE/projects'
+    ].filter(d => fs.existsSync(d));
+
+    const uniqueBases = [...new Set(targetRoots.map(d => path.resolve(d)))];
+    const types = ['server', 'drive'];
+
+    for (const baseDir of uniqueBases) {
+        for (const type of types) {
+            const typeDir = path.join(baseDir, projectName, type);
+            if (!fs.existsSync(typeDir)) continue;
+
+            try {
+                const subFiles = fs.readdirSync(typeDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+                for (const sf of subFiles) {
+                    const subFilePath = path.join(typeDir, sf);
+                    try {
+                        let subData = subCatalogMemoryCache.get(subFilePath);
+                        if (!subData) {
+                            subData = fs.readJsonSync(subFilePath);
+                        }
+                        if (subData && Array.isArray(subData.flatList)) {
+                            let modified = false;
+                            for (const item of subData.flatList) {
+                                const itemPath = normalizeSlash(item.path || item.serverPath || item.targetLocalPath || item.onlinePath || '');
+                                const itemLower = itemPath.toLowerCase();
+
+                                if (itemLower === lowerOld) {
+                                    item.name = newName;
+                                    if (item.ext !== undefined && !item.isDir) {
+                                        item.ext = path.extname(newName).toLowerCase();
+                                    }
+                                    if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                    if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                    if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                    if (item.onlinePath) item.onlinePath = replacePrefix(item.onlinePath, normOld, normNew);
+                                    if (item.relPath) {
+                                        const pRel = path.dirname(item.relPath).replace(/\\/g, '/');
+                                        item.relPath = pRel === '.' ? newName : (pRel + '/' + newName);
+                                    }
+                                    modified = true;
+                                } else if (itemLower.startsWith(lowerOld + '/')) {
+                                    if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                    if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                    if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                    if (item.onlinePath) item.onlinePath = replacePrefix(item.onlinePath, normOld, normNew);
+                                    if (item.relPath) {
+                                        item.relPath = replacePrefix(item.relPath, path.basename(normOld), newName);
+                                    }
+                                    modified = true;
+                                }
+                            }
+
+                            if (modified) {
+                                fs.writeJsonSync(subFilePath, subData, { spaces: 2 });
+                                subCatalogMemoryCache.delete(subFilePath);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`[RECORD RENAMED] Error actualizando ${subFilePath}:`, e.message);
+                    }
+                }
+            } catch (e) {}
+
+            // Actualizar manifest.json si existe
+            const manPath = path.join(typeDir, 'manifest.json');
+            if (fs.existsSync(manPath)) {
+                try {
+                    let man = fs.readJsonSync(manPath);
+                    let manModified = false;
+                    if (man && man.topFolders) {
+                        for (const cat of ['work', 'media']) {
+                            if (Array.isArray(man.topFolders[cat])) {
+                                for (const item of man.topFolders[cat]) {
+                                    const itemPath = normalizeSlash(item.path || '');
+                                    if (itemPath.toLowerCase() === lowerOld) {
+                                        item.name = newName;
+                                        item.path = replacePrefix(item.path, normOld, normNew);
+                                        manModified = true;
+                                    } else if (itemPath.toLowerCase().startsWith(lowerOld + '/')) {
+                                        item.path = replacePrefix(item.path, normOld, normNew);
+                                        manModified = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (man && Array.isArray(man.flatList)) {
+                        for (const item of man.flatList) {
+                            const itemPath = normalizeSlash(item.path || item.serverPath || item.targetLocalPath || '');
+                            if (itemPath.toLowerCase() === lowerOld) {
+                                item.name = newName;
+                                if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                manModified = true;
+                            } else if (itemPath.toLowerCase().startsWith(lowerOld + '/')) {
+                                if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                manModified = true;
+                            }
+                        }
+                    }
+                    if (manModified) {
+                        fs.writeJsonSync(manPath, man, { spaces: 2 });
+                        manifestMemoryCache.delete(manPath);
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
+    // Actualizar catálogos monolíticos si existen
+    const monoRoots = [LOCAL_CACHE_DIR, 'Z:/_SYNC_CACHE'].filter(d => fs.existsSync(d));
+    for (const mr of monoRoots) {
+        for (const type of types) {
+            const monoFile = type === 'server' ? `server_${projectName}.json` : `${projectName}.json`;
+            const p = path.join(mr, monoFile);
+            if (fs.existsSync(p)) {
+                try {
+                    const cat = fs.readJsonSync(p);
+                    if (cat && Array.isArray(cat.flatList)) {
+                        let modified = false;
+                        for (const item of cat.flatList) {
+                            const itemPath = normalizeSlash(item.path || item.serverPath || item.targetLocalPath || item.onlinePath || '');
+                            if (itemPath.toLowerCase() === lowerOld) {
+                                item.name = newName;
+                                if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                if (item.onlinePath) item.onlinePath = replacePrefix(item.onlinePath, normOld, normNew);
+                                modified = true;
+                            } else if (itemPath.toLowerCase().startsWith(lowerOld + '/')) {
+                                if (item.path) item.path = replacePrefix(item.path, normOld, normNew);
+                                if (item.serverPath) item.serverPath = replacePrefix(item.serverPath, normOld, normNew);
+                                if (item.targetLocalPath) item.targetLocalPath = replacePrefix(item.targetLocalPath, normOld, normNew);
+                                if (item.onlinePath) item.onlinePath = replacePrefix(item.onlinePath, normOld, normNew);
+                                modified = true;
+                            }
+                        }
+                        if (modified) {
+                            fs.writeJsonSync(p, cat, { spaces: 2 });
+                        }
+                    }
+                } catch (e) {}
+            }
         }
     }
 
@@ -2758,6 +3315,7 @@ function clearMemoryCaches() {
     pendingSyncCache.clear();
     projectPathLookupCache.clear();
     autoHydratedProjects.clear();
+    if (typeof subCatalogFreshnessCache !== 'undefined') subCatalogFreshnessCache.clear();
 }
 
 module.exports = {
@@ -2781,12 +3339,14 @@ module.exports = {
     listFromModularCatalog,
     refreshSubCatalog,
     recordTransferredItem,
+    recordRenamedItem,
     getModularManifest,
     clearMemoryCaches,
     listWithRclone,
     dirExistsFast,
     fileExistsFast,
-    isZDriveNetwork
+    isZDriveNetwork,
+    resolveLocalToOnlinePath
 };
 
 // --- CLI RUNNER ---
