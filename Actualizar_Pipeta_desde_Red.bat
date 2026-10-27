@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 title Sincronizar Pipeta desde Servidor Maestro (Robocopy)
 
-set "APP_VERSION=v1.1.67"
+set "APP_VERSION=v1.1.68"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 set "SRC="

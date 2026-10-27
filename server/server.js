@@ -17,7 +17,7 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.67";
+const VERSION = "v1.1.68";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)

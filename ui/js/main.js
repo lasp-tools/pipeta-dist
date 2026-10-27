@@ -1224,7 +1224,7 @@ function closeAllToolbarDropdowns() {
 }
 
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('#browserModeDropdown') && !e.target.closest('#browserModeDropdownMenu')) {
+    if (!e.target.closest('.toolbar-dropdown') && !e.target.closest('#browserModeDropdownMenu')) {
         closeAllToolbarDropdowns();
     }
 });
@@ -1232,8 +1232,8 @@ document.addEventListener('click', (e) => {
 window.addEventListener('resize', closeAllToolbarDropdowns);
 window.addEventListener('scroll', closeAllToolbarDropdowns, true);
 
-window.toggleBrowserModeDropdown = toggleBrowserModeDropdown;
-window.selectBrowserMode = selectBrowserMode;
+window.toggleBrowserModeDropdown = function() {};
+window.selectBrowserMode = function() {};
 window.closeAllToolbarDropdowns = closeAllToolbarDropdowns;
 
 // Shortcuts
