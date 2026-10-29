@@ -1,42 +1,59 @@
 @echo off
 setlocal enabledelayedexpansion
-title Sincronizar Pipeta desde Servidor Maestro (Robocopy)
+title Sincronizar Pipeta (Local / Remoto)
 
 set "APP_VERSION=v1.1.77"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
+:: Si se pasa --from-temp con un destino especifico
+if /i "%~1"=="--from-temp" (
+    if not "%~2"=="" set "DEST=%~2"
+    goto :STUDIO_UPDATE_EXEC
+)
+
+:: Si se pasa --from-temp-remote con un destino especifico
+if /i "%~1"=="--from-temp-remote" (
+    if not "%~2"=="" set "DEST=%~2"
+    goto :REMOTE_UPDATE_EXEC
+)
+
+:: Determinar si se ejecuta desde una carpeta de aplicacion instalada
+set "CURRENT_DIR=%~dp0"
+if "%CURRENT_DIR:~-1%"=="\" set "CURRENT_DIR=%CURRENT_DIR:~0,-1%"
+if exist "%CURRENT_DIR%\Launch_Pipeta.bat" (
+    set "DEST=%CURRENT_DIR%"
+)
+
+:: 1. Deteccion de red del estudio (Z: local / SMB)
 set "SRC="
 if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
     set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-) else if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-    set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
     set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 )
 
+:: Si no se detecto red interna del estudio, pasar al actualizador Remoto (GitHub / Google Drive)
 if "%SRC%"=="" (
-    echo [ERROR] No se pudo acceder al servidor maestro de Pipeta.
-    echo Se verificaron las siguientes rutas:
-    echo   - S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
-    echo   - Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
-    echo   - \\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta
-    echo Verifica que la red este activa o que la unidad Z: este conectada.
-    ping 127.0.0.1 -n 5 >nul
-    exit /b 1
+    goto :REMOTE_UPDATE_PREP
 )
 
-REM --- Si se ejecuta desde C:\ (copia local vieja), saltar automaticamente a la ultima version del script en Red via TEMP ---
+:: ============================================================
+:: MODO ESTUDIO (MUNRO / RED INTERNA / SMB)
+:: ============================================================
+:STUDIO_UPDATE_PREP
+:: Si se ejecuta desde el destino local, saltar a TEMP para no autobloquear archivos en ejecucion
 if /i not "%~1"=="--from-temp" (
     if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
         copy /y "%SRC%\Actualizar_Pipeta_desde_Red.bat" "%TEMP%\Pipeta_Updater_Run.bat" >nul 2>&1
         if exist "%TEMP%\Pipeta_Updater_Run.bat" (
-            "%TEMP%\Pipeta_Updater_Run.bat" --from-temp
+            "%TEMP%\Pipeta_Updater_Run.bat" --from-temp "%DEST%"
             exit /b 0
         )
     )
 )
 
-REM --- Detectar dinamicamente la version actual publicada en el servidor maestro (%SRC%) ---
+:STUDIO_UPDATE_EXEC
+:: Detectar dinamicamente la version en red
 if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
     for /f "tokens=2 delims==" %%v in ('findstr /i "APP_VERSION=v" "%SRC%\Actualizar_Pipeta_desde_Red.bat"') do (
         set "NET_VER=%%v"
@@ -46,9 +63,12 @@ if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
 )
 
 title Sincronizar Pipeta !APP_VERSION! desde Servidor Maestro
-echo Origen Maestro: %SRC%
-echo Destino Local:  %DEST%
-echo Version en Red: !APP_VERSION!
+echo ============================================================
+echo   ACTUALIZACION DE PIPETA (RED ESTUDIO)
+echo   Origen Maestro: %SRC%
+echo   Destino Local:  %DEST%
+echo   Version en Red: !APP_VERSION!
+echo ============================================================
 echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
@@ -72,12 +92,10 @@ if not exist "%DEST%\server\node_modules\express" set "NEED_HYDRATION=1"
 if "!NEED_HYDRATION!"=="1" (
     echo.
     echo [INFO] Runtimes o librerias de Node.js faltantes en el equipo local.
-    echo [INFO] Descargando y extrayendo dependencias y runtimes desde el deposito central...
+    echo [INFO] Descargando y extrayendo dependencias desde el deposito central...
     
     set "DEPOT_ZIP="
-    if exist "S:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
-        set "DEPOT_ZIP=S:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
-    ) else if exist "Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
+    if exist "Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
         set "DEPOT_ZIP=Z:\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
     ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip" (
         set "DEPOT_ZIP=\\192.168.206.116\Z\INTERNO\TOOLS\_DEPOT\packages\pipeta_dependencies.zip"
@@ -94,16 +112,112 @@ if "!NEED_HYDRATION!"=="1" (
             tar.exe -xf "!DEPOT_ZIP!" -C "%DEST%"
         )
     ) else (
-        echo [WARN] No se encontro el deposito central de dependencias.
+        echo [WARN] No se encontro el deposito central de dependencias en red.
     )
 )
 
-echo [3/3] Actualizando acceso directo en Escritorio con icono oficial...
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk')); $s.TargetPath = 'C:\TOOLS\APPS\Pipeta\Launch_Pipeta.bat'; $s.WorkingDirectory = 'C:\TOOLS\APPS\Pipeta'; $ico = 'C:\TOOLS\APPS\Pipeta\Pipeta.ico'; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
+goto :FINALIZE_UPDATE
+
+
+:: ============================================================
+:: MODO REMOTO (FREELANCE / GITHUB + GOOGLE DRIVE)
+:: ============================================================
+:REMOTE_UPDATE_PREP
+echo [INFO] Servidor local de estudio no detectado.
+echo [INFO] Conmutando a modo Remoto (GitHub / Google Drive)...
+
+if /i not "%~1"=="--from-temp-remote" (
+    copy /y "%~f0" "%TEMP%\Pipeta_Remote_Updater.bat" >nul 2>&1
+    if exist "%TEMP%\Pipeta_Remote_Updater.bat" (
+        "%TEMP%\Pipeta_Remote_Updater.bat" --from-temp-remote "%DEST%"
+        exit /b 0
+    )
+)
+
+:REMOTE_UPDATE_EXEC
+title Actualizar Pipeta via GitHub y Google Drive
+echo.
+echo ============================================================
+echo   ACTUALIZACION DE PIPETA REMOTA (GITHUB + DRIVE)
+echo   Destino: %DEST%
+echo ============================================================
+echo.
+
+echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
+powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
+ping 127.0.0.1 -n 2 >nul
+
+echo [2/3] Sincronizando codigo desde GitHub (lasp-tools/pipeta-dist)...
+where.exe git >nul 2>&1
+if !errorlevel! equ 0 (
+    cd /d "%DEST%"
+    
+    set "GH_REPO=https://github.com/lasp-tools/pipeta-dist.git"
+    if exist "%DEST%\credentials\github_token.txt" (
+        set /p GH_TOKEN=<"%DEST%\credentials\github_token.txt"
+        set "GH_TOKEN=!GH_TOKEN: =!"
+        if not "!GH_TOKEN!"=="" (
+            set "GH_REPO=https://oauth2:!GH_TOKEN!@github.com/lasp-tools/pipeta-dist.git"
+        )
+    )
+    
+    if not exist "%DEST%\.git" (
+        echo [INFO] Conectando carpeta local con repositorio GitHub...
+        git init >nul 2>&1
+        git remote add origin !GH_REPO! >nul 2>&1
+    ) else (
+        git remote set-url origin !GH_REPO! >nul 2>&1
+    )
+    
+    echo [INFO] Descargando ultimas actualizaciones de main...
+    git fetch origin main --quiet
+    if !errorlevel! equ 0 (
+        git checkout -B main origin/main --quiet
+        echo [OK] Codigo actualizado con exito desde GitHub.
+    ) else (
+        echo [WARN] No se pudo hacer git fetch. Verifica la conexion a internet o el token.
+    )
+) else (
+    echo [WARN] Git no esta disponible en el sistema. Omitiendo sincronizacion por repositorio.
+)
+
+echo [3/3] Verificando dependencias y runtimes de Node y Python...
+set "NEED_HYDRATION=0"
+if not exist "%DEST%\bin\node\node.exe" set "NEED_HYDRATION=1"
+if not exist "%DEST%\server\node_modules\express" set "NEED_HYDRATION=1"
+
+if "!NEED_HYDRATION!"=="1" (
+    echo [INFO] Dependencias o runtimes faltantes detectados.
+    echo [INFO] Descargando pipeta_dependencies.zip desde Google Drive (LaSP_Tools)...
+    
+    set "RCLONE_EXE=%DEST%\tools\rclone\rclone.exe"
+    set "RCLONE_CONF=%DEST%\tools\rclone\rclone.conf"
+    
+    if exist "!RCLONE_EXE!" (
+        "!RCLONE_EXE!" --config "!RCLONE_CONF!" copy "lasp-drive:_DEPOT/packages/pipeta_dependencies.zip" "%DEST%" --drive-team-drive 0AASS9JDeUQn7Uk9PVA --stats-one-line
+        if exist "%DEST%\pipeta_dependencies.zip" (
+            echo [INFO] Extrayendo dependencias con tar.exe...
+            tar.exe -xf "%DEST%\pipeta_dependencies.zip" -C "%DEST%"
+            del /f /q "%DEST%\pipeta_dependencies.zip" >nul 2>&1
+            echo [OK] Dependencias restauradas con exito desde Google Drive.
+        ) else (
+            echo [WARN] No se pudo descargar pipeta_dependencies.zip desde Google Drive.
+        )
+    ) else (
+        echo [WARN] No se encontro Rclone para descargar dependencias.
+    )
+) else (
+    echo [OK] Dependencias y runtimes en orden.
+)
+
+:FINALIZE_UPDATE
+echo.
+echo Actualizando acceso directo en Escritorio con icono oficial...
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk')); $s.TargetPath = '%DEST%\Launch_Pipeta.bat'; $s.WorkingDirectory = '%DEST%'; $ico = '%DEST%\Pipeta.ico'; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
 
 echo.
 echo ============================================================
-echo   OK: Pipeta !APP_VERSION! reinstalada con exito en %DEST%
+echo   OK: Pipeta actualizada con exito en %DEST%
 echo ============================================================
 echo.
 ping 127.0.0.1 -n 2 >nul

@@ -2898,38 +2898,56 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">📦 Update / Export Presets</h3>
 
                     <!-- SECCIÓN: ACTUALIZADOR DIRECTO & ACCESOS (ARRIBA DE TODO) -->
-                    <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                            <div style="font-weight:bold; color:var(--accent); font-size:0.95rem;">
-                                🔄 Actualizador Directo & Accesos
+                    ${(() => {
+                        const isExt = !!(window.cachedEnvState?.isExternalMachine || settings.envState?.isExternalMachine);
+                        return `
+                        <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <span style="font-weight:bold; color:var(--accent); font-size:0.95rem;">
+                                        🔄 Actualizador del Sistema
+                                    </span>
+                                    <span style="font-size:0.75rem; background:${isExt ? '#ff9800' : '#4caf50'}; color:#000; font-weight:bold; padding:2px 8px; border-radius:3px;">
+                                        ${isExt ? 'Modo Remoto (GitHub / Drive)' : 'Red Estudio (Z: Local)'}
+                                    </span>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button id="createShortcutBtn" class="btn" onclick="settings.createDesktopShortcut()" title="Crea un acceso directo en tu Escritorio con el icono de Pipeta"
+                                        style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:9px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                        <span>📌 Crear Acceso Directo</span>
+                                    </button>
+                                    <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
+                                        style="background:var(--accent); color:black; font-weight:bold; padding:9px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
+                                        <span>🚀 ${isExt ? 'ACTUALIZAR PIPETA (GITHUB / DRIVE)' : 'ACTUALIZAR PIPETA DESDE RED'}</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div style="display:flex; gap:10px;">
-                                <button id="createShortcutBtn" class="btn" onclick="settings.createDesktopShortcut()" title="Crea un acceso directo en tu Escritorio con el icono de Pipeta"
-                                    style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:9px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
-                                    <span>📌 Crear Acceso Directo</span>
-                                </button>
-                                <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
-                                    style="background:var(--accent); color:black; font-weight:bold; padding:9px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
-                                    <span>🚀 ACTUALIZAR PIPETA DESDE RED</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; margin-bottom:12px;"></div>
-                        <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                            Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code>) y reinicia el sistema automáticamente.
-                        </p>
+                            <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; margin-bottom:12px;"></div>
+                            <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
+                                ${isExt 
+                                    ? 'Sincroniza en caliente el código más reciente desde GitHub (<code>lasp-tools/pipeta-dist</code>), restaura automáticamente dependencias y runtimes desde Google Drive (<code>LaSP_Tools</code>) y reinicia el sistema.' 
+                                    : 'Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code>) y reinicia el sistema automáticamente.'}
+                            </p>
 
-                        <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; font-size:0.8rem;">
-                            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                <span style="color:#888;">Servidor Maestro (Origen de Red):</span>
-                                <span style="color:var(--accent); font-family:monospace; font-weight:bold;">Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between;">
-                                <span style="color:#888;">Instalación Local:</span>
-                                <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
+                            <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; font-size:0.8rem;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                    <span style="color:#888;">${isExt ? 'Origen de Código (GitHub):' : 'Servidor Maestro (Origen de Red):'}</span>
+                                    <span style="color:var(--accent); font-family:monospace; font-weight:bold;">${isExt ? 'https://github.com/lasp-tools/pipeta-dist.git' : 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'}</span>
+                                </div>
+                                ${isExt ? `
+                                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                                    <span style="color:#888;">Depósito de Dependencias:</span>
+                                    <span style="color:#00bcd4; font-family:monospace;">Google Drive (LaSP_Tools)</span>
+                                </div>
+                                ` : ''}
+                                <div style="display:flex; justify-content:space-between;">
+                                    <span style="color:#888;">Instalación Local:</span>
+                                    <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                        `;
+                    })()}
 
                     <p style="color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:14px;">
                         Esta herramienta permite respaldar y publicar selectivamente las configuraciones, proyectos y presets de diseño (Shots y Assets) desde tu disco local <code>C:\\</code> hacia la unidad de red <code>Z:\\</code> o cualquier otra carpeta de destino, manteniendo intacto el carpetaje original.
@@ -3005,7 +3023,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.77'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.78'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3036,11 +3054,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.77'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.78'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.77'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.78'}.zip</code>).
                             </div>
                         </div>
 
@@ -3081,7 +3099,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.77'}
+                            ${window.APP_VERSION || 'v1.1.78'}
                         </span>
                     </h3>
 
@@ -3093,7 +3111,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.77 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.78 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Actualizador Inteligente Unificado en Update / Export:</b> Se unificó el actualizador en la pestaña <i>Update / Export Presets</i> eliminando redundancias. El botón detecta automáticamente el entorno: en el estudio actualiza vía red local (<code>Z:</code>), y en equipos remotos/freelance sincroniza vía GitHub (<code>pipeta-dist</code>) y restaura dependencias faltantes desde Google Drive (<code>LaSP_Tools</code>).</li>
+                                    <li><b>Scripts de Actualización Portables:</b> <code>Actualizar_Pipeta.bat</code> y <code>Actualizar_Pipeta_desde_Red.bat</code> incluidos en el paquete portable para su ejecución directa.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.77</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Fijación de Navegación en Proyecto Base:</b> Se neutralizó la sobrescritura silenciosa del selector del header para mantener seleccionada la plantilla maestra <i>★ Proyecto Base</i> al alternar entre cualquiera de sus secciones (ID / Nombre, Rutas, Presets Proyecto, Presets IA, Templates).</li>
                                     <li><b>Acceso Universal a Dev Mode:</b> Incorporación del interruptor de <code>🛠️ Dev Mode</code> en la pestaña Rutas y soporte consistente a través de todas las secciones para habilitar de inmediato la edición de tokens y presets maestros.</li>
@@ -3773,11 +3799,12 @@ const settings = {
             statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Buscando repositorio maestro y sincronizando...</span>';
         }
 
+        const isExternalEnv = !!(window.cachedEnvState?.isExternalMachine || settings.envState?.isExternalMachine);
         const modal = settings.showPipetaUpdateModal();
-        modal.setStep(1, 20, 'Localizando repositorio maestro de Pipeta...');
+        modal.setStep(1, 20, isExternalEnv ? 'Conectando con repositorio GitHub (pipeta-dist)...' : 'Localizando repositorio maestro de Pipeta...');
 
         const step2Timer = setTimeout(() => {
-            modal.setStep(2, 45, 'Sincronizando archivos del sistema mediante robocopy...');
+            modal.setStep(2, 45, isExternalEnv ? 'Descargando actualizaciones e hidratando dependencias...' : 'Sincronizando archivos del sistema mediante robocopy...');
         }, 900);
 
         try {
@@ -4128,8 +4155,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.77'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.77'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.78'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.78'}.zip`;
 
         if (btn) {
             btn.disabled = true;

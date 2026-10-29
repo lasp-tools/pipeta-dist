@@ -17,7 +17,7 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.77";
+const VERSION = "v1.1.78";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -3217,7 +3217,7 @@ try {
     # Excluir siempre .git, .gemini, logs, node_modules\\.cache, _SYNC_CACHE y credentials
     # Excluir scripts exclusivos del estudio central (Actualizar y Publicar)
     $pythonDir = Join-Path $source "bin\python"
-    $excludeFiles = @("*.zip", "*.log", "Actualizar_Pipeta_desde_Red.bat", "Publicar_Pipeta_a_Produccion_Estudio.bat")
+    $excludeFiles = @("*.zip", "*.log", "Publicar_Pipeta_a_Produccion_Estudio.bat")
     if ($includeRamon) {
         robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE credentials /XF $excludeFiles /NFL /NDL /NJH /NJS /R:0 /W:0
     } else {
@@ -3437,25 +3437,74 @@ foreach ($src in $candidateSources) {
 }
 
 if (-not $foundSource) {
-    Write-Error "No se pudo acceder al servidor maestro de Pipeta. Se verificaron: Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta y \\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta. Verifica la conexion de red o que la unidad Z: este conectada."
-    exit 1
-}
+    # MODO REMOTO (Freelance / GitHub + Google Drive)
+    Write-Output "INFO: Modo remoto detectado (sin servidor maestro local). Actualizando via GitHub y Google Drive..."
+    $localPipetaDir = "${path.resolve(__dirname, '..').replace(/\\/g, '\\\\')}"
+    Set-Location $localPipetaDir
 
-$dest = 'C:\\TOOLS\\APPS\\Pipeta'
-if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+    $hasGit = $false
+    where.exe git >$null 2>&1
+    if ($LASTEXITCODE -eq 0) { $hasGit = $true }
 
-# 1. Sincronizar archivos principales directamente desde el origen detectado
-& robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
-if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+    if ($hasGit) {
+        $ghRepo = "https://github.com/lasp-tools/pipeta-dist.git"
+        $tokenFile = Join-Path $localPipetaDir "credentials\\github_token.txt"
+        if (Test-Path $tokenFile) {
+            $tok = (Get-Content $tokenFile -Raw).Trim()
+            if ($tok) { $ghRepo = "https://oauth2:${tok}@github.com/lasp-tools/pipeta-dist.git" }
+        }
 
-# 2. Sincronizar presets base sin sobreescribir configuraciones locales
-if (Test-Path "$foundSource\\presets") {
-    & robocopy "$foundSource\\presets" "$dest\\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+        if (-not (Test-Path (Join-Path $localPipetaDir ".git"))) {
+            & git init 2>&1 | Out-Null
+            & git remote add origin $ghRepo 2>&1 | Out-Null
+        } else {
+            & git remote set-url origin $ghRepo 2>&1 | Out-Null
+        }
+
+        & git fetch origin main --quiet 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            & git checkout -B main origin/main --quiet 2>&1 | Out-Null
+            Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB"
+        } else {
+            Write-Error "Fallo la sincronizacion con GitHub. Verifica conexion a internet o token."
+            exit 1
+        }
+    } else {
+        Write-Error "Git no esta instalado en este equipo para actualizar por repositorio."
+        exit 1
+    }
+
+    # Verificar dependencias desde Google Drive (LaSP_Tools) si faltan
+    $nodeExe = Join-Path $localPipetaDir "bin\\node\\node.exe"
+    $expressModule = Join-Path $localPipetaDir "server\\node_modules\\express"
+    if ((-not (Test-Path $nodeExe)) -or (-not (Test-Path $expressModule))) {
+        $rcloneExe = Join-Path $localPipetaDir "tools\\rclone\\rclone.exe"
+        $rcloneConf = Join-Path $localPipetaDir "tools\\rclone\\rclone.conf"
+        if (Test-Path $rcloneExe) {
+            & $rcloneExe --config $rcloneConf copy "lasp-drive:_DEPOT/packages/pipeta_dependencies.zip" $localPipetaDir --drive-team-drive 0AASS9JDeUQn7Uk9PVA --stats-one-line
+            $zipDep = Join-Path $localPipetaDir "pipeta_dependencies.zip"
+            if (Test-Path $zipDep) {
+                tar.exe -xf $zipDep -C $localPipetaDir
+                Remove-Item -Force $zipDep -ErrorAction SilentlyContinue
+            }
+        }
+    }
+} else {
+    $dest = 'C:\\TOOLS\\APPS\\Pipeta'
+    if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+
+    # 1. Sincronizar archivos principales directamente desde el origen detectado
+    & robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
     if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
-}
 
-Write-Output "UPDATE_SUCCESS:$foundSource"
-`;
+    # 2. Sincronizar presets base sin sobreescribir configuraciones locales
+    if (Test-Path "$foundSource\\presets") {
+        & robocopy "$foundSource\\presets" "$dest\\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+        if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+    }
+
+    Write-Output "UPDATE_SUCCESS:$foundSource"
+}`;
 
     const tmpPsFile = path.join(os.tmpdir(), `pipeta_update_${Date.now()}.ps1`);
     try {
