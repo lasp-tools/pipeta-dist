@@ -24,3 +24,18 @@ dist/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Agents & AI assistants workflows
+.agent/
+.agents/
+
+# Deprecated, backups & old files
+_old/
+*.bak
+*.old
+*_old.*
