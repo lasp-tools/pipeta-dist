@@ -204,8 +204,17 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                     itemCopy.hasPendingSync = catItem.hasPendingSync;
                     itemCopy.pendingType = catItem.pendingType;
                     itemCopy.pendingCount = catItem.pendingCount;
-                    itemCopy.pendingUploadCount = catItem.pendingUploadCount || 0;
+                    const isRealSrv = typeof window.isZRealServer !== 'function' || window.isZRealServer();
+                    itemCopy.pendingUploadCount = isRealSrv ? (catItem.pendingUploadCount || 0) : 0;
                     itemCopy.pendingDownloadCount = catItem.pendingDownloadCount || 0;
+                    if (!isRealSrv && itemCopy.pendingUploadCount === 0 && itemCopy.pendingDownloadCount === 0) {
+                        itemCopy.hasPendingSync = false;
+                        itemCopy.pendingType = null;
+                        itemCopy.pendingCount = 0;
+                    } else if (!isRealSrv && itemCopy.pendingUploadCount === 0 && itemCopy.pendingDownloadCount > 0) {
+                        itemCopy.pendingType = 'download';
+                        itemCopy.pendingCount = itemCopy.pendingDownloadCount;
+                    }
                 }
             } else {
                 itemCopy.syncStatus = 'upload_drive';
@@ -466,6 +475,40 @@ function createTreeNode(item, level, containerId = '') {
     row.setAttribute('data-isdir', item.isDirectory);
     row.style.paddingLeft = `${level * 20 + 10}px`;
     wrapper._row = row;
+
+    // Soporte Drag & Drop hacia IA Ingest (ventana o barra lateral dock)
+    row.draggable = true;
+    row.ondragstart = (e) => {
+        let paths = [item.path];
+        const isDirMap = { [item.path]: !!item.isDirectory };
+
+        if (window.selectedPaths && window.selectedPaths.has(item.path)) {
+            paths = Array.from(window.selectedPaths);
+            const selectedEls = document.querySelectorAll('.tree-node.selected');
+            selectedEls.forEach(el => {
+                const p = el.getAttribute('data-path');
+                const d = el.getAttribute('data-isdir') === 'true';
+                if (p) isDirMap[p] = d;
+            });
+        }
+
+        const dragData = {
+            type: 'pipeta-files',
+            paths: paths,
+            isDirMap: isDirMap
+        };
+
+        window._pipetaDragData = dragData;
+        try {
+            e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+            e.dataTransfer.setData('text/plain', paths.join('\n'));
+        } catch(err) {}
+        e.dataTransfer.effectAllowed = 'copyMove';
+    };
+
+    row.ondragend = () => {
+        setTimeout(() => { window._pipetaDragData = null; }, 400);
+    };
 
     // Persistence: Selection State
     if (window.selectedPaths.has(item.path)) {

@@ -864,12 +864,23 @@ class SyncQueueUI {
 
         function onMouseMove(e) {
             moveAt(e.pageX, e.pageY);
+            if (window.DockManager && !win.classList.contains('is-docked')) {
+                if (e.clientX >= window.innerWidth - 100) {
+                    window.DockManager.showSnapGhost(true);
+                } else {
+                    window.DockManager.showSnapGhost(false);
+                }
+            }
         }
 
         document.addEventListener('mousemove', onMouseMove);
         document.onmouseup = function () {
             document.removeEventListener('mousemove', onMouseMove);
             document.onmouseup = null;
+            if (window.DockManager && window.DockManager.isGhostActive) {
+                window.DockManager.showSnapGhost(false);
+                window.DockManager.dock('sync-queue');
+            }
         };
     }
 

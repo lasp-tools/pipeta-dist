@@ -545,10 +545,21 @@ class FileAuditor {
         const moveH = ev => {
             this.container.style.left = (ev.clientX - this._dragOff.x) + 'px';
             this.container.style.top = (ev.clientY - this._dragOff.y) + 'px';
+            if (window.DockManager && !this.container.classList.contains('is-docked')) {
+                if (ev.clientX >= window.innerWidth - 100) {
+                    window.DockManager.showSnapGhost(true);
+                } else {
+                    window.DockManager.showSnapGhost(false);
+                }
+            }
         };
         const upH = () => {
             document.removeEventListener('mousemove', moveH);
             document.removeEventListener('mouseup', upH);
+            if (window.DockManager && window.DockManager.isGhostActive) {
+                window.DockManager.showSnapGhost(false);
+                window.DockManager.dock('file-auditor');
+            }
         };
         document.addEventListener('mousemove', moveH);
         document.addEventListener('mouseup', upH);

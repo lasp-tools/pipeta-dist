@@ -2,14 +2,14 @@
 setlocal enabledelayedexpansion
 title Sincronizar Pipeta desde Servidor Maestro (Robocopy)
 
-set "APP_VERSION=v1.1.68"
+set "APP_VERSION=v1.1.77"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 set "SRC="
-if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-    set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-) else if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
     set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+) else if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+    set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
     set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 )

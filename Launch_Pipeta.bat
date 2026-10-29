@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.68"
+set "APP_VERSION=v1.1.77"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 
@@ -21,10 +21,11 @@ for %%a in (%*) do (
 
 set "SCRIPT_DIR=%~dp0"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
-set "SERVER_DIR=%LOCAL_DIR%\server"
+
+set "SERVER_DIR=%SCRIPT_DIR%server"
 if not exist "%SERVER_DIR%\server.js" (
-    if exist "%SCRIPT_DIR%server\server.js" (
-        set "SERVER_DIR=%SCRIPT_DIR%server"
+    if exist "%LOCAL_DIR%\server\server.js" (
+        set "SERVER_DIR=%LOCAL_DIR%\server"
     )
 )
 
@@ -81,6 +82,9 @@ if "%NODE_BIN%"=="" (
 :: 3. Iniciar servidor
 cd /d "%SERVER_DIR%"
 set "PORT=%APP_PORT%"
+
+:: Limpiar procesos previos de Pipeta en ejecucion
+powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
 
 :START_SERVER
 echo [INFO] Iniciando %APP_NAME% %APP_VERSION% en puerto %APP_PORT%...

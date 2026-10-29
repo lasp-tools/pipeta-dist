@@ -1570,9 +1570,13 @@ function extractLogicalFilesMap(flatList) {
     return map;
 }
 
+function isZLocalOrSubst() {
+    return !!(global.isExternalMachine || global.isZRealServer === false);
+}
+
 function computeSubCatalogFolderDiff(projectName, subFile, driveData) {
     const folderStats = new Map();
-    if (global.isExternalMachine || !driveData) return folderStats;
+    if (isZLocalOrSubst() || !driveData) return folderStats;
 
     const srvSubPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
     if (!srvSubPath) return folderStats;
@@ -1631,7 +1635,7 @@ function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
     if (!subFilePath) return null;
 
     let srvMtime = 0;
-    if (type === 'drive' && !global.isExternalMachine) {
+    if (type === 'drive' && !isZLocalOrSubst()) {
         const srvPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
         if (srvPath) {
             try { srvMtime = fs.statSync(srvPath).mtimeMs; } catch (e) {}
@@ -1647,7 +1651,7 @@ function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
         }
         const data = fs.readJsonSync(subFilePath);
         const indexRes = buildSubCatalogIndex(data);
-        const folderStats = (type === 'drive' && !global.isExternalMachine)
+        const folderStats = (type === 'drive' && !isZLocalOrSubst())
             ? computeSubCatalogFolderDiff(projectName, subFile, data)
             : new Map();
         const cacheEntry = {
@@ -1666,7 +1670,7 @@ function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
 }
 
 function checkSubCatalogPendingSync(projectName, type, subFile) {
-    if (!global.isExternalMachine && type === 'server') {
+    if (!isZLocalOrSubst() && type === 'server') {
         return { hasPending: false, count: 0, uploadCount: 0, downloadCount: 0 };
     }
     const cacheKey = `${projectName}_${type}_${subFile}`.toLowerCase();
@@ -1676,7 +1680,7 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
         if (now - cached.time < 60000) return cached.data;
     }
 
-    if (type === 'drive' && !global.isExternalMachine) {
+    if (type === 'drive' && !isZLocalOrSubst()) {
         const entry = getOrBuildSubCatalogCacheEntry(projectName, 'drive', subFile);
         if (entry && entry.folderStats) {
             const rootSt = entry.folderStats.get('__root__') || { upload: 0, download: 0 };
@@ -1704,11 +1708,12 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
         const data = fs.readJsonSync(subFilePath);
         let missing = 0;
         if (data && Array.isArray(data.flatList) && data.flatList.length > 0) {
-            const sample = data.flatList[0];
-            const sampleTarget = (sample?.targetLocalPath || '').replace(/^S:/i, 'Z:');
-            const parentDir = sampleTarget ? path.dirname(sampleTarget) : null;
-            if (parentDir && !dirExistsFast(parentDir)) {
-                missing = data.flatList.length;
+            for (const it of data.flatList) {
+                if (it.isDir || it.isDirectory) continue;
+                const targetLocal = (it.targetLocalPath || it.path || '').replace(/^S:/i, 'Z:');
+                if (targetLocal && !fileExistsFast(targetLocal)) {
+                    missing++;
+                }
             }
         }
         const res = { hasPending: missing > 0, count: missing, uploadCount: 0, downloadCount: missing, pendingType: 'download' };
@@ -1963,8 +1968,11 @@ function listFromModularCatalog(requestedPath, type = 'server') {
             if (canDoLiveShotLookahead && copyItem.targetLocalPath) {
                 try {
                     let physPath = copyItem.targetLocalPath;
-                    const sAlt = physPath.replace(/^Z:/i, 'S:');
-                    if (!fs.existsSync(physPath) && fs.existsSync(sAlt)) physPath = sAlt;
+                    // Solo chequear S: como fallback si esta máquina tiene Z: real en SMB, NUNCA en máquinas con subst local Z:
+                    if (!isZLocalOrSubst()) {
+                        const sAlt = physPath.replace(/^Z:/i, 'S:');
+                        if (!fs.existsSync(physPath) && fs.existsSync(sAlt)) physPath = sAlt;
+                    }
                     if (fs.existsSync(physPath)) {
                         const diskEntries = fs.readdirSync(physPath, { withFileTypes: true });
                         const childDriveKey = copyItem.targetLocalPath.toLowerCase();

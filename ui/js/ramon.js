@@ -453,6 +453,76 @@ const Ramon = {
         if (modal) modal.style.display = 'none';
     },
 
+    isMaximized: false,
+    prevBounds: null,
+
+    startDrag: (e) => {
+        if (Ramon.isMaximized) return;
+        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
+        const win = document.getElementById('ramonTasksModal');
+        if (!win || win.classList.contains('is-docked')) return;
+
+        let shiftX = e.clientX - win.getBoundingClientRect().left;
+        let shiftY = e.clientY - win.getBoundingClientRect().top;
+
+        function moveAt(pageX, pageY) {
+            win.style.left = (pageX - shiftX) + 'px';
+            win.style.top = (pageY - shiftY) + 'px';
+            win.style.right = 'auto';
+        }
+
+        function onMouseMove(ev) {
+            moveAt(ev.pageX, ev.pageY);
+            if (window.DockManager && !win.classList.contains('is-docked')) {
+                if (ev.clientX >= window.innerWidth - 100) {
+                    window.DockManager.showSnapGhost(true);
+                } else {
+                    window.DockManager.showSnapGhost(false);
+                }
+            }
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.onmouseup = function () {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.onmouseup = null;
+            if (window.DockManager && window.DockManager.isGhostActive) {
+                window.DockManager.showSnapGhost(false);
+                window.DockManager.dock('ramon-tasks');
+            }
+        };
+    },
+
+    toggleMaximize: () => {
+        const win = document.getElementById('ramonTasksModal');
+        if (!win || win.classList.contains('is-docked')) return;
+        if (!Ramon.isMaximized) {
+            Ramon.prevBounds = {
+                left: win.style.left,
+                top: win.style.top,
+                width: win.style.width,
+                height: win.style.height
+            };
+            win.style.left = '60px';
+            win.style.top = '60px';
+            win.style.width = 'calc(100vw - 70px)';
+            win.style.height = 'calc(100vh - 70px)';
+            Ramon.isMaximized = true;
+            const btn = document.getElementById('ramon-tasks-max-btn');
+            if (btn) btn.innerHTML = '🗗';
+        } else {
+            if (Ramon.prevBounds) {
+                win.style.left = Ramon.prevBounds.left;
+                win.style.top = Ramon.prevBounds.top;
+                win.style.width = Ramon.prevBounds.width;
+                win.style.height = Ramon.prevBounds.height;
+            }
+            Ramon.isMaximized = false;
+            const btn = document.getElementById('ramon-tasks-max-btn');
+            if (btn) btn.innerHTML = '🗖';
+        }
+    },
+
     updateCacheInfoLabel: () => {
         const info = document.getElementById('ramonCacheInfo');
         if (!info) return;
@@ -850,20 +920,23 @@ const Ramon = {
                 </div>
             </div>
 
-            <!-- MODAL "MIS TAREAS" (RAMON) -->
-            <div id="ramonTasksModal" class="ramon-modal-overlay">
-                <div class="ramon-modal-dialog" style="width:780px; max-width:96vw; height:85vh; display:flex; flex-direction:column;">
-                    <div class="ramon-modal-header">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <img src="icons/ramon.png" style="width:24px; height:24px; object-fit:contain;">
-                            <div>
-                                <span style="font-weight:bold; font-size:1.05rem; color:#fff;">Mis Tareas en Ramón</span>
-                                <span id="ramonTasksCountBadge" style="margin-left:8px; font-size:0.75rem; background:var(--accent); color:#000; font-weight:bold; padding:2px 8px; border-radius:12px;">0 tareas</span>
-                            </div>
+            <!-- VENTANA FLOTANTE "MIS TAREAS" (RAMON) -->
+            <div id="ramonTasksModal" class="validator-window" style="display:none; width:780px; height:680px; min-width:480px; min-height:360px; top:65px; left:160px; resize:both; overflow:hidden; z-index:2000;">
+                <div class="validator-header" id="ramon-tasks-header" onmousedown="Ramon.startDrag(event)" ondblclick="Ramon.toggleMaximize()" style="cursor:move; user-select:none; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="icons/ramon.png" style="width:20px; height:20px; object-fit:contain;">
+                        <div>
+                            <span style="font-weight:bold; font-size:0.95rem; color:#fff;">Mis Tareas en Ramón</span>
+                            <span id="ramonTasksCountBadge" style="margin-left:8px; font-size:0.75rem; background:var(--accent); color:#000; font-weight:bold; padding:2px 8px; border-radius:12px;">0 tareas</span>
                         </div>
-                        <button class="ramon-modal-close" onclick="Ramon.hideMyTasksModal()">✕</button>
                     </div>
+                    <div class="validator-controls" style="display:flex; align-items:center; gap:4px;">
+                        <button id="ramon-tasks-max-btn" class="icon-btn-mini" onclick="Ramon.toggleMaximize()" title="Maximizar / Restaurar" style="background:transparent; border:none; color:#aaa; cursor:pointer; font-size:1.05rem; padding:2px 6px; line-height:1; display:flex; align-items:center;">🗖</button>
+                        <button class="icon-btn-mini" style="color:#f44336; background:transparent; border:none; cursor:pointer; font-size:1.1rem; padding:2px 6px; line-height:1;" onclick="Ramon.hideMyTasksModal()">✕</button>
+                    </div>
+                </div>
 
+                <div class="validator-body" style="display:flex; flex-direction:column; height:calc(100% - 40px); overflow:hidden; padding:0;">
                     <!-- BARRA DE FILTROS -->
                     <div class="ramon-tasks-filters-bar">
                         <div style="display:flex; align-items:center; gap:8px; flex:1;">

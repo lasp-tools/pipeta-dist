@@ -1,7 +1,15 @@
 {
   "defaultViewMode": "local",
+  "defaultBrowserMode": "split",
+  "defaultSyncComparisonMode": "drive",
   "validationPresetAsset": "master_asset",
   "validationPresetShot": "master_shot",
   "loggingEnabled": true,
-  "logsPath": "C:\\TOOLS\\APPS\\Pipeta\\logs"
+  "logsPath": "C:\\TOOLS\\APPS\\Pipeta\\logs",
+  "syncMode": "auto",
+  "isFakeZ": false,
+  "centralServerPath": "",
+  "centralServerUnc": "\\\\192.168.206.116\\Z",
+  "centralServerUser": "",
+  "copyEngine": "auto"
 }

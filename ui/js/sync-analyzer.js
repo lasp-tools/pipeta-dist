@@ -681,7 +681,14 @@ class SyncAnalyzer {
             y: e.clientY - this.container.offsetTop
         };
         const moveH = ev => this.onDragMove(ev);
-        const upH = () => { document.removeEventListener('mousemove', moveH); document.removeEventListener('mouseup', upH); };
+        const upH = () => { 
+            document.removeEventListener('mousemove', moveH); 
+            document.removeEventListener('mouseup', upH); 
+            if (window.DockManager && window.DockManager.isGhostActive) {
+                window.DockManager.showSnapGhost(false);
+                window.DockManager.dock('sync-analyzer');
+            }
+        };
         document.addEventListener('mousemove', moveH);
         document.addEventListener('mouseup', upH);
     }
@@ -689,6 +696,13 @@ class SyncAnalyzer {
     onDragMove(e) {
         this.container.style.left = (e.clientX - this._dragOff.x) + 'px';
         this.container.style.top = (e.clientY - this._dragOff.y) + 'px';
+        if (window.DockManager && !this.container.classList.contains('is-docked')) {
+            if (e.clientX >= window.innerWidth - 100) {
+                window.DockManager.showSnapGhost(true);
+            } else {
+                window.DockManager.showSnapGhost(false);
+            }
+        }
     }
 
     // --- PATH MAPPING ---

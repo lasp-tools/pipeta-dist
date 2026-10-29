@@ -1,0 +1,19 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gear on upper left (Blue/Cyan accent) -->
+  <path d="M6 2.5v1.2M6 8.3v1.2M2.5 6h1.2M8.3 6h1.2M3.5 3.5l.9.9M7.6 7.6l.9.9M3.5 8.5l.9-.9M7.6 4.4l.9-.9" stroke="#38bdf8" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="6" cy="6" r="2" stroke="#38bdf8" stroke-width="1.4" fill="#172233"/>
+  
+  <!-- Magnifying Glass Lens & Handle -->
+  <circle cx="14" cy="10" r="6.8" stroke="#e0e6ed" stroke-width="1.8" fill="#172233" fill-opacity="0.7"/>
+  <line x1="9.2" y1="14.8" x2="3.8" y2="20.2" stroke="#e0e6ed" stroke-width="2.4" stroke-linecap="round"/>
+  <line x1="9.2" y1="14.8" x2="7.2" y2="16.8" stroke="#38bdf8" stroke-width="2.8" stroke-linecap="round"/>
+
+  <!-- Lightbulb inside Lens (Yellow / Idea glow) -->
+  <path d="M12.2 9.2c0-1 .8-1.8 1.8-1.8s1.8.8 1.8 1.8c0 .6-.3 1.1-.8 1.4v1.1h-2v-1.1c-.5-.3-.8-.8-.8-1.4z" fill="#facc15" stroke="#facc15" stroke-width="0.8"/>
+  <line x1="13" y1="12.7" x2="15" y2="12.7" stroke="#e0e6ed" stroke-width="1" stroke-linecap="round"/>
+  
+  <!-- Radiating Idea Rays -->
+  <line x1="14" y1="5.6" x2="14" y2="6.4" stroke="#facc15" stroke-width="1.1" stroke-linecap="round"/>
+  <line x1="16.6" y1="6.7" x2="16" y2="7.3" stroke="#facc15" stroke-width="1.1" stroke-linecap="round"/>
+  <line x1="17.4" y1="9.2" x2="16.6" y2="9.2" stroke="#facc15" stroke-width="1.1" stroke-linecap="round"/>
+</svg>

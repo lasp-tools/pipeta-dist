@@ -141,12 +141,23 @@ class NamingValidator {
         if (!this.isDragging) return;
         this.container.style.left = `${this.initialLeft + (e.clientX - this.startX)}px`;
         this.container.style.top = `${this.initialTop + (e.clientY - this.startY)}px`;
+        if (window.DockManager && !this.container.classList.contains('is-docked')) {
+            if (e.clientX >= window.innerWidth - 100) {
+                window.DockManager.showSnapGhost(true);
+            } else {
+                window.DockManager.showSnapGhost(false);
+            }
+        }
     }
 
     onDragUp() {
         this.isDragging = false;
         document.removeEventListener('mousemove', this.dragMoveHandler);
         document.removeEventListener('mouseup', this.dragUpHandler);
+        if (window.DockManager && window.DockManager.isGhostActive) {
+            window.DockManager.showSnapGhost(false);
+            window.DockManager.dock('validator');
+        }
     }
 
     // --- SCAN LOGIC ---

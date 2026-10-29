@@ -17,7 +17,7 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.68";
+const VERSION = "v1.1.77";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -658,6 +658,14 @@ app.get('/api/config', (req, res) => {
     }
 });
 
+// Detección inicial inmediata de Z: (Real vs Virtual Subst)
+try {
+    const substCheck = execSync('subst', { encoding: 'utf8', timeout: 1500 });
+    global.isZRealServer = !(/Z:\\: =>/i.test(substCheck));
+} catch (e) {
+    global.isZRealServer = true;
+}
+
 // --- SYNC CATALOG API ---
 const catalogGenerator = require('./sync_catalog_generator');
 const higgsfieldApi = require('./higgsfield_api');
@@ -681,6 +689,10 @@ try {
             global.isStudioNetworkDetected = false;
         } else if (cachedEnvState && typeof cachedEnvState.isExternalMachine === 'boolean') {
             global.isExternalMachine = cachedEnvState.isExternalMachine;
+        }
+        if (cachedEnvState && typeof cachedEnvState.zInfo === 'object') {
+            global.isZRealServer = cachedEnvState.zInfo.isRealServer !== false;
+            global.zInfo = cachedEnvState.zInfo;
         }
         console.log(`[ENV CACHE] Estado cargado de disco: Internet = ${cachedEnvState?.hasInternet ? 'ONLINE' : 'OFFLINE'} | Perfil = ${locationMode} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'}`);
     }
@@ -784,6 +796,8 @@ async function runEnvironmentDetection() {
     // Actualizar variables globales para el generador de catálogos y colas de transferencia
     global.isExternalMachine = isExternalMachine;
     global.isStudioNetworkDetected = isStudioNetwork;
+    global.isZRealServer = !!zInfo.isRealServer;
+    global.zInfo = zInfo;
 
     let recommendedMode = 'offline_catalog';
     if (hasInternet) {
@@ -1339,11 +1353,27 @@ const activeLocalTransfers = new Map();
 const ensuredDirsCache = new Set();
 
 function ensureDirCached(dir) {
-    if (!dir || ensuredDirsCache.has(dir)) return;
+    if (!dir) return;
     try {
-        fs.ensureDirSync(dir);
-        ensuredDirsCache.add(dir);
-    } catch (e) {}
+        if (!ensuredDirsCache.has(dir) || !fs.existsSync(dir)) {
+            fs.ensureDirSync(dir);
+            ensuredDirsCache.add(dir);
+        }
+    } catch (e) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            ensuredDirsCache.add(dir);
+        } catch (err2) {
+            console.error("[FS] Error creando directorio " + dir + ":", err2.message);
+        }
+    }
+}
+
+const locallySyncedOrders = new Set();
+
+function autoSyncCompletedOrderFilesToLocal(order) {
+    // Desactivado: fs.copySync bloqueaba el bucle principal de Node.js congelando las peticiones HTTP y copiando gigabytes no solicitados a Z:
+    return;
 }
 
 function streamCopyFile(srcFile, destFile, onChunk, abortSignal = null) {
@@ -2067,6 +2097,9 @@ app.get('/api/sync/orders', (req, res) => {
                             ? content.priority 
                             : (content.type === 'higgsfield_ingest' || content.type === 'refresh_folder' ? 80 : 50);
                         orders.push(content);
+                        // if (content.status === 'completed') {
+                        //     autoSyncCompletedOrderFilesToLocal(content);
+                        // }
                     }
                 }
             }
@@ -2805,6 +2838,10 @@ function getServerUncRoot() {
 
     if (process.env.PIPETA_SERVER_UNC) {
         return process.env.PIPETA_SERVER_UNC.replace(/\\/g, '/').replace(/\/+$/, '');
+    }
+
+    if (fs.existsSync('S:/INTERNO')) {
+        return 'S:';
     }
 
     return '//192.168.206.116/Z';

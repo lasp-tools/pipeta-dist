@@ -364,6 +364,14 @@ const settings = {
         settings.isVisible = false;
         if (settings.container) settings.container.style.display = 'none';
         settings.updateSidebarButtonsState();
+        // Si se estaba editando Proyecto Base en Configuraciones, restaurar el proyecto activo de trabajo
+        if (settings.isBaseProject(settings.currentProject)) {
+            const savedId = localStorage.getItem('pipeta_active_project_id');
+            const realProj = settings.projects.find(p => p.id === savedId && !settings.isBaseProject(p)) || settings.projects.find(p => !settings.isBaseProject(p));
+            if (realProj) {
+                settings.currentProject = realProj;
+            }
+        }
     },
 
     switchCategory(cat) {
@@ -725,8 +733,8 @@ const settings = {
             }
         }
 
-        // Si currentProject era base o nulo, sincronizar con el seleccionado real
-        if (!settings.currentProject || settings.isBaseProject(settings.currentProject)) {
+        // Si currentProject es nulo, inicializarlo con el seleccionado real
+        if (!settings.currentProject) {
             settings.currentProject = selectedProj;
             if (selectedProj) {
                 localStorage.setItem('pipeta_active_project_id', selectedProj.id);
@@ -1834,9 +1842,17 @@ const settings = {
                     `;
                 } else if (activeSubTab === 'rutas') {
                     detailContentHtml = `
-                        <h4 style="margin-top:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem; margin-bottom:15px;">
-                            ${isBase ? 'Rutas de Ejemplo (Visuales en Base)' : 'Rutas Locales (Z:)'}
-                        </h4>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                            <h4 style="margin:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem;">
+                                ${isBase ? 'Rutas de Ejemplo (Visuales en Base)' : 'Rutas Locales (Z:)'}
+                            </h4>
+                            ${isBase ? `
+                                <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
+                                    <input type="checkbox" ${settings.devMode ? 'checked' : ''} onchange="settings.toggleDevMode(this.checked)">
+                                    <span>🛠️ Dev Mode</span>
+                                </label>
+                            ` : ''}
+                        </div>
                         ${isBase ? `
                             <div class="settings-inheritance-banner">
                                 <div>ℹ️ Las rutas del Proyecto Base son meramente ilustrativas y sirven de referencia de estructura.</div>
@@ -2989,7 +3005,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.68'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.77'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3020,11 +3036,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.68'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.77'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.68'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.77'}.zip</code>).
                             </div>
                         </div>
 
@@ -3065,7 +3081,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.68'}
+                            ${window.APP_VERSION || 'v1.1.77'}
                         </span>
                     </h3>
 
@@ -3077,7 +3093,59 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.68 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.77 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Fijación de Navegación en Proyecto Base:</b> Se neutralizó la sobrescritura silenciosa del selector del header para mantener seleccionada la plantilla maestra <i>★ Proyecto Base</i> al alternar entre cualquiera de sus secciones (ID / Nombre, Rutas, Presets Proyecto, Presets IA, Templates).</li>
+                                    <li><b>Acceso Universal a Dev Mode:</b> Incorporación del interruptor de <code>🛠️ Dev Mode</code> en la pestaña Rutas y soporte consistente a través de todas las secciones para habilitar de inmediato la edición de tokens y presets maestros.</li>
+                                    <li><b>Restauración Segura al Cerrar:</b> Al cerrar la ventana de configuraciones, el proyecto activo de trabajo del canvas se reasigna limpiamente en segundo plano.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.76</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Respeto Estricto del Switch Higgsfield en IA Ingest:</b> Se corrigió la condición de ingesta para que los archivos (videos MP4 o imágenes) que contengan prefijos o UUIDs tipo Higgsfield solo se procesen por el pipeline de Higgsfield si el botón HF está explícitamente activado.</li>
+                                    <li><b>Aislamiento de Archivos Locales vs Worker:</b> Los archivos locales arrastrados desde disco siempre se procesan de forma local sin derivarse al worker remoto, reservando el worker únicamente para descargas remotas de CloudFront.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.75</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Zona de Carga Estable y Fluida en IA Ingest:</b> Se neutralizó el parpadeo visual al arrastrar archivos (aislando elementos hijos con <code>pointer-events: none</code> y contador de profundidad de arrastre <code>_iaDropDepthCounter</code>).</li>
+                                    <li><b>Captura y Procesamiento Inmediato al Soltar:</b> Corrección en el handler de drop para ejecutar instantáneamente la ingesta de archivos sin abortos por colisión de banderas ni duplicación de ítems.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.74</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Deduplicación Estricta de Drag & Drop en IA Ingest:</b> Corrección del doble disparo de eventos al arrastrar archivos desde Windows Explorer sobre la zona de carga ("2. CARGAR ARCHIVOS"). Se implementó protección con <code>stopImmediatePropagation</code>, banderas de evento único e inspección preventiva en cola para evitar ítems duplicados y saltos erróneos de versión.</li>
+                                    <li><b>Blindaje de Listeners Idempotentes:</b> Prevención de registros duplicados en inicializaciones concurrentes de DropZone y Resizer.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.73</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Sincronización Automática Local en Máquinas con Subst (Z:):</b> Al completar una orden de descarga de Google Drive procesada por el Worker Central en el almacenamiento StorNext (S:), el servidor local detecta y replica automáticamente los archivos hacia la unidad local Z:, asegurando disponibilidad local inmediata.</li>
+                                    <li><b>Creación Recursiva Garantizada de Carpetas:</b> Blindaje en la creación recursiva de toda la estructura de directorios padre antes de escribir o streamear archivos de medios.</li>
+                                    <li><b>Docking Lateral con Pestañas y Drag & Drop en IA Ingest:</b> Soporte para acoplar módulos a la derecha del canvas (Sync Queue, Ramón, IA Ingest, etc.), arrastrar archivos directamente al dock lateral configurando automáticamente plano y secuencia, y optimización de escala para visualizar la cola de ingesta.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.72</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Reorganización de Barra Superior:</b> Ubicación de FILTERS en primer término a la izquierda (con Ramón prioritario) seguido de VIEW OPTIONS, COMPARAR y FILE / FOLDER.</li>
+                                    <li><b>Botones e Iconos Mejor Proporcionados:</b> Escalado de botones a 32px y de iconos a 20-22px para rellenar de manera armoniosa el contenedor de 57px sin áreas vacías.</li>
+                                    <li><b>Estandarización de Etiquetas:</b> Títulos homogéneos en mayúsculas (FILTERS, VIEW OPTIONS, COMPARAR, FILE / FOLDER).</li>
+                                    <li><b>Nuevos Iconos Canónicos:</b> Reemplazo del botón comparar DRIVE con SVG oficial de Google Drive, nuevo icono SVG para Deep Compare (con texto en tooltip) y nuevo icono SVG para Reload Cache.</li>
+                                </ul>
+                            </div>
+
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.69</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Limpieza de Barra Superior:</b> Se removieron de la barra superior derecha los botones de <i>Espacio en discos</i> (desactivando también su sondeo en segundo plano), <i>Maximizar canvas</i> y <i>Recargar sistema</i>, conservando exclusivamente el botón de cierre seguro.</li>
                                     <li><b>Reubicación de Carpeta de Salida:</b> Traslado del módulo de subcarpetas (<code>WIP</code> / <code>Ref</code> / <code>Export</code>) a la parte inferior izquierda del panel principal de Name Builder, permitiendo una grilla superior de 8 tokens balanceada y alineando las carpetas junto a la ruta canónica de salida.</li>
@@ -4060,8 +4128,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.68'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.68'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.77'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.77'}.zip`;
 
         if (btn) {
             btn.disabled = true;

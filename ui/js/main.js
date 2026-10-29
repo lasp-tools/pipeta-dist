@@ -8,6 +8,92 @@ const tabs = {
     'IA Ingest': 'view-ia-ingest'
 };
 
+// --- HELPER TOOLBAR IA INGEST (Higgsfield Suite & IA Mode) ---
+function getIaIngestToolbarSuiteHtml() {
+    const hfOptions = (typeof window.hfOptions !== 'undefined') ? window.hfOptions : {
+        createLedger: localStorage.getItem('pipeta_hf_create_ledger') !== 'false',
+        preserveOriginal: localStorage.getItem('pipeta_hf_preserve_original') !== 'false',
+        downloadRefs: localStorage.getItem('pipeta_hf_download_refs') === 'true',
+        forceWorker: localStorage.getItem('pipeta_hf_force_worker') === 'true'
+    };
+    const isWorkerActive = !!hfOptions.forceWorker;
+    const isSuiteOpen = window.hfToolbarOpen === true || (window.hfToolbarOpen === undefined && localStorage.getItem('pipeta_hf_toolbar_open_v2') === 'true');
+
+    return `
+    <div class="tool-space-small"></div>
+    <!-- HIGGSFIELD AI TOOLBAR SUITE (Collapsible / Expandable) -->
+    <div class="toolbar-section-group" id="hfToolbarGroup" title="Higgsfield AI Suite" style="border-color:${isSuiteOpen ? '#556b2f' : '#333'}; background:${isSuiteOpen ? 'rgba(20,25,18,0.7)' : 'rgba(20,20,20,0.5)'}; transition:all 0.2s;">
+        <div style="display:flex; align-items:center; gap:6px;">
+            <!-- Botón Toggle Principal de la Suite -->
+            <button type="button" id="hfToolbarToggleBtn" class="tool-btn ${isSuiteOpen ? 'active' : ''}" 
+                    style="width:34px; height:34px; padding:0; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; ${isSuiteOpen ? 'background:rgba(198,255,0,0.18); border:1px solid #c6ff00; color:#c6ff00; box-shadow:0 0 10px rgba(198,255,0,0.3);' : 'background:#222; border:1px solid #444; color:#aaa;'}"
+                    onclick="toggleHfToolbarSuite()" 
+                    title="Higgsfield AI Suite">
+                <img src="icons/higgsfield.png" style="width:18px; height:18px; border-radius:2px; pointer-events:none;">
+            </button>
+
+            <!-- Subpanel Desplegable (visible solo si está abierto) -->
+            <div id="hfToolbarDrawer" style="display:${isSuiteOpen ? 'flex' : 'none'}; align-items:center; gap:8px; border-left:1px solid #333; padding-left:8px;">
+                <div style="display:flex; flex-direction:column; gap:2px; width:220px;">
+                    <input id="hfDirectInput" class="prop-input" placeholder="Higgsfield media URL" 
+                           style="width:100%; height:20px; box-sizing:border-box; padding:2px 6px; font-size:0.75rem; font-family:monospace; background:#0d0d0d; border:1px solid #444; border-radius:3px; color:#ffb74d;" 
+                           onkeydown="if(event.key==='Enter') handleHfDirectLoad()">
+                    
+                    <button type="button" id="hfDownloadBtn" class="tool-btn" 
+                            style="width:100%; height:20px; box-sizing:border-box; padding:0 6px; font-size:0.72rem; background:#222; border:1px solid #555; color:#ffb74d; font-weight:bold; border-radius:3px; line-height:1; display:flex; align-items:center; justify-content:center;" 
+                            onclick="handleHfDirectLoad()" title="Consultar metadata en Higgsfield y añadir a la cola de ingesta de planos">
+                        + Cargar a Cola
+                    </button>
+                </div>
+
+                <button type="button" class="tool-btn" 
+                        style="height:42px; padding:0 8px; font-size:0.75rem; border-radius:4px; color:#ffb74d; border-color:#555; background:#222; white-space:nowrap;" 
+                        onclick="handleForceHiggsfieldOnSelected()" 
+                        title="Forzar consulta de metadata de Higgsfield para los elementos seleccionados en la cola">
+                    ⚡ Forzar Higgsfield
+                </button>
+
+                <button type="button" id="hfForceWorkerBtn" class="tool-btn ${isWorkerActive ? 'active' : ''}" 
+                        style="height:42px; padding:0 10px; font-size:0.75rem; border-radius:4px; ${isWorkerActive ? 'background:#ff9800; color:#000; font-weight:bold; border-color:#ff9800;' : 'background:#222; color:#aaa; border-color:#444;'}" 
+                        onclick="toggleHfForceWorker()" 
+                        title="${isWorkerActive ? 'Use worker: ACTIVO (Envía las descargas al Worker central de red). Clic para usar Pipeta Local.' : 'Use worker: APAGADO (Se procesa localmente en Pipeta). Clic para usar Worker de red.'}">
+                    Use worker
+                </button>
+
+                <div style="display:flex; align-items:center; gap:8px; height:42px; margin-left:4px; font-size:0.72rem; color:#bbb; border-left:1px solid #333; padding-left:8px;">
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Genera el archivo .meta.json con prompt, seed, engine y parámetros del job">
+                        <input type="checkbox" id="hfCreateLedgerCheck" ${hfOptions.createLedger ? 'checked' : ''} onchange="saveHfOption('createLedger', this.checked)"> Metadata
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Guarda el archivo original sin renombrar dentro de IA/higgsfield/[nombre_original]/">
+                        <input type="checkbox" id="hfPreserveOriginalCheck" ${hfOptions.preserveOriginal ? 'checked' : ''} onchange="saveHfOption('preserveOriginal', this.checked)"> Backup
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Descarga las imágenes/videos de entrada usados en el job a IA/higgsfield/.../ref/ y IA/ref/">
+                        <input type="checkbox" id="hfDownloadRefsCheck" ${hfOptions.downloadRefs ? 'checked' : ''} onchange="saveHfOption('downloadRefs', this.checked)"> Copy Refs
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tool-space-small"></div>
+
+    <!-- IA MODE (ADVANCED / SIMPLE) -->
+    <div class="toolbar-section-group" title="Modo de Operación IA">
+        <span class="toolbar-section-label">IA Mode</span>
+        <div class="toolbar-section-content">
+            <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
+                <button class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
+                        style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
+                        onclick="switchIaWorkMode('advanced')" title="Modo Avanzado (Builder modular, tokens y cola por lotes)">ADVANCED</button>
+                <button class="tool-btn ${window.iaWorkMode === 'simple' ? 'active' : ''}" 
+                        style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
+                        onclick="switchIaWorkMode('simple')" title="Modo Simple (Flujo rápido simplificado)">SIMPLE</button>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
 // --- DYNAMIC HEADER TOOLS ---
 const headerToolsTemplates = {
     'view-home': () => `<!-- No tools for home -->`,
@@ -110,90 +196,98 @@ const headerToolsTemplates = {
         </div>
     `,
     'view-browser': () => `
-        <!-- Block 1: Opciones de Vista y Filtros en 2 niveles (Superior e Inferior) -->
-        <div class="toolbar-stacked-container">
-            <!-- Fila Superior: View Options (sin el project filter) -->
-            <div class="toolbar-section-compact" title="Opciones de Visualización">
-                <span class="toolbar-section-label">View Options</span>
-                <div class="toolbar-section-content">
-                    <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" onclick="toggleMirrorMode()" title="Mirror View (Vista Espejo: Proyecto | Media)" id="btnMirrorModeTool">
-                        <img src="icons/mirror.svg" class="btn-icon-svg" style="width:14px; height:14px;">
-                    </button>
-                    
-                    <div style="width:2px"></div>
-                    
-                    <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
-                    <div style="display:flex; background:#0e141f; border-radius:3px; padding:1px; border:1px solid #1e2c40;" title="Ubicación de Exploración">
-                        <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
-                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1;"
-                                onclick="switchViewLocation('local')" title="${(typeof isExternalMachine === 'function' && isExternalMachine()) ? 'Disco Z Local' : ((typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)')}">LOCAL</button>
-                        
-                        ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
-                        <button class="tool-btn ${window.viewLocationMode === 'drive' ? 'active' : ''}" 
-                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
-                                onclick="switchViewLocation('drive')" title="Google Drive (Catálogo en la nube)">DRIVE</button>
-                        ` : ''}
+        <!-- Block 1: Filtros del Explorador (Filters) -->
+        <div class="toolbar-section-group" title="Filtros del Explorador">
+            <span class="toolbar-section-label">Filters</span>
+            <div class="toolbar-section-content">
+                <!-- 1. My Tasks Filter (Icono Ramon) -->
+                <button class="tool-btn ${window.explorerOnlyMyTasks ? 'active' : ''}" 
+                        id="btnExplorerMyTasksFilter"
+                        onclick="toggleExplorerOnlyMyTasks()" 
+                        style="height:32px; min-width:32px; padding:2px 6px; ${window.explorerOnlyMyTasks ? 'background:rgba(0,188,212,0.25); border:1px solid #00bcd4;' : ''}"
+                        title="Mis Tareas en Ramón (Filtrar elementos asignados a mi usuario)">
+                    <img src="icons/ramon.png" style="width:22px; height:22px; object-fit:contain; vertical-align:middle; ${!window.explorerOnlyMyTasks ? 'opacity:0.4; filter:grayscale(100%);' : ''}">
+                </button>
 
-                        ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
-                        <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
-                                style="padding: 1px 5px; font-size: 0.65rem; height: 16px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
-                                onclick="switchViewLocation('server')" title="Servidor Central del Estudio (Catálogo Central / Worker)">SERVER</button>
-                        ` : ''}
-                    </div>
+                <!-- 2. Project Filter (Embudo) -->
+                <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
+                        id="btnPipetaFilter"
+                        onclick="togglePipetaFilter()" 
+                        oncontextmenu="handleFilterContextMenu(event)"
+                        style="height:32px; min-width:32px; padding:2px 6px;"
+                        title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
+                    <img src="icons/filter.svg" class="btn-icon-svg" style="width:20px; height:20px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
+                </button>
 
-                    <button class="tool-btn" onclick="refreshCurrentView()" title="Refrescar Carpetas Locales (Instantáneo - Relee disco)">
-                        <img src="icons/refresh.svg" class="btn-icon-svg" style="width:14px; height:14px;">
-                    </button>
-                </div>
-            </div>
+                <div class="tool-space-small"></div>
 
-            <!-- Fila Inferior: Filters (Project Filter + My Tasks + Search) -->
-            <div class="toolbar-section-compact" title="Filtros del Explorador">
-                <span class="toolbar-section-label">Filters</span>
-                <div class="toolbar-section-content">
-                    <!-- Project Filter (Embudo) -->
-                    <button class="tool-btn ${window.pipetaUseFilter ? 'active' : ''}" 
-                            onclick="togglePipetaFilter()" 
-                            oncontextmenu="handleFilterContextMenu(event)"
-                            title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
-                        <img src="icons/filter.svg" class="btn-icon-svg" style="width:13px; height:13px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
-                    </button>
-
-                    <!-- My Tasks Filter (Icono Ramon + Tooltip) -->
-                    <button class="tool-btn ${window.explorerOnlyMyTasks ? 'active' : ''}" 
-                            id="btnExplorerMyTasksFilter"
-                            onclick="toggleExplorerOnlyMyTasks()" 
-                            style="${window.explorerOnlyMyTasks ? 'background:rgba(0,188,212,0.25); border:1px solid #00bcd4;' : ''}"
-                            title="Mis Tareas en Ramón (Filtrar elementos asignados a mi usuario)">
-                        <img src="icons/ramon.png" style="width:14px; height:14px; object-fit:contain; vertical-align:middle; ${!window.explorerOnlyMyTasks ? 'opacity:0.4; filter:grayscale(100%);' : ''}">
-                    </button>
-
-                    <div class="tool-space-small"></div>
-
-                    <!-- Search Filter (Lupa) -->
-                    <div style="position:relative; display:flex; align-items:center;">
-                        <input type="text" 
-                               id="filter-search-input" 
-                               placeholder="Filtrar..." 
-                               value="${window.pipetaSearchFilter || ''}"
-                               oninput="handleSearchFilterInput(this.value)"
-                               title="Búsqueda rápida de carpetas y archivos en la vista actual"
-                               style="background:#0e141f; border:1px solid #1e2c40; color:#eee; font-size:0.75rem; border-radius:3px; padding:1px 18px 1px 5px; width:90px; height:16px; outline:none; transition: width 0.2s;"
-                               onfocus="this.style.width='130px'; this.style.borderColor='var(--accent)';"
-                               onblur="if(!this.value) { this.style.width='90px'; this.style.borderColor='#1e2c40'; }">
-                        ${window.pipetaSearchFilter ? `
-                            <span onclick="clearSearchFilter()" 
-                                  style="position:absolute; right:4px; color:#888; cursor:pointer; font-size:10px; font-weight:bold; line-height:1;" 
-                                  title="Limpiar filtro">✕</span>
-                        ` : ''}
-                    </div>
+                <!-- 3. Search Filter (Lupa) -->
+                <div style="position:relative; display:flex; align-items:center;">
+                    <input type="text" 
+                           id="filter-search-input" 
+                           placeholder="Filtrar..." 
+                           value="${window.pipetaSearchFilter || ''}"
+                           oninput="handleSearchFilterInput(this.value)"
+                           title="Búsqueda rápida de carpetas y archivos en la vista actual"
+                           style="background:#0e141f; border:1px solid #1e2c40; color:#eee; font-size:0.80rem; border-radius:4px; padding:2px 22px 2px 8px; width:95px; height:32px; box-sizing:border-box; outline:none; transition: width 0.2s;"
+                           onfocus="this.style.width='130px'; this.style.borderColor='var(--accent)';"
+                           onblur="if(!this.value) { this.style.width='95px'; this.style.borderColor='#1e2c40'; }">
+                    ${window.pipetaSearchFilter ? `
+                        <span onclick="clearSearchFilter()" 
+                              style="position:absolute; right:7px; color:#888; cursor:pointer; font-size:12px; font-weight:bold; line-height:1;" 
+                              title="Limpiar filtro">✕</span>
+                    ` : ''}
                 </div>
             </div>
         </div>
 
         <div class="tool-space-small"></div>
 
-        <!-- Block 1.5: Comparación y Auditoría Cloud / Server -->
+        <!-- Block 2: Opciones de Visualización (View Options) -->
+        <div class="toolbar-section-group" title="Opciones de Visualización">
+            <span class="toolbar-section-label">View Options</span>
+            <div class="toolbar-section-content">
+                <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" 
+                        onclick="toggleMirrorMode()" 
+                        style="height:32px; min-width:32px; padding:2px 6px;"
+                        title="Mirror View (Vista Espejo: Proyecto | Media)" 
+                        id="btnMirrorModeTool">
+                    <img src="icons/mirror.svg" class="btn-icon-svg" style="width:20px; height:20px;">
+                </button>
+                
+                <div style="width:2px"></div>
+                
+                <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
+                <div style="display:flex; align-items:center; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40; height:32px; box-sizing:border-box;" title="Ubicación de Exploración">
+                    <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
+                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1;"
+                            onclick="switchViewLocation('local')" title="${(typeof isExternalMachine === 'function' && isExternalMachine()) ? 'Disco Z Local' : ((typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)')}">LOCAL</button>
+                    
+                    ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
+                    <button class="tool-btn ${window.viewLocationMode === 'drive' ? 'active' : ''}" 
+                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1; ${window.viewLocationMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
+                            onclick="switchViewLocation('drive')" title="Google Drive (Catálogo en la nube)">DRIVE</button>
+                    ` : ''}
+
+                    ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
+                    <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
+                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
+                            onclick="switchViewLocation('server')" title="Servidor Central del Estudio (Catálogo Central / Worker)">SERVER</button>
+                    ` : ''}
+                </div>
+
+                <button class="tool-btn" 
+                        style="height:32px; min-width:32px; padding:2px 6px;"
+                        onclick="refreshCurrentView()" 
+                        title="Reload folders">
+                    <img src="icons/refresh.svg" class="btn-icon-svg" style="width:20px; height:20px;">
+                </button>
+            </div>
+        </div>
+
+        <div class="tool-space-small"></div>
+
+        <!-- Block 3: Comparación y Auditoría Cloud / Server (Comparar) -->
         ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
         <div class="toolbar-section-group" title="Comparar archivos locales contra catálogo Drive o Servidor central">
             <span class="toolbar-section-label">Comparar</span>
@@ -201,26 +295,33 @@ const headerToolsTemplates = {
                 
                 ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
-                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
-                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">☁️ DRIVE</button>
+                        style="padding: 0 9px; font-size: 0.72rem; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
+                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">
+                    <img src="icons/google_drive.svg" style="width:17px; height:17px; margin-right:5px; vertical-align:middle;">
+                    <span>DRIVE</span>
+                </button>
                 ` : ''}
 
                 ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
-                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; margin-left:2px; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
-                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">🗄️ SERVER</button>
+                        style="padding: 0 9px; font-size: 0.72rem; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-left:2px; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
+                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">
+                    <span style="margin-right:4px;">🗄️</span><span>SERVER</span>
+                </button>
                 ` : ''}
                 <button class="tool-btn ${window.deepCompareMode ? 'active' : ''}" 
                         id="btn-deep-compare"
-                        style="padding: 0 8px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b;' : ''}"
+                        style="height: 32px; min-width: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b; box-shadow:0 0 6px rgba(208,135,112,0.4);' : ''}"
                         onclick="toggleDeepCompareMode()" 
-                        title="Deep Compare: Compara peso y fecha además de nombres (Clic para activar/desactivar)">
-                    🔬 DEEP
+                        title="Deep Compare: Compara peso exacto en bytes y fecha además de nombres (Clic: ON/OFF)">
+                    <img src="icons/deep_compare.svg" style="width:20px; height:20px; vertical-align:middle;">
                 </button>
                 ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
                 <button class="tool-btn" 
-                        style="padding: 0 6px; font-size: 0.70rem; height: 28px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; background:#223042;" 
-                        onclick="refreshSyncCatalogManual()" title="Refrescar catálogo en caché (${window.syncComparisonMode === 'server' ? 'Servidor' : 'Google Drive'})">🔄</button>
+                        style="height: 32px; min-width: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px;" 
+                        onclick="refreshSyncCatalogManual()" title="Reload cache">
+                    <img src="icons/cache_reload.svg" style="width:20px; height:20px; vertical-align:middle;">
+                </button>
                 ` : ''}
             </div>
         </div>
@@ -228,9 +329,9 @@ const headerToolsTemplates = {
         <div class="tool-space-small"></div>
         ` : ''}
 
-        <!-- Block 2: Acciones de Archivos y Carpetas (Centro) -->
+        <!-- Block 4: Acciones de Archivos y Carpetas (File / Folder) -->
         <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
-            <span class="toolbar-section-label">File / Folder Functions</span>
+            <span class="toolbar-section-label">File / Folder</span>
             <div class="toolbar-section-content">
                 <button id="btn-tb-copy" class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
                     <img src="icons/copy.svg" class="btn-icon-svg">
@@ -258,8 +359,9 @@ const headerToolsTemplates = {
                 </button>
             </div>
         </div>
-    `,
-    'view-asset-designer': () => `
+
+        ${(window.isIaIngestWindowOpen || (typeof DockManager !== 'undefined' && DockManager.isDocked('ia-ingest'))) ? getIaIngestToolbarSuiteHtml() : ''}
+    `,    'view-asset-designer': () => `
         <div class="toolbar-section-group" title="Añadir Elementos al Grafo">
             <span class="toolbar-section-label">Add Nodes</span>
             <div class="toolbar-section-content">
@@ -434,94 +536,13 @@ const headerToolsTemplates = {
         </div>
     `,
     'view-ia-ingest': () => {
-        const hfOptions = (typeof window.hfOptions !== 'undefined') ? window.hfOptions : {
-            createLedger: localStorage.getItem('pipeta_hf_create_ledger') !== 'false',
-            preserveOriginal: localStorage.getItem('pipeta_hf_preserve_original') !== 'false',
-            downloadRefs: localStorage.getItem('pipeta_hf_download_refs') === 'true',
-            forceWorker: localStorage.getItem('pipeta_hf_force_worker') === 'true'
-        };
-        const isWorkerActive = !!hfOptions.forceWorker;
-        const isSuiteOpen = window.hfToolbarOpen === true || (window.hfToolbarOpen === undefined && localStorage.getItem('pipeta_hf_toolbar_open_v2') === 'true');
-
         return `
-        <!-- HIGGSFIELD AI TOOLBAR SUITE (Collapsible / Expandable) -->
-        <div class="toolbar-section-group" id="hfToolbarGroup" title="Higgsfield AI Suite" style="border-color:${isSuiteOpen ? '#556b2f' : '#333'}; background:${isSuiteOpen ? 'rgba(20,25,18,0.7)' : 'rgba(20,20,20,0.5)'}; transition:all 0.2s;">
-            <div style="display:flex; align-items:center; gap:6px;">
-                <!-- Botón Toggle Principal de la Suite -->
-                <button type="button" id="hfToolbarToggleBtn" class="tool-btn ${isSuiteOpen ? 'active' : ''}" 
-                        style="width:34px; height:34px; padding:0; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; ${isSuiteOpen ? 'background:rgba(198,255,0,0.18); border:1px solid #c6ff00; color:#c6ff00; box-shadow:0 0 10px rgba(198,255,0,0.3);' : 'background:#222; border:1px solid #444; color:#aaa;'}"
-                        onclick="toggleHfToolbarSuite()" 
-                        title="Higgsfield AI Suite">
-                    <img src="icons/higgsfield.png" style="width:18px; height:18px; border-radius:2px; pointer-events:none;">
-                </button>
-
-                <!-- Subpanel Desplegable (visible solo si está abierto) -->
-                <div id="hfToolbarDrawer" style="display:${isSuiteOpen ? 'flex' : 'none'}; align-items:center; gap:8px; border-left:1px solid #333; padding-left:8px;">
-                    <!-- Columna URL + Download debajo -->
-                    <div style="display:flex; flex-direction:column; gap:2px; width:220px;">
-                        <input id="hfDirectInput" class="prop-input" placeholder="Higgsfield media URL" 
-                               style="width:100%; height:20px; box-sizing:border-box; padding:2px 6px; font-size:0.75rem; font-family:monospace; background:#0d0d0d; border:1px solid #444; border-radius:3px; color:#ffb74d;" 
-                               onkeydown="if(event.key==='Enter') handleHfDirectLoad()">
-                        
-                        <button type="button" id="hfDownloadBtn" class="tool-btn" 
-                                style="width:100%; height:20px; box-sizing:border-box; padding:0 6px; font-size:0.72rem; background:#222; border:1px solid #555; color:#ffb74d; font-weight:bold; border-radius:3px; line-height:1; display:flex; align-items:center; justify-content:center;" 
-                                onclick="handleHfDirectLoad()" title="Consultar metadata en Higgsfield y añadir a la cola de ingesta de planos">
-                            + Cargar a Cola
-                        </button>
-                    </div>
-
-                    <!-- Botón Forzar Higgsfield -->
-                    <button type="button" class="tool-btn" 
-                            style="height:42px; padding:0 8px; font-size:0.75rem; border-radius:4px; color:#ffb74d; border-color:#555; background:#222; white-space:nowrap;" 
-                            onclick="handleForceHiggsfieldOnSelected()" 
-                            title="Forzar consulta de metadata de Higgsfield para los elementos seleccionados en la cola">
-                        ⚡ Forzar Higgsfield
-                    </button>
-
-                    <!-- Botón Use Worker (sin icono) -->
-                    <button type="button" id="hfForceWorkerBtn" class="tool-btn ${isWorkerActive ? 'active' : ''}" 
-                            style="height:42px; padding:0 10px; font-size:0.75rem; border-radius:4px; ${isWorkerActive ? 'background:#ff9800; color:#000; font-weight:bold; border-color:#ff9800;' : 'background:#222; color:#aaa; border-color:#444;'}" 
-                            onclick="toggleHfForceWorker()" 
-                            title="${isWorkerActive ? 'Use worker: ACTIVO (Envía las descargas al Worker central de red). Clic para usar Pipeta Local.' : 'Use worker: APAGADO (Se procesa localmente en Pipeta). Clic para usar Worker de red.'}">
-                        Use worker
-                    </button>
-
-                    <!-- Checkboxes de Metadata, Backup y Copy Refs -->
-                    <div style="display:flex; align-items:center; gap:8px; height:42px; margin-left:4px; font-size:0.72rem; color:#bbb; border-left:1px solid #333; padding-left:8px;">
-                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Genera el archivo .meta.json con prompt, seed, engine y parámetros del job">
-                            <input type="checkbox" id="hfCreateLedgerCheck" ${hfOptions.createLedger ? 'checked' : ''} onchange="saveHfOption('createLedger', this.checked)"> Metadata
-                        </label>
-                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Guarda el archivo original sin renombrar dentro de IA/higgsfield/[nombre_original]/">
-                            <input type="checkbox" id="hfPreserveOriginalCheck" ${hfOptions.preserveOriginal ? 'checked' : ''} onchange="saveHfOption('preserveOriginal', this.checked)"> Backup
-                        </label>
-                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Descarga las imágenes/videos de entrada usados en el job a IA/higgsfield/.../ref/ y IA/ref/">
-                            <input type="checkbox" id="hfDownloadRefsCheck" ${hfOptions.downloadRefs ? 'checked' : ''} onchange="saveHfOption('downloadRefs', this.checked)"> Copy Refs
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="tool-space-small"></div>
-
-        <div class="toolbar-section-group" title="Modo de Operación IA">
-            <span class="toolbar-section-label">IA Mode</span>
-            <div class="toolbar-section-content">
-                <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
-                    <button class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
-                            style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
-                            onclick="switchIaWorkMode('advanced')" title="Modo Avanzado (Builder modular, tokens y cola por lotes)">ADVANCED</button>
-                    <button class="tool-btn ${window.iaWorkMode === 'simple' ? 'active' : ''}" 
-                            style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
-                            onclick="switchIaWorkMode('simple')" title="Modo Simple (Flujo rápido simplificado)">SIMPLE</button>
-                </div>
-            </div>
-        </div>
+        ${getIaIngestToolbarSuiteHtml()}
 
         <div class="tool-space-small"></div>
 
         <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
-            <span class="toolbar-section-label">File / Folder Functions</span>
+            <span class="toolbar-section-label">File / Folder</span>
             <div class="toolbar-section-content">
                 <button class="tool-btn" onclick="copyCanonicalName()" title="Copiar Nombre Canónico">
                     <img src="icons/copy.svg" class="btn-icon-svg">

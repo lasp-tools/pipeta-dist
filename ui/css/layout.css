@@ -625,31 +625,37 @@
 }
 
 .toolbar-section-label {
-    font-size: 0.58rem;
-    font-weight: 700;
-    color: #6d8db5;
-    letter-spacing: 0.6px;
+    font-size: 0.60rem;
+    font-weight: 800;
+    color: #7a9cc6;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
     line-height: 1;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
     user-select: none;
     text-align: center;
+    white-space: nowrap;
 }
 
 .toolbar-section-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
 }
 
 .toolbar-section-group .tool-btn {
     padding: 3px 6px;
-    height: 28px;
+    height: 32px;
     border-radius: 4px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+.toolbar-section-group .tool-btn .btn-icon-svg {
+    width: 20px;
+    height: 20px;
 }
 
 .toolbar-section-group .tool-btn:hover {
@@ -932,4 +938,401 @@ body.canvas-fullscreen .main-container {
 .annotation-line-handle:hover {
     transform: translate(-50%, -50%) scale(1.3);
     background: #00e676;
+}
+
+/* ==========================================================================
+   RIGHT DOCKING SYSTEM (Explorer Canvas Dock)
+   ========================================================================== */
+.app-dock-resizer {
+    width: 6px;
+    background: #11151c;
+    border-left: 1px solid #1e2c40;
+    border-right: 1px solid #1e2c40;
+    cursor: col-resize;
+    user-select: none;
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+.app-dock-resizer:hover, .app-dock-resizer.is-resizing {
+    background: #00bcd4;
+    box-shadow: 0 0 8px rgba(0, 188, 212, 0.6);
+}
+
+.app-dock-panel {
+    display: flex;
+    flex-direction: column;
+    background: #141a24;
+    border-left: 1px solid #1e2c40;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    overflow: hidden;
+    height: 100%;
+    position: relative;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
+}
+
+.dock-header {
+    height: 38px;
+    background: #0e141f;
+    border-bottom: 1px solid #1e2c40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 0 0;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.dock-tabs-list {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 100%;
+    padding: 0 6px;
+    scrollbar-width: none;
+}
+.dock-tabs-list::-webkit-scrollbar {
+    display: none;
+}
+
+.dock-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    height: 28px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #8fa2b8;
+    background: #141c29;
+    border: 1px solid #202d40;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.dock-tab:hover {
+    color: #fff;
+    background: #1b2638;
+}
+
+.dock-tab.active {
+    color: #00e5ff;
+    background: #172437;
+    border-color: #00bcd4;
+    box-shadow: inset 0 -2px 0 #00bcd4;
+}
+
+.dock-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dock-tab-icon img {
+    width: 15px;
+    height: 15px;
+    object-fit: contain;
+}
+
+.dock-tab-btn-mini {
+    background: transparent;
+    border: none;
+    color: #718296;
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 0 3px;
+    line-height: 1;
+    border-radius: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 2px;
+}
+
+.dock-tab-btn-mini:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.dock-tab-btn-mini.danger:hover {
+    color: #ff5252;
+}
+
+.dock-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dock-action-btn {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #253347;
+    border-radius: 4px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+}
+
+.dock-action-btn:hover {
+    background: #202d40;
+    color: #fff;
+    border-color: #3b82f6;
+}
+
+.dock-action-btn.danger:hover {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ff5252;
+    border-color: #f44336;
+}
+
+.dock-content-area {
+    flex: 1;
+    height: calc(100% - 38px);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* OVERRIDES FOR DOCKED WINDOWS */
+.validator-window.is-docked,
+#ramonTasksModal.is-docked,
+#view-ia-ingest.is-docked,
+#ia-ingest-window.is-docked {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    resize: none !important;
+    z-index: 1 !important;
+    display: none !important; /* Por defecto ocultos cuando están acoplados */
+    flex-direction: column !important;
+}
+
+/* SOLO el módulo activo en la pestaña seleccionada se visualiza */
+.is-docked.active-dock-content,
+.validator-window.is-docked.active-dock-content,
+#ramonTasksModal.is-docked.active-dock-content,
+#view-ia-ingest.is-docked.active-dock-content,
+#ia-ingest-window.is-docked.active-dock-content {
+    display: flex !important;
+}
+
+.validator-window.is-docked .validator-header {
+    display: none !important;
+}
+
+.validator-window.is-docked .validator-body {
+    height: 100% !important;
+    max-height: 100% !important;
+    flex: 1 !important;
+    padding: 10px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+}
+
+#view-ia-ingest.is-docked {
+    padding: 10px !important;
+    overflow-y: auto !important;
+    background: #141a24 !important;
+}
+
+/* Snap Ghost Indicator */
+.app-dock-ghost {
+    position: fixed;
+    right: 0;
+    top: 60px;
+    bottom: 0;
+    width: 440px;
+    border: 2px dashed #00e5ff;
+    background: rgba(0, 188, 212, 0.12);
+    box-shadow: -6px 0 24px rgba(0, 229, 255, 0.25);
+    z-index: 99999;
+    display: none;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+    transition: opacity 0.15s ease;
+}
+
+.app-dock-ghost-inner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #00e5ff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.6);
+}
+
+.app-dock-ghost-icon {
+    font-size: 2.2rem;
+    animation: pulseGhost 1.2s infinite ease-in-out;
+}
+
+@keyframes pulseGhost {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+
+
+/* ==========================================================================
+   COMPACT IA INGEST (When inside Dock or Floating Window)
+   ========================================================================== */
+#app-dock-panel #view-ia-ingest,
+#ia-ingest-window #view-ia-ingest,
+.is-docked #view-ia-ingest {
+    padding: 8px 10px !important;
+}
+
+#app-dock-panel #view-ia-ingest .ia-top-split-container,
+#ia-ingest-window #view-ia-ingest .ia-top-split-container,
+.is-docked #view-ia-ingest .ia-top-split-container {
+    gap: 10px !important;
+    margin-bottom: 6px !important;
+}
+
+#app-dock-panel #iaContextPanelLeft,
+#ia-ingest-window #iaContextPanelLeft,
+.is-docked #iaContextPanelLeft {
+    width: 250px !important;
+    padding: 10px !important;
+    gap: 8px !important;
+}
+
+#app-dock-panel #iaBuilderPanelRight,
+#ia-ingest-window #iaBuilderPanelRight,
+.is-docked #iaBuilderPanelRight {
+    padding: 10px !important;
+    gap: 8px !important;
+}
+
+/* Reducir tamaño de botones de tokens en Name Builder */
+#app-dock-panel #view-ia-ingest .ia-token-grid,
+#ia-ingest-window #view-ia-ingest .ia-token-grid,
+.is-docked #view-ia-ingest .ia-token-grid {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+    gap: 6px !important;
+}
+
+#app-dock-panel #view-ia-ingest .ia-token-card,
+#ia-ingest-window #view-ia-ingest .ia-token-card,
+.is-docked #view-ia-ingest .ia-token-card {
+    padding: 3px 6px !important;
+    border-radius: 4px !important;
+}
+
+#app-dock-panel #view-ia-ingest .ia-token-mod-btn,
+#ia-ingest-window #view-ia-ingest .ia-token-mod-btn,
+.is-docked #view-ia-ingest .ia-token-mod-btn {
+    padding: 2px 4px !important;
+    font-size: 0.68rem !important;
+    margin-bottom: 2px !important;
+}
+
+#app-dock-panel #view-ia-ingest .ia-token-card select,
+#app-dock-panel #view-ia-ingest .ia-token-card input:not([type="checkbox"]),
+#ia-ingest-window #view-ia-ingest .ia-token-card select,
+#ia-ingest-window #view-ia-ingest .ia-token-card input:not([type="checkbox"]),
+.is-docked #view-ia-ingest .ia-token-card select,
+.is-docked #view-ia-ingest .ia-token-card input:not([type="checkbox"]) {
+    padding: 1px 4px !important;
+    font-size: 0.72rem !important;
+    height: 22px !important;
+    margin-bottom: 2px !important;
+}
+
+#app-dock-panel #view-ia-ingest #tokShotIdVal,
+#ia-ingest-window #view-ia-ingest #tokShotIdVal,
+.is-docked #view-ia-ingest #tokShotIdVal {
+    font-size: 0.75rem !important;
+    padding: 1px 0 !important;
+}
+
+/* Reducir tamaño del visor multimedia y contenedor de vista previa */
+#app-dock-panel #view-ia-ingest #iaMediaPreviewBox,
+#ia-ingest-window #view-ia-ingest #iaMediaPreviewBox,
+.is-docked #view-ia-ingest #iaMediaPreviewBox {
+    height: 180px !important;
+    margin-bottom: 6px !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaMediaPreviewBox video,
+#app-dock-panel #view-ia-ingest #iaMediaPreviewBox img,
+#ia-ingest-window #view-ia-ingest #iaMediaPreviewBox video,
+#ia-ingest-window #view-ia-ingest #iaMediaPreviewBox img,
+.is-docked #view-ia-ingest #iaMediaPreviewBox video,
+.is-docked #view-ia-ingest #iaMediaPreviewBox img {
+    max-height: 180px !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaDropZone,
+#ia-ingest-window #view-ia-ingest #iaDropZone,
+.is-docked #view-ia-ingest #iaDropZone {
+    padding: 8px 10px !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaDropZone div:first-child,
+#ia-ingest-window #view-ia-ingest #iaDropZone div:first-child,
+.is-docked #view-ia-ingest #iaDropZone div:first-child {
+    font-size: 1.15rem !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaFileNameDisplay,
+#ia-ingest-window #view-ia-ingest #iaFileNameDisplay,
+.is-docked #view-ia-ingest #iaFileNameDisplay {
+    font-size: 0.78rem !important;
+    margin-top: 2px !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaFileMetaDisplay,
+#ia-ingest-window #view-ia-ingest #iaFileMetaDisplay,
+.is-docked #view-ia-ingest #iaFileMetaDisplay {
+    font-size: 0.68rem !important;
+    margin-top: 1px !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaCanonicalOutputDisplay,
+#ia-ingest-window #view-ia-ingest #iaCanonicalOutputDisplay,
+.is-docked #view-ia-ingest #iaCanonicalOutputDisplay {
+    font-size: 0.85rem !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaCanonicalPathDisplay,
+#ia-ingest-window #view-ia-ingest #iaCanonicalPathDisplay,
+.is-docked #view-ia-ingest #iaCanonicalPathDisplay {
+    font-size: 0.70rem !important;
+}
+
+#app-dock-panel #view-ia-ingest #iaVerticalSplitter,
+#ia-ingest-window #view-ia-ingest #iaVerticalSplitter,
+.is-docked #view-ia-ingest #iaVerticalSplitter {
+    height: 8px !important;
+    margin: 4px 0 6px 0 !important;
 }

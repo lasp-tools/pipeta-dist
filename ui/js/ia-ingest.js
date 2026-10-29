@@ -102,6 +102,8 @@ async function toggleHiggsfieldOnSelectedItem() {
     for (const item of targetItems) {
         if (item.isHiggsfield) {
             item.isHiggsfield = false;
+            item.hfJobId = null;
+            item.higgsfieldData = null;
             item.motorChoice = 'auto';
             item.resChoice = 'auto';
             showIaAlert(`Modo Higgsfield desactivado para "${item.originalName}"`, "#ff9800");
@@ -378,6 +380,8 @@ async function handleForceHiggsfieldOnSelected() {
 }
 
 function initIaResizer() {
+    if (window._iaResizerInitialized) return;
+    window._iaResizerInitialized = true;
     const splitter = document.getElementById('iaVerticalSplitter');
     const previewBox = document.getElementById('iaMediaPreviewBox');
     if (!splitter || !previewBox) return;
@@ -1738,6 +1742,15 @@ function handleIaFileSelect(input) {
             const extIndex = file.name.lastIndexOf('.');
             const ext = extIndex !== -1 ? file.name.substring(extIndex) : '.mp4';
             const originalPath = file.path || file.webkitRelativePath || file.name;
+
+            // Evitar duplicar archivos identicos si ya estan en la cola
+            const isAlreadyInQueue = iaBatchQueue.some(it => {
+                if (it.file && file) {
+                    return it.file.name === file.name && it.file.size === file.size && it.file.lastModified === file.lastModified;
+                }
+                return false;
+            });
+            if (isAlreadyInQueue) return;
             const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext.toLowerCase());
             const itemMotor = isImg ? defaultImgMotor : defaultVidMotor;
 
@@ -1790,16 +1803,28 @@ function handleIaFileSelect(input) {
 function detectIaShotFromPath(p) {
     if (!p) return null;
     const cleanP = p.replace(/\\/g, '/');
+
+    // 1. Si la ruta contiene /shots/[SHOT_ID]
     const shotsMatch = cleanP.match(/\/shots\/([^\/]+)/i);
     if (shotsMatch && shotsMatch[1] && !shotsMatch[1].startsWith('.')) {
         return shotsMatch[1];
     }
+
+    // 2. Si alguna carpeta intermedia es un Shot ID (e.g. SURF_B03_044_0950)
     const segments = cleanP.split('/');
     for (const seg of segments) {
         if (/^[a-z0-9]+_[a-z0-9]+_[a-z0-9]+_\d{3,4}$/i.test(seg)) {
             return seg;
         }
     }
+
+    // 3. Si el nombre del archivo contiene un Shot ID al inicio
+    const fileName = segments[segments.length - 1] || '';
+    const fileMatch = fileName.match(/^([a-z0-9]+_[a-z0-9]+_[a-z0-9]+_\d{3,4})/i);
+    if (fileMatch && fileMatch[1]) {
+        return fileMatch[1];
+    }
+
     return null;
 }
 
@@ -1817,7 +1842,6 @@ async function enqueuePathsToIaBatch(paths = [], options = {}) {
     }
 
     if (detectedShotId) {
-        handleIaShotChange(detectedShotId);
         const parts = detectedShotId.split('_');
         if (parts.length >= 4) {
             const ep = parts[1];
@@ -1825,12 +1849,70 @@ async function enqueuePathsToIaBatch(paths = [], options = {}) {
             iaSelectedEp = ep;
             iaSelectedSeq = seq;
             iaSelectedShot = detectedShotId;
+
             const epSel = document.getElementById('iaEpSelect');
+            if (epSel) {
+                if (!Array.from(epSel.options).some(o => o.value === ep)) {
+                    if (typeof refreshIaHierarchy === 'function') {
+                        await refreshIaHierarchy();
+                    }
+                }
+                if (Array.from(epSel.options).some(o => o.value === ep)) {
+                    epSel.value = ep;
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = ep;
+                    opt.textContent = ep;
+                    opt.selected = true;
+                    epSel.appendChild(opt);
+                }
+            }
+
+            // Cargar escenas del episodio
+            if (typeof handleIaEpChange === 'function') {
+                await handleIaEpChange(ep);
+            }
+
             const seqSel = document.getElementById('iaSeqSelect');
+            if (seqSel) {
+                if (Array.from(seqSel.options).some(o => o.value === seq)) {
+                    seqSel.value = seq;
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = seq;
+                    opt.textContent = seq;
+                    opt.selected = true;
+                    seqSel.appendChild(opt);
+                }
+                seqSel.disabled = false;
+            }
+
+            // Cargar shots de la secuencia
+            if (typeof handleIaSeqChange === 'function') {
+                await handleIaSeqChange(seq);
+            }
+
             const shotSel = document.getElementById('iaShotSelect');
-            if (epSel) epSel.value = ep;
-            if (seqSel) { seqSel.value = seq; seqSel.disabled = false; }
-            if (shotSel) { shotSel.value = detectedShotId; shotSel.disabled = false; }
+            if (shotSel) {
+                if (Array.from(shotSel.options).some(o => o.value === detectedShotId)) {
+                    shotSel.value = detectedShotId;
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = detectedShotId;
+                    opt.textContent = detectedShotId;
+                    opt.selected = true;
+                    shotSel.appendChild(opt);
+                }
+                shotSel.disabled = false;
+            }
+
+            if (typeof handleIaShotChange === 'function') {
+                handleIaShotChange(detectedShotId);
+            }
+        } else {
+            if (typeof handleIaShotChange === 'function') {
+                handleIaShotChange(detectedShotId);
+            }
         }
     }
 
@@ -1878,6 +1960,7 @@ async function enqueuePathsToIaBatch(paths = [], options = {}) {
 
     for (const p of allMediaPaths) {
         const normP = p.replace(/\\/g, '/');
+        if (iaBatchQueue.some(it => it.originalPath === normP)) continue;
         const fileName = normP.split('/').pop();
         const ext = '.' + (fileName.split('.').pop() || '').toLowerCase();
         const isVideo = ['.mp4', '.mov'].includes(ext);
@@ -2651,10 +2734,12 @@ async function executeIaIngestBatch() {
             }
 
             // Ingestar a cada una de las carpetas de destino seleccionadas
-            const isHf = item.isHiggsfield || item.hfJobId || (item.sourceUrl && item.sourceUrl.includes('cloudfront'));
+            // Solo usar pipeline de Higgsfield si está explícitamente activado en el ítem (botón HF)
+            const isHf = !!item.isHiggsfield;
 
             if (isHf) {
-                const isWorker = (window.hfOptions && window.hfOptions.forceWorker) || hfExecutor === 'worker';
+                // Solo enviar al worker si proviene de una URL remota. Archivos locales se procesan siempre localmente.
+                const isWorker = !!(item.sourceUrl && ((window.hfOptions && window.hfOptions.forceWorker) || hfExecutor === 'worker'));
                 const createLedgerVal = (window.hfOptions && typeof window.hfOptions.createLedger !== 'undefined') 
                     ? window.hfOptions.createLedger 
                     : (document.getElementById('hfCreateLedgerCheck')?.checked !== false);
@@ -2784,7 +2869,8 @@ function switchIaWorkMode(mode) {
     window.iaWorkMode = mode;
     localStorage.setItem('pipeta_ia_work_mode', mode);
     if (typeof updateHeaderTools === 'function') {
-        updateHeaderTools('view-ia-ingest');
+        const isPoppedOrDocked = (window.isIaIngestWindowOpen || (typeof window.DockManager !== 'undefined' && window.DockManager.isDocked('ia-ingest')));
+        updateHeaderTools(isPoppedOrDocked ? 'view-browser' : 'view-ia-ingest');
     }
     
     const isSimple = mode === 'simple';
@@ -2995,55 +3081,145 @@ async function fetchWebOrDataUrlImage(url) {
 }
 
 // --- 9. EVENT LISTENERS DE DRAG & DROP MULTI-ARCHIVO Y PEGAR (CTRL+V) ---
+let _iaLastDropTime = 0;
+
+async function handleIaDropEvent(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+    }
+
+    // Debounce de seguridad (evita dobles procesamientos en ráfagas < 350ms)
+    const now = Date.now();
+    if (now - _iaLastDropTime < 350) return;
+    _iaLastDropTime = now;
+
+    const dropZone = document.getElementById('iaDropZone');
+    if (dropZone) {
+        dropZone.style.borderColor = '#444';
+        dropZone.style.background = '#111';
+    }
+
+    // 1. Detectar arrastre interno desde Pipeta Explorer (árbol de archivos / mirror)
+    let internalData = window._pipetaDragData;
+    if (!internalData && e.dataTransfer) {
+        try {
+            const raw = e.dataTransfer.getData('application/json');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && parsed.type === 'pipeta-files') {
+                    internalData = parsed;
+                }
+            }
+        } catch(err) {}
+    }
+
+    if (internalData && Array.isArray(internalData.paths) && internalData.paths.length > 0) {
+        if (typeof enqueuePathsToIaBatch === 'function') {
+            await enqueuePathsToIaBatch(internalData.paths, { isDirMap: internalData.isDirMap });
+            showIaAlert(`✓ ${internalData.paths.length} elemento(s) incorporados desde Explorer`, '#4caf50');
+        }
+        window._pipetaDragData = null;
+        return;
+    }
+
+    // 2. Detectar arrastre externo de archivos desde Windows Explorer
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length > 0) {
+        handleIaFileSelect({ files: dt.files });
+        return;
+    }
+
+    // 3. Detectar arrastre de URLs web (Higgsfield, web images)
+    if (dt) {
+        const url = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').trim();
+        if (url) {
+            if (extractHfJobId(url)) {
+                handleHfDirectLoad(url);
+            } else if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
+                fetchWebOrDataUrlImage(url);
+            }
+        }
+    }
+}
+
+let _iaDropDepthCounter = 0;
+
 function initIaDropZone() {
     const dropZone = document.getElementById('iaDropZone');
     const iaView = document.getElementById('view-ia-ingest');
+    const iaWin = document.getElementById('ia-ingest-window');
     if (!dropZone) return;
 
-    // Prevenir comportamiento por defecto de arrastrar en la vista
-    [dropZone, iaView].forEach(el => {
-        if (!el) return;
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            el.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, false);
-        });
-    });
+    if (dropZone._iaDropListenersAttached) return;
+    dropZone._iaDropListenersAttached = true;
 
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.style.borderColor = 'var(--accent)';
-            dropZone.style.background = '#252525';
-        }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.style.borderColor = '#444';
-            dropZone.style.background = '#111';
-        }, false);
-    });
-
-    dropZone.ondrop = (e) => {
+    // 1. Configurar listeners específicos sobre el recuadro "2. CARGAR ARCHIVOS"
+    dropZone.addEventListener('dragenter', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        _iaDropDepthCounter++;
+        dropZone.style.borderColor = 'var(--accent)';
+        dropZone.style.background = '#252525';
+    }, false);
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        dropZone.style.borderColor = 'var(--accent)';
+        dropZone.style.background = '#252525';
+    }, false);
+
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _iaDropDepthCounter--;
+        if (_iaDropDepthCounter <= 0) {
+            _iaDropDepthCounter = 0;
+            dropZone.style.borderColor = '#444';
+            dropZone.style.background = '#111';
+        }
+    }, false);
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+            e.stopImmediatePropagation();
+        }
+        _iaDropDepthCounter = 0;
         dropZone.style.borderColor = '#444';
         dropZone.style.background = '#111';
-        const dt = e.dataTransfer;
-        if (dt && dt.files && dt.files.length > 0) {
-            handleIaFileSelect({ files: dt.files });
-        } else if (dt) {
-            const url = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').trim();
-            if (url) {
-                if (extractHfJobId(url)) {
-                    handleHfDirectLoad(url);
-                } else if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
-                    fetchWebOrDataUrlImage(url);
-                }
+        handleIaDropEvent(e);
+    }, false);
+
+    // 2. Configurar contenedores de respaldo (vista completa y ventana flotante)
+    const backupContainers = [iaView, iaWin].filter(Boolean);
+    backupContainers.forEach(container => {
+        if (container._iaBackupDropAttached) return;
+        container._iaBackupDropAttached = true;
+
+        container.addEventListener('dragover', (e) => {
+            // Permitir arrastrar sobre cualquier parte de la vista
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        }, false);
+
+        container.addEventListener('drop', (e) => {
+            // Si el drop ya ocurrió dentro de dropZone, stopPropagation lo detuvo
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
             }
-        }
-    };
+            _iaDropDepthCounter = 0;
+            dropZone.style.borderColor = '#444';
+            dropZone.style.background = '#111';
+            handleIaDropEvent(e);
+        }, false);
+    });
 }
 
 async function initIaIngest() {
