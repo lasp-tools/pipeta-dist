@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 title Sincronizar Pipeta (Local / Remoto)
 
-set "APP_VERSION=v1.1.77"
+set "APP_VERSION=v1.1.78"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 :: Si se pasa --from-temp con un destino especifico
@@ -172,7 +172,7 @@ if !errorlevel! equ 0 (
     echo [INFO] Descargando ultimas actualizaciones de main...
     git fetch origin main --quiet
     if !errorlevel! equ 0 (
-        git checkout -B main origin/main --quiet
+        git reset --hard origin/main
         echo [OK] Codigo actualizado con exito desde GitHub.
     ) else (
         echo [WARN] No se pudo hacer git fetch. Verifica la conexion a internet o el token.

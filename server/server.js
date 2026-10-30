@@ -3488,11 +3488,11 @@ app.post('/api/app/update-from-server', async (req, res) => {
     const customSource = req.body?.sourcePath || '';
     const localDest = 'C:\\TOOLS\\APPS\\Pipeta';
 
-    const candidateSources = [
+    const candidateSources = (!global.isExternalMachine) ? [
         customSource,
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
         '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'
-    ].filter(s => s && s.trim().length > 0);
+    ].filter(s => s && s.trim().length > 0) : [];
 
     const psScript = `
 $candidateSources = @(
@@ -3521,7 +3521,7 @@ if (-not $foundSource) {
         $tokenFile = Join-Path $localPipetaDir "credentials\\github_token.txt"
         if (Test-Path $tokenFile) {
             $tok = (Get-Content $tokenFile -Raw).Trim()
-            if ($tok) { $ghRepo = "https://oauth2:${tok}@github.com/lasp-tools/pipeta-dist.git" }
+            if ($tok) { $ghRepo = "https://oauth2:" + $tok + "@github.com/lasp-tools/pipeta-dist.git" }
         }
 
         if (-not (Test-Path (Join-Path $localPipetaDir ".git"))) {
@@ -3533,7 +3533,7 @@ if (-not $foundSource) {
 
         & git fetch origin main --quiet 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            & git checkout -B main origin/main --quiet 2>&1 | Out-Null
+            & git reset --hard origin/main 2>&1 | Out-Null
             Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB"
         } else {
             Write-Error "Fallo la sincronizacion con GitHub. Verifica conexion a internet o token."
@@ -6054,6 +6054,13 @@ app.post('/api/ramon/login', async (req, res) => {
             global.isExternalMachine = isRemoteRamon;
             global.isStudioNetworkDetected = !isRemoteRamon;
         }
+
+        activeRamonUser = username;
+        try {
+            const lastUserFile = path.join(getLocalSyncCacheDir(), 'last_ramon_user.json');
+            fs.writeJsonSync(lastUserFile, { user: activeRamonUser, updatedAt: new Date().toISOString() });
+        } catch (e) {}
+        sendClientTelemetryPing().catch(() => {});
 
         res.json(authResult);
     } catch (err) {

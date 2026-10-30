@@ -2899,7 +2899,8 @@ const settings = {
 
                     <!-- SECCIÓN: ACTUALIZADOR DIRECTO & ACCESOS (ARRIBA DE TODO) -->
                     ${(() => {
-                        const isExt = !!(window.cachedEnvState?.isExternalMachine || settings.envState?.isExternalMachine);
+                        const isExt = (typeof window.isExternalMachine === 'function' && window.isExternalMachine()) ||
+                                      !!(window.pipetaSystemEnv?.isExternalMachine || settings.envState?.isExternalMachine);
                         return `
                         <div style="background:rgba(255,255,255,0.03); padding:18px; border-radius:8px; border:1px solid #333; margin-bottom:20px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
@@ -2908,7 +2909,7 @@ const settings = {
                                         🔄 Actualizador del Sistema
                                     </span>
                                     <span style="font-size:0.75rem; background:${isExt ? '#ff9800' : '#4caf50'}; color:#000; font-weight:bold; padding:2px 8px; border-radius:3px;">
-                                        ${isExt ? 'Modo Remoto (GitHub / Drive)' : 'Red Estudio (Z: Local)'}
+                                        ${isExt ? 'Modo Remoto (GitHub / Drive)' : 'Red Estudio'}
                                     </span>
                                 </div>
                                 <div style="display:flex; gap:10px;">
@@ -2916,30 +2917,24 @@ const settings = {
                                         style="background:#222; color:#00bcd4; border:1px solid #00bcd488; font-weight:bold; padding:9px 16px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:6px;">
                                         <span>📌 Crear Acceso Directo</span>
                                     </button>
-                                    <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()" 
+                                    <button id="updateFromNetBtn" class="btn" onclick="settings.executeUpdateFromServer()"
                                         style="background:var(--accent); color:black; font-weight:bold; padding:9px 22px; border-radius:4px; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 2px 10px rgba(255,152,0,0.3);">
-                                        <span>🚀 ${isExt ? 'ACTUALIZAR PIPETA (GITHUB / DRIVE)' : 'ACTUALIZAR PIPETA DESDE RED'}</span>
+                                        <span>🚀 ACTUALIZAR PIPETA</span>
                                     </button>
                                 </div>
                             </div>
                             <div id="updateStatusMsg" style="font-size:0.85rem; color:#aaa; margin-bottom:12px;"></div>
                             <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
-                                ${isExt 
-                                    ? 'Sincroniza en caliente el código más reciente desde GitHub (<code>lasp-tools/pipeta-dist</code>), restaura automáticamente dependencias y runtimes desde Google Drive (<code>LaSP_Tools</code>) y reinicia el sistema.' 
-                                    : 'Sincroniza en caliente tu instalación local con la versión más reciente del repositorio maestro en red (<code>Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code> o <code>\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta</code>) y reinicia el sistema automáticamente.'}
+                                ${isExt
+                                    ? 'Sincroniza en caliente tu instalación con la última versión oficial desde GitHub y Google Drive, y reinicia la aplicación automáticamente.'
+                                    : 'Sincroniza en caliente tu instalación con la última versión oficial del estudio y reinicia la aplicación automáticamente.'}
                             </p>
 
                             <div style="background:#111; border:1px solid #222; border-radius:6px; padding:12px; font-size:0.8rem;">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                    <span style="color:#888;">${isExt ? 'Origen de Código (GitHub):' : 'Servidor Maestro (Origen de Red):'}</span>
-                                    <span style="color:var(--accent); font-family:monospace; font-weight:bold;">${isExt ? 'https://github.com/lasp-tools/pipeta-dist.git' : 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'}</span>
+                                    <span style="color:#888;">Origen de Actualización:</span>
+                                    <span style="color:var(--accent); font-family:monospace; font-weight:bold;">${isExt ? 'Repositorio Oficial (Cloud)' : 'Servidor Maestro (Estudio)'}</span>
                                 </div>
-                                ${isExt ? `
-                                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                    <span style="color:#888;">Depósito de Dependencias:</span>
-                                    <span style="color:#00bcd4; font-family:monospace;">Google Drive (LaSP_Tools)</span>
-                                </div>
-                                ` : ''}
                                 <div style="display:flex; justify-content:space-between;">
                                     <span style="color:#888;">Instalación Local:</span>
                                     <span style="color:#aaa; font-family:monospace;">C:\\TOOLS\\APPS\\Pipeta</span>
@@ -3799,7 +3794,8 @@ const settings = {
             statusMsg.innerHTML = '<span style="color:var(--accent);">⏳ Buscando repositorio maestro y sincronizando...</span>';
         }
 
-        const isExternalEnv = !!(window.cachedEnvState?.isExternalMachine || settings.envState?.isExternalMachine);
+        const isExternalEnv = (typeof window.isExternalMachine === 'function' && window.isExternalMachine()) ||
+                             !!(window.pipetaSystemEnv?.isExternalMachine || settings.envState?.isExternalMachine);
         const modal = settings.showPipetaUpdateModal();
         modal.setStep(1, 20, isExternalEnv ? 'Conectando con repositorio GitHub (pipeta-dist)...' : 'Localizando repositorio maestro de Pipeta...');
 
@@ -3851,7 +3847,7 @@ const settings = {
             if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al actualizar: ${e.message}</span>`;
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = `<span>🚀 ${isExternalEnv ? 'ACTUALIZAR PIPETA (GITHUB / DRIVE)' : 'ACTUALIZAR PIPETA DESDE RED'}</span>`;
+                btn.innerHTML = '<span>🚀 ACTUALIZAR PIPETA</span>';
                 btn.style.opacity = '1';
             }
         }
