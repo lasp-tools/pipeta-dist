@@ -199,6 +199,8 @@ echo [3/3] Verificando dependencias y runtimes de Node y Python...
 set "NEED_HYDRATION=0"
 if not exist "%DEST%\bin\node\node.exe" set "NEED_HYDRATION=1"
 if not exist "%DEST%\server\node_modules\express" set "NEED_HYDRATION=1"
+if not exist "%DEST%\bin\python\python.exe" set "NEED_HYDRATION=1"
+if not exist "%DEST%\bin\python\python310.zip" set "NEED_HYDRATION=1"
 
 if "!NEED_HYDRATION!"=="1" (
     echo [INFO] Dependencias o runtimes faltantes detectados.
@@ -231,7 +233,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta actualizada con exito en %DEST%
+echo   OK: Pipeta v1.1.79 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 ping 127.0.0.1 -n 2 >nul

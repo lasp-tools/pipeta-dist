@@ -265,11 +265,12 @@ const Ramon = {
         const errDiv = document.getElementById('ramonLoginError');
 
         if (userInp) {
-            if (!userInp.value || userInp.value === 'admin') {
-                userInp.value = (Ramon.session?.user?.login && Ramon.session.user.login !== 'admin') ? Ramon.session.user.login : '';
-            }
+            userInp.value = '';
+            userInp.setAttribute('placeholder', 'lasp-usuario');
         }
-        if (passInp) passInp.value = '';
+        if (passInp) {
+            passInp.value = '';
+        }
         if (errDiv) errDiv.style.display = 'none';
 
         modal.style.display = 'flex';
@@ -830,20 +831,20 @@ const Ramon = {
 
                             <div class="ramon-field-group" style="margin-bottom:12px;">
                                 <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Usuario de Dominio / Ramón:</label>
-                                <input type="text" id="ramonUsernameInput" placeholder="ej. lasp-mpastorino" autocomplete="username"
+                                <input type="text" id="ramonUsernameInput" placeholder="lasp-usuario" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
                                     style="width:100%; box-sizing:border-box; padding:8px 10px; background:#0d0d0d; border:1px solid #333; border-radius:4px; color:#fff; font-size:0.9rem;"
                                     onkeydown="if(event.key==='Enter') document.getElementById('ramonPasswordInput').focus();">
                             </div>
 
                             <div class="ramon-field-group" style="margin-bottom:12px;">
                                 <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Contraseña de Red:</label>
-                                <input type="password" id="ramonPasswordInput" placeholder="••••••••••••" autocomplete="current-password"
+                                <input type="password" id="ramonPasswordInput" placeholder="Contraseña de Red" autocomplete="new-password"
                                     style="width:100%; box-sizing:border-box; padding:8px 10px; background:#0d0d0d; border:1px solid #333; border-radius:4px; color:#fff; font-size:0.9rem;"
                                     onkeydown="if(event.key==='Enter') Ramon.submitRamonLogin();">
                             </div>
 
                             <div style="margin:14px 0; display:flex; align-items:center; gap:8px;">
-                                <input type="checkbox" id="ramonRememberCheck" checked style="cursor:pointer; accent-color:#00bcd4;">
+                                <input type="checkbox" id="ramonRememberCheck" style="cursor:pointer; accent-color:#00bcd4;">
                                 <label for="ramonRememberCheck" style="color:#bbb; font-size:0.82rem; cursor:pointer; user-select:none;">
                                     Recordar sesión en este equipo
                                 </label>

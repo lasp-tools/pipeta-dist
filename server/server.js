@@ -17,7 +17,7 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.78";
+const VERSION = "v1.1.79";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -3614,7 +3614,9 @@ if (-not $foundSource) {
     # Verificar dependencias desde Google Drive (LaSP_Tools) si faltan
     $nodeExe = Join-Path $localPipetaDir "bin\\node\\node.exe"
     $expressModule = Join-Path $localPipetaDir "server\\node_modules\\express"
-    if ((-not (Test-Path $nodeExe)) -or (-not (Test-Path $expressModule))) {
+    $pyExe = Join-Path $localPipetaDir "bin\\python\\python.exe"
+    $pyZip = Join-Path $localPipetaDir "bin\\python\\python310.zip"
+    if ((-not (Test-Path $nodeExe)) -or (-not (Test-Path $expressModule)) -or (-not (Test-Path $pyExe)) -or (-not (Test-Path $pyZip))) {
         $rcloneExe = Join-Path $localPipetaDir "tools\\rclone\\rclone.exe"
         $rcloneConf = Join-Path $localPipetaDir "tools\\rclone\\rclone.conf"
         if (Test-Path $rcloneExe) {

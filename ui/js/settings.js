@@ -3018,7 +3018,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.78'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.79'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3049,11 +3049,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.78'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.79'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.78'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.79'}.zip</code>).
                             </div>
                         </div>
 
@@ -3094,7 +3094,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.78'}
+                            ${window.APP_VERSION || 'v1.1.79'}
                         </span>
                     </h3>
 
@@ -3106,10 +3106,17 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.78 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.79 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
-                                    <li><b>Actualizador Inteligente Unificado en Update / Export:</b> Se unificó el actualizador en la pestaña <i>Update / Export Presets</i> eliminando redundancias. El botón detecta automáticamente el entorno: en el estudio actualiza vía red local (<code>Z:</code>), y en equipos remotos/freelance sincroniza vía GitHub (<code>pipeta-dist</code>) y restaura dependencias faltantes desde Google Drive (<code>LaSP_Tools</code>).</li>
-                                    <li><b>Scripts de Actualización Portables:</b> <code>Actualizar_Pipeta.bat</code> y <code>Actualizar_Pipeta_desde_Red.bat</code> incluidos en el paquete portable para su ejecución directa.</li>
+                                    <li><b>Autenticación Ramón sin precarga:</b> Campos de login limpios con placeholder <code>lasp-usuario</code> y protección contra autocompletado indiscriminado del navegador.</li>
+                                    <li><b>Runtime Python 3.10 Autónomo y Robusto:</b> Empaquetado completo de la librería estándar (<code>python310.zip</code>) e hidratación automática de runtimes de Python/Node desde el depósito de Google Drive si faltan en puestos remotos limpios.</li>
+                                    <li><b>Repositorio GitHub Público:</b> Actualizaciones remotas directas sin requerir usuario, clave ni token de GitHub.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.78</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li>Actualizador inteligente unificado en Update / Export Presets.</li>
                                 </ul>
                             </div>
 
@@ -4151,8 +4158,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.78'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.78'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.79'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.79'}.zip`;
 
         if (btn) {
             btn.disabled = true;
