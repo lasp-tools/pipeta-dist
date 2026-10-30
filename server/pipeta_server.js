@@ -2173,6 +2173,25 @@ app.get('/api/server/ramon-users', async (req, res) => {
     }
 });
 
+// Endpoint seguro para invocar comandos de Ramón desde clientes remotos (0 LAN requerida)
+app.post('/api/server/ramon/bridge', async (req, res) => {
+    try {
+        const { args } = req.body || {};
+        if (!Array.isArray(args) || args.length === 0) {
+            return res.status(400).json({ success: false, error: "Array 'args' requerido" });
+        }
+        const cmd = args[0];
+        // Solo permitir comandos de solo lectura
+        if (!['login', 'ping', 'tasks', 'project_tasks', 'projects', 'users'].includes(cmd)) {
+            return res.status(403).json({ success: false, error: `Comando Ramón no permitido: ${cmd}` });
+        }
+        const result = await runServerRamonBridge(args, 25000);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ---------------------------------------------------------------------------
 // PERSISTENCIA DE USERS_CONFIG + AUTO-REGISTRO DE USUARIOS NUEVOS
 // ---------------------------------------------------------------------------

@@ -212,6 +212,21 @@
       "authSource": "ramon",
       "autoRegistered": true,
       "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_localadmin_2093",
+      "username": "lasp-localadmin",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-localadmin",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en DESKTOP-PFDJJ3R (2026-10-30)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
     }
   ],
   "activeUser": "admin",

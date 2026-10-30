@@ -17,7 +17,7 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.79";
+const VERSION = "v1.1.80";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -6002,8 +6002,43 @@ function getPythonExecutable() {
     return detectedPythonBin;
 }
 
-function runRamonBridge(args, timeoutMs = 30000) {
-    return new Promise((resolve) => {
+async function executeRamonViaCentralServer(args, timeoutMs = 25000) {
+    const urls = typeof getPipetaServerCandidateUrls === 'function' ? getPipetaServerCandidateUrls() : [];
+    for (const baseUrl of urls) {
+        try {
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/server/ramon/bridge`;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-pipeta-token': PIPETA_SERVER_TOKEN
+                },
+                body: JSON.stringify({ args }),
+                signal: AbortSignal.timeout(timeoutMs)
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && typeof data === 'object') return data;
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+
+async function runRamonBridge(args, timeoutMs = 30000) {
+    // Si estamos en un puesto remoto / externo (fuera de la LAN de Munro),
+    // invocar directamente el puente de Ramón a través de Pipeta Server (Cloudflare)
+    if (global.isExternalMachine) {
+        try {
+            const remoteResult = await executeRamonViaCentralServer(args, timeoutMs);
+            if (remoteResult) {
+                return remoteResult;
+            }
+        } catch (e) {}
+    }
+
+    // Ejecución local vía Python
+    const localResult = await new Promise((resolve) => {
         const pyBin = getPythonExecutable();
         const pyProc = spawn(pyBin, [RAMON_CLIENT_SCRIPT, ...args], {
             windowsHide: true,
@@ -6050,6 +6085,16 @@ function runRamonBridge(args, timeoutMs = 30000) {
             resolve({ success: false, error: `Error ejecutando Python para Ramón (${pyBin}): ${err.message}` });
         });
     });
+
+    // Fallback: Si la llamada local falló por timeout o error de red, intentar por servidor central
+    if (!localResult.success && (!localResult.error || localResult.error.includes('Tiempo de espera') || localResult.error.includes('No se encontró'))) {
+        try {
+            const remoteFallback = await executeRamonViaCentralServer(args, Math.min(timeoutMs, 15000));
+            if (remoteFallback) return remoteFallback;
+        } catch (e) {}
+    }
+
+    return localResult;
 }
 
 app.get('/api/ramon/status', async (req, res) => {

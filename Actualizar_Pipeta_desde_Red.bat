@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 title Sincronizar Pipeta (Local / Remoto)
 
-set "APP_VERSION=v1.1.78"
+set "APP_VERSION=v1.1.80"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 :: Si se pasa --from-temp con un destino especifico
@@ -233,7 +233,7 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v1.1.79 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.1.80 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 ping 127.0.0.1 -n 2 >nul
