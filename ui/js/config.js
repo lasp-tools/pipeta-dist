@@ -1,5 +1,5 @@
 // Configuration
-window.APP_VERSION = "v1.1.80";
+window.APP_VERSION = "v1.1.81";
 if (typeof document !== 'undefined') {
     const isBetaChannel = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
     document.title = isBetaChannel ? "Pipeta Beta - Pipeline Manager" : "Pipeta - Pipeline Manager";
