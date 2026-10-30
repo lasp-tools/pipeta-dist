@@ -129,7 +129,7 @@ const ShotNavigator = {
                 const uData = await API.users.get();
                 ShotNavigator.users = uData.users || [];
                 ShotNavigator.roles = uData.roles || [];
-                ShotNavigator.activeUser = uData.activeUser || (ShotNavigator.users[0]?.laspUser || 'lasp-mpastorino');
+                ShotNavigator.activeUser = Ramon?.session?.user?.login || uData.activeUser || null;
                 ShotNavigator._cachedUsers = ShotNavigator.users;
             } catch(e) {
                 console.error("[ShotNav] Error loading users:", e);

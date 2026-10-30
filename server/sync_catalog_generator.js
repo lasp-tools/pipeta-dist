@@ -30,7 +30,7 @@ function fetchProjectBundleFromCentralServer(projectName) {
         try {
             fs.ensureDirSync(destDir);
             const cmd = `curl.exe -s -m 8 "${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/bundle" | tar.exe -xzf - -C "${destDir}"`;
-            execSync(cmd, { stdio: 'ignore', timeout: 9000 });
+            execSync(cmd, { stdio: 'ignore', timeout: 9000, windowsHide: true });
             const serverManifest = path.join(destDir, 'server', 'manifest.json');
             const driveManifest = path.join(destDir, 'drive', 'manifest.json');
             if (fs.existsSync(serverManifest) || fs.existsSync(driveManifest)) {
@@ -65,7 +65,7 @@ function fetchSubCatalogFromCentralServer(projectName, type, subFile) {
             fs.ensureDirSync(path.dirname(localPrimary));
             const url = `${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/modular?type=${type}&sub=${encodeURIComponent(subKey)}`;
             const cmd = `curl.exe -s -m 10 -f -o "${localPrimary}" "${url}"`;
-            execSync(cmd, { stdio: 'ignore', timeout: 11000 });
+            execSync(cmd, { stdio: 'ignore', timeout: 11000, windowsHide: true });
             if (fs.existsSync(localPrimary) && fs.statSync(localPrimary).size > 10) {
                 return localPrimary;
             }
@@ -76,22 +76,26 @@ function fetchSubCatalogFromCentralServer(projectName, type, subFile) {
 let _isZDriveNetworkCache = null;
 function isZDriveNetwork() {
     if (_isZDriveNetworkCache !== null) return _isZDriveNetworkCache;
+    if (global.isExternalMachine || !fs.existsSync('Z:\\')) {
+        _isZDriveNetworkCache = false;
+        return false;
+    }
     try {
-        const substOut = execSync('subst', { encoding: 'utf8', timeout: 800 });
-        if (/Z:\\: =>/i.test(substOut)) {
+        const substOut = execSync('subst', { encoding: 'utf8', timeout: 800, windowsHide: true });
+        if (/Z:\: =>/i.test(substOut)) {
             _isZDriveNetworkCache = false;
             return false;
         }
     } catch(e) {}
     try {
-        const netUse = execSync('net use Z:', { encoding: 'utf8', timeout: 800 });
+        const netUse = execSync('net use Z:', { encoding: 'utf8', timeout: 800, windowsHide: true });
         if (netUse && !/no se encuentra|error/i.test(netUse)) {
             _isZDriveNetworkCache = true;
             return true;
         }
     } catch(e) {}
-    _isZDriveNetworkCache = true;
-    return true;
+    _isZDriveNetworkCache = false;
+    return false;
 }
 
 const CACHE_ROOT = fs.existsSync(LOCAL_CACHE_DIR) 
@@ -121,7 +125,7 @@ function syncLocalCacheFromNetwork(projectName = null) {
 
 function isZDriveLocalSubst() {
             try {
-                const substOut = execSync('subst', { encoding: 'utf8', timeout: 500 });
+                const substOut = execSync('subst', { encoding: 'utf8', timeout: 500, windowsHide: true });
                 return /Z:\\: =>/i.test(substOut);
             } catch (e) { return false; }
         }
@@ -270,7 +274,7 @@ function getTeamDrivesMap() {
     try {
         console.log(`[CATALOG] Consultando lista de Team Drives en Google Drive...`);
         const cmd = `"${RCLONE_EXE}" --config "${RCLONE_CONF}" backend drives "lasp-drive:"`;
-        const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 10, encoding: 'utf-8', timeout: 20000 });
+        const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 10, encoding: 'utf-8', timeout: 20000, windowsHide: true });
         const list = JSON.parse(stdout);
         teamDrivesCache = {};
         for (const drive of list) {
@@ -535,7 +539,7 @@ function scanWithRclone(remotePath) {
         cmd = `"${RCLONE_EXE}" ${confArg}lsjson "${remotePath}" --recursive --fast-list`;
     }
 
-    const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 100, encoding: 'utf-8', timeout: 180000 });
+    const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 100, encoding: 'utf-8', timeout: 180000, windowsHide: true });
     const rawItems = JSON.parse(stdout);
 
     return rawItems.map(item => ({
@@ -580,7 +584,7 @@ function listWithRclone(remotePath) {
     const cmd = `"${RCLONE_EXE}" ${confArg}lsjson "${rcloneTarget}" --drive-team-drive "${teamDriveId}"`;
 
     try {
-        const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 20, encoding: 'utf-8', timeout: 30000 });
+        const stdout = execSync(cmd, { maxBuffer: 1024 * 1024 * 20, encoding: 'utf-8', timeout: 30000, windowsHide: true });
         const rawItems = JSON.parse(stdout);
         const baseNorm = norm.replace(/\/+$/, '');
 
@@ -1434,6 +1438,9 @@ const DIR_CACHE_TTL = 5000;
 function dirExistsFast(dirPath) {
     if (!dirPath) return false;
     const norm = path.normalize(dirPath).toLowerCase();
+    if (norm.startsWith('z:') && (global.isExternalMachine || !fs.existsSync('Z:\\'))) {
+        return false;
+    }
     const now = Date.now();
     const cached = dirExistsCache.get(norm);
     if (cached && (now - cached.time < DIR_CACHE_TTL)) {
@@ -1460,6 +1467,10 @@ function dirExistsFast(dirPath) {
 
 function fileExistsFast(filePath) {
     if (!filePath) return false;
+    const lower = filePath.toLowerCase();
+    if (lower.startsWith('z:') && (global.isExternalMachine || !fs.existsSync('Z:\\'))) {
+        return false;
+    }
     const parent = path.dirname(filePath);
     if (!dirExistsFast(parent)) return false;
     try {

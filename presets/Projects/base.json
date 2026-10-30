@@ -13,8 +13,8 @@
   "defaultShotPresetId": "master_shot",
   "defaultAssetPresetId": "master_asset",
   "iaPresets": {
-    "defaultImageEngine": "NBN21",
-    "defaultVideoEngine": "SD25",
+    "defaultImageEngine": "NB2P",
+    "defaultVideoEngine": "SD2",
     "defaultFraming": "CRP",
     "defaultTagRoleA": "ref",
     "defaultTagRoleB": "",
@@ -25,17 +25,16 @@
       "VEO3",
       "VO31",
       "GOMN",
-      "RUBY"
+      "NBN2",
+      "NB2P"
     ],
     "motorsImage": [
+      "NB2P",
       "MJ",
       "FLUX",
-      "GPT2",
-      "GPT25S",
-      "GPT25F",
-      "NBN2",
-      "NBNP",
-      "NBN21"
+      "SD2",
+      "SD25",
+      "GOMN"
     ],
     "framings": [
       "FLL",
@@ -97,6 +96,5 @@
         "assets": {}
       }
     }
-  },
-  "_sourceFile": "base.json"
+  }
 }

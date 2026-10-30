@@ -33,7 +33,7 @@
     {
       "id": "user",
       "name": "Artista",
-      "description": "Operador estándar de trabajo",
+      "description": "Operador est\u00e1ndar de trabajo",
       "color": "#00bcd4",
       "isSystem": true,
       "permissions": {
@@ -63,7 +63,7 @@
     {
       "id": "lead",
       "name": "Cordinadora",
-      "description": "Supervisión de planos y diseño de pipeline",
+      "description": "Supervisi\u00f3n de planos y dise\u00f1o de pipeline",
       "color": "#9c27b0",
       "permissions": {
         "access_explorer": true,
@@ -90,48 +90,10 @@
       }
     }
   ],
-  "users": [
-    {
-      "id": "u_admin",
-      "username": "admin",
-      "firstName": "",
-      "lastName": "",
-      "laspUser": "",
-      "role": "admin",
-      "email": "",
-      "notes": "Administrador por defecto",
-      "avatarColor": "#ff9800",
-      "isSystem": true
-    },
-    {
-      "id": "u_user",
-      "username": "user",
-      "firstName": "",
-      "lastName": "",
-      "laspUser": "",
-      "role": "user",
-      "email": "",
-      "notes": "Usuario estándar por defecto",
-      "avatarColor": "#00bcd4",
-      "isSystem": true
-    },
-    {
-      "id": "u_Mati_pastorino_5943",
-      "username": "Mati pastorino",
-      "firstName": "Matias",
-      "lastName": "Pastorino",
-      "laspUser": "lasp-mpastorino",
-      "role": "user",
-      "email": "",
-      "avatarColor": "#ff9800",
-      "notes": "",
-      "isSystem": false,
-      "authSource": "ramon"
-    }
-  ],
-  "activeUser": "admin",
+  "users": [],
+  "activeUser": "",
   "autoRegisterRamonUsers": true,
   "defaultRamonRole": "user",
   "hasAdminPassword": true,
-  "adminPassword": "Pipetadmin.321"
+  "adminPassword": "LASP.Pipeta#2026.Admin!"
 }

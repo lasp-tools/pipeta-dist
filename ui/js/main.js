@@ -1062,42 +1062,10 @@ window.handleHeaderUserSwitch = async (userVal) => {
 
 window.updateHeaderUserSelector = async () => {
     try {
-        const uData = await API.users.get();
-        window.cachedUsersData = uData;
-        const select = document.getElementById('headerUserSelect');
-        const avatar = document.getElementById('headerUserAvatar');
-        if (!select || !uData) return;
-        
-        const active = uData.activeUser || 'admin';
-        const activeObj = (uData.users || []).find(u => u.username === active || u.laspUser === active || u.id === active);
-        const isActiveAdmin = activeObj?.username === 'admin' || activeObj?.id === 'u_admin' || (activeObj?.isSystem && activeObj?.role === 'admin');
-        const isActiveRamon = !isActiveAdmin && (activeObj?.authSource === 'ramon' || (activeObj?.laspUser && activeObj?.laspUser.startsWith('lasp-')));
-        if (avatar) {
-            avatar.innerHTML = '';
-            avatar.style.background = activeObj?.avatarColor || (isActiveRamon ? '#00bcd4' : '#ff9800');
+        if (typeof Ramon !== 'undefined' && typeof Ramon.applySessionToHeader === 'function') {
+            Ramon.applySessionToHeader();
         }
-        
-        const usersHtml = (uData.users || []).map(u => {
-            const isSystemAdmin = u.username === 'admin' || u.id === 'u_admin' || (u.isSystem && u.role === 'admin');
-            const isRamon = !isSystemAdmin && (u.authSource === 'ramon' || (u.laspUser && u.laspUser.startsWith('lasp-')));
-            const val = (isRamon && u.laspUser) ? u.laspUser : (u.username || u.laspUser || u.id);
-            const userTag = isRamon ? ' [Ramón]' : (isSystemAdmin ? ' [Local]' : '');
-            const cleanLast = (u.lastName || '').replace(/_+$/, '').trim();
-            const fullName = (!isSystemAdmin && u.firstName) ? ` (${u.firstName}${cleanLast ? ' ' + cleanLast : ''})` : '';
-            const label = `${val}${fullName}${userTag}`;
-            const isSelected = (val === active || u.username === active || u.laspUser === active);
-            return `<option value="${val}" ${isSelected ? 'selected' : ''}>${label}</option>`;
-        }).join('');
-
-        const actionsHtml = `
-            <option disabled value="">───────────────</option>
-            <option value="__RAMON_LOGIN__">🌐 + Iniciar Sesión con Ramón...</option>
-        `;
-
-        select.innerHTML = usersHtml + actionsHtml;
-    } catch(e) {
-        console.warn("Could not load users for header selector:", e);
-    }
+    } catch(e) {}
 };
 
 // --- RCLONE STATUS ---

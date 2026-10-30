@@ -42,10 +42,26 @@ const Ramon = {
         }
 
         if (savedSession && savedSession.user) {
+            // Revocar sesiones genéricas obsoletas de 'user'
+            if (savedSession.mode === 'local' && (savedSession.user.username === 'user' || savedSession.user.id === 'u_user')) {
+                console.warn("[RAMON] Sesión genérica de 'user' no permitida por seguridad. Forzando login.");
+                try { localStorage.removeItem('pipeta_session'); } catch(e){}
+                savedSession = null;
+            }
+        }
+
+        if (savedSession && savedSession.user) {
             console.log(`[RAMON] Sesión recordada encontrada (${savedSession.mode}):`, savedSession.user.login || savedSession.user.username);
             Ramon.session = savedSession;
             Ramon.applySessionToHeader();
             Ramon.notifyTelemetryActiveUser();
+
+            // Sincronización silenciosa en segundo plano de configuraciones maestras y permisos
+            fetch('/api/app/sync-configs', { method: 'POST' }).then(() => {
+                if (typeof applyRolePermissionsToUI === 'function') {
+                    applyRolePermissionsToUI();
+                }
+            }).catch(() => {});
 
             // Restaurar tareas cacheadas desde sessionStorage si existen
             try {
@@ -89,56 +105,46 @@ const Ramon = {
     },
 
     // --- APLICAR SESION A LA CABECERA ---
+    handleHeaderUserClick: (event) => {
+        if (Ramon.session && Ramon.session.user && (Ramon.session.user.login || Ramon.session.user.username)) {
+            Ramon.toggleUserMenu(event);
+        } else {
+            Ramon.showLoginModal();
+        }
+    },
+
+    // --- APLICAR SESION A LA CABECERA ---
     applySessionToHeader: () => {
         const u = Ramon.session?.user;
-        let mode = Ramon.session?.mode || 'local';
-        const activeLogin = u?.login || u?.laspUser || u?.username || 'admin';
-        const isSystemAdmin = activeLogin === 'admin' || u?.id === 'u_admin' || u?.isSystem;
-        if (isSystemAdmin) {
-            mode = 'local';
-        }
-        const fullName = !isSystemAdmin ? (u?.display_name || (u?.firstName ? `${u.firstName} ${u.lastName}`.trim() : '')) : '';
+        const activeLogin = u?.login || u?.laspUser || u?.username || '';
+        const fullName = u?.display_name || (u?.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : '');
 
-        // Formato claro: nombre de usuario de red / local + aclaración del sistema
-        const sessionLabel = mode === 'ramon'
-            ? `${activeLogin} [Ramón]`
-            : `${activeLogin} [Local]`;
-
-        // 1. Avatar: indicador circular limpio (sin texto RM adentro)
         const avatar = document.getElementById('headerUserAvatar');
-        if (avatar) {
-            avatar.innerHTML = '';
-            avatar.style.width = '8px';
-            avatar.style.height = '8px';
-            avatar.style.borderRadius = '50%';
-            avatar.style.background = mode === 'ramon' ? '#00bcd4' : '#ff9800';
-            avatar.style.boxShadow = mode === 'ramon' ? '0 0 6px rgba(0, 188, 212, 0.7)' : 'none';
-            avatar.title = `Sesión activa: ${activeLogin}${fullName ? ` (${fullName})` : ''} - Modo ${mode === 'ramon' ? 'Ramón (Dominio)' : 'Local'}\nClick para cambiar de usuario o cerrar sesión`;
-            avatar.style.cursor = 'pointer';
-            avatar.onclick = Ramon.toggleUserMenu;
-        }
+        const label = document.getElementById('headerUserLabel');
 
-        // 2. Selector nativo: asegurar que la opción activa muestre el usuario y [Ramón]
-        const select = document.getElementById('headerUserSelect');
-        if (select) {
-            let opt = Array.from(select.options).find(o => 
-                o.value === activeLogin || 
-                o.value === u?.username || 
-                o.value === u?.laspUser
-            );
-            if (!opt) {
-                const newOpt = document.createElement('option');
-                newOpt.value = activeLogin;
-                newOpt.textContent = sessionLabel;
-                select.appendChild(newOpt);
-                select.value = activeLogin;
-            } else {
-                opt.value = activeLogin;
-                opt.textContent = sessionLabel;
-                select.value = activeLogin;
+        if (activeLogin) {
+            if (avatar) {
+                avatar.style.background = '#00bcd4';
+                avatar.style.boxShadow = '0 0 6px rgba(0, 188, 212, 0.7)';
+                avatar.title = `Sesión activa: ${activeLogin}${fullName ? ` (${fullName})` : ''} [Ramón]`;
+            }
+            if (label) {
+                label.textContent = `${activeLogin} [Ramón]`;
+                label.style.color = '#00bcd4';
+                label.title = `Sesión activa: ${activeLogin} (${fullName})`;
+            }
+        } else {
+            if (avatar) {
+                avatar.style.background = '#ff9800';
+                avatar.style.boxShadow = 'none';
+                avatar.title = "Sin sesión activa. Clic para iniciar sesión con Ramón.";
+            }
+            if (label) {
+                label.textContent = "Iniciar Sesión con Ramón...";
+                label.style.color = "#ffb74d";
+                label.title = "Clic para iniciar sesión con tu cuenta de red";
             }
         }
-
         // Refrescar permisos globales
         if (typeof applyRolePermissionsToUI === 'function') {
             applyRolePermissionsToUI();
@@ -192,31 +198,25 @@ const Ramon = {
         }
         const displayName = isSystemAdmin ? 'admin' : (u?.display_name || activeLogin);
 
-        const rect = document.getElementById('headerUserAvatar').getBoundingClientRect();
-        menu.style.top = `${rect.bottom + 8}px`;
-        menu.style.right = `${window.innerWidth - rect.right}px`;
+                const targetEl = document.getElementById('headerUserSelectorContainer') || document.getElementById('headerUserAvatar');
+        const rect = targetEl ? targetEl.getBoundingClientRect() : { bottom: 40, left: 20 };
+        menu.style.top = `${rect.bottom + 6}px`;
+        menu.style.left = `${Math.max(10, rect.left)}px`;
+        menu.style.right = 'auto';
 
         menu.innerHTML = `
-            <div class="ramon-user-menu-header">
-                <div style="font-weight:bold; color:#fff; font-size:0.9rem;">${displayName}</div>
-                <div style="font-size:0.75rem; color:#888; display:flex; align-items:center; gap:6px; margin-top:3px;">
-                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${mode === 'ramon' ? '#00bcd4' : '#ff9800'};"></span>
-                    <span>Modo: <b>${mode === 'ramon' ? 'Ramón (Dominio)' : 'Local'}</b></span>
+            <div class="ramon-user-menu-header" style="padding:10px 14px; border-bottom:1px solid #333;">
+                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">${displayName}</div>
+                <div style="font-size:0.75rem; color:#888; display:flex; align-items:center; gap:6px; margin-top:2px;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00bcd4;"></span>
+                    <span>Cuenta: <b style="color:#00bcd4;">${activeLogin}</b></span>
                 </div>
             </div>
-            <div class="ramon-user-menu-body">
-                <button class="ramon-menu-item" onclick="Ramon.showLoginModal('ramon'); document.getElementById('ramonUserDropdownMenu').style.display='none';">
-                    <span>🌐</span> Iniciar Sesión con Ramón
+            <div class="ramon-user-menu-body" style="padding:6px;">
+                <button class="ramon-menu-item" onclick="Ramon.showLoginModal('ramon'); document.getElementById('ramonUserDropdownMenu').style.display='none';" style="width:100%; text-align:left; padding:8px 10px; background:transparent; border:none; color:#eee; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:8px; border-radius:4px;">
+                    <span>👤</span> Iniciar con otra cuenta de Ramón...
                 </button>
-                ${mode === 'ramon' ? `
-                    <button class="ramon-menu-item" onclick="Ramon.openMyTasksModal(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
-                        <span><img src="icons/ramon.png" style="width:16px; height:16px; object-fit:contain; vertical-align:middle; margin-right:6px;"></span> Mis Tareas en Ramón
-                    </button>
-                ` : ''}
-                <button class="ramon-menu-item" onclick="Ramon.showLoginModal('local'); document.getElementById('ramonUserDropdownMenu').style.display='none';">
-                    <span>💻</span> Conectar Usuario Local
-                </button>
-                <button class="ramon-menu-item danger" onclick="Ramon.logout(); document.getElementById('ramonUserDropdownMenu').style.display='none';">
+                <button class="ramon-menu-item danger" onclick="Ramon.logout(); document.getElementById('ramonUserDropdownMenu').style.display='none';" style="width:100%; text-align:left; padding:8px 10px; background:transparent; border:none; color:#ff8a80; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; gap:8px; border-radius:4px;">
                     <span>🚪</span> Cerrar Sesión
                 </button>
             </div>
@@ -225,66 +225,31 @@ const Ramon = {
     },
 
     // --- MODAL DE LOGIN (UI) ---
-    showLoginModal: async (defaultTab = 'ramon') => {
+    showLoginModal: async () => {
         const modal = document.getElementById('ramonLoginModal');
         if (!modal) return;
 
-        // Cargar usuarios locales en el selector secundario
-        const localSelect = document.getElementById('ramonLocalUserSelect');
-        if (localSelect) {
-            try {
-                const uData = await API.users.get();
-                localSelect.innerHTML = (uData.users || []).map(u => {
-                    const val = u.username || u.laspUser || u.id;
-                    const label = u.firstName ? `${val} (${u.firstName} ${u.lastName})` : val;
-                    return `<option value="${val}">${label}</option>`;
-                }).join('');
-            } catch (e) {
-                console.warn("Error cargando usuarios locales:", e);
-            }
-        }
-
-        // Limpiar inputs
         const userInp = document.getElementById('ramonUsernameInput');
         const passInp = document.getElementById('ramonPasswordInput');
         const errDiv = document.getElementById('ramonLoginError');
+
         if (userInp) {
-            if (defaultTab === 'ramon' && (!userInp.value || userInp.value === 'admin')) {
+            if (!userInp.value || userInp.value === 'admin') {
                 userInp.value = (Ramon.session?.user?.login && Ramon.session.user.login !== 'admin') ? Ramon.session.user.login : '';
             }
         }
         if (passInp) passInp.value = '';
         if (errDiv) errDiv.style.display = 'none';
 
-        Ramon.switchLoginTab(defaultTab);
         modal.style.display = 'flex';
         setTimeout(() => {
-            if (defaultTab === 'ramon' && userInp) userInp.focus();
+            if (userInp) userInp.focus();
         }, 100);
     },
 
     hideLoginModal: () => {
         const modal = document.getElementById('ramonLoginModal');
         if (modal) modal.style.display = 'none';
-    },
-
-    switchLoginTab: (tabName) => {
-        const tabRamon = document.getElementById('loginTabRamon');
-        const tabLocal = document.getElementById('loginTabLocal');
-        const formRamon = document.getElementById('loginFormRamon');
-        const formLocal = document.getElementById('loginFormLocal');
-
-        if (tabName === 'ramon') {
-            tabRamon.classList.add('active');
-            tabLocal.classList.remove('active');
-            formRamon.style.display = 'block';
-            formLocal.style.display = 'none';
-        } else {
-            tabLocal.classList.add('active');
-            tabRamon.classList.remove('active');
-            formLocal.style.display = 'block';
-            formRamon.style.display = 'none';
-        }
     },
 
     // --- ACCIÓN: LOGIN RAMON ---
@@ -299,12 +264,14 @@ const Ramon = {
         const password = passInp?.value;
 
         if (!username || !password) {
-            errDiv.textContent = "Por favor, ingresa tu usuario y contraseña de red.";
-            errDiv.style.display = 'block';
+            if (errDiv) {
+                errDiv.textContent = "Por favor, ingresa tu usuario y contraseña de red.";
+                errDiv.style.display = 'block';
+            }
             return;
         }
 
-        errDiv.style.display = 'none';
+        if (errDiv) errDiv.style.display = 'none';
         btn.disabled = true;
         btn.innerHTML = `<span>⏳ Verificando con Ramón...</span>`;
 
@@ -328,80 +295,43 @@ const Ramon = {
                 Ramon.applySessionToHeader();
                 Ramon.notifyTelemetryActiveUser();
 
-                // Si el login fue contra Ramón remoto (WAN / puerto 8075), re-detectar entorno para ajustar UI de inmediato
-                if (res.server && (res.server.includes('8075') || res.server.includes('https://') || res.server.includes('ramon.lasp.co'))) {
-                    if (typeof detectSystemEnvironment === 'function') {
-                        detectSystemEnvironment(true);
+                // Sincronización silenciosa en segundo plano
+                fetch('/api/app/sync-configs', { method: 'POST' }).then(() => {
+                    if (typeof applyRolePermissionsToUI === 'function') {
+                        applyRolePermissionsToUI();
                     }
-                    // Comprobar si el worker local está activo; si no, sugerir encenderlo con un toast informativo
-                    fetch('/api/sync/worker/local-status').then(r => r.json()).then(ws => {
-                        if (ws && ws.success && !ws.isRunning) {
-                            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                                settings.showToast(
-                                    '🌐 Equipo Remoto: Puedes iniciar el Worker Local desde la cola de transferencias (⚡) para procesar subidas y descargas con Rclone en segundo plano.',
-                                    'info',
-                                    8
-                                );
-                            }
-                        }
-                    }).catch(() => {});
-                }
+                }).catch(() => {});
 
-                // Notificar en consola y UI
-                console.log(`[RAMON] Bienvenido, ${res.user.display_name} (Servidor: ${res.server || 'default'})`);
+                // Precargar tareas asignadas
+                setTimeout(() => {
+                    if (typeof Ramon.fetchTasks === 'function') {
+                        Ramon.fetchTasks(null, true).catch(() => {});
+                    }
+                }, 300);
+
+                console.log(`[RAMON] Bienvenido, ${res.user.display_name || username}`);
             } else {
-                errDiv.textContent = res.error || "No se pudo autenticar contra Ramón.";
-                errDiv.style.display = 'block';
+                if (errDiv) {
+                    errDiv.textContent = res.error || "No se pudo autenticar contra Ramón. Verifica tu usuario y contraseña.";
+                    errDiv.style.display = 'block';
+                }
             }
         } catch (err) {
-            errDiv.textContent = "Error de conexión: " + err.message;
-            errDiv.style.display = 'block';
+            if (errDiv) {
+                errDiv.textContent = "Error de conexión con Ramón: " + err.message;
+                errDiv.style.display = 'block';
+            }
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<span>🚀 Iniciar Sesión con Ramón</span>`;
         }
     },
-
-    // --- ACCIÓN: LOGIN LOCAL ---
-    submitLocalLogin: async () => {
-        const select = document.getElementById('ramonLocalUserSelect');
-        const remChk = document.getElementById('ramonLocalRememberCheck');
-        const selectedVal = select?.value || 'user';
-
-        try {
-            await API.users.setActive(selectedVal);
-            const uData = await API.users.get();
-            const uObj = (uData.users || []).find(u => (u.username || u.laspUser || u.id) === selectedVal);
-
-            Ramon.session = {
-                mode: 'local',
-                user: {
-                    login: selectedVal,
-                    username: selectedVal,
-                    display_name: uObj?.firstName ? `${uObj.firstName} ${uObj.lastName}` : selectedVal,
-                    role: uObj?.role || 'user'
-                },
-                timestamp: new Date().toISOString()
-            };
-
-            if (remChk && remChk.checked) {
-                localStorage.setItem('pipeta_session', JSON.stringify(Ramon.session));
-            } else {
-                localStorage.removeItem('pipeta_session');
-            }
-
-            Ramon.hideLoginModal();
-            Ramon.applySessionToHeader();
-            Ramon.notifyTelemetryActiveUser();
-        } catch (e) {
-            alert("Error al activar usuario local: " + e.message);
-        }
-    },
-
+    
     // --- LOGOUT ---
     logout: () => {
         try { localStorage.removeItem('pipeta_session'); } catch(e){}
         Ramon.session = null;
+        Ramon.applySessionToHeader();
         Ramon.notifyTelemetryActiveUser();
         Ramon.showLoginModal();
     },
@@ -843,79 +773,50 @@ const Ramon = {
         container.innerHTML = `
             <!-- MODAL DE LOGIN (RAMON VS LOCAL) -->
             <div id="ramonLoginModal" class="ramon-modal-overlay">
-                <div class="ramon-modal-dialog">
+                <div class="ramon-modal-dialog" style="width:440px;">
                     <div class="ramon-modal-header">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <img src="logo.png" alt="Pipeta" style="width:28px; height:28px;">
-                            <span style="font-weight:bold; font-size:1.1rem; color:#fff;">Iniciar Sesión en Pipeta</span>
+                            <span style="font-weight:bold; font-size:1.05rem; color:#fff;">Iniciar Sesión en Pipeta</span>
                         </div>
                     </div>
 
-                    <!-- TABS DE SELECCION -->
-                    <div class="ramon-login-tabs">
-                        <button id="loginTabRamon" class="ramon-tab-btn active" onclick="Ramon.switchLoginTab('ramon')">
-                            <span>🌐 Ramón (Dominio LASP)</span>
-                        </button>
-                        <button id="loginTabLocal" class="ramon-tab-btn" onclick="Ramon.switchLoginTab('local')">
-                            <span>💻 Modo Local (Offline)</span>
-                        </button>
-                    </div>
-
-                    <div class="ramon-modal-body">
-                        <!-- FORMULARIO RAMON -->
+                    <div class="ramon-modal-body" style="padding:22px;">
+                        <!-- FORMULARIO OBLIGATORIO RAMON -->
                         <div id="loginFormRamon">
-                            <div style="color:#aaa; font-size:0.85rem; margin-bottom:15px; line-height:1.4;">
-                                Ingresa con tu usuario y contraseña de red del estudio para sincronizar tus proyectos y tareas asignadas.
+                            <div style="color:#aaa; font-size:0.85rem; margin-bottom:16px; line-height:1.4;">
+                                Ingresa con tu usuario y contraseña de red del estudio (Ramón / Dominio LASP).
                             </div>
 
-                            <div class="ramon-field-group">
-                                <label>Usuario de Dominio:</label>
+                            <div class="ramon-field-group" style="margin-bottom:12px;">
+                                <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Usuario de Dominio / Ramón:</label>
                                 <input type="text" id="ramonUsernameInput" placeholder="ej. lasp-mpastorino" autocomplete="username"
+                                    style="width:100%; box-sizing:border-box; padding:8px 10px; background:#0d0d0d; border:1px solid #333; border-radius:4px; color:#fff; font-size:0.9rem;"
                                     onkeydown="if(event.key==='Enter') document.getElementById('ramonPasswordInput').focus();">
                             </div>
 
-                            <div class="ramon-field-group">
-                                <label>Contraseña:</label>
-                                <input type="password" id="ramonPasswordInput" placeholder="••••••••" autocomplete="current-password"
+                            <div class="ramon-field-group" style="margin-bottom:12px;">
+                                <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Contraseña de Red:</label>
+                                <input type="password" id="ramonPasswordInput" placeholder="••••••••••••" autocomplete="current-password"
+                                    style="width:100%; box-sizing:border-box; padding:8px 10px; background:#0d0d0d; border:1px solid #333; border-radius:4px; color:#fff; font-size:0.9rem;"
                                     onkeydown="if(event.key==='Enter') Ramon.submitRamonLogin();">
                             </div>
 
-                            <div style="margin:12px 0; display:flex; align-items:center; gap:8px;">
-                                <input type="checkbox" id="ramonRememberCheck" checked style="cursor:pointer;">
-                                <label for="ramonRememberCheck" style="color:#ccc; font-size:0.85rem; cursor:pointer;">
-                                    Recordar sesión en este puesto de trabajo
+                            <div style="margin:14px 0; display:flex; align-items:center; gap:8px;">
+                                <input type="checkbox" id="ramonRememberCheck" checked style="cursor:pointer; accent-color:#00bcd4;">
+                                <label for="ramonRememberCheck" style="color:#bbb; font-size:0.82rem; cursor:pointer; user-select:none;">
+                                    Recordar sesión en este equipo
                                 </label>
                             </div>
 
-                            <div id="ramonLoginError" class="ramon-login-error" style="display:none;"></div>
+                            <div id="ramonLoginError" class="ramon-login-error" style="display:none; margin-bottom:12px; padding:8px 12px; border-radius:4px; background:rgba(244,67,54,0.15); border:1px solid #f44336; color:#ff8a80; font-size:0.82rem;"></div>
 
-                            <button id="ramonSubmitBtn" class="ramon-btn-primary" onclick="Ramon.submitRamonLogin()">
+                            <button id="ramonSubmitBtn" class="ramon-btn-primary" style="width:100%; padding:10px; font-weight:bold; font-size:0.88rem; cursor:pointer;" onclick="Ramon.submitRamonLogin()">
                                 <span>🚀 Iniciar Sesión con Ramón</span>
                             </button>
                         </div>
 
-                        <!-- FORMULARIO LOCAL -->
-                        <div id="loginFormLocal" style="display:none;">
-                            <div style="color:#aaa; font-size:0.85rem; margin-bottom:15px; line-height:1.4;">
-                                Modo para estaciones aisladas sin acceso a Ramón o tareas locales independientes.
-                            </div>
-
-                            <div class="ramon-field-group">
-                                <label>Seleccionar Usuario Local:</label>
-                                <select id="ramonLocalUserSelect"></select>
-                            </div>
-
-                            <div style="margin:12px 0; display:flex; align-items:center; gap:8px;">
-                                <input type="checkbox" id="ramonLocalRememberCheck" checked style="cursor:pointer;">
-                                <label for="ramonLocalRememberCheck" style="color:#ccc; font-size:0.85rem; cursor:pointer;">
-                                    Recordar usuario local
-                                </label>
-                            </div>
-
-                            <button class="ramon-btn-secondary" onclick="Ramon.submitLocalLogin()">
-                                <span>Entrar en Modo Local</span>
-                            </button>
-                        </div>
+                        
                     </div>
                 </div>
             </div>

@@ -42,12 +42,10 @@
                 <div id="projectSelectSpinner" class="spinner-small" style="display:none; width:12px; height:12px; border-width:2px; margin-left:6px; flex-shrink:0;" title="Cargando proyecto..."></div>
             </div>
             <div class="header-config-divider"></div>
-            <div id="headerUserSelectorContainer" title="Gestionar Sesión y Operador Activo">
-                <div id="headerUserAvatar" onclick="Ramon.toggleUserMenu(event)"></div>
-                <select id="headerUserSelect" onchange="handleHeaderUserSwitch(this.value)">
-                    <option>Cargando...</option>
-                </select>
-            </div>
+            <div id="headerUserSelectorContainer" style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.04); border:1px solid #2b3340;" onclick="Ramon.handleHeaderUserClick(event)" title="Gestionar Sesión">
+                    <div id="headerUserAvatar" style="width:8px; height:8px; border-radius:50%; background:#444;"></div>
+                    <span id="headerUserLabel" style="font-size:0.82rem; font-weight:bold; color:#00bcd4; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Iniciar Sesión</span>
+                </div>
         </div>
 
         <div class="zone-divider"></div>

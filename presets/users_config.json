@@ -126,19 +126,6 @@
       "permissionOverrides": {}
     },
     {
-      "id": "u_user",
-      "username": "user",
-      "firstName": "",
-      "lastName": "",
-      "laspUser": "",
-      "role": "user",
-      "email": "",
-      "notes": "Usuario estándar por defecto",
-      "avatarColor": "#00bcd4",
-      "isSystem": true,
-      "permissionOverrides": {}
-    },
-    {
       "id": "u_Mati_pastorino_5943",
       "username": "Mati pastorino",
       "firstName": "Matias",
@@ -231,5 +218,5 @@
   "autoRegisterRamonUsers": true,
   "defaultRamonRole": "user",
   "hasAdminPassword": true,
-  "adminPassword": "Pipetadmin.321"
+  "adminPassword": "LASP.Pipeta#2026.Admin!"
 }

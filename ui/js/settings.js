@@ -3851,7 +3851,7 @@ const settings = {
             if (statusMsg) statusMsg.innerHTML = `<span style="color:#f44336;">❌ Error al actualizar: ${e.message}</span>`;
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<span>🚀 ACTUALIZAR PIPETA (lasp-munro)</span>';
+                btn.innerHTML = `<span>🚀 ${isExternalEnv ? 'ACTUALIZAR PIPETA (GITHUB / DRIVE)' : 'ACTUALIZAR PIPETA DESDE RED'}</span>`;
                 btn.style.opacity = '1';
             }
         }

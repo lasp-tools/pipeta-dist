@@ -46,6 +46,31 @@ try {
     console.log('[RCLONE] Check error:', e.message);
 }
 
+// --- FAST STUDIO NETWORK DETECTION ---
+function detectStudioNetworkSync() {
+    let isStudioLAN = false;
+    try {
+        const ifaces = os.networkInterfaces();
+        for (const name of Object.keys(ifaces)) {
+            for (const iface of ifaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    if (iface.address.startsWith('192.168.206.') || iface.address.startsWith('192.168.200.') || iface.address.startsWith('192.168.106.')) {
+                        isStudioLAN = true;
+                        break;
+                    }
+                }
+            }
+            if (isStudioLAN) break;
+        }
+    } catch(e) {}
+    const hasZ = fs.existsSync('Z:\\');
+    global.isExternalMachine = !isStudioLAN;
+    global.hasZDrive = hasZ;
+    console.log(`[ENV FAST-DETECT] Red de Estudio = ${isStudioLAN ? 'SI (LAN Munro/Nonstop)' : 'NO (Freelance/Casa)'} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'} | Disco Z = ${hasZ ? 'MONTAJE OK' : 'NO DISPONIBLE'}`);
+    return { isStudioLAN, isExternalMachine: global.isExternalMachine, hasZ };
+}
+detectStudioNetworkSync();
+
 app.use(cors());
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
@@ -429,6 +454,23 @@ function executeRemoteUpdate() {
 }
 
 
+const PIPETA_SERVER_TOKEN = 'lasp-pipeta-sec-token-2026';
+function getPipetaServerCandidateUrls() {
+    const list = [];
+    if (!global.isExternalMachine) {
+        list.push('http://192.168.206.121:3005');
+    }
+    if (process.env.PIPETA_SERVER_URL) {
+        list.push(process.env.PIPETA_SERVER_URL);
+    }
+    list.push('https://piano-exclusively-function-michael.trycloudflare.com');
+    list.push('https://pipeta.lasp.co');
+    if (global.isExternalMachine) {
+        list.push('http://192.168.206.121:3005');
+    }
+    return [...new Set(list)];
+}
+
 let lastConfigSyncTimestamp = 0;
 
 async function syncConfigsFromMasterNetwork() {
@@ -439,39 +481,52 @@ async function syncConfigsFromMasterNetwork() {
     fs.ensureDirSync(localPresets);
 
     let bundleDownloaded = false;
-    // 1. Intentar descargar el bundle maestro por HTTP desde Pipeta Server (0 SMB)
-    try {
-        const resp = await fetch('http://192.168.206.121:3005/api/server/presets/bundle', {
-            signal: AbortSignal.timeout(4000)
-        });
-        if (resp.ok) {
-            const data = await resp.json();
-            if (data && data.success && data.bundle) {
-                const b = data.bundle;
-                const targetDirs = [localPresets];
-                if (fs.existsSync('Z:\\INTERNO\\TOOLS')) targetDirs.push(zPresets);
-                if (fs.existsSync('S:\\INTERNO\\TOOLS')) targetDirs.push(sPresets);
+    // 1. Intentar descargar el bundle maestro por HTTP desde Pipeta Server (LAN o WAN/Cloudflare)
+    for (const baseUrl of getPipetaServerCandidateUrls()) {
+        const url = `${baseUrl.replace(/\/+$/, '')}/api/server/presets/bundle`;
+        try {
+            const resp = await fetch(url, {
+                headers: { 'x-pipeta-token': PIPETA_SERVER_TOKEN },
+                signal: AbortSignal.timeout(3500)
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && data.bundle) {
+                    const b = data.bundle;
+                    const targetDirs = [localPresets];
+                    if (fs.existsSync('Z:\\INTERNO\\TOOLS')) targetDirs.push(zPresets);
+                    if (fs.existsSync('S:\\INTERNO\\TOOLS')) targetDirs.push(sPresets);
 
-                for (const td of targetDirs) {
-                    try {
-                        fs.ensureDirSync(td);
-                        if (b['users_config.json']) fs.writeJsonSync(path.join(td, 'users_config.json'), b['users_config.json'], { spaces: 2 });
-                        if (b['pipeline_config.json']) fs.writeJsonSync(path.join(td, 'pipeline_config.json'), b['pipeline_config.json'], { spaces: 2 });
-                        if (b['status_config.json']) fs.writeJsonSync(path.join(td, 'status_config.json'), b['status_config.json'], { spaces: 2 });
-                        if (b['Projects']) {
-                            const ptd = path.join(td, 'Projects');
-                            fs.ensureDirSync(ptd);
-                            for (const [pfn, pcontent] of Object.entries(b['Projects'])) {
-                                fs.writeJsonSync(path.join(ptd, pfn), pcontent, { spaces: 2 });
+                    for (const td of targetDirs) {
+                        try {
+                            fs.ensureDirSync(td);
+                            if (b['pipeline_config.json']) fs.writeJsonSync(path.join(td, 'pipeline_config.json'), b['pipeline_config.json'], { spaces: 2 });
+                            if (b['status_config.json']) fs.writeJsonSync(path.join(td, 'status_config.json'), b['status_config.json'], { spaces: 2 });
+                            if (b['users_config.json']) {
+                                const targetUsersFile = path.join(td, 'users_config.json');
+                                const existingUsers = fs.existsSync(targetUsersFile) ? (fs.readJsonSync(targetUsersFile).users || []) : [];
+                                const merged = { ...b['users_config.json'] };
+                                if (global.isExternalMachine) {
+                                    merged.users = existingUsers;
+                                }
+                                fs.writeJsonSync(targetUsersFile, merged, { spaces: 2 });
                             }
-                        }
-                    } catch(dErr) {}
+                            if (b['Projects']) {
+                                const ptd = path.join(td, 'Projects');
+                                fs.ensureDirSync(ptd);
+                                for (const [pfn, pcontent] of Object.entries(b['Projects'])) {
+                                    fs.writeJsonSync(path.join(ptd, pfn), pcontent, { spaces: 2 });
+                                }
+                            }
+                        } catch(dErr) {}
+                    }
+                    bundleDownloaded = true;
+                    console.log(`[CONFIG SYNC] ✅ Configuraciones maestras sincronizadas por HTTP desde ${url}`);
+                    break;
                 }
-                bundleDownloaded = true;
-                console.log('[CONFIG SYNC] ✅ Configuraciones maestras hidratadas por HTTP desde Pipeta Server en local y Z/S.');
             }
-        }
-    } catch(httpErr) {}
+        } catch(httpErr) {}
+    }
 
     // 2. Si no se pudo por HTTP, usar fallback mediante Robocopy desde S:/Z:
     if (!bundleDownloaded) {
@@ -534,30 +589,36 @@ async function sendClientTelemetryPing() {
         };
 
         let httpSuccess = false;
-        try {
-            const resp = await fetch('http://192.168.206.121:3005/api/server/telemetry/client-ping', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(2500)
-            });
-            if (resp.ok) {
-                httpSuccess = true;
-                try {
-                    const data = await resp.json();
-                    if (data && (data.command === 'update' || data.command === 'reinstall')) {
-                        executeRemoteUpdate();
-                    } else if (data && data.command === 'sync_config') {
-                        syncConfigsFromMasterNetwork().then(() => {
-                            setTimeout(() => {
-                                sendClientTelemetryPing().catch(() => {});
-                            }, 800);
-                        });
-                    }
-                } catch(e) {}
-            }
-        } catch (httpErr) {
-            // Error de conexión o timeout con Pipeta Server (192.168.206.121:3005)
+        for (const baseUrl of getPipetaServerCandidateUrls()) {
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/server/telemetry/client-ping`;
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-pipeta-token': PIPETA_SERVER_TOKEN
+                    },
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(3500)
+                });
+                if (resp.ok) {
+                    httpSuccess = true;
+                    try {
+                        const data = await resp.json();
+                        if (data && (data.command === 'update' || data.command === 'reinstall')) {
+                            console.log(`[PIPETA TELEMETRY] Orden de actualización remota recibida desde ${url}`);
+                            executeRemoteUpdate();
+                        } else if (data && data.command === 'sync_config') {
+                            syncConfigsFromMasterNetwork().then(() => {
+                                setTimeout(() => {
+                                    sendClientTelemetryPing().catch(() => {});
+                                }, 800);
+                            });
+                        }
+                    } catch(e) {}
+                    break;
+                }
+            } catch (httpErr) {}
         }
 
         // Comprobar si hay bandera de actualización en red
@@ -2848,12 +2909,13 @@ function getServerUncRoot() {
 }
 
 function ensureServerUncAccess(uncPath = null) {
+    if (global.isExternalMachine || !fs.existsSync('Z:\\')) return false;
     const root = (uncPath || getServerUncRoot()).replace(/\//g, '\\');
     try {
         if (fs.existsSync(root)) return true;
     } catch (e) {}
     try {
-        execSync(`net use "${root}" /persistent:no`, { encoding: 'utf8', timeout: 3000 });
+        execSync(`net use "${root}" /persistent:no`, { encoding: 'utf8', timeout: 3000, windowsHide: true });
         return true;
     } catch (e) {
         return false;
@@ -3228,11 +3290,13 @@ try {
 
     # 1.1 Inclusión selectiva de cachés de sincronización (desde cache local o Z:)
     $destCache = Join-Path $pkgRoot "_SYNC_CACHE"
-    $srcCache = "C:\TOOLS\APPS\Pipeta\_SYNC_CACHE"
+    $srcCache = Join-Path $source "_SYNC_CACHE"
+    if (-not (Test-Path $srcCache)) { $srcCache = "C:\TOOLS\APPS\Pipeta\_SYNC_CACHE" }
     if (-not (Test-Path $srcCache)) { $srcCache = "Z:\_SYNC_CACHE" }
-    New-Item -ItemType Directory -Path $destCache -Force | Out-Null
+
 
     if (($includeDriveCache -or $includeServerCache) -and (Test-Path $srcCache)) {
+        New-Item -ItemType Directory -Path $destCache -Force | Out-Null
         if ($includeDriveCache) {
             # Catálogos monolíticos de Drive
             Get-ChildItem -Path $srcCache -Filter "*.json" -File -ErrorAction SilentlyContinue | Where-Object { 
@@ -3274,10 +3338,16 @@ try {
         }
     }
     
-    # 2. Asegurar que los presets locales más recientes se incluyan en Pipeta\\presets
-    $localPresets = "C:\\TOOLS\\APPS\\Pipeta\\presets"
-    if (Test-Path $localPresets) {
-        robocopy "$localPresets" "$pkgRoot\\presets" /E /NFL /NDL /NJH /NJS /R:0 /W:0
+    # 2. Garantizar que el paquete distribuible NUNCA contenga usuarios de dominio ni autologin
+    $distUsersCfg = Join-Path $pkgRoot "presets\\users_config.json"
+    if (Test-Path $distUsersCfg) {
+        try {
+            $cfg = Get-Content $distUsersCfg -Raw | ConvertFrom-Json
+            $cfg.users = @()
+            $cfg.activeUser = ""
+            $cfg.adminPassword = "LASP.Pipeta#2026.Admin!"
+            $cfg | ConvertTo-Json -Depth 10 | Set-Content $distUsersCfg -Encoding UTF8
+        } catch {}
     }
 
     # 3. Comprimir localmente en $tempDir para máxima velocidad y mover a destino
@@ -3649,7 +3719,7 @@ function sanitizeUsersConfig(data) {
 app.get('/api/users', async (req, res) => {
     try {
         if (!fs.existsSync(USERS_CONFIG_FILE)) {
-            return res.json({ adminPassword: "Pipetadmin.321", roles: [], users: [], activeUser: "lasp-mpastorino" });
+            return res.json({ adminPassword: "Pipetadmin.321", roles: [], users: [], activeUser: "" });
         }
         const data = await fs.readJson(USERS_CONFIG_FILE);
         const wasSanitized = sanitizeUsersConfig(data);
@@ -6114,6 +6184,7 @@ function startListening(retries = 10) {
 
         // Limpiar órdenes huérfanas locales dejadas en 'processing' por reinicio o cierre abrupto
         sanitizeZombieOrders();
+        try { ensureSyncWorkerRunning(); } catch(e) {}
 
 
 
@@ -6145,11 +6216,11 @@ function startListening(retries = 10) {
             } catch(e) {}
         }
 
-        // Deteccion inteligente: esperar 2.2s para verificar si ya existe una pestaña viva de Pipeta
+        // Apertura fiable de navegador en arranque de Pipeta
         setTimeout(async () => {
             const noBrowser = process.argv.includes('--no-browser') || process.argv.includes('--restart') || process.env.PIPETA_NO_BROWSER === '1';
-            if (!noBrowser && !hasActiveBrowserClient) {
-                console.log(`[BOOT] No se detectó pestaña de navegador previa activa. Abriendo http://localhost:${PORT}...`);
+            if (!noBrowser) {
+                console.log(`[BOOT] Abriendo Pipeta en http://localhost:${PORT}...`);
                 try {
                     await open(`http://localhost:${PORT}`);
                 } catch (e) {
@@ -6157,10 +6228,8 @@ function startListening(retries = 10) {
                         require('child_process').exec(`start "" "http://localhost:${PORT}"`);
                     } catch(err) {}
                 }
-            } else if (hasActiveBrowserClient) {
-                console.log(`[BOOT] Pestaña de navegador existente detectada y reconectada. Omitiendo apertura de pestaña duplicada.`);
             }
-        }, 2200);
+        }, 1200);
 
         // Telemetria periodica hacia Pipeta Server (Mecanismo A)
         setTimeout(() => {
