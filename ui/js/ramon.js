@@ -50,6 +50,32 @@ const Ramon = {
             }
         }
 
+        // En puestos externos recién instalados desde ZIP limpio (sin usuarios registrados en disco),
+        // purgar cualquier sesión vieja que haya quedado cacheada en localStorage del navegador
+        if (savedSession && savedSession.user) {
+            try {
+                const uCfg = await fetch('/api/users').then(r => r.json()).catch(() => null);
+                if (uCfg && uCfg.isExternalMachine) {
+                    const savedLogin = String(savedSession.user.login || savedSession.user.laspUser || savedSession.user.username || '').trim().toLowerCase();
+                    const localRegistered = Array.isArray(uCfg.users) && uCfg.users.some(u =>
+                        !u.isSystem && u.username !== 'admin' && (
+                            String(u.laspUser || '').toLowerCase() === savedLogin ||
+                            String(u.username || '').toLowerCase() === savedLogin
+                        )
+                    );
+                    if (!localRegistered) {
+                        console.log("[RAMON] Instalación limpia detectada en disco: descartando sesión residual del navegador.");
+                        try {
+                            localStorage.removeItem('pipeta_session');
+                            localStorage.removeItem('pipeta_last_project');
+                            sessionStorage.clear();
+                        } catch (e) {}
+                        savedSession = null;
+                    }
+                }
+            } catch (e) {}
+        }
+
         if (savedSession && savedSession.user) {
             console.log(`[RAMON] Sesión recordada encontrada (${savedSession.mode}):`, savedSession.user.login || savedSession.user.username);
             Ramon.session = savedSession;
@@ -57,7 +83,10 @@ const Ramon = {
             Ramon.notifyTelemetryActiveUser();
 
             // Sincronización silenciosa en segundo plano de configuraciones maestras y permisos
-            fetch('/api/app/sync-configs', { method: 'POST' }).then(() => {
+            fetch('/api/app/sync-configs', { method: 'POST' }).then(async () => {
+                if (typeof settings !== 'undefined' && typeof settings.loadUsersConfig === 'function') {
+                    await settings.loadUsersConfig();
+                }
                 if (typeof applyRolePermissionsToUI === 'function') {
                     applyRolePermissionsToUI();
                 }
@@ -100,6 +129,8 @@ const Ramon = {
             }
         } else {
             console.log("[RAMON] No hay sesión activa. Mostrando pantalla de Login.");
+            Ramon.session = null;
+            Ramon.applySessionToHeader();
             Ramon.showLoginModal();
         }
     },
@@ -295,12 +326,21 @@ const Ramon = {
                 Ramon.applySessionToHeader();
                 Ramon.notifyTelemetryActiveUser();
 
-                // Sincronización silenciosa en segundo plano
-                fetch('/api/app/sync-configs', { method: 'POST' }).then(() => {
+                // Sincronización silenciosa en segundo plano + carga de índice Drive
+                fetch('/api/app/sync-configs', { method: 'POST' }).then(async () => {
+                    if (typeof settings !== 'undefined' && typeof settings.loadUsersConfig === 'function') {
+                        await settings.loadUsersConfig();
+                    }
                     if (typeof applyRolePermissionsToUI === 'function') {
                         applyRolePermissionsToUI();
                     }
                 }).catch(() => {});
+
+                if (typeof loadActiveProjectSyncCatalog === 'function') {
+                    loadActiveProjectSyncCatalog(true).then(() => {
+                        if (typeof refreshCurrentView === 'function') refreshCurrentView();
+                    }).catch(() => {});
+                }
 
                 // Precargar tareas asignadas
                 setTimeout(() => {

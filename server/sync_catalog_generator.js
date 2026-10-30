@@ -8,36 +8,68 @@ const LOCAL_CACHE_DIR = path.join(__dirname, '../_SYNC_CACHE');
 const MODULAR_PROJECTS_DIR = path.join(LOCAL_CACHE_DIR, 'projects');
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 const CENTRAL_SERVER_URL = process.env.PIPETA_SERVER_API || 'http://192.168.206.121:3005';
+const PIPETA_SERVER_TOKEN = 'lasp-pipeta-sec-token-2026';
+
+function getCentralServerUrls() {
+    const urls = [];
+    if (!global.isExternalMachine) {
+        urls.push(CENTRAL_SERVER_URL);
+    }
+    if (process.env.PIPETA_SERVER_URL) {
+        urls.push(process.env.PIPETA_SERVER_URL.replace(/\/+$/, ''));
+    }
+    urls.push('https://piano-exclusively-function-michael.trycloudflare.com');
+    urls.push('https://pipeta.lasp.co');
+    return [...new Set(urls)];
+}
 
 /**
  * Descarga y extrae el paquete modular completo (.tar.gz) de un proyecto desde Pipeta Server (0 SMB)
  */
 function fetchProjectBundleFromCentralServer(projectName) {
-    if (!projectName || global.isExternalMachine) return false;
-    const namesToTry = [projectName];
+    if (!projectName) return false;
+    const stripped = String(projectName).replace(/^proj_/i, '').trim();
+    const namesToTry = [];
     try {
         if (typeof getProjectConfig === 'function') {
-            const cfg = getProjectConfig(projectName);
+            const cfg = getProjectConfig(projectName) || getProjectConfig(stripped);
             if (cfg) {
                 if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
                 if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
             }
         }
     } catch(e) {}
+    if (stripped && !namesToTry.includes(stripped)) namesToTry.push(stripped);
+    if (!namesToTry.includes(projectName)) namesToTry.push(projectName);
 
+    const serverUrls = getCentralServerUrls();
     for (const name of namesToTry) {
+        if (/^\d+$/.test(name)) continue;
         const destDir = path.join(MODULAR_PROJECTS_DIR, name);
-        try {
-            fs.ensureDirSync(destDir);
-            const cmd = `curl.exe -s -m 8 "${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/bundle" | tar.exe -xzf - -C "${destDir}"`;
-            execSync(cmd, { stdio: 'ignore', timeout: 9000, windowsHide: true });
-            const serverManifest = path.join(destDir, 'server', 'manifest.json');
-            const driveManifest = path.join(destDir, 'drive', 'manifest.json');
-            if (fs.existsSync(serverManifest) || fs.existsSync(driveManifest)) {
-                console.log(`[CENTRAL SERVER HTTP] Catálogo de ${name} hidratado por HTTP en ${destDir} (0 SMB)`);
-                return true;
-            }
-        } catch (e) {}
+        for (const baseUrl of serverUrls) {
+            try {
+                fs.ensureDirSync(destDir);
+                const tmpTar = path.join(os.tmpdir(), `pipeta_cat_${name}_${Date.now()}.tar.gz`);
+                const url = `${baseUrl}/api/sync/catalog/${encodeURIComponent(name)}/bundle`;
+                const curlCmd = `curl.exe -s -f -m 8 -H "x-pipeta-token: ${PIPETA_SERVER_TOKEN}" -o "${tmpTar}" "${url}"`;
+                execSync(curlCmd, { stdio: 'ignore', timeout: 9000, windowsHide: true });
+                if (fs.existsSync(tmpTar) && fs.statSync(tmpTar).size > 40) {
+                    execSync(`tar.exe -xzf "${tmpTar}" -C "${destDir}"`, { stdio: 'ignore', timeout: 9000, windowsHide: true });
+                    try { fs.removeSync(tmpTar); } catch(e) {}
+                    if (global.isExternalMachine) {
+                        try { fs.removeSync(path.join(destDir, 'server')); } catch(e) {}
+                    }
+                    const serverManifest = path.join(destDir, 'server', 'manifest.json');
+                    const driveManifest = path.join(destDir, 'drive', 'manifest.json');
+                    if (fs.existsSync(driveManifest) || (!global.isExternalMachine && fs.existsSync(serverManifest))) {
+                        console.log(`[CENTRAL SERVER HTTP] Catálogo de ${name} hidratado por HTTP desde ${baseUrl} en ${destDir}`);
+                        return true;
+                    }
+                } else {
+                    try { fs.removeSync(tmpTar); } catch(e) {}
+                }
+            } catch (e) {}
+        }
     }
     return false;
 }
@@ -46,30 +78,38 @@ function fetchProjectBundleFromCentralServer(projectName) {
  * Descarga un archivo específico (manifest.json o sub-catálogo) directamente por HTTP (0 SMB)
  */
 function fetchSubCatalogFromCentralServer(projectName, type, subFile) {
-    if (!projectName || global.isExternalMachine) return null;
-    const namesToTry = [projectName];
+    if (!projectName) return null;
+    if (type === 'server' && global.isExternalMachine) return null;
+    const stripped = String(projectName).replace(/^proj_/i, '').trim();
+    const namesToTry = [];
     try {
         if (typeof getProjectConfig === 'function') {
-            const cfg = getProjectConfig(projectName);
+            const cfg = getProjectConfig(projectName) || getProjectConfig(stripped);
             if (cfg) {
                 if (cfg.name && !namesToTry.includes(cfg.name)) namesToTry.push(cfg.name);
                 if (cfg.projectCode && !namesToTry.includes(cfg.projectCode)) namesToTry.push(cfg.projectCode);
             }
         }
     } catch(e) {}
+    if (stripped && !namesToTry.includes(stripped)) namesToTry.push(stripped);
+    if (!namesToTry.includes(projectName)) namesToTry.push(projectName);
 
     const subKey = subFile.replace(/\\/g, '/').replace(/\.json$/i, '');
+    const serverUrls = getCentralServerUrls();
     for (const name of namesToTry) {
+        if (/^\d+$/.test(name)) continue;
         const localPrimary = path.join(MODULAR_PROJECTS_DIR, name, type, subFile);
-        try {
-            fs.ensureDirSync(path.dirname(localPrimary));
-            const url = `${CENTRAL_SERVER_URL}/api/sync/catalog/${encodeURIComponent(name)}/modular?type=${type}&sub=${encodeURIComponent(subKey)}`;
-            const cmd = `curl.exe -s -m 10 -f -o "${localPrimary}" "${url}"`;
-            execSync(cmd, { stdio: 'ignore', timeout: 11000, windowsHide: true });
-            if (fs.existsSync(localPrimary) && fs.statSync(localPrimary).size > 10) {
-                return localPrimary;
-            }
-        } catch (e) {}
+        for (const baseUrl of serverUrls) {
+            try {
+                fs.ensureDirSync(path.dirname(localPrimary));
+                const url = `${baseUrl}/api/sync/catalog/${encodeURIComponent(name)}/modular?type=${type}&sub=${encodeURIComponent(subKey)}`;
+                const cmd = `curl.exe -s -m 8 -f -H "x-pipeta-token: ${PIPETA_SERVER_TOKEN}" -o "${localPrimary}" "${url}"`;
+                execSync(cmd, { stdio: 'ignore', timeout: 9000, windowsHide: true });
+                if (fs.existsSync(localPrimary) && fs.statSync(localPrimary).size > 10) {
+                    return localPrimary;
+                }
+            } catch (e) {}
+        }
     }
     return null;
 }
@@ -108,7 +148,22 @@ const CACHE_ROOT = fs.existsSync(LOCAL_CACHE_DIR)
  * Esto permite leer instantáneamente desde el SSD local sin sobrecargar la red SMB.
  */
 function syncLocalCacheFromNetwork(projectName = null) {
-    if (global.isExternalMachine) return;
+    if (global.isExternalMachine) {
+        if (projectName) {
+            try {
+                fs.ensureDirSync(LOCAL_CACHE_DIR);
+                const cfg = typeof getProjectConfig === 'function' ? getProjectConfig(projectName) : null;
+                const cleanP = (cfg && cfg.name) ? cfg.name : String(projectName).replace(/^proj_/i, '').trim();
+                if (cleanP && !/^\d+$/.test(cleanP)) {
+                    const localProjDir = path.join(MODULAR_PROJECTS_DIR, cleanP);
+                    if (!fs.existsSync(path.join(localProjDir, 'drive', 'manifest.json'))) {
+                        fetchProjectBundleFromCentralServer(cleanP);
+                    }
+                }
+            } catch(e) {}
+        }
+        return;
+    }
     try {
         fs.ensureDirSync(LOCAL_CACHE_DIR);
 
@@ -1191,6 +1246,12 @@ const autoHydratedProjects = new Set();
 
 function getModularManifest(projectName, type) {
     if (type === 'server' && global.isExternalMachine) return null;
+    try {
+        const cfg = typeof getProjectConfig === 'function' ? getProjectConfig(projectName) : null;
+        if (cfg && cfg.name) projectName = cfg.name;
+        else projectName = String(projectName || '').replace(/^proj_/i, '').trim();
+    } catch(e) {}
+    if (!projectName || /^\d+$/.test(projectName)) return null;
 
     const localManifest = path.join(MODULAR_PROJECTS_DIR, projectName, type, 'manifest.json');
     let manifestPath = null;
@@ -1201,23 +1262,33 @@ function getModularManifest(projectName, type) {
         }
     } catch(e) {}
 
-    if (!manifestPath && !global.isExternalMachine) {
-        // 0. Intentar resolver el manifiesto por HTTP desde Pipeta Server (0 SMB)
-        const httpManifest = fetchSubCatalogFromCentralServer(projectName, type, 'manifest.json');
-        if (httpManifest) {
-            manifestPath = httpManifest;
-        }
-        // Si no existe en SSD local, intentar hidratarlo desde la red una vez por sesión
+    // Hidratación por HTTP (0 SMB): válida tanto en Estudio como en equipos Remotos (solo Drive en remotos)
+    if (!manifestPath) {
         const hydKey = `${projectName}_${type}`.toLowerCase();
         if (!autoHydratedProjects.has(hydKey)) {
             autoHydratedProjects.add(hydKey);
-            try { syncLocalCacheFromNetwork(projectName); } catch(e) {}
+            try { fetchProjectBundleFromCentralServer(projectName); } catch(e) {}
             try {
                 if (fs.existsSync(localManifest)) {
                     manifestPath = localManifest;
                 }
             } catch(e) {}
         }
+        if (!manifestPath) {
+            const httpManifest = fetchSubCatalogFromCentralServer(projectName, type, 'manifest.json');
+            if (httpManifest) {
+                manifestPath = httpManifest;
+            }
+        }
+    }
+
+    if (!manifestPath && !global.isExternalMachine) {
+        try { syncLocalCacheFromNetwork(projectName); } catch(e) {}
+        try {
+            if (fs.existsSync(localManifest)) {
+                manifestPath = localManifest;
+            }
+        } catch(e) {}
 
         if (!manifestPath) {
             const netCandidates = [
@@ -1522,11 +1593,13 @@ function resolveModularSubCatalogFile(projectName, type, subFile) {
         } catch(e) {}
     }
 
-    if (!global.isExternalMachine) {
-
+    if (type !== 'server' || !global.isExternalMachine) {
         // 0. Intentar descargar el sub-catálogo específico por HTTP desde Pipeta Server (0 SMB)
         const httpSub = fetchSubCatalogFromCentralServer(projectName, type, subFile);
         if (httpSub) return httpSub;
+    }
+
+    if (!global.isExternalMachine) {
 
         const netCandidates = [
             path.join(UNC_CACHE, 'projects', projectName, type, subFile),

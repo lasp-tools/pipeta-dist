@@ -405,8 +405,37 @@ async function loadRootTree(rootPath, containerId, token = null) {
 
             if (finalItems.length === 0) {
                 const mode = window.viewLocationMode || 'local';
+                const compMode = window.syncComparisonMode || 'off';
                 const curProj = (typeof settings !== 'undefined') ? settings.currentProject : null;
-                const projName = curProj?.id || curProj?.name || 'surf_love';
+                const projName = curProj?.name || curProj?.id || 'surf_love';
+
+                // Mientras se está descargando/indexando el catálogo de Google Drive por primera vez, mostrar estado claro
+                if ((mode === 'drive' || compMode === 'drive') && (!window.pipetaSyncCatalog || window.pipetaSyncCatalog.project !== projName) && (window.isSyncCatalogLoading || !window._driveAutoHydrateDone?.[projName])) {
+                    window._driveAutoHydrateDone = window._driveAutoHydrateDone || {};
+                    if (!window._driveAutoHydrateDone[projName]) {
+                        window._driveAutoHydrateDone[projName] = 'loading';
+                        fetch('/api/sync/catalog/init-project', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ projectName: projName })
+                        }).then(r => r.json()).then(async () => {
+                            window._driveAutoHydrateDone[projName] = 'done';
+                            try { await fetch('/api/sync/catalog/clear-cache', { method: 'POST' }); } catch (e) {}
+                            if (typeof loadActiveProjectSyncCatalog === 'function') await loadActiveProjectSyncCatalog(true);
+                            if (typeof initBrowser === 'function') await initBrowser();
+                        }).catch(() => {
+                            window._driveAutoHydrateDone[projName] = 'done';
+                        });
+                    }
+                    if (window._driveAutoHydrateDone[projName] === 'loading') {
+                        container.innerHTML = `
+                            <div style="padding:18px 14px; color:#88c0d0; font-size:0.84rem; display:flex; align-items:center; gap:10px;">
+                                <span style="display:inline-block; animation: spin 1.2s linear infinite;">🔄</span>
+                                <span>Cargando estructura de Google Drive para <b>${projName}</b>...</span>
+                            </div>`;
+                        return;
+                    }
+                }
 
                 // Si estamos en Drive o Server y no hay elementos cargados por catálogo
                 if ((mode === 'drive' || mode === 'server') && (!data.fromCatalog || !data.exists)) {
@@ -713,7 +742,7 @@ window.isPropertiesPanelVisible = false;
 window.initProjectCatalog = async function(projName) {
     if (!projName) {
         projName = (typeof settings !== 'undefined' && settings.currentProject)
-            ? (settings.currentProject.id || settings.currentProject.name)
+            ? (settings.currentProject.name || settings.currentProject.id)
             : 'surf_love';
     }
 

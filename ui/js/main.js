@@ -918,6 +918,11 @@ fetch('/api/version').then(r => r.json()).then(d => {
 
 // Initialize Browser Component
 async function initApp() {
+    // 0. Init Ramon session first (purges stale browser cache on clean external installs & shows login immediately)
+    if (typeof Ramon !== 'undefined') {
+        await Ramon.init();
+    }
+
     // 1. Load Settings (Projects, Configs)
     if (typeof settings !== 'undefined') {
         await settings.init();
@@ -929,9 +934,12 @@ async function initApp() {
     }
 
     // 2. Set Default View Mode (from config if available)
-    const initialMode = (settings && settings.defaultViewMode)
+    let initialMode = (settings && settings.defaultViewMode)
         ? (settings.defaultViewMode === 'online' ? 'drive' : settings.defaultViewMode)
         : (localStorage.getItem('pipeta_view_location_mode') || 'local');
+    if (window.pipetaSystemEnv?.isExternalMachine && initialMode === 'server') {
+        initialMode = 'local';
+    }
 
     // Set global mode (without triggering refresh yet)
     window.viewLocationMode = initialMode;
@@ -943,9 +951,12 @@ async function initApp() {
     }
 
     // 2c. Set Default Sync Comparison Mode (Drive vs Server)
-    const initialCompMode = (settings && settings.defaultSyncComparisonMode)
+    let initialCompMode = (settings && settings.defaultSyncComparisonMode)
         ? settings.defaultSyncComparisonMode
         : (localStorage.getItem('pipeta_sync_comparison_mode') || 'drive');
+    if (window.pipetaSystemEnv?.isExternalMachine && initialCompMode === 'server') {
+        initialCompMode = 'drive';
+    }
     window.syncComparisonMode = initialCompMode;
 
     // 3. Init Browser (will use window.viewLocationMode)
@@ -967,9 +978,6 @@ async function initApp() {
     // 8. Init Header User Selector and Permissions
     await updateHeaderUserSelector();
     await applyRolePermissionsToUI();
-
-    // 9. Init Ramon session
-    if (typeof Ramon !== 'undefined') Ramon.init();
 }
 
 // --- HEADER USER SWITCHER ---

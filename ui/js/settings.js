@@ -3708,10 +3708,10 @@ const settings = {
         backdrop.innerHTML = `
             <div class="pipeta-update-card">
                 <div class="pipeta-update-title">
-                    <span style="font-size:1.3rem;">🚀</span> Actualizando Pipeta desde Red
+                    <span style="font-size:1.3rem;">🚀</span> Actualizando Pipeta
                 </div>
                 <div class="pipeta-update-desc" id="pipeta-update-subtext">
-                    Sincronizando la última versión de producción con tu equipo...
+                    Sincronizando la última versión oficial con tu equipo...
                 </div>
                 <div class="pipeta-progress-bar-wrap">
                     <div class="pipeta-progress-bar animated-stripes" id="pipeta-update-bar" style="width: 15%;"></div>
@@ -3719,7 +3719,7 @@ const settings = {
                 <div class="pipeta-update-steps" id="pipeta-update-steps">
                     <div class="pipeta-update-step-item active" id="pstep-1">
                         <span class="pstep-icon">🔍</span>
-                        <span>1. Localizando repositorio maestro en red...</span>
+                        <span>1. Conectando con origen de actualización oficial...</span>
                     </div>
                     <div class="pipeta-update-step-item" id="pstep-2">
                         <span class="pstep-icon">📦</span>
@@ -3797,7 +3797,7 @@ const settings = {
         const isExternalEnv = (typeof window.isExternalMachine === 'function' && window.isExternalMachine()) ||
                              !!(window.pipetaSystemEnv?.isExternalMachine || settings.envState?.isExternalMachine);
         const modal = settings.showPipetaUpdateModal();
-        modal.setStep(1, 20, isExternalEnv ? 'Conectando con repositorio GitHub (pipeta-dist)...' : 'Localizando repositorio maestro de Pipeta...');
+        modal.setStep(1, 20, isExternalEnv ? 'Conectando con servidor de actualizaciones en la nube...' : 'Localizando repositorio maestro del estudio...');
 
         const step2Timer = setTimeout(() => {
             modal.setStep(2, 45, isExternalEnv ? 'Descargando actualizaciones e hidratando dependencias...' : 'Sincronizando archivos del sistema mediante robocopy...');

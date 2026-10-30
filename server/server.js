@@ -504,10 +504,34 @@ async function syncConfigsFromMasterNetwork() {
                             if (b['status_config.json']) fs.writeJsonSync(path.join(td, 'status_config.json'), b['status_config.json'], { spaces: 2 });
                             if (b['users_config.json']) {
                                 const targetUsersFile = path.join(td, 'users_config.json');
-                                const existingUsers = fs.existsSync(targetUsersFile) ? (fs.readJsonSync(targetUsersFile).users || []) : [];
+                                const existingCfg = fs.existsSync(targetUsersFile) ? fs.readJsonSync(targetUsersFile) : { users: [], activeUser: '' };
+                                const existingUsers = Array.isArray(existingCfg.users) ? existingCfg.users : [];
+                                const serverUsers = Array.isArray(b['users_config.json'].users) ? b['users_config.json'].users : [];
                                 const merged = { ...b['users_config.json'] };
                                 if (global.isExternalMachine) {
-                                    merged.users = existingUsers;
+                                    merged.activeUser = existingCfg.activeUser || '';
+                                    merged.users = existingUsers
+                                        .filter(u => !u.isSystem && u.username !== 'admin')
+                                        .map(localU => {
+                                            const loginKey = String(localU.laspUser || localU.username || '').toLowerCase();
+                                            const srvMatch = serverUsers.find(su =>
+                                                !su.isSystem && (
+                                                    String(su.laspUser || '').toLowerCase() === loginKey ||
+                                                    String(su.username || '').toLowerCase() === loginKey
+                                                )
+                                            );
+                                            if (srvMatch) {
+                                                return {
+                                                    ...localU,
+                                                    role: srvMatch.role || localU.role,
+                                                    permissionOverrides: srvMatch.permissionOverrides || {},
+                                                    maxConcurrentDownloadsOverride: srvMatch.maxConcurrentDownloadsOverride !== undefined
+                                                        ? srvMatch.maxConcurrentDownloadsOverride
+                                                        : localU.maxConcurrentDownloadsOverride
+                                                };
+                                            }
+                                            return localU;
+                                        });
                                 }
                                 fs.writeJsonSync(targetUsersFile, merged, { spaces: 2 });
                             }
@@ -521,6 +545,9 @@ async function syncConfigsFromMasterNetwork() {
                         } catch(dErr) {}
                     }
                     bundleDownloaded = true;
+                    if (url.startsWith('https://') && cachedEnvState) {
+                        cachedEnvState.hasInternet = true;
+                    }
                     console.log(`[CONFIG SYNC] ✅ Configuraciones maestras sincronizadas por HTTP desde ${url}`);
                     break;
                 }
@@ -762,17 +789,23 @@ global.locationMode = locationMode;
 
 
 async function runEnvironmentDetection() {
-    const http = require('http');
+    const https = require('https');
     let hasInternet = false;
     try {
-        hasInternet = await new Promise((resolve) => {
-            const req = http.get('http://clients3.google.com/generate_204', { timeout: 1800 }, (res) => {
-                res.resume();
-                resolve(res.statusCode >= 200 && res.statusCode < 400);
+        const probeHttps = (probeUrl) => new Promise((resolve, reject) => {
+            const req = https.get(probeUrl, { timeout: 3000 }, (res) => {
+                res.destroy();
+                if (res.statusCode >= 200 && res.statusCode < 500) resolve(true);
+                else reject(new Error('bad status'));
             });
-            req.on('timeout', () => { req.destroy(); resolve(false); });
-            req.on('error', () => { resolve(false); });
+            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+            req.on('error', (err) => { req.destroy(); reject(err); });
         });
+        hasInternet = await Promise.any([
+            probeHttps('https://1.1.1.1/cdn-cgi/trace'),
+            probeHttps('https://www.gstatic.com/generate_204'),
+            probeHttps('https://piano-exclusively-function-michael.trycloudflare.com/api/auth/check')
+        ]);
     } catch (e) {
         hasInternet = false;
     }
@@ -3400,8 +3433,10 @@ echo [1/3] Cerrando instancias previas de Pipeta...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do taskkill /F /PID %%a >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
 
-echo [2/3] Descomprimiendo Pipeta en %TARGET_DIR%...
+echo [2/3] Descomprimiendo Pipeta limpia en %TARGET_DIR%...
 if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
+if exist "%PIPETA_DIR%\\_SYNC_CACHE\\last_ramon_user.json" del /f /q "%PIPETA_DIR%\\_SYNC_CACHE\\last_ramon_user.json" >nul 2>&1
+if exist "%PIPETA_DIR%\\_SYNC_CACHE\\last_project.json" del /f /q "%PIPETA_DIR%\\_SYNC_CACHE\\last_project.json" >nul 2>&1
 
 where tar >nul 2>&1
 if %errorlevel% equ 0 (
@@ -3507,23 +3542,36 @@ foreach ($src in $candidateSources) {
 }
 
 if (-not $foundSource) {
-    # MODO REMOTO (Freelance / GitHub + Google Drive)
-    Write-Output "INFO: Modo remoto detectado (sin servidor maestro local). Actualizando via GitHub y Google Drive..."
+    # MODO REMOTO (Freelance / Cloud Update sin popups interactivos)
+    Write-Output "INFO: Modo remoto detectado. Sincronizando ultima version oficial..."
     $localPipetaDir = "${path.resolve(__dirname, '..').replace(/\\/g, '\\\\')}"
     Set-Location $localPipetaDir
 
+    # Preservar sesion y usuarios locales del puesto antes de actualizar archivos
+    $usersCfgPath = Join-Path $localPipetaDir "presets\\users_config.json"
+    $savedUsersBackup = $null
+    if (Test-Path $usersCfgPath) {
+        try { $savedUsersBackup = Get-Content $usersCfgPath -Raw | ConvertFrom-Json } catch {}
+    }
+
+    # Prohibir estrictamente cualquier popup interactivo de Git Credential Manager
+    $env:GIT_TERMINAL_PROMPT = "0"
+    $env:GCM_INTERACTIVE = "never"
+
+    $updatedOk = $false
     $hasGit = $false
     where.exe git >$null 2>&1
     if ($LASTEXITCODE -eq 0) { $hasGit = $true }
 
-    if ($hasGit) {
-        $ghRepo = "https://github.com/lasp-tools/pipeta-dist.git"
-        $tokenFile = Join-Path $localPipetaDir "credentials\\github_token.txt"
-        if (Test-Path $tokenFile) {
-            $tok = (Get-Content $tokenFile -Raw).Trim()
-            if ($tok) { $ghRepo = "https://oauth2:" + $tok + "@github.com/lasp-tools/pipeta-dist.git" }
-        }
+    $tokenFile = Join-Path $localPipetaDir "credentials\\github_token.txt"
+    $tok = ""
+    if (Test-Path $tokenFile) {
+        $tok = (Get-Content $tokenFile -Raw).Trim()
+    }
 
+    # Canal A: GitHub directo (solo si existe token silencioso configurado)
+    if ($hasGit -and $tok) {
+        $ghRepo = "https://oauth2:" + $tok + "@github.com/lasp-tools/pipeta-dist.git"
         if (-not (Test-Path (Join-Path $localPipetaDir ".git"))) {
             & git init 2>&1 | Out-Null
             & git remote add origin $ghRepo 2>&1 | Out-Null
@@ -3531,16 +3579,44 @@ if (-not $foundSource) {
             & git remote set-url origin $ghRepo 2>&1 | Out-Null
         }
 
-        & git fetch origin main --quiet 2>&1 | Out-Null
+        & git -c credential.interactive=never fetch origin main --quiet 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             & git reset --hard origin/main 2>&1 | Out-Null
+            $updatedOk = $true
             Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB"
-        } else {
-            Write-Error "Fallo la sincronizacion con GitHub. Verifica conexion a internet o token."
-            exit 1
         }
-    } else {
-        Write-Error "Git no esta instalado en este equipo para actualizar por repositorio."
+    }
+
+    # Canal B (Universal sin login): Paquete de codigo ligero desde LaSP_Tools (Google Drive via Rclone embebido)
+    if (-not $updatedOk) {
+        $rcloneExe = Join-Path $localPipetaDir "tools\\rclone\\rclone.exe"
+        $rcloneConf = Join-Path $localPipetaDir "tools\\rclone\\rclone.conf"
+        if (Test-Path $rcloneExe) {
+            $tmpCodeZip = Join-Path ([System.IO.Path]::GetTempPath()) ("pipeta_code_upd_" + [guid]::NewGuid().ToString() + ".zip")
+            & $rcloneExe --config $rcloneConf copyto "lasp-drive:_DEPOT/packages/pipeta_code_latest.zip" $tmpCodeZip --drive-team-drive 0AASS9JDeUQn7Uk9PVA --quiet
+            if ((Test-Path $tmpCodeZip) -and ((Get-Item $tmpCodeZip).Length -gt 1000)) {
+                tar.exe -xf $tmpCodeZip -C $localPipetaDir
+                Remove-Item -Force $tmpCodeZip -ErrorAction SilentlyContinue
+                $updatedOk = $true
+                Write-Output "UPDATE_SUCCESS:REMOTE_CLOUD"
+            } else {
+                Remove-Item -Force $tmpCodeZip -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # Restaurar usuarios locales y activeUser del equipo remoto (conservando nuevos roles/permisos)
+    if ($savedUsersBackup -and (Test-Path $usersCfgPath)) {
+        try {
+            $newCfg = Get-Content $usersCfgPath -Raw | ConvertFrom-Json
+            $newCfg.users = $savedUsersBackup.users
+            $newCfg.activeUser = $savedUsersBackup.activeUser
+            $newCfg | ConvertTo-Json -Depth 10 | Set-Content $usersCfgPath -Encoding UTF8
+        } catch {}
+    }
+
+    if (-not $updatedOk) {
+        Write-Error "No se pudo descargar la actualizacion remota. Verifica tu conexion a internet."
         exit 1
     }
 
@@ -3726,7 +3802,7 @@ app.get('/api/users', async (req, res) => {
         if (wasSanitized) {
             fs.writeJson(USERS_CONFIG_FILE, data, { spaces: 2 }).catch(e => console.warn("[USERS] Error auto-healing config:", e));
         }
-        const safeData = { ...data, hasAdminPassword: !!data.adminPassword };
+        const safeData = { ...data, hasAdminPassword: !!data.adminPassword, isExternalMachine: !!global.isExternalMachine };
         delete safeData.adminPassword;
         res.json(safeData);
     } catch (err) {

@@ -147,38 +147,57 @@ echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
 powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
 ping 127.0.0.1 -n 2 >nul
 
-echo [2/3] Sincronizando codigo desde GitHub (lasp-tools/pipeta-dist)...
-where.exe git >nul 2>&1
-if !errorlevel! equ 0 (
-    cd /d "%DEST%"
-    
-    set "GH_REPO=https://github.com/lasp-tools/pipeta-dist.git"
-    if exist "%DEST%\credentials\github_token.txt" (
-        set /p GH_TOKEN=<"%DEST%\credentials\github_token.txt"
-        set "GH_TOKEN=!GH_TOKEN: =!"
-        if not "!GH_TOKEN!"=="" (
+echo [2/3] Sincronizando ultima version oficial en la nube...
+set "GIT_TERMINAL_PROMPT=0"
+set "GCM_INTERACTIVE=never"
+set "REMOTE_CODE_OK=0"
+
+if exist "%DEST%\presets\users_config.json" (
+    copy /y "%DEST%\presets\users_config.json" "%TEMP%\pipeta_users_cfg_bak.json" >nul 2>&1
+)
+
+if exist "%DEST%\credentials\github_token.txt" (
+    set /p GH_TOKEN=<"%DEST%\credentials\github_token.txt"
+    set "GH_TOKEN=!GH_TOKEN: =!"
+    if not "!GH_TOKEN!"=="" (
+        where.exe git >nul 2>&1
+        if !errorlevel! equ 0 (
+            cd /d "%DEST%"
             set "GH_REPO=https://oauth2:!GH_TOKEN!@github.com/lasp-tools/pipeta-dist.git"
+            if not exist "%DEST%\.git" (
+                git init >nul 2>&1
+                git remote add origin !GH_REPO! >nul 2>&1
+            ) else (
+                git remote set-url origin !GH_REPO! >nul 2>&1
+            )
+            git -c credential.interactive=never fetch origin main --quiet >nul 2>&1
+            if !errorlevel! equ 0 (
+                git reset --hard origin/main >nul 2>&1
+                set "REMOTE_CODE_OK=1"
+                echo [OK] Codigo actualizado con exito desde repositorio oficial.
+            )
         )
     )
-    
-    if not exist "%DEST%\.git" (
-        echo [INFO] Conectando carpeta local con repositorio GitHub...
-        git init >nul 2>&1
-        git remote add origin !GH_REPO! >nul 2>&1
-    ) else (
-        git remote set-url origin !GH_REPO! >nul 2>&1
+)
+
+if "!REMOTE_CODE_OK!"=="0" (
+    set "RCLONE_EXE=%DEST%\tools\rclone\rclone.exe"
+    set "RCLONE_CONF=%DEST%\tools\rclone\rclone.conf"
+    if exist "!RCLONE_EXE!" (
+        echo [INFO] Descargando paquete de actualizacion desde LaSP Cloud...
+        "!RCLONE_EXE!" --config "!RCLONE_CONF!" copyto "lasp-drive:_DEPOT/packages/pipeta_code_latest.zip" "%TEMP%\pipeta_code_latest.zip" --drive-team-drive 0AASS9JDeUQn7Uk9PVA --quiet
+        if exist "%TEMP%\pipeta_code_latest.zip" (
+            tar.exe -xf "%TEMP%\pipeta_code_latest.zip" -C "%DEST%"
+            del /f /q "%TEMP%\pipeta_code_latest.zip" >nul 2>&1
+            set "REMOTE_CODE_OK=1"
+            echo [OK] Codigo actualizado con exito desde LaSP Cloud.
+        )
     )
-    
-    echo [INFO] Descargando ultimas actualizaciones de main...
-    git fetch origin main --quiet
-    if !errorlevel! equ 0 (
-        git reset --hard origin/main
-        echo [OK] Codigo actualizado con exito desde GitHub.
-    ) else (
-        echo [WARN] No se pudo hacer git fetch. Verifica la conexion a internet o el token.
-    )
-) else (
-    echo [WARN] Git no esta disponible en el sistema. Omitiendo sincronizacion por repositorio.
+)
+
+if exist "%TEMP%\pipeta_users_cfg_bak.json" (
+    powershell -NoProfile -Command "try { $bak = Get-Content '%TEMP%\pipeta_users_cfg_bak.json' -Raw | ConvertFrom-Json; $cur = Get-Content '%DEST%\presets\users_config.json' -Raw | ConvertFrom-Json; $cur.users = $bak.users; $cur.activeUser = $bak.activeUser; $cur | ConvertTo-Json -Depth 10 | Set-Content '%DEST%\presets\users_config.json' -Encoding UTF8 } catch {}" 2>nul
+    del /f /q "%TEMP%\pipeta_users_cfg_bak.json" >nul 2>&1
 )
 
 echo [3/3] Verificando dependencias y runtimes de Node y Python...

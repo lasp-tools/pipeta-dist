@@ -22,6 +22,8 @@ function normalizeSyncPath(p) {
 }
 
 let _catalogLoadPromise = null;
+const _autoInitCatalogTried = new Set();
+window.isSyncCatalogLoading = false;
 async function loadActiveProjectSyncCatalog(force = false) {
     const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
         ? settings.currentProject.name 
@@ -51,11 +53,25 @@ async function loadActiveProjectSyncCatalog(force = false) {
     if (_catalogLoadPromise) return _catalogLoadPromise;
 
     _catalogLoadPromise = (async () => {
+        window.isSyncCatalogLoading = true;
         try {
             // 1. Cargar catálogo de Google Drive
             if (needDrive && (!window.pipetaSyncCatalog || window.pipetaSyncCatalog.project !== projName)) {
                 let res = await fetch(`/api/sync/catalog/${projName}`).then(r => r.json()).catch(() => null);
-                if (res && res.success && res.catalog) {
+                if ((!res || !res.success || !res.catalog) && !_autoInitCatalogTried.has(projName)) {
+                    _autoInitCatalogTried.add(projName);
+                    console.log(`[SYNC LAYER] Inicializando catálogo Drive en segundo plano para ${projName}...`);
+                    fetch('/api/sync/catalog/init-project', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectName: projName })
+                    }).then(r => r.json()).then(async (initRes) => {
+                        if (initRes && initRes.success && initRes.hasDriveManifest) {
+                            await loadActiveProjectSyncCatalog(true);
+                            if (typeof refreshCurrentView === 'function') refreshCurrentView();
+                        }
+                    }).catch(() => {});
+                } else if (res && res.success && res.catalog) {
                     window.pipetaSyncCatalog = res.catalog;
                     indexSyncCatalog(res.catalog);
                     console.log(`[SYNC LAYER] Catálogo Drive cargado para ${projName}: ${res.catalog.stats?.totalFiles || 0} archivos indexados.`);
@@ -79,6 +95,7 @@ async function loadActiveProjectSyncCatalog(force = false) {
                 PipetaConsole.log('sync', `❌ Error cargando catálogo para '${projName}': ${e.message}`, 'error');
             }
         } finally {
+            window.isSyncCatalogLoading = false;
             _catalogLoadPromise = null;
         }
         return null;
