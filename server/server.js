@@ -3312,9 +3312,15 @@ try {
     # Excluir siempre .git, .gemini, logs, node_modules\\.cache, _SYNC_CACHE y credentials
     # Excluir scripts exclusivos del estudio central (Actualizar y Publicar)
     $pythonDir = Join-Path $source "bin\python"
-    $excludeFiles = @("*.zip", "*.log", "Publicar_Pipeta_a_Produccion_Estudio.bat")
+    $excludeFiles = @("Pipeta_*.zip", "pipeta_*.zip", "*.log", "Publicar_Pipeta_a_Produccion_Estudio.bat")
     if ($includeRamon) {
         robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE credentials /XF $excludeFiles /NFL /NDL /NJH /NJS /R:0 /W:0
+        $srcPyZip = Join-Path $pythonDir "python310.zip"
+        $destPyDir = Join-Path $pkgRoot "bin\python"
+        $destPyZip = Join-Path $destPyDir "python310.zip"
+        if ((Test-Path $srcPyZip) -and (-not (Test-Path $destPyZip))) {
+            Copy-Item -Path $srcPyZip -Destination $destPyZip -Force
+        }
     } else {
         robocopy "$source" "$pkgRoot" /MIR /XD .git .gemini logs node_modules\\.cache _SYNC_CACHE credentials "$pythonDir" python /XF $excludeFiles /NFL /NDL /NJH /NJS /R:0 /W:0
         $pkgPython = Join-Path $pkgRoot "bin\python"
