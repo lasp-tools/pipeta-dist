@@ -156,42 +156,37 @@ if exist "%DEST%\presets\users_config.json" (
     copy /y "%DEST%\presets\users_config.json" "%TEMP%\pipeta_users_cfg_bak.json" >nul 2>&1
 )
 
-if exist "%DEST%\credentials\github_token.txt" (
-    set /p GH_TOKEN=<"%DEST%\credentials\github_token.txt"
-    set "GH_TOKEN=!GH_TOKEN: =!"
-    if not "!GH_TOKEN!"=="" (
-        where.exe git >nul 2>&1
-        if !errorlevel! equ 0 (
-            cd /d "%DEST%"
-            set "GH_REPO=https://oauth2:!GH_TOKEN!@github.com/lasp-tools/pipeta-dist.git"
-            if not exist "%DEST%\.git" (
-                git init >nul 2>&1
-                git remote add origin !GH_REPO! >nul 2>&1
-            ) else (
-                git remote set-url origin !GH_REPO! >nul 2>&1
-            )
-            git -c credential.interactive=never fetch origin main --quiet >nul 2>&1
-            if !errorlevel! equ 0 (
-                git reset --hard origin/main >nul 2>&1
-                set "REMOTE_CODE_OK=1"
-                echo [OK] Codigo actualizado con exito desde repositorio oficial.
-            )
-        )
+where.exe git >nul 2>&1
+if !errorlevel! equ 0 (
+    cd /d "%DEST%"
+    set "GH_REPO=https://github.com/lasp-tools/pipeta-dist.git"
+    if not exist "%DEST%\.git" (
+        echo [INFO] Conectando carpeta local con repositorio GitHub...
+        git init >nul 2>&1
+        git remote add origin !GH_REPO! >nul 2>&1
+    ) else (
+        git remote set-url origin !GH_REPO! >nul 2>&1
+    )
+    echo [INFO] Descargando ultimas actualizaciones desde GitHub (main)...
+    git -c credential.interactive=never fetch origin main --quiet >nul 2>&1
+    if !errorlevel! equ 0 (
+        git reset --hard origin/main >nul 2>&1
+        set "REMOTE_CODE_OK=1"
+        echo [OK] Codigo actualizado con exito desde GitHub.
+    ) else (
+        echo [WARN] Fallo git fetch. Intentando descarga directa desde GitHub...
     )
 )
 
 if "!REMOTE_CODE_OK!"=="0" (
-    set "RCLONE_EXE=%DEST%\tools\rclone\rclone.exe"
-    set "RCLONE_CONF=%DEST%\tools\rclone\rclone.conf"
-    if exist "!RCLONE_EXE!" (
-        echo [INFO] Descargando paquete de actualizacion desde LaSP Cloud...
-        "!RCLONE_EXE!" --config "!RCLONE_CONF!" copyto "lasp-drive:_DEPOT/packages/pipeta_code_latest.zip" "%TEMP%\pipeta_code_latest.zip" --drive-team-drive 0AASS9JDeUQn7Uk9PVA --quiet
-        if exist "%TEMP%\pipeta_code_latest.zip" (
-            tar.exe -xf "%TEMP%\pipeta_code_latest.zip" -C "%DEST%"
-            del /f /q "%TEMP%\pipeta_code_latest.zip" >nul 2>&1
-            set "REMOTE_CODE_OK=1"
-            echo [OK] Codigo actualizado con exito desde LaSP Cloud.
-        )
+    echo [INFO] Descargando actualizacion directa desde GitHub (ZIP)...
+    set "GH_ZIP=%TEMP%\pipeta_gh_main.zip"
+    curl.exe -L -s -f "https://github.com/lasp-tools/pipeta-dist/archive/refs/heads/main.zip" -o "!GH_ZIP!"
+    if exist "!GH_ZIP!" (
+        tar.exe -xf "!GH_ZIP!" --strip-components=1 -C "%DEST%"
+        del /f /q "!GH_ZIP!" >nul 2>&1
+        set "REMOTE_CODE_OK=1"
+        echo [OK] Codigo actualizado con exito desde GitHub (ZIP).
     )
 )
 

@@ -3563,15 +3563,11 @@ if (-not $foundSource) {
     where.exe git >$null 2>&1
     if ($LASTEXITCODE -eq 0) { $hasGit = $true }
 
-    $tokenFile = Join-Path $localPipetaDir "credentials\\github_token.txt"
-    $tok = ""
-    if (Test-Path $tokenFile) {
-        $tok = (Get-Content $tokenFile -Raw).Trim()
-    }
+    $ghRepo = "https://github.com/lasp-tools/pipeta-dist.git"
 
-    # Canal A: GitHub directo (solo si existe token silencioso configurado)
-    if ($hasGit -and $tok) {
-        $ghRepo = "https://oauth2:" + $tok + "@github.com/lasp-tools/pipeta-dist.git"
+    # Canal A: Git oficial desde GitHub (repo publico, sin login ni token requerido)
+    if ($hasGit) {
+        cd $localPipetaDir
         if (-not (Test-Path (Join-Path $localPipetaDir ".git"))) {
             & git init 2>&1 | Out-Null
             & git remote add origin $ghRepo 2>&1 | Out-Null
@@ -3587,24 +3583,19 @@ if (-not $foundSource) {
         }
     }
 
-    # Canal B (Universal sin login): Paquete de codigo ligero desde LaSP_Tools (Google Drive via Rclone embebido)
+    # Canal B: Descarga directa de GitHub Archive ZIP (si git no esta instalado o fallo)
     if (-not $updatedOk) {
-        $rcloneExe = Join-Path $localPipetaDir "tools\\rclone\\rclone.exe"
-        $rcloneConf = Join-Path $localPipetaDir "tools\\rclone\\rclone.conf"
-        if (Test-Path $rcloneExe) {
-            $tmpCodeZip = Join-Path ([System.IO.Path]::GetTempPath()) ("pipeta_code_upd_" + [guid]::NewGuid().ToString() + ".zip")
-            & $rcloneExe --config $rcloneConf copyto "lasp-drive:_DEPOT/packages/pipeta_code_latest.zip" $tmpCodeZip --drive-team-drive 0AASS9JDeUQn7Uk9PVA --quiet
-            if ((Test-Path $tmpCodeZip) -and ((Get-Item $tmpCodeZip).Length -gt 1000)) {
-                tar.exe -xf $tmpCodeZip -C $localPipetaDir
-                Remove-Item -Force $tmpCodeZip -ErrorAction SilentlyContinue
-                $updatedOk = $true
-                Write-Output "UPDATE_SUCCESS:REMOTE_CLOUD"
-            } else {
-                Remove-Item -Force $tmpCodeZip -ErrorAction SilentlyContinue
-            }
+        $tmpGhZip = Join-Path ([System.IO.Path]::GetTempPath()) ("pipeta_gh_" + [guid]::NewGuid().ToString() + ".zip")
+        & curl.exe -L -s -f "https://github.com/lasp-tools/pipeta-dist/archive/refs/heads/main.zip" -o $tmpGhZip
+        if ((Test-Path $tmpGhZip) -and ((Get-Item $tmpGhZip).Length -gt 1000)) {
+            & tar.exe -xf $tmpGhZip --strip-components=1 -C $localPipetaDir
+            Remove-Item -Force $tmpGhZip -ErrorAction SilentlyContinue
+            $updatedOk = $true
+            Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB_ZIP"
+        } else {
+            Remove-Item -Force $tmpGhZip -ErrorAction SilentlyContinue
         }
     }
-
     # Restaurar usuarios locales y activeUser del equipo remoto (conservando nuevos roles/permisos)
     if ($savedUsersBackup -and (Test-Path $usersCfgPath)) {
         try {
