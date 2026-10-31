@@ -73,7 +73,8 @@ function detectStudioNetworkSync() {
         for (const name of Object.keys(ifaces)) {
             for (const iface of ifaces[name]) {
                 if (iface.family === 'IPv4' && !iface.internal) {
-                    if (iface.address.startsWith('192.168.206.') || iface.address.startsWith('192.168.200.') || iface.address.startsWith('192.168.106.')) {
+                    // Munro LAN (192.168.206.x). WeNonstop en standby (opera como freelance/remoto)
+                    if (iface.address.startsWith('192.168.206.')) {
                         isStudioLAN = true;
                         break;
                     }
@@ -85,7 +86,7 @@ function detectStudioNetworkSync() {
     const hasZ = fs.existsSync('Z:\\');
     global.isExternalMachine = !isStudioLAN;
     global.hasZDrive = hasZ;
-    console.log(`[ENV FAST-DETECT] Red de Estudio = ${isStudioLAN ? 'SI (LAN Munro/Nonstop)' : 'NO (Freelance/Casa)'} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'} | Disco Z = ${hasZ ? 'MONTAJE OK' : 'NO DISPONIBLE'}`);
+    console.log(`[ENV FAST-DETECT] Red de Estudio = ${isStudioLAN ? 'SI (LAN Munro)' : 'NO (Freelance/Casa)'} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'} | Disco Z = ${hasZ ? 'MONTAJE OK' : 'NO DISPONIBLE'}`);
     return { isStudioLAN, isExternalMachine: global.isExternalMachine, hasZ };
 }
 detectStudioNetworkSync();

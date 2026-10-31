@@ -55,7 +55,7 @@ if /i not "%~1"=="--from-temp" (
 :STUDIO_UPDATE_EXEC
 :: Detectar dinamicamente la version en red
 if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
-    for /f "tokens=2 delims==" %%v in ('findstr /i "APP_VERSION=v" "%SRC%\Actualizar_Pipeta_desde_Red.bat"') do (
+    for /f "tokens=2 delims==" %%v in ('findstr /b /i /c:"set \"APP_VERSION=v" "%SRC%\Actualizar_Pipeta_desde_Red.bat"') do (
         set "NET_VER=%%v"
         set "NET_VER=!NET_VER:"=!"
         if not "!NET_VER!"=="" set "APP_VERSION=!NET_VER!"
@@ -167,7 +167,7 @@ if !errorlevel! equ 0 (
     ) else (
         git remote set-url origin !GH_REPO! >nul 2>&1
     )
-    echo [INFO] Descargando ultimas actualizaciones desde GitHub (main)...
+    echo [INFO] Descargando ultimas actualizaciones desde GitHub - rama main...
     git -c credential.interactive=never fetch origin main --quiet >nul 2>&1
     if !errorlevel! equ 0 (
         git reset --hard origin/main >nul 2>&1
@@ -179,14 +179,14 @@ if !errorlevel! equ 0 (
 )
 
 if "!REMOTE_CODE_OK!"=="0" (
-    echo [INFO] Descargando actualizacion directa desde GitHub (ZIP)...
+    echo [INFO] Descargando actualizacion directa desde GitHub - archivo ZIP...
     set "GH_ZIP=%TEMP%\pipeta_gh_main.zip"
     curl.exe -L -s -f "https://github.com/lasp-tools/pipeta-dist/archive/refs/heads/main.zip" -o "!GH_ZIP!"
     if exist "!GH_ZIP!" (
         tar.exe -xf "!GH_ZIP!" --strip-components=1 -C "%DEST%"
         del /f /q "!GH_ZIP!" >nul 2>&1
         set "REMOTE_CODE_OK=1"
-        echo [OK] Codigo actualizado con exito desde GitHub (ZIP).
+        echo [OK] Codigo actualizado con exito desde GitHub - archivo ZIP.
     )
 )
 
@@ -204,7 +204,7 @@ if not exist "%DEST%\bin\python\python310.zip" set "NEED_HYDRATION=1"
 
 if "!NEED_HYDRATION!"=="1" (
     echo [INFO] Dependencias o runtimes faltantes detectados.
-    echo [INFO] Descargando pipeta_dependencies.zip desde Google Drive (LaSP_Tools)...
+    echo [INFO] Descargando pipeta_dependencies.zip desde Google Drive...
     
     set "RCLONE_EXE=%DEST%\tools\rclone\rclone.exe"
     set "RCLONE_CONF=%DEST%\tools\rclone\rclone.conf"
