@@ -297,7 +297,7 @@ const Ramon = {
 
         if (!username || !password) {
             if (errDiv) {
-                errDiv.textContent = "Por favor, ingresa tu usuario y contraseña de red.";
+                errDiv.textContent = "Por favor, ingresa tu usuario y password.";
                 errDiv.style.display = 'block';
             }
             return;
@@ -826,7 +826,7 @@ const Ramon = {
                         <!-- FORMULARIO OBLIGATORIO RAMON -->
                         <div id="loginFormRamon">
                             <div style="color:#aaa; font-size:0.85rem; margin-bottom:16px; line-height:1.4;">
-                                Ingresa con tu usuario y contraseña de red del estudio (Ramón / Dominio LASP).
+                                Ingresa con tu usuario y password del estudio (Ramón / Dominio LASP).
                             </div>
 
                             <div class="ramon-field-group" style="margin-bottom:12px;">
@@ -837,8 +837,8 @@ const Ramon = {
                             </div>
 
                             <div class="ramon-field-group" style="margin-bottom:12px;">
-                                <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Contraseña de Red:</label>
-                                <input type="password" id="ramonPasswordInput" placeholder="Contraseña de Red" autocomplete="new-password"
+                                <label style="font-size:0.82rem; color:#ccc; display:block; margin-bottom:5px;">Password:</label>
+                                <input type="password" id="ramonPasswordInput" placeholder="Password" autocomplete="new-password"
                                     style="width:100%; box-sizing:border-box; padding:8px 10px; background:#0d0d0d; border:1px solid #333; border-radius:4px; color:#fff; font-size:0.9rem;"
                                     onkeydown="if(event.key==='Enter') Ramon.submitRamonLogin();">
                             </div>

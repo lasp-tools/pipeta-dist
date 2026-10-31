@@ -17,7 +17,26 @@ app.use((req, res, next) => {
     next();
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3002;
-const VERSION = "v1.1.81";
+// Global Timestamped Console Output
+const _origLog = console.log;
+const _origWarn = console.warn;
+const _origError = console.error;
+const _origInfo = console.info;
+
+function _formatTimestamp() {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `[${hh}:${mm}:${ss}]`;
+}
+
+console.log = function(...args) { _origLog(_formatTimestamp(), ...args); };
+console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
+console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
+console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
+
+const VERSION = "v1.1.82";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -6049,15 +6068,16 @@ app.post('/api/ramon/login', async (req, res) => {
             console.warn("[RAMON] Error asociando usuario local:", syncErr);
         }
 
-        if (authResult.server) {
-            const isRemoteRamon = authResult.server.includes('8075') || authResult.server.includes('https://');
-            if (cachedEnvState) {
-                cachedEnvState.ramonHost = authResult.server;
+        if (authResult.server && cachedEnvState) {
+            cachedEnvState.ramonHost = authResult.server;
+            // Si la máquina ya fue detectada como externa (fuera de Munro), NUNCA degradarla a red local
+            if (!global.isExternalMachine) {
+                const isRemoteRamon = authResult.server.includes('8075') || authResult.server.includes('https://');
                 cachedEnvState.isExternalMachine = isRemoteRamon;
                 cachedEnvState.isStudioNetwork = !isRemoteRamon;
+                global.isExternalMachine = isRemoteRamon;
+                global.isStudioNetworkDetected = !isRemoteRamon;
             }
-            global.isExternalMachine = isRemoteRamon;
-            global.isStudioNetworkDetected = !isRemoteRamon;
         }
 
         activeRamonUser = username;
