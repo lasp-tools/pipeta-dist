@@ -5423,41 +5423,50 @@ app.get('/api/ia/resolve-shot', (req, res) => {
     else if (fs.existsSync(path.join(rootPath, ep))) resolvedIaPath = candidate2;
     else resolvedIaPath = candidate1;
 
+    const subfoldersParam = (req.query.subfolders || req.query.subfolder || '').trim();
+    let requestedSubs = subfoldersParam ? subfoldersParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : ['wip'];
+    if (requestedSubs.length === 0) requestedSubs = ['wip'];
+
     let nextVersion = 'v001';
     let maxVer = 0;
     const existingFiles = [];
+
     if (fs.existsSync(resolvedIaPath)) {
         try {
-            const scanDir = (dir, sub = '') => {
-                if (!fs.existsSync(dir)) return;
-                const entries = fs.readdirSync(dir, { withFileTypes: true });
-                for (const entry of entries) {
-                    const fullP = path.join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        if (!sub) {
-                            scanDir(fullP, entry.name);
+            // Escanear UNICAMENTE las carpetas seleccionadas (sin recursion al resto del arbol)
+            requestedSubs.forEach(sub => {
+                let targetDir = resolvedIaPath;
+                if (sub === 'export') targetDir = path.join(resolvedIaPath, 'export');
+                else if (sub === 'ref') targetDir = path.join(resolvedIaPath, 'ref');
+                else if (sub === 'enc') targetDir = path.join(resolvedIaPath, 'enc');
+                else if (sub === 'wip' || sub === 'root') targetDir = resolvedIaPath;
+                else targetDir = path.join(resolvedIaPath, sub);
+
+                if (fs.existsSync(targetDir)) {
+                    const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        // Solo archivos planos directos de la carpeta seleccionada (no subdirectorios)
+                        if (entry.isFile()) {
+                            const filename = entry.name;
+                            const match = filename.match(/_v(\d{3,4})\./i);
+                            let verNum = 0;
+                            if (match) {
+                                verNum = parseInt(match[1], 10);
+                                if (verNum > maxVer) maxVer = verNum;
+                            }
+                            existingFiles.push({
+                                name: filename,
+                                subfolder: sub,
+                                fullPath: path.join(targetDir, filename).replace(/\\/g, '/'),
+                                version: verNum
+                            });
                         }
-                    } else {
-                        const filename = entry.name;
-                        const match = filename.match(/_v(\d{3,4})\./i);
-                        let verNum = 0;
-                        if (match) {
-                            verNum = parseInt(match[1], 10);
-                            if (verNum > maxVer) maxVer = verNum;
-                        }
-                        existingFiles.push({
-                            name: filename,
-                            subfolder: sub || 'root',
-                            fullPath: fullP.replace(/\\/g, '/'),
-                            version: verNum
-                        });
                     }
                 }
-            };
-            scanDir(resolvedIaPath, '');
+            });
             nextVersion = 'v' + String(maxVer + 1).padStart(3, '0');
-        } catch(e){
-            console.error('[IA RESOLVE-SHOT] Error scanning IA directory:', e);
+        } catch(e) {
+            console.error('[IA RESOLVE-SHOT] Error scanning selected IA folder:', e);
         }
     }
 
@@ -5469,6 +5478,7 @@ app.get('/api/ia/resolve-shot', (req, res) => {
         shotNum,
         iaPath: resolvedIaPath,
         exists: fs.existsSync(resolvedIaPath),
+        selectedSubfolders: requestedSubs,
         maxVersion: maxVer,
         suggestedVersion: nextVersion,
         existingFiles: existingFiles

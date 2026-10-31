@@ -1140,7 +1140,8 @@ async function updateIaResolution() {
 
     try {
         const { workRoot, mediaRoot } = getIaProjectRoots();
-        const res = await fetch(`/api/ia/resolve-shot?shotId=${encodeURIComponent(shotId)}&mediaRoot=${encodeURIComponent(mediaRoot)}&workRoot=${encodeURIComponent(workRoot)}`);
+        const selectedSubs = Array.from(iaActiveSubfolders).join(',');
+        const res = await fetch(`/api/ia/resolve-shot?shotId=${encodeURIComponent(shotId)}&mediaRoot=${encodeURIComponent(mediaRoot)}&workRoot=${encodeURIComponent(workRoot)}&subfolders=${encodeURIComponent(selectedSubs)}`);
         const data = await res.json();
         if (data.iaPath) {
             iaCurrentResolvedIaPath = data.iaPath;
@@ -1382,7 +1383,8 @@ function iaToggleSubfolder(key) {
         iaActiveSubfolders.add(key);
     }
     updateIaSubfolderButtonsUI();
-    updateIaPreview();
+    // Re-escanear unicamente la subcarpeta seleccionada
+    updateIaResolution();
 }
 
 function updateIaSubfolderButtonsUI() {
@@ -1430,7 +1432,7 @@ function updateIaPreview() {
     // Conjunto de rutas ya asignadas en esta tanda
     const assignedInBatch = new Set();
 
-    // Helper de colisión contra disco y cola activa
+    // Helper de colisión contra disco (exclusivo para la carpeta seleccionada) y cola activa
     const checkFileCollision = (targetFolder, subfolderKey, candidateFilename) => {
         const lowerName = candidateFilename.toLowerCase();
         const fullBatchKey = (targetFolder + '/' + lowerName).replace(/\\/g, '/').toLowerCase();
@@ -1439,14 +1441,12 @@ function updateIaPreview() {
         if (window.iaExistingFiles && window.iaExistingFiles.length > 0) {
             const match = window.iaExistingFiles.some(f => {
                 if (!f.name || f.name.toLowerCase() !== lowerName) return false;
-                if (f.subfolder && f.subfolder.toLowerCase() === subfolderKey.toLowerCase()) return true;
-                if (f.fullPath && f.fullPath.toLowerCase() === fullBatchKey) return true;
-                const normTarget = targetFolder.replace(/\\/g, '/').toLowerCase();
-                if (f.subfolder && f.subfolder !== 'root' && normTarget.endsWith('/' + f.subfolder.toLowerCase())) return true;
-                if (!f.subfolder || f.subfolder === 'root') {
-                    if (normTarget.endsWith('/ia')) return true;
-                }
-                return false;
+                const fSub = (f.subfolder || 'root').toLowerCase();
+                const itemSub = (subfolderKey || 'root').toLowerCase();
+                const normFSub = (fSub === 'wip' || fSub === 'root') ? 'root' : fSub;
+                const normItemSub = (itemSub === 'wip' || itemSub === 'root') ? 'root' : itemSub;
+                if (normFSub !== normItemSub) return false;
+                return true;
             });
             if (match) return true;
         }
