@@ -3750,39 +3750,155 @@ exit
 
 // --- AUTO-UPDATE FROM NETWORK SOURCE ---
 app.post('/api/app/update-from-server', async (req, res) => {
-    try {
-        const pipetaRoot = path.resolve(__dirname, '..');
-        const updaterBat = path.join(pipetaRoot, 'Actualizar_Pipeta_desde_Red.bat');
+    const customSource = req.body?.sourcePath || '';
+    const localDest = 'C:\\TOOLS\\APPS\\Pipeta';
 
-        if (!fs.existsSync(updaterBat)) {
-            return res.status(500).json({ error: "No se encontró el script Actualizar_Pipeta_desde_Red.bat en la instalación local." });
+    const candidateSources = (!global.isExternalMachine) ? [
+        customSource,
+        'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
+        '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'
+    ].filter(s => s && s.trim().length > 0) : [];
+
+    const psScript = `
+$candidateSources = @(
+    ${candidateSources.map(s => '"' + s.split('\\').join('\\\\') + '"').join(',\n    ')}
+)
+$foundSource = $null
+foreach ($src in $candidateSources) {
+    if (Test-Path "$src\\server\\server.js") {
+        $foundSource = $src
+        break
+    }
+}
+
+if (-not $foundSource) {
+    # MODO REMOTO (Freelance / Cloud Update sin popups interactivos)
+    Write-Output "INFO: Modo remoto detectado. Sincronizando ultima version oficial..."
+    $localPipetaDir = "${path.resolve(__dirname, '..').split('\\').join('\\\\')}"
+    Set-Location $localPipetaDir
+
+    # Preservar sesion y usuarios locales del puesto antes de actualizar archivos
+    $usersCfgPath = Join-Path $localPipetaDir "presets\\users_config.json"
+    $savedUsersBackup = $null
+    if (Test-Path $usersCfgPath) {
+        try { $savedUsersBackup = Get-Content $usersCfgPath -Raw | ConvertFrom-Json } catch {}
+    }
+
+    # Prohibir estrictamente cualquier popup interactivo de Git Credential Manager
+    $env:GIT_TERMINAL_PROMPT = "0"
+    $env:GCM_INTERACTIVE = "never"
+
+    $updatedOk = $false
+    $hasGit = $false
+    where.exe git >$null 2>&1
+    if ($LASTEXITCODE -eq 0) { $hasGit = $true }
+
+    $ghRepo = "https://github.com/lasp-tools/pipeta-dist.git"
+
+    # Canal A: Git oficial desde GitHub (repo publico, sin login ni token requerido)
+    if ($hasGit) {
+        cd $localPipetaDir
+        if (-not (Test-Path (Join-Path $localPipetaDir ".git"))) {
+            & git init 2>&1 | Out-Null
+            & git remote add origin $ghRepo 2>&1 | Out-Null
+        } else {
+            & git remote set-url origin $ghRepo 2>&1 | Out-Null
         }
 
-        // Crear lanzador fuera de banda en %TEMP% para que no bloquee server.js ni archivos de la app en ejecución
-        const launcherBat = path.join(os.tmpdir(), `pipeta_spawn_update_${Date.now()}.bat`);
-        const launcherContent = `@echo off\r\nping 127.0.0.1 -n 2 >nul\r\nstart "" "${updaterBat}"\r\nexit\r\n`;
-        fs.writeFileSync(launcherBat, launcherContent, 'utf8');
+        & git -c credential.interactive=never fetch origin main --quiet 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            & git reset --hard origin/main 2>&1 | Out-Null
+            $updatedOk = $true
+            Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB"
+        }
+    }
 
-        console.log("[AUTO-UPDATE] Lanzador fuera de banda preparado en TEMP. Respondiendo al cliente y saliendo...");
+    # Canal B: Descarga directa de GitHub Archive ZIP (si git no esta instalado o fallo)
+    if (-not $updatedOk) {
+        $tmpGhZip = Join-Path ([System.IO.Path]::GetTempPath()) ("pipeta_gh_" + [guid]::NewGuid().ToString() + ".zip")
+        & curl.exe -L -s -f "https://github.com/lasp-tools/pipeta-dist/archive/refs/heads/main.zip" -o $tmpGhZip
+        if ((Test-Path $tmpGhZip) -and ((Get-Item $tmpGhZip).Length -gt 1000)) {
+            & tar.exe -xf $tmpGhZip --strip-components=1 -C $localPipetaDir
+            Remove-Item -Force $tmpGhZip -ErrorAction SilentlyContinue
+            $updatedOk = $true
+            Write-Output "UPDATE_SUCCESS:REMOTE_GITHUB_ZIP"
+        } else {
+            Remove-Item -Force $tmpGhZip -ErrorAction SilentlyContinue
+        }
+    }
+    # Restaurar usuarios locales y activeUser del equipo remoto (conservando nuevos roles/permisos)
+    if ($savedUsersBackup -and (Test-Path $usersCfgPath)) {
+        try {
+            $newCfg = Get-Content $usersCfgPath -Raw | ConvertFrom-Json
+            $newCfg.users = $savedUsersBackup.users
+            $newCfg.activeUser = $savedUsersBackup.activeUser
+            $newCfg | ConvertTo-Json -Depth 10 | Set-Content $usersCfgPath -Encoding UTF8
+        } catch {}
+    }
 
-        // Responder primero al navegador para que muestre el modal de progreso y empiece el polling
-        res.json({ success: true, message: "Actualizador iniciado fuera de banda. Reiniciando Pipeta..." });
+    if (-not $updatedOk) {
+        Write-Error "No se pudo descargar la actualizacion remota. Verifica tu conexion a internet."
+        exit 1
+    }
 
-        // Spawnear el script en TEMP completamente desvinculado (detached) y terminar el proceso de Node
-        setTimeout(() => {
-            try {
-                const { spawn } = require('child_process');
-                const p = spawn('cmd.exe', ['/c', launcherBat], {
-                    detached: true,
-                    stdio: 'ignore',
-                    windowsHide: false
-                });
-                p.unref();
-            } catch (e) {}
-            process.exit(42);
-        }, 600);
-    } catch (err) {
-        console.error("[AUTO-UPDATE] Error:", err);
+    # Verificar dependencias desde Google Drive (LaSP_Tools) si faltan
+    $nodeExe = Join-Path $localPipetaDir "bin\\node\\node.exe"
+    $expressModule = Join-Path $localPipetaDir "server\\node_modules\\express"
+    $pyExe = Join-Path $localPipetaDir "bin\\python\\python.exe"
+    $pyZip = Join-Path $localPipetaDir "bin\\python\\python310.zip"
+    if ((-not (Test-Path $nodeExe)) -or (-not (Test-Path $expressModule)) -or (-not (Test-Path $pyExe)) -or (-not (Test-Path $pyZip))) {
+        $rcloneExe = Join-Path $localPipetaDir "tools\\rclone\\rclone.exe"
+        $rcloneConf = Join-Path $localPipetaDir "tools\\rclone\\rclone.conf"
+        if (Test-Path $rcloneExe) {
+            & $rcloneExe --config $rcloneConf copy "lasp-drive:_DEPOT/packages/pipeta_dependencies.zip" $localPipetaDir --drive-team-drive 0AASS9JDeUQn7Uk9PVA --stats-one-line
+            $zipDep = Join-Path $localPipetaDir "pipeta_dependencies.zip"
+            if (Test-Path $zipDep) {
+                tar.exe -xf $zipDep -C $localPipetaDir
+                Remove-Item -Force $zipDep -ErrorAction SilentlyContinue
+            }
+        }
+    }
+} else {
+    $dest = 'C:\\TOOLS\\APPS\\Pipeta'
+    if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+
+    # 1. Sincronizar archivos principales directamente desde el origen detectado
+    & robocopy $foundSource $dest /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+    if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+
+    # 2. Sincronizar presets base sin sobreescribir configuraciones locales
+    if (Test-Path "$foundSource\\presets") {
+        & robocopy "$foundSource\\presets" "$dest\\presets" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0
+        if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+    }
+
+    Write-Output "UPDATE_SUCCESS:$foundSource"
+}`;
+
+    const tmpPsFile = path.join(os.tmpdir(), `pipeta_update_${Date.now()}.ps1`);
+    try {
+        await fs.writeFile(tmpPsFile, psScript, 'utf8');
+        const { execFile } = require('child_process');
+        execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmpPsFile], { timeout: 120000 }, async (err, stdout, stderr) => {
+            try { await fs.remove(tmpPsFile); } catch(e) {}
+
+            if (err) {
+                console.error("[AUTO-UPDATE] Error:", err, stderr);
+                return res.status(500).json({ error: err.message || stderr });
+            }
+
+            console.log("[AUTO-UPDATE] Synchronized successfully. Scheduling restart in same console...");
+            
+            try { fs.writeFileSync(RESTART_FLAG_FILE, 'restart'); } catch (e) { }
+
+            res.json({ success: true, updatedFrom: stdout.trim(), localDest: localDest });
+
+            setTimeout(() => {
+                process.exit(42);
+            }, 600);
+        });
+    } catch(err) {
+        try { await fs.remove(tmpPsFile); } catch(e) {}
         res.status(500).json({ error: err.message });
     }
 });

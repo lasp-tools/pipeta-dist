@@ -96,12 +96,6 @@ if "%PIPETA_NO_BROWSER%"=="1" (
 )
 set "EXIT_CODE=%errorlevel%"
 
-set "UPDATE_FLAG=%TEMP%\pipeta_updating.flag"
-if exist "%UPDATE_FLAG%" (
-    echo [INFO] Actualizacion de Pipeta en curso. Cerrando consola previa...
-    exit /b 0
-)
-
 set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 if exist "%RESTART_FLAG%" (
     del /f /q "%RESTART_FLAG%" >nul 2>&1

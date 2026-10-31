@@ -91,7 +91,6 @@ echo ============================================================
 echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
-echo updating > "%TEMP%\pipeta_updating.flag" 2>nul
 powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
 ping 127.0.0.1 -n 3 >nul
 
@@ -164,7 +163,6 @@ echo ============================================================
 echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
-echo updating > "%TEMP%\pipeta_updating.flag" 2>nul
 powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
 ping 127.0.0.1 -n 3 >nul
 
@@ -248,7 +246,6 @@ if "!NEED_HYDRATION!"=="1" (
 )
 
 :FINALIZE_UPDATE
-del /f /q "%TEMP%\pipeta_updating.flag" >nul 2>&1
 echo.
 echo Actualizando acceso directo en Escritorio con icono oficial...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk')); $s.TargetPath = '%DEST%\Launch_Pipeta.bat'; $s.WorkingDirectory = '%DEST%'; $ico = '%DEST%\Pipeta.ico'; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
