@@ -5,31 +5,38 @@ title Sincronizar Pipeta (Local / Remoto)
 set "APP_VERSION=v1.1.84"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
-:: Si se pasa --from-temp con un destino especifico
+:: 1. Deteccion de destino si se paso por parametro o si se ejecuta desde destino instalado
+if not "%~2"=="" (
+    set "DEST=%~2"
+) else (
+    set "CURRENT_DIR=%~dp0"
+    if "!CURRENT_DIR:~-1!"=="\" set "CURRENT_DIR=!CURRENT_DIR:~0,-1!"
+    if exist "!CURRENT_DIR!\Launch_Pipeta.bat" (
+        set "DEST=!CURRENT_DIR!"
+    )
+)
+
+:: 2. Deteccion de red del estudio (Z: local / SMB)
+set "SRC="
+if not "%~3"=="" (
+    if exist "%~3\server\server.js" set "SRC=%~3"
+)
+if "%SRC%"=="" (
+    if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+    ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+    )
+)
+
+:: Si se pasa --from-temp, saltar directo a ejecucion con SRC y DEST garantizados
 if /i "%~1"=="--from-temp" (
-    if not "%~2"=="" set "DEST=%~2"
     goto :STUDIO_UPDATE_EXEC
 )
 
-:: Si se pasa --from-temp-remote con un destino especifico
+:: Si se pasa --from-temp-remote, saltar directo a ejecucion remota
 if /i "%~1"=="--from-temp-remote" (
-    if not "%~2"=="" set "DEST=%~2"
     goto :REMOTE_UPDATE_EXEC
-)
-
-:: Determinar si se ejecuta desde una carpeta de aplicacion instalada
-set "CURRENT_DIR=%~dp0"
-if "%CURRENT_DIR:~-1%"=="\" set "CURRENT_DIR=%CURRENT_DIR:~0,-1%"
-if exist "%CURRENT_DIR%\Launch_Pipeta.bat" (
-    set "DEST=%CURRENT_DIR%"
-)
-
-:: 1. Deteccion de red del estudio (Z: local / SMB)
-set "SRC="
-if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-    set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
-) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-    set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 )
 
 :: Si no se detecto red interna del estudio, pasar al actualizador Remoto (GitHub / Google Drive)
@@ -46,19 +53,31 @@ if /i not "%~1"=="--from-temp" (
     if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
         copy /y "%SRC%\Actualizar_Pipeta_desde_Red.bat" "%TEMP%\Pipeta_Updater_Run.bat" >nul 2>&1
         if exist "%TEMP%\Pipeta_Updater_Run.bat" (
-            "%TEMP%\Pipeta_Updater_Run.bat" --from-temp "%DEST%"
+            "%TEMP%\Pipeta_Updater_Run.bat" --from-temp "%DEST%" "%SRC%"
             exit /b 0
         )
     )
 )
 
 :STUDIO_UPDATE_EXEC
+:: Reasegurar SRC si vino vacio
+if "%SRC%"=="" (
+    if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+    ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+    )
+)
+
+if "%SRC%"=="" (
+    echo [WARN] No se detecto la red del estudio en Z: ni SMB. Saltando a modo remoto...
+    goto :REMOTE_UPDATE_PREP
+)
+
 :: Detectar dinamicamente la version en red
-if exist "%SRC%\Actualizar_Pipeta_desde_Red.bat" (
-    for /f "tokens=2 delims==" %%v in ('findstr /b /i /c:"set \"APP_VERSION=v" "%SRC%\Actualizar_Pipeta_desde_Red.bat"') do (
-        set "NET_VER=%%v"
-        set "NET_VER=!NET_VER:"=!"
-        if not "!NET_VER!"=="" set "APP_VERSION=!NET_VER!"
+if exist "%SRC%\Launch_Pipeta.bat" (
+    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "(Get-Content '%SRC%\Launch_Pipeta.bat' | Select-String 'APP_VERSION=(v[0-9\.]+)').Matches.Groups[1].Value" 2^>nul`) do (
+        if not "%%v"=="" set "APP_VERSION=%%v"
     )
 )
 
@@ -72,6 +91,7 @@ echo ============================================================
 echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
+taskkill /F /FI "WINDOWTITLE eq PIPETA*" /T >nul 2>&1
 powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
 ping 127.0.0.1 -n 2 >nul
 

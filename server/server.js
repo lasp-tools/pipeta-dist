@@ -3764,7 +3764,6 @@ app.post('/api/app/update-from-server', async (req, res) => {
         fs.writeFileSync(launcherBat, launcherContent, 'utf8');
 
         console.log("[AUTO-UPDATE] Lanzador fuera de banda preparado en TEMP. Respondiendo al cliente y saliendo...");
-        try { fs.writeFileSync(RESTART_FLAG_FILE, 'restart'); } catch (e) { }
 
         // Responder primero al navegador para que muestre el modal de progreso y empiece el polling
         res.json({ success: true, message: "Actualizador iniciado fuera de banda. Reiniciando Pipeta..." });
