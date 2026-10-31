@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.85";
+const VERSION = "v1.1.86";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -3875,18 +3875,62 @@ if (-not $foundSource) {
     }
 
     Write-Output "UPDATE_SUCCESS:$foundSource"
-}`;
+}
+
+# Reparar y desbloquear siempre el acceso directo en Escritorio apuntando a C:\\TOOLS\\APPS\\Pipeta local
+try {
+    $canonLocal = 'C:\\TOOLS\\APPS\\Pipeta'
+    if (Test-Path (Join-Path $canonLocal 'Launch_Pipeta.bat')) {
+        Get-ChildItem -Path $canonLocal -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+        $icoFile = Join-Path $canonLocal 'Pipeta.ico'
+        if (Test-Path $icoFile) { Unblock-File -LiteralPath $icoFile -ErrorAction SilentlyContinue }
+        $desktop = [Environment]::GetFolderPath('Desktop')
+        $lnkPath = [System.IO.Path]::Combine($desktop, 'Pipeta.lnk')
+        if (Test-Path $lnkPath) { Remove-Item -LiteralPath $lnkPath -Force -ErrorAction SilentlyContinue }
+        $ws = New-Object -ComObject WScript.Shell
+        $s = $ws.CreateShortcut($lnkPath)
+        $s.TargetPath = Join-Path $canonLocal 'Launch_Pipeta.bat'
+        $s.WorkingDirectory = $canonLocal
+        if (Test-Path $icoFile) { $s.IconLocation = "$icoFile,0" }
+        $s.Description = 'Pipeta - VFX Pipeline & IA Ingest Manager'
+        $s.Save()
+        Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue
+    }
+} catch {}
+`;
 
     const tmpPsFile = path.join(os.tmpdir(), `pipeta_update_${Date.now()}.ps1`);
     try {
         await fs.writeFile(tmpPsFile, psScript, 'utf8');
-        const { execFile } = require('child_process');
+        const { execFile, spawn } = require('child_process');
         execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmpPsFile], { timeout: 120000 }, async (err, stdout, stderr) => {
             try { await fs.remove(tmpPsFile); } catch(e) {}
 
             if (err) {
                 console.error("[AUTO-UPDATE] Error:", err, stderr);
                 return res.status(500).json({ error: err.message || stderr });
+            }
+
+            const runningFromLocalC = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
+            const localBat = 'C:\\TOOLS\\APPS\\Pipeta\\Launch_Pipeta.bat';
+
+            // Si habían abierto Pipeta por error desde Z:\ en vez de C:\TOOLS\APPS\Pipeta, migrar ejecución a C:\
+            if (!runningFromLocalC && os.hostname().toUpperCase() !== 'LASP-VM' && fs.existsSync(localBat)) {
+                console.log("[AUTO-UPDATE] Migrando ejecucion desde unidad de red hacia C:\\TOOLS\\APPS\\Pipeta...");
+                res.json({ success: true, updatedFrom: stdout.trim(), localDest: localDest });
+                setTimeout(() => {
+                    try {
+                        const child = spawn('cmd.exe', ['/c', 'start', '""', localBat, '--no-browser'], {
+                            cwd: 'C:\\TOOLS\\APPS\\Pipeta',
+                            detached: true,
+                            stdio: 'ignore',
+                            windowsHide: false
+                        });
+                        child.unref();
+                    } catch (e) {}
+                    process.exit(0);
+                }, 500);
+                return;
             }
 
             console.log("[AUTO-UPDATE] Synchronized successfully. Scheduling restart in same console...");
@@ -3907,25 +3951,70 @@ if (-not $foundSource) {
 
 // --- CREATE DESKTOP SHORTCUT ---
 app.post('/api/app/create-desktop-shortcut', async (req, res) => {
-    const isLocal = __dirname.toLowerCase().includes('c:\\tools\\apps\\pipeta');
-    const localDir = isLocal ? 'C:\\TOOLS\\APPS\\Pipeta' : path.resolve(__dirname, '..');
+    const canonClientDir = 'C:\\TOOLS\\APPS\\Pipeta';
+    const currentRootDir = path.resolve(__dirname, '..');
+    const isDevVm = (os.hostname() || '').toUpperCase() === 'LASP-VM';
+
+    // En puestos de artistas siempre apuntar a C:\TOOLS\APPS\Pipeta (evita cartel de seguridad de red y perdida de icono en Z:)
+    let localDir = canonClientDir;
+    if (!fs.existsSync(path.join(canonClientDir, 'Launch_Pipeta.bat'))) {
+        if (!isDevVm && fs.existsSync(path.join(currentRootDir, 'Launch_Pipeta.bat'))) {
+            try {
+                fs.ensureDirSync(canonClientDir);
+                const { execSync } = require('child_process');
+                execSync(`robocopy "${currentRootDir}" "${canonClientDir}" /MIR /R:1 /W:1 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS`, { stdio: 'ignore', timeout: 30000 });
+                if (fs.existsSync(path.join(currentRootDir, 'presets'))) {
+                    execSync(`robocopy "${path.join(currentRootDir, 'presets')}" "${path.join(canonClientDir, 'presets')}" /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:0 /W:0`, { stdio: 'ignore', timeout: 15000 });
+                }
+            } catch (e) {}
+        }
+        if (!fs.existsSync(path.join(canonClientDir, 'Launch_Pipeta.bat'))) {
+            localDir = currentRootDir;
+        }
+    }
+
     const batName = fs.existsSync(path.join(localDir, 'Launch_Pipeta.bat')) ? 'Launch_Pipeta.bat' : 'Iniciar_Pipeta.bat';
     const batPath = path.join(localDir, batName);
     const icoPath = path.join(localDir, 'Pipeta.ico');
 
+    if (!fs.existsSync(icoPath)) {
+        const fallbackIco = [
+            path.join(currentRootDir, 'Pipeta.ico'),
+            path.join(localDir, 'ui', 'favicon.ico'),
+            path.join(currentRootDir, 'ui', 'favicon.ico')
+        ].find(p => fs.existsSync(p));
+        if (fallbackIco) {
+            try { fs.copySync(fallbackIco, icoPath, { overwrite: true }); } catch (e) {}
+        }
+    }
+
+    const psBat = batPath.replace(/'/g, "''");
+    const psDir = localDir.replace(/'/g, "''");
+    const psIco = icoPath.replace(/'/g, "''");
+
     const psScript = `
-$ws = New-Object -ComObject WScript.Shell
+$bat = '${psBat}'
+$dir = '${psDir}'
+$ico = '${psIco}'
+try { Unblock-File -LiteralPath $bat -ErrorAction SilentlyContinue } catch {}
+if (Test-Path -LiteralPath $ico) {
+    try { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue } catch {}
+}
 $desktop = [Environment]::GetFolderPath('Desktop')
 $lnkPath = [System.IO.Path]::Combine($desktop, 'Pipeta.lnk')
+if (Test-Path -LiteralPath $lnkPath) {
+    Remove-Item -LiteralPath $lnkPath -Force -ErrorAction SilentlyContinue
+}
+$ws = New-Object -ComObject WScript.Shell
 $s = $ws.CreateShortcut($lnkPath)
-$s.TargetPath = '${batPath.replace(/\\/g, '\\\\')}'
-$s.WorkingDirectory = '${localDir.replace(/\\/g, '\\\\')}'
-$ico = '${icoPath.replace(/\\/g, '\\\\')}'
-if (Test-Path $ico) {
-    $s.IconLocation = $ico
+$s.TargetPath = $bat
+$s.WorkingDirectory = $dir
+if (Test-Path -LiteralPath $ico) {
+    $s.IconLocation = "$ico,0"
 }
 $s.Description = 'Pipeta - VFX Pipeline & IA Ingest Manager'
 $s.Save()
+Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue
 Write-Output "SHORTCUT_CREATED"
 `;
 

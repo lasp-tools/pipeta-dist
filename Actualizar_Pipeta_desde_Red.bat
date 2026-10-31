@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 title Sincronizar Pipeta (Local / Remoto)
 
-set "APP_VERSION=v1.1.85"
+set "APP_VERSION=v1.1.86"
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
 :: 1. Deteccion de destino si se paso por parametro o si se ejecuta desde destino instalado
@@ -248,11 +248,11 @@ if "!NEED_HYDRATION!"=="1" (
 :FINALIZE_UPDATE
 echo.
 echo Actualizando acceso directo en Escritorio con icono oficial...
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk')); $s.TargetPath = '%DEST%\Launch_Pipeta.bat'; $s.WorkingDirectory = '%DEST%'; $ico = '%DEST%\Pipeta.ico'; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
+powershell -NoProfile -Command "$dest = '%DEST%'; Get-ChildItem -Path $dest -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ico = Join-Path $dest 'Pipeta.ico'; if (Test-Path $ico) { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue }; $lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }; $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = Join-Path $dest 'Launch_Pipeta.bat'; $s.WorkingDirectory = $dest; if (Test-Path $ico) { $s.IconLocation = "$ico,0" }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save(); Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue" 2>nul
 
 echo.
 echo ============================================================
-echo   OK: Pipeta v1.1.85 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.1.86 sincronizada con exito en %DEST%
 echo ============================================================
 echo.
 ping 127.0.0.1 -n 2 >nul
