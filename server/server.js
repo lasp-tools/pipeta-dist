@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.83";
+const VERSION = "v1.1.84";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -2107,7 +2107,7 @@ function sanitizeZombieOrders(force = false) {
                     const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                     if (!content || !content.id) continue;
 
-                    // Si figura como processing pero pertenece a este puesto y no está corriendo en memoria
+                    // 1. Si figura como processing pero pertenece a este puesto y no está corriendo en memoria
                     if (content.status === 'processing') {
                         const isLocalMachine = content.processedBy === myLocalWorkerId || content.workerId === myLocalWorkerId || !content.processedBy;
                         const isRunningInMemory = activeLocalTransfers.has(content.id);
@@ -2125,11 +2125,137 @@ function sanitizeZombieOrders(force = false) {
                             }
                         }
                     }
+
+                    // 2. Si figura como pending pero es residual (más de 3 horas de antigüedad o huérfana de sesión previa)
+                    if (content.status === 'pending') {
+                        const createdAtMs = content.createdAt ? new Date(content.createdAt).getTime() : 0;
+                        const orderTs = parseInt((content.id.match(/_(\d{10,15})_/) || [])[1] || '0', 10);
+                        const effectiveTs = createdAtMs || orderTs;
+                        const ageMs = Date.now() - effectiveTs;
+
+                        if (effectiveTs > 0 && ageMs > 3 * 3600 * 1000) {
+                            content.status = 'cancelled';
+                            content.cancelledAt = new Date().toISOString();
+                            content.cancelledBy = 'system_zombie_cleaner';
+                            content.error = 'Orden pendiente residual expirada (más de 3 horas sin worker)';
+                            content.updatedAt = new Date().toISOString();
+                            try {
+                                fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf8');
+                                console.log(`[ZOMBIE CLEANUP] Orden pendiente residual ${content.id} expirada -> 'cancelled'`);
+                            } catch(writeErr) {
+                                console.warn(`[ZOMBIE CLEANUP] No se pudo actualizar orden ${content.id}:`, writeErr.message);
+                            }
+                        }
+                    }
                 } catch(e){}
             }
         }
     } catch(err) {
         console.warn('[ZOMBIE CLEANUP] Error en sanitizeZombieOrders:', err.message);
+    }
+}
+
+// Helpers para sincronizar y propagar cancelaciones hacia el Servidor Central (especialmente en remoto o sin SMB)
+async function forwardCancelToMasterServer(orderIds, user) {
+    if (!orderIds || !orderIds.length) return;
+    const urls = typeof getPipetaServerCandidateUrls === 'function' ? getPipetaServerCandidateUrls() : [];
+    for (const baseUrl of urls) {
+        for (const oid of orderIds) {
+            try {
+                const url = `${baseUrl.replace(/\/+$/, '')}/api/server/task/${oid}/cancel`;
+                await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-pipeta-token': PIPETA_SERVER_TOKEN
+                    },
+                    body: JSON.stringify({ user: user || 'user' }),
+                    signal: AbortSignal.timeout(2000)
+                });
+            } catch(e) {}
+        }
+    }
+}
+
+async function forwardClearHistoryToMasterServer(user, role) {
+    const urls = typeof getPipetaServerCandidateUrls === 'function' ? getPipetaServerCandidateUrls() : [];
+    for (const baseUrl of urls) {
+        try {
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/server/queue/clear-history`;
+            await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-pipeta-token': PIPETA_SERVER_TOKEN
+                },
+                body: JSON.stringify({ user: user || 'user', role: role || 'user' }),
+                signal: AbortSignal.timeout(2500)
+            });
+        } catch(e) {}
+    }
+}
+
+let lastCentralOrdersSyncTime = 0;
+async function syncOrdersWithCentralMaster() {
+    const urls = typeof getPipetaServerCandidateUrls === 'function' ? getPipetaServerCandidateUrls() : [];
+    for (const baseUrl of urls) {
+        try {
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/server/queue`;
+            const resp = await fetch(url, {
+                headers: { 'x-pipeta-token': PIPETA_SERVER_TOKEN },
+                signal: AbortSignal.timeout(3000)
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && Array.isArray(data.orders)) {
+                    const centralOrderMap = new Map();
+                    data.orders.forEach(o => { if (o && o.id) centralOrderMap.set(o.id, o); });
+
+                    // Revisar órdenes locales de requests
+                    const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
+                    if (fs.existsSync(localReqDir)) {
+                        const files = fs.readdirSync(localReqDir).filter(f => f.endsWith('.json'));
+                        for (const f of files) {
+                            const p = path.join(localReqDir, f);
+                            try {
+                                const localOrder = fs.readJsonSync(p);
+                                if (!localOrder || !localOrder.id) continue;
+
+                                if (centralOrderMap.has(localOrder.id)) {
+                                    const cOrder = centralOrderMap.get(localOrder.id);
+                                    if (cOrder.status && cOrder.status !== localOrder.status) {
+                                        localOrder.status = cOrder.status;
+                                        if (cOrder.progress) localOrder.progress = cOrder.progress;
+                                        localOrder.updatedAt = new Date().toISOString();
+                                        fs.writeJsonSync(p, localOrder, { spaces: 2 });
+                                        ordersFileMemoryCache.delete(p);
+                                    }
+                                } else {
+                                    // Si no figura en central y en local sigue "pending", con más de 25 min de antigüedad:
+                                    // significa que en central ya fue finalizada/eliminada/cancelada
+                                    if (localOrder.status === 'pending') {
+                                        const createdAtMs = localOrder.createdAt ? new Date(localOrder.createdAt).getTime() : 0;
+                                        const orderTs = parseInt((localOrder.id.match(/_(\d{10,15})_/) || [])[1] || '0', 10);
+                                        const ageMs = Date.now() - (createdAtMs || orderTs);
+                                        if (ageMs > 25 * 60 * 1000) {
+                                            localOrder.status = 'cancelled';
+                                            localOrder.cancelledAt = new Date().toISOString();
+                                            localOrder.cancelledBy = 'server_sync_cleanup';
+                                            localOrder.error = 'No encontrada en servidor central (finalizada o eliminada)';
+                                            fs.writeJsonSync(p, localOrder, { spaces: 2 });
+                                            ordersFileMemoryCache.delete(p);
+                                            console.log(`[CENTRAL SYNC] Orden local huérfana ${localOrder.id} saneada -> 'cancelled'`);
+                                        }
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                    ordersResponseCache.time = 0;
+                    break;
+                }
+            }
+        } catch(e) {}
     }
 }
 
@@ -2168,11 +2294,17 @@ let ordersResponseCache = { time: 0, rawOrders: [] };
 
 app.get('/api/sync/orders', (req, res) => {
     try {
-        // Sanear órdenes huérfanas locales solo si corresponde
+        // Sanear órdenes huérfanas locales
         sanitizeZombieOrders(false);
 
-        const { user, role, onlyMyTasks } = req.query;
         const now = Date.now();
+        // Reconciliar con servidor central si estamos en puesto externo o sin SMB
+        if ((global.isExternalMachine || !fs.existsSync('Z:/_SYNC_CACHE')) && (now - lastCentralOrdersSyncTime > 4000)) {
+            lastCentralOrdersSyncTime = now;
+            syncOrdersWithCentralMaster().catch(() => {});
+        }
+
+        const { user, role, onlyMyTasks } = req.query;
         let orders = [];
 
         // Si no hay transferencias locales activas, reutilizar listado durante 1.5s para evitar ráfagas SMB
@@ -2329,7 +2461,77 @@ app.post('/api/sync/orders/cancel', (req, res) => {
         }
 
         console.log(`[SYNC ORDER] Orden ${orderId} marcada como CANCELADA por '${user || 'user'}'`);
+        // Propagar cancelación al servidor central inmediatamente
+        forwardCancelToMasterServer([orderId], user).catch(() => {});
         res.json({ success: true, message: 'Orden cancelada exitosamente', status: 'cancelled' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sync/orders/cancel-all', async (req, res) => {
+    try {
+        const { user, role } = req.body;
+        const isAdmin = role === 'admin' || role === 'administrator' || role === 'superuser' || role === 'lead';
+        const candidateDirs = getAllOrdersCandidateDirs();
+        let cancelledCount = 0;
+        const nowIso = new Date().toISOString();
+        const cancelledIds = [];
+
+        // 1. Abortar transferencias locales activas en memoria
+        for (const [activeId, active] of activeLocalTransfers.entries()) {
+            const orderUser = active.orderData?.user || '';
+            if (isAdmin || !user || orderUser.toLowerCase() === user.toLowerCase() || orderUser === 'artista') {
+                active.isCancelled = true;
+                try { active.abortController.abort(); } catch(e){}
+                cancelledIds.push(activeId);
+            }
+        }
+        for (const cid of cancelledIds) {
+            activeLocalTransfers.delete(cid);
+        }
+
+        // 2. Marcar canceladas y sanear en todos los directorios candidatos locales y de red
+        for (const dir of candidateDirs) {
+            if (!fs.existsSync(dir)) continue;
+            let files = [];
+            try { files = fs.readdirSync(dir).filter(f => f.endsWith('.json')); } catch(e){ continue; }
+            for (const f of files) {
+                const filePath = path.join(dir, f);
+                try {
+                    const orderData = fs.readJsonSync(filePath);
+                    if (!orderData || !orderData.id) continue;
+                    if (orderData.status !== 'pending' && orderData.status !== 'processing') continue;
+
+                    const oUser = (orderData.user || '').toLowerCase();
+                    if (!isAdmin && user && oUser && oUser !== user.toLowerCase() && oUser !== 'artista') {
+                        continue;
+                    }
+
+                    orderData.status = 'cancelled';
+                    orderData.cancelledAt = nowIso;
+                    orderData.cancelledBy = user || 'user';
+                    if (orderData.progress) {
+                        orderData.progress.speedFormatted = 'Cancelado';
+                        orderData.progress.etaSeconds = 0;
+                    }
+                    fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    ordersFileMemoryCache.delete(filePath);
+                    cancelledCount++;
+                    if (!cancelledIds.includes(orderData.id)) {
+                        cancelledIds.push(orderData.id);
+                    }
+                } catch(e){}
+            }
+        }
+
+        ordersResponseCache.time = 0;
+
+        // 3. Replicar la cancelación masiva al Servidor Central
+        forwardCancelToMasterServer(cancelledIds, user).catch(() => {});
+
+        console.log(`[SYNC ORDERS] Cancelación masiva ejecutada por '${user || 'user'}': ${cancelledCount} orden(es) cancelada(s).`);
+        res.json({ success: true, cancelledCount, cancelledIds });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -2363,6 +2565,8 @@ app.post('/api/sync/orders/clear-history', (req, res) => {
         }
         ordersResponseCache.time = 0;
         console.log(`[SYNC ORDER] Historial limpiado: ${clearedCount} órdenes eliminadas por '${user || 'user'}'`);
+        // Replicar limpieza de historial al servidor central
+        forwardClearHistoryToMasterServer(user, role).catch(() => {});
         res.json({ success: true, clearedCount });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

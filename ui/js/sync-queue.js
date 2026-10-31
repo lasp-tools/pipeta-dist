@@ -268,6 +268,38 @@ class SyncQueueUI {
         }
     }
 
+    async cancelAllOrders() {
+        const activeOrders = this.orders.filter(o => o.status === 'processing' || o.status === 'pending');
+        if (activeOrders.length === 0) {
+            alert('No hay órdenes activas o pendientes para cancelar.');
+            return;
+        }
+
+        if (!confirm(`¿Deseas cancelar todas las transferencias activas y pendientes (${activeOrders.length})?\n\nEsta acción abortará cualquier proceso en curso y limpiará la cola tanto en el servidor como localmente.`)) {
+            return;
+        }
+
+        const userInfo = this.getCurrentUser();
+        try {
+            const res = await fetch('/api/sync/orders/cancel-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: userInfo.username, role: userInfo.role })
+            }).then(r => r.json());
+
+            if (res.success) {
+                if (typeof settings !== 'undefined' && settings.showToast) {
+                    settings.showToast(`🛑 ${res.cancelledCount || activeOrders.length} orden(es) cancelada(s)`, 'warn', 3);
+                }
+                this.fetchStatus();
+            } else {
+                alert(res.error || 'No se pudieron cancelar las órdenes');
+            }
+        } catch (e) {
+            alert('Error al cancelar transferencias: ' + e.message);
+        }
+    }
+
     async clearHistory() {
         if (!confirm('¿Deseas limpiar el historial de transferencias finalizadas?')) return;
         const userInfo = this.getCurrentUser();
@@ -616,7 +648,16 @@ class SyncQueueUI {
             return;
         }
 
-        container.innerHTML = activeOrders.map(order => {
+        const actionBarHtml = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:6px 10px; background:#161c24; border:1px solid #232b38; border-radius:6px;">
+                <span style="font-size:0.75rem; color:#aaa;">Mostrando <b>${activeOrders.length}</b> orden(es) en curso o pendientes</span>
+                <button class="tool-btn danger" onclick="window.syncQueueUI.cancelAllOrders()" style="padding:4px 10px; font-size:0.73rem; font-weight:bold; display:inline-flex; align-items:center; gap:5px; background:rgba(244,67,54,0.18); border:1px solid #f44336; color:#ff8a80; border-radius:4px; cursor:pointer;" title="Cancelar y limpiar todas las órdenes activas en servidor y local">
+                    🛑 Cancelar Todo
+                </button>
+            </div>
+        `;
+
+        container.innerHTML = actionBarHtml + activeOrders.map(order => {
             const isProcessing = order.status === 'processing';
             let typeColor = '#00bcd4';
             let typeIcon = '📥';
