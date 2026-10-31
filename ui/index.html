@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.1.82</span>
+                <span class="app-version" id="appVersion">v1.1.83</span>
             </div>
         </div>
 
@@ -563,7 +563,11 @@
                             <div class="ia-token-card ia-token-card-active" id="tokCard_ver">
                                 <button type="button" id="tokBtn_ver" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('ver')">VERSIÓN</button>
                                 <input type="checkbox" id="tokVerToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('ver'); updateIaPreview();">
-                                <input id="tokVerInput" class="prop-input" value="v001" style="padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50; text-align:center;" oninput="updateIaPreview()">
+                                <div style="display:flex; align-items:center; gap:4px; width:100%;">
+                                    <button type="button" class="btn-stepper" onclick="stepIaVersion(-1)" title="Disminuir versión (-)">−</button>
+                                    <input id="tokVerInput" class="prop-input" value="v001" style="flex:1; min-width:0; padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50; text-align:center;" oninput="handleIaVerInput(this.value)">
+                                    <button type="button" class="btn-stepper" onclick="stepIaVersion(1)" title="Aumentar versión (+)">+</button>
+                                </div>
                             </div>
 
                         </div>

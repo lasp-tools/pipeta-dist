@@ -1144,6 +1144,7 @@ async function updateIaResolution() {
         const data = await res.json();
         if (data.iaPath) {
             iaCurrentResolvedIaPath = data.iaPath;
+            window.iaExistingFiles = data.existingFiles || [];
             const pathEl = document.getElementById('iaResolvedPath');
             if (pathEl) pathEl.innerText = data.iaPath;
             if (data.suggestedVersion) {
@@ -1414,6 +1415,8 @@ function getTargetFolderForItem(subfolderKey) {
     return targetFolder;
 }
 
+window.iaExistingFiles = window.iaExistingFiles || [];
+
 function updateIaPreview() {
     let selectedSubfolder = 'root';
     if (iaActiveSubfolders.has('wip')) selectedSubfolder = 'root';
@@ -1422,29 +1425,73 @@ function updateIaPreview() {
 
     const verInputVal = document.getElementById('tokVerInput')?.value.trim() || 'v001';
     const matchVer = verInputVal.match(/v(\d+)/i);
-    const startNum = matchVer ? parseInt(matchVer[1], 10) : iaBaseVersionNum;
+    const startNum = matchVer ? parseInt(matchVer[1], 10) : (iaBaseVersionNum || 1);
 
-    // Agrupador de firmas canónicas: solo incrementa versión si el nombre base + extensión darían un duplicado exacto
-    const signatureCounts = new Map();
+    // Conjunto de rutas ya asignadas en esta tanda
+    const assignedInBatch = new Set();
+
+    // Helper de colisión contra disco y cola activa
+    const checkFileCollision = (targetFolder, subfolderKey, candidateFilename) => {
+        const lowerName = candidateFilename.toLowerCase();
+        const fullBatchKey = (targetFolder + '/' + lowerName).replace(/\\/g, '/').toLowerCase();
+        if (assignedInBatch.has(fullBatchKey)) return true;
+
+        if (window.iaExistingFiles && window.iaExistingFiles.length > 0) {
+            const match = window.iaExistingFiles.some(f => {
+                if (!f.name || f.name.toLowerCase() !== lowerName) return false;
+                if (f.subfolder && f.subfolder.toLowerCase() === subfolderKey.toLowerCase()) return true;
+                if (f.fullPath && f.fullPath.toLowerCase() === fullBatchKey) return true;
+                const normTarget = targetFolder.replace(/\\/g, '/').toLowerCase();
+                if (f.subfolder && f.subfolder !== 'root' && normTarget.endsWith('/' + f.subfolder.toLowerCase())) return true;
+                if (!f.subfolder || f.subfolder === 'root') {
+                    if (normTarget.endsWith('/ia')) return true;
+                }
+                return false;
+            });
+            if (match) return true;
+        }
+        return false;
+    };
 
     iaBatchQueue.forEach((item) => {
         if (!item.subfolder) item.subfolder = selectedSubfolder;
-        
+        item.targetFolder = getTargetFolderForItem(item.subfolder);
+        const ext = item.ext || '.mp4';
+
         // Obtener tokens base sin versión
         const baseRes = getIaTokenValues(item, 'v000');
-        const ext = (item.ext || '').toLowerCase();
-        const signature = `${baseRes.prefixBase}__${ext}`;
+        const prefixBase = baseRes.prefixBase;
 
-        const count = signatureCounts.get(signature) || 0;
-        signatureCounts.set(signature, count + 1);
+        let finalVerNum;
+        let isCollision = false;
 
-        const itemVerNum = startNum + count;
-        const itemVerStr = item.version || ('v' + String(itemVerNum).padStart(3, '0'));
+        if (item.version) {
+            // Override manual de versión fijado en este ítem
+            const match = item.version.match(/v?(\d+)/i);
+            finalVerNum = match ? parseInt(match[1], 10) : startNum;
+            const testName = prefixBase + '_v' + String(finalVerNum).padStart(3, '0') + ext;
+            isCollision = checkFileCollision(item.targetFolder, item.subfolder, testName);
+        } else {
+            // Auto-resolución de versión: detectar si ya existe un archivo idéntico en disco y continuar a partir de ahí
+            let candidateNum = startNum;
+            let candidateName = prefixBase + '_v' + String(candidateNum).padStart(3, '0') + ext;
 
+            while (checkFileCollision(item.targetFolder, item.subfolder, candidateName)) {
+                candidateNum++;
+                candidateName = prefixBase + '_v' + String(candidateNum).padStart(3, '0') + ext;
+            }
+
+            finalVerNum = candidateNum;
+        }
+
+        const itemVerStr = 'v' + String(finalVerNum).padStart(3, '0');
+        item.canonicalVer = itemVerStr;
         const tokenRes = getIaTokenValues(item, itemVerStr);
-        item.canonicalName = tokenRes.canonicalBase + (item.ext || '.mp4');
-        item.targetFolder = getTargetFolderForItem(item.subfolder);
+        item.canonicalName = tokenRes.canonicalBase + ext;
         item.targetPath = (item.targetFolder + '/' + item.canonicalName).replace(/\\/g, '/');
+        item.hasCollision = isCollision;
+
+        assignedInBatch.add(item.targetPath.toLowerCase());
     });
 
     renderIaBatchTable();
@@ -1457,12 +1504,30 @@ function updateIaPreview() {
     if (activeItem) {
         if (canonicalDisplay) canonicalDisplay.innerText = activeItem.canonicalName;
         if (pathDisplay) pathDisplay.innerText = `Ruta: ${activeItem.targetPath}`;
+
+        // Sincronizar input de versión con el ítem activo si el usuario no lo está editando
+        const verInput = document.getElementById('tokVerInput');
+        if (verInput && document.activeElement !== verInput && !iaSelectedIds.size) {
+            verInput.value = activeItem.canonicalVer || activeItem.version || 'v001';
+        }
     } else {
-        const singleTokens = getIaTokenValues(null, 'v001');
+        let singleVerNum = iaBaseVersionNum || 1;
+        const testBase = getIaTokenValues(null, 'v000').prefixBase;
         const defaultFolder = getTargetFolderForItem(selectedSubfolder);
+        let testName = testBase + '_v' + String(singleVerNum).padStart(3, '0') + '.mp4';
+        while (checkFileCollision(defaultFolder, selectedSubfolder, testName)) {
+            singleVerNum++;
+            testName = testBase + '_v' + String(singleVerNum).padStart(3, '0') + '.mp4';
+        }
+        const singleVerStr = 'v' + String(singleVerNum).padStart(3, '0');
+        const singleTokens = getIaTokenValues(null, singleVerStr);
         const defaultName = singleTokens.canonicalBase + '.mp4';
         if (canonicalDisplay) canonicalDisplay.innerText = defaultName;
         if (pathDisplay) pathDisplay.innerText = `Ruta: ${(defaultFolder + '/' + defaultName).replace(/\\/g, '/')}`;
+        const verInput = document.getElementById('tokVerInput');
+        if (verInput && document.activeElement !== verInput) {
+            verInput.value = singleVerStr;
+        }
     }
 
     // Actualizar el visualizador multimedia (Imagen / Video MP4)
@@ -2073,6 +2138,9 @@ function renderIaBatchTable() {
             `;
         } else {
             newNameColHtml = `<span style="font-family:monospace; color:var(--accent); font-weight:bold;">${escapeHtml(item.canonicalName || '-')}</span>`;
+            if (item.hasCollision) {
+                newNameColHtml += ` <span style="background:rgba(244,67,54,0.2); color:#f44336; border:1px solid #f44336; border-radius:3px; padding:1px 4px; font-size:0.68rem; margin-left:4px;" title="Atención: Ya existe un archivo idéntico en disco. Se sobrescribirá al ingestar.">⚠️ Sobrescribe</span>`;
+            }
         }
 
         const originFolder = getOriginFolderOnly(item);
@@ -2470,17 +2538,58 @@ function handleIaTagCCustomChange(val) {
     updateIaPreview();
 }
 
-function handleIaVerInputChange(val) {
+function handleIaVerInput(val) {
+    const match = val.match(/v?(\d+)/i);
+    if (match) {
+        iaBaseVersionNum = Math.max(1, parseInt(match[1], 10));
+    }
     const targets = iaSelectedIds.size > 0 
         ? iaBatchQueue.filter(i => iaSelectedIds.has(i.id))
-        : iaBatchQueue.filter(i => i.checked);
+        : [];
 
     targets.forEach(item => {
         item.version = val.trim();
     });
 
+    if (iaSelectedIds.size === 0) {
+        iaBatchQueue.forEach(item => {
+            delete item.version;
+        });
+    }
+
     updateIaPreview();
 }
+
+function handleIaVerInputChange(val) {
+    handleIaVerInput(val);
+}
+
+function stepIaVersion(delta) {
+    const verInput = document.getElementById('tokVerInput');
+    const currentVal = verInput ? verInput.value.trim() : 'v001';
+    const match = currentVal.match(/v?(\d+)/i);
+    let curNum = match ? parseInt(match[1], 10) : (iaBaseVersionNum || 1);
+    let newNum = Math.max(1, curNum + delta);
+    const newVerStr = 'v' + String(newNum).padStart(3, '0');
+    if (verInput) verInput.value = newVerStr;
+    iaBaseVersionNum = newNum;
+
+    if (iaSelectedIds.size > 0) {
+        iaBatchQueue.filter(i => iaSelectedIds.has(i.id)).forEach(item => {
+            item.version = newVerStr;
+        });
+    } else {
+        iaBatchQueue.forEach(item => {
+            delete item.version;
+        });
+    }
+
+    updateIaPreview();
+}
+
+window.stepIaVersion = stepIaVersion;
+window.handleIaVerInput = handleIaVerInput;
+window.handleIaVerInputChange = handleIaVerInputChange;
 
 function iaToggleBatchItemCheck(id, checked) {
     const item = iaBatchQueue.find(i => i.id === id);

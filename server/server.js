@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.82";
+const VERSION = "v1.1.83";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -5425,18 +5425,40 @@ app.get('/api/ia/resolve-shot', (req, res) => {
 
     let nextVersion = 'v001';
     let maxVer = 0;
+    const existingFiles = [];
     if (fs.existsSync(resolvedIaPath)) {
         try {
-            const files = fs.readdirSync(resolvedIaPath);
-            files.forEach(f => {
-                const match = f.match(/_v(\d{3,4})\./i);
-                if (match) {
-                    const verNum = parseInt(match[1], 10);
-                    if (verNum > maxVer) maxVer = verNum;
+            const scanDir = (dir, sub = '') => {
+                if (!fs.existsSync(dir)) return;
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const fullP = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        if (!sub) {
+                            scanDir(fullP, entry.name);
+                        }
+                    } else {
+                        const filename = entry.name;
+                        const match = filename.match(/_v(\d{3,4})\./i);
+                        let verNum = 0;
+                        if (match) {
+                            verNum = parseInt(match[1], 10);
+                            if (verNum > maxVer) maxVer = verNum;
+                        }
+                        existingFiles.push({
+                            name: filename,
+                            subfolder: sub || 'root',
+                            fullPath: fullP.replace(/\\/g, '/'),
+                            version: verNum
+                        });
+                    }
                 }
-            });
+            };
+            scanDir(resolvedIaPath, '');
             nextVersion = 'v' + String(maxVer + 1).padStart(3, '0');
-        } catch(e){}
+        } catch(e){
+            console.error('[IA RESOLVE-SHOT] Error scanning IA directory:', e);
+        }
     }
 
     res.json({
@@ -5447,8 +5469,32 @@ app.get('/api/ia/resolve-shot', (req, res) => {
         shotNum,
         iaPath: resolvedIaPath,
         exists: fs.existsSync(resolvedIaPath),
-        suggestedVersion: nextVersion
+        maxVersion: maxVer,
+        suggestedVersion: nextVersion,
+        existingFiles: existingFiles
     });
+});
+
+app.post('/api/ia/check-collision', (req, res) => {
+    try {
+        const { targets } = req.body;
+        if (!Array.isArray(targets)) {
+            return res.status(400).json({ error: 'targets array required' });
+        }
+        const results = targets.map(t => {
+            const fullPath = path.join(t.targetFolder || '', t.filename || '');
+            return {
+                id: t.id,
+                filename: t.filename,
+                targetFolder: t.targetFolder,
+                fullPath: fullPath.replace(/\\/g, '/'),
+                exists: fs.existsSync(fullPath)
+            };
+        });
+        res.json({ results });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.post('/api/ia/ingest', (req, res) => {

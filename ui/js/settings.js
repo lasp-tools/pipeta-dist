@@ -3018,7 +3018,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.82'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.83'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3049,11 +3049,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.82'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.83'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.82'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.83'}.zip</code>).
                             </div>
                         </div>
 
@@ -3094,7 +3094,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.82'}
+                            ${window.APP_VERSION || 'v1.1.83'}
                         </span>
                     </h3>
 
@@ -3106,10 +3106,18 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.82 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.83 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
-                                    <li><b>Autenticación Remota de Ramón vía Túnel Central:</b> Los puestos externos y freelance se autentican con Ramón (TACTIC) y consultan tareas a través del túnel seguro de Pipeta Server sin requerir conexión VPN ni acceso directo a la IP local del estudio.</li>
-                                    <li><b>Puente Híbrido WAN/LAN:</b> En el estudio conecta localmente por Python, y en remoto o ante caídas conmuta de forma transparente al puente seguro central.</li>
+                                    <li><b>IA Ingest - Detección de Colisión y Auto-Versionado:</b> Escaneo completo y recursivo del árbol de IA del plano (raíz, <code>export/</code>, <code>ref/</code>, <code>enc/</code>, <code>wip/</code>). Si ya existe un archivo con nombre idéntico al que se va a generar, Pipeta detecta la colisión y continúa automáticamente a partir de la siguiente versión libre (ej: <code>v002</code>, <code>v003</code>...).</li>
+                                    <li><b>Botones Rápidos de Versión (+ / -):</b> Controles táctiles integrados junto al campo de versión para aumentar o disminuir la versión con un clic rápido sin necesidad de editar texto manualmente.</li>
+                                    <li><b>Prevención de Sobrescritura en Lote:</b> Asignación secuencial sin colisiones para tandas múltiples de archivos y advertencia visual <code>⚠️ Sobrescribe</code> si se fuerza una versión preexistente.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.82</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#888;">
+                                    <li>Autenticación Remota de Ramón vía Túnel Central para puestos externos y freelance.</li>
+                                    <li>Puente Híbrido WAN/LAN y timestamps de hora en consola.</li>
                                 </ul>
                             </div>
                             <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
@@ -4165,8 +4173,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.82'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.82'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.83'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.83'}.zip`;
 
         if (btn) {
             btn.disabled = true;
