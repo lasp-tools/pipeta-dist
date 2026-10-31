@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.84";
+const VERSION = "v1.1.85";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -479,137 +479,139 @@ function getPipetaServerCandidateUrls() {
     const list = [];
     if (!global.isExternalMachine) {
         list.push('http://192.168.206.121:3005');
+        if (process.env.PIPETA_SERVER_URL) {
+            list.push(process.env.PIPETA_SERVER_URL);
+        }
+        return [...new Set(list)];
     }
     if (process.env.PIPETA_SERVER_URL) {
         list.push(process.env.PIPETA_SERVER_URL);
     }
-    list.push('https://piano-exclusively-function-michael.trycloudflare.com');
     list.push('https://pipeta.lasp.co');
-    if (global.isExternalMachine) {
-        list.push('http://192.168.206.121:3005');
-    }
     return [...new Set(list)];
 }
 
 let lastConfigSyncTimestamp = 0;
+let configSyncInFlight = null;
 
-async function syncConfigsFromMasterNetwork() {
-    console.log('[CONFIG SYNC] ⚙️ Sincronizando presets, proyectos y permisos desde el servidor maestro...');
-    const localPresets = path.join(__dirname, '../presets');
-    const zPresets = 'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets';
-    const sPresets = 'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets';
-    fs.ensureDirSync(localPresets);
+async function syncConfigsFromMasterNetwork(options = {}) {
+    const force = !!(options && options.force);
+    if (!force && lastConfigSyncTimestamp > 0 && (Date.now() - lastConfigSyncTimestamp < 15000)) {
+        return true;
+    }
+    if (configSyncInFlight) {
+        return configSyncInFlight;
+    }
 
-    let bundleDownloaded = false;
-    // 1. Intentar descargar el bundle maestro por HTTP desde Pipeta Server (LAN o WAN/Cloudflare)
-    for (const baseUrl of getPipetaServerCandidateUrls()) {
-        const url = `${baseUrl.replace(/\/+$/, '')}/api/server/presets/bundle`;
+    configSyncInFlight = (async () => {
         try {
-            const resp = await fetch(url, {
-                headers: { 'x-pipeta-token': PIPETA_SERVER_TOKEN },
-                signal: AbortSignal.timeout(3500)
-            });
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data && data.success && data.bundle) {
-                    const b = data.bundle;
-                    const targetDirs = [localPresets];
-                    if (fs.existsSync('Z:\\INTERNO\\TOOLS')) targetDirs.push(zPresets);
-                    if (fs.existsSync('S:\\INTERNO\\TOOLS')) targetDirs.push(sPresets);
+            console.log('[CONFIG SYNC] ⚙️ Sincronizando presets, proyectos y permisos desde el servidor maestro...');
+            const localPresets = path.join(__dirname, '../presets');
+            await fs.ensureDir(localPresets);
 
-                    for (const td of targetDirs) {
-                        try {
-                            fs.ensureDirSync(td);
-                            if (b['pipeline_config.json']) fs.writeJsonSync(path.join(td, 'pipeline_config.json'), b['pipeline_config.json'], { spaces: 2 });
-                            if (b['status_config.json']) fs.writeJsonSync(path.join(td, 'status_config.json'), b['status_config.json'], { spaces: 2 });
-                            if (b['users_config.json']) {
-                                const targetUsersFile = path.join(td, 'users_config.json');
-                                const existingCfg = fs.existsSync(targetUsersFile) ? fs.readJsonSync(targetUsersFile) : { users: [], activeUser: '' };
-                                const existingUsers = Array.isArray(existingCfg.users) ? existingCfg.users : [];
-                                const serverUsers = Array.isArray(b['users_config.json'].users) ? b['users_config.json'].users : [];
-                                const merged = { ...b['users_config.json'] };
-                                if (global.isExternalMachine) {
-                                    merged.activeUser = existingCfg.activeUser || '';
-                                    merged.users = existingUsers
-                                        .filter(u => !u.isSystem && u.username !== 'admin')
-                                        .map(localU => {
-                                            const loginKey = String(localU.laspUser || localU.username || '').toLowerCase();
-                                            const srvMatch = serverUsers.find(su =>
-                                                !su.isSystem && (
-                                                    String(su.laspUser || '').toLowerCase() === loginKey ||
-                                                    String(su.username || '').toLowerCase() === loginKey
-                                                )
-                                            );
-                                            if (srvMatch) {
-                                                return {
-                                                    ...localU,
-                                                    role: srvMatch.role || localU.role,
-                                                    permissionOverrides: srvMatch.permissionOverrides || {},
-                                                    maxConcurrentDownloadsOverride: srvMatch.maxConcurrentDownloadsOverride !== undefined
-                                                        ? srvMatch.maxConcurrentDownloadsOverride
-                                                        : localU.maxConcurrentDownloadsOverride
-                                                };
-                                            }
-                                            return localU;
-                                        });
+            let bundleDownloaded = false;
+            const timeoutMs = global.isExternalMachine ? 4000 : 2000;
+            // 1. Intentar descargar el bundle maestro por HTTP desde Pipeta Server (LAN en estudio, WAN en remoto)
+            for (const baseUrl of getPipetaServerCandidateUrls()) {
+                const url = `${baseUrl.replace(/\/+$/, '')}/api/server/presets/bundle`;
+                try {
+                    const resp = await fetch(url, {
+                        headers: { 'x-pipeta-token': PIPETA_SERVER_TOKEN },
+                        signal: AbortSignal.timeout(timeoutMs)
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data && data.success && data.bundle) {
+                            const b = data.bundle;
+                            try {
+                                await fs.ensureDir(localPresets);
+                                if (b['pipeline_config.json']) await fs.writeJson(path.join(localPresets, 'pipeline_config.json'), b['pipeline_config.json'], { spaces: 2 });
+                                if (b['status_config.json']) await fs.writeJson(path.join(localPresets, 'status_config.json'), b['status_config.json'], { spaces: 2 });
+                                if (b['users_config.json']) {
+                                    const targetUsersFile = path.join(localPresets, 'users_config.json');
+                                    const existingCfg = (await fs.pathExists(targetUsersFile)) ? await fs.readJson(targetUsersFile) : { users: [], activeUser: '' };
+                                    const existingUsers = Array.isArray(existingCfg.users) ? existingCfg.users : [];
+                                    const serverUsers = Array.isArray(b['users_config.json'].users) ? b['users_config.json'].users : [];
+                                    const merged = { ...b['users_config.json'] };
+                                    if (global.isExternalMachine) {
+                                        merged.activeUser = existingCfg.activeUser || '';
+                                        merged.users = existingUsers
+                                            .filter(u => !u.isSystem && u.username !== 'admin')
+                                            .map(localU => {
+                                                const loginKey = String(localU.laspUser || localU.username || '').toLowerCase();
+                                                const srvMatch = serverUsers.find(su =>
+                                                    !su.isSystem && (
+                                                        String(su.laspUser || '').toLowerCase() === loginKey ||
+                                                        String(su.username || '').toLowerCase() === loginKey
+                                                    )
+                                                );
+                                                if (srvMatch) {
+                                                    return {
+                                                        ...localU,
+                                                        role: srvMatch.role || localU.role,
+                                                        permissionOverrides: srvMatch.permissionOverrides || {},
+                                                        maxConcurrentDownloadsOverride: srvMatch.maxConcurrentDownloadsOverride !== undefined
+                                                            ? srvMatch.maxConcurrentDownloadsOverride
+                                                            : localU.maxConcurrentDownloadsOverride
+                                                    };
+                                                }
+                                                return localU;
+                                            });
+                                    }
+                                    await fs.writeJson(targetUsersFile, merged, { spaces: 2 });
                                 }
-                                fs.writeJsonSync(targetUsersFile, merged, { spaces: 2 });
-                            }
-                            if (b['Projects']) {
-                                const ptd = path.join(td, 'Projects');
-                                fs.ensureDirSync(ptd);
-                                for (const [pfn, pcontent] of Object.entries(b['Projects'])) {
-                                    fs.writeJsonSync(path.join(ptd, pfn), pcontent, { spaces: 2 });
+                                if (b['Projects']) {
+                                    const ptd = path.join(localPresets, 'Projects');
+                                    await fs.ensureDir(ptd);
+                                    for (const [pfn, pcontent] of Object.entries(b['Projects'])) {
+                                        await fs.writeJson(path.join(ptd, pfn), pcontent, { spaces: 2 });
+                                    }
                                 }
+                            } catch(dErr) {}
+                            bundleDownloaded = true;
+                            if (url.startsWith('https://') && cachedEnvState) {
+                                cachedEnvState.hasInternet = true;
                             }
-                        } catch(dErr) {}
+                            console.log(`[CONFIG SYNC] ✅ Configuraciones maestras sincronizadas por HTTP desde ${url}`);
+                            break;
+                        }
                     }
-                    bundleDownloaded = true;
-                    if (url.startsWith('https://') && cachedEnvState) {
-                        cachedEnvState.hasInternet = true;
+                } catch(httpErr) {}
+            }
+
+            // 2. Si no se pudo por HTTP y estamos en red local, usar fallback mediante Robocopy desde S:/Z:
+            if (!bundleDownloaded && !global.isExternalMachine) {
+                const candidateMasterDirs = [
+                    'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
+                    'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
+                    '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets'
+                ];
+
+                let foundMaster = null;
+                for (const d of candidateMasterDirs) {
+                    if (await fs.pathExists(path.join(d, 'users_config.json'))) {
+                        foundMaster = d;
+                        break;
                     }
-                    console.log(`[CONFIG SYNC] ✅ Configuraciones maestras sincronizadas por HTTP desde ${url}`);
-                    break;
+                }
+
+                if (foundMaster && foundMaster.toLowerCase() !== localPresets.toLowerCase()) {
+                    try {
+                        const { execSync } = require('child_process');
+                        execSync(`robocopy "${foundMaster}" "${localPresets}" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS`, { timeout: 15000 });
+                        console.log(`[CONFIG SYNC] ✅ Presets y configuraciones actualizados desde ${foundMaster}`);
+                    } catch(e) {}
                 }
             }
-        } catch(httpErr) {}
-    }
 
-    // 2. Si no se pudo por HTTP, usar fallback mediante Robocopy desde S:/Z:
-    if (!bundleDownloaded) {
-        const candidateMasterDirs = [
-            'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
-            'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets',
-            '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets'
-        ];
-
-        let foundMaster = null;
-        for (const d of candidateMasterDirs) {
-            if (fs.existsSync(path.join(d, 'users_config.json'))) {
-                foundMaster = d;
-                break;
-            }
+            lastConfigSyncTimestamp = Date.now();
+            return true;
+        } finally {
+            configSyncInFlight = null;
         }
+    })();
 
-        if (foundMaster && foundMaster.toLowerCase() !== localPresets.toLowerCase()) {
-            try {
-                const { execSync } = require('child_process');
-                execSync(`robocopy "${foundMaster}" "${localPresets}" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS`, { timeout: 15000 });
-                console.log(`[CONFIG SYNC] ✅ Presets y configuraciones actualizados desde ${foundMaster}`);
-            } catch(e) {}
-        }
-    }
-
-    // 3. Sincronizar catálogo modular de proyectos si el módulo está disponible
-    try {
-        if (catalogGenerator && typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
-            catalogGenerator.syncLocalCacheFromNetwork(null);
-            console.log('[CONFIG SYNC] ✅ Catálogos de proyectos sincronizados.');
-        }
-    } catch(e) {}
-
-    lastConfigSyncTimestamp = Date.now();
-    return true;
+    return configSyncInFlight;
 }
 
 async function sendClientTelemetryPing() {
@@ -824,7 +826,7 @@ async function runEnvironmentDetection() {
         hasInternet = await Promise.any([
             probeHttps('https://1.1.1.1/cdn-cgi/trace'),
             probeHttps('https://www.gstatic.com/generate_204'),
-            probeHttps('https://piano-exclusively-function-michael.trycloudflare.com/api/auth/check')
+            probeHttps('https://pipeta.lasp.co/api/health')
         ]);
     } catch (e) {
         hasInternet = false;
@@ -6600,29 +6602,30 @@ function startListening(retries = 10) {
 
         syncConfigsFromMasterNetwork().catch(() => {});
 
-        // Sincronizar catálogo desde la red al disco local SSD al iniciar (solo del último proyecto activo)
-        if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+        // Sincronizar catálogo desde la red al SSD local en segundo plano asíncrono (sin bloquear el arranque ni la UI)
+        setTimeout(async () => {
             try {
                 let lastProj = null;
                 const localFile = path.join(getLocalSyncCacheDir(), 'last_project.json');
-                const netFile = 'Z:/_SYNC_CACHE/last_project.json';
-                const target = fs.existsSync(localFile) ? localFile : (fs.existsSync(netFile) ? netFile : null);
-                if (target) {
+                if (await fs.pathExists(localFile)) {
                     try {
-                        const lpData = fs.readJsonSync(target);
+                        const lpData = await fs.readJson(localFile);
+                        lastProj = lpData.projectName || lpData.project || null;
+                    } catch(e) {}
+                } else if (!global.isExternalMachine && await fs.pathExists('Z:/_SYNC_CACHE/last_project.json')) {
+                    try {
+                        const lpData = await fs.readJson('Z:/_SYNC_CACHE/last_project.json');
                         lastProj = lpData.projectName || lpData.project || null;
                     } catch(e) {}
                 }
 
-                if (lastProj) {
-                    console.log(`[BOOT] Sincronizando catálogo modular del último proyecto activo: ${lastProj}`);
-                    catalogGenerator.syncLocalCacheFromNetwork(lastProj);
-                } else {
-                    console.log(`[BOOT] No hay último proyecto guardado. Esperando selección en UI para sincronizar.`);
-                    catalogGenerator.syncLocalCacheFromNetwork(null);
+                if (typeof catalogGenerator.syncLocalCacheFromNetworkAsync === 'function') {
+                    await catalogGenerator.syncLocalCacheFromNetworkAsync(lastProj || null);
+                } else if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+                    catalogGenerator.syncLocalCacheFromNetwork(lastProj || null);
                 }
             } catch(e) {}
-        }
+        }, 3500);
 
         // Apertura fiable de navegador en arranque de Pipeta
         setTimeout(async () => {

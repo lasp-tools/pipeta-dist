@@ -82,15 +82,17 @@ const Ramon = {
             Ramon.applySessionToHeader();
             Ramon.notifyTelemetryActiveUser();
 
-            // Sincronización silenciosa en segundo plano de configuraciones maestras y permisos
-            fetch('/api/app/sync-configs', { method: 'POST' }).then(async () => {
-                if (typeof settings !== 'undefined' && typeof settings.loadUsersConfig === 'function') {
-                    await settings.loadUsersConfig();
-                }
-                if (typeof applyRolePermissionsToUI === 'function') {
-                    applyRolePermissionsToUI();
-                }
-            }).catch(() => {});
+            // Sincronización silenciosa diferida para no competir con la carga inicial del Explorer
+            setTimeout(() => {
+                fetch('/api/app/sync-configs', { method: 'POST' }).then(async () => {
+                    if (typeof settings !== 'undefined' && typeof settings.loadUsersConfig === 'function') {
+                        await settings.loadUsersConfig();
+                    }
+                    if (typeof applyRolePermissionsToUI === 'function') {
+                        applyRolePermissionsToUI();
+                    }
+                }).catch(() => {});
+            }, 2500);
 
             // Restaurar tareas cacheadas desde sessionStorage si existen
             try {

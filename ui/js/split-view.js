@@ -377,6 +377,87 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
 
     return decorated;
 }
+function expandSavedChildrenInBackground(container, level, totalItemsCount, token = null) {
+    const tasks = [];
+    const assignedSet = (window.explorerOnlyMyTasks && typeof window.getExplorerAssignedTaskNames === 'function')
+        ? window.getExplorerAssignedTaskNames()
+        : new Set();
+
+    for (const node of Array.from(container.children)) {
+        const item = node._item;
+        if (item && item.isDirectory) {
+            const normPath = (item.path || '').replace(/\\/g, '/').toLowerCase();
+            const nameLower = (item.name || '').toLowerCase();
+            const isTargetTask = assignedSet.has(nameLower);
+            const shouldAutoExpand = window.explorerOnlyMyTasks && !isTargetTask && totalItemsCount <= 2;
+            if (isPathExpanded(normPath) || shouldAutoExpand) {
+                const rowEl = node._row || node.querySelector('.tree-node');
+                if (rowEl) {
+                    tasks.push(toggleNode(node, item, level, rowEl));
+                }
+            }
+        }
+    }
+    if (tasks.length > 0) {
+        Promise.all(tasks).catch(() => {});
+    }
+}
+
+async function applyBackgroundSyncDecoration({ container, containerId, dirPath, allDiskItems, level = 0, token = null }) {
+    try {
+        const decoratedItems = await getDecoratedTreeItems(dirPath, allDiskItems, allDiskItems);
+        if ((token && token !== window.activeBrowserRenderToken) || !container || !container.isConnected) return;
+
+        const filteredItems = (typeof window.filterExplorerItems === 'function')
+            ? window.filterExplorerItems(decoratedItems, containerId, dirPath, allDiskItems)
+            : decoratedItems;
+        const finalItems = (typeof collapseImageSequences === 'function')
+            ? collapseImageSequences(filteredItems)
+            : filteredItems;
+
+        const existingMap = new Map();
+        for (const el of Array.from(container.children)) {
+            if (el && el.classList && el.classList.contains('node-wrapper') && el._item) {
+                existingMap.set((el._item.name || '').toLowerCase(), el);
+            }
+        }
+
+        let prevNode = null;
+        for (const decItem of finalItems) {
+            const key = (decItem.name || '').toLowerCase();
+            const existingWrapper = existingMap.get(key);
+            if (existingWrapper) {
+                Object.assign(existingWrapper._item, decItem);
+                const row = existingWrapper._row || existingWrapper.querySelector('.tree-node');
+                if (row && typeof renderRowSyncBadges === 'function') {
+                    renderRowSyncBadges(row, existingWrapper._item);
+                }
+                prevNode = existingWrapper;
+            } else if (decItem.isGhost) {
+                const ghostWrapper = createTreeNode(decItem, level, containerId);
+                if (prevNode && prevNode.nextSibling) {
+                    container.insertBefore(ghostWrapper, prevNode.nextSibling);
+                } else if (!prevNode && container.firstChild) {
+                    container.insertBefore(ghostWrapper, container.firstChild);
+                } else {
+                    container.appendChild(ghostWrapper);
+                }
+                prevNode = ghostWrapper;
+
+                if (decItem.isDirectory) {
+                    const normGhostPath = (decItem.path || '').replace(/\\/g, '/').toLowerCase();
+                    if (isPathExpanded(normGhostPath)) {
+                        const gRow = ghostWrapper._row || ghostWrapper.querySelector('.tree-node');
+                        if (gRow) toggleNode(ghostWrapper, decItem, level, gRow).catch(() => {});
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[EXPLORER] Error decorando sincronización en segundo plano:', e);
+    }
+}
+
 async function loadRootTree(rootPath, containerId, token = null) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -390,6 +471,38 @@ async function loadRootTree(rootPath, containerId, token = null) {
 
         if (!data.error) {
             const allDiskItems = data.items || [];
+            const mode = window.viewLocationMode || 'local';
+            const compMode = window.syncComparisonMode || 'off';
+            const canDeferSyncDecoration = (mode === 'local' && (compMode === 'drive' || compMode === 'server') && allDiskItems.length > 0);
+
+            if (canDeferSyncDecoration) {
+                const localCopies = allDiskItems.map(i => ({ ...i }));
+                const quickFiltered = (typeof window.filterExplorerItems === 'function')
+                    ? window.filterExplorerItems(localCopies, containerId, rootPath, allDiskItems)
+                    : localCopies;
+                const quickFinal = (typeof collapseImageSequences === 'function')
+                    ? collapseImageSequences(quickFiltered)
+                    : quickFiltered;
+
+                if (quickFinal.length > 0) {
+                    quickFinal.sort((a, b) => {
+                        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+                        return a.isDirectory ? -1 : 1;
+                    });
+                    container.innerHTML = "";
+                    const fragment = document.createDocumentFragment();
+                    for (const item of quickFinal) {
+                        fragment.appendChild(createTreeNode(item, 0, containerId));
+                    }
+                    container.appendChild(fragment);
+
+                    // Expandir carpetas recordadas y decorar comparación en segundo plano sin bloquear el overlay inicial
+                    expandSavedChildrenInBackground(container, 0, quickFinal.length, token);
+                    applyBackgroundSyncDecoration({ container, containerId, dirPath: rootPath, allDiskItems, level: 0, token });
+                    return;
+                }
+            }
+
             const decoratedItems = await getDecoratedTreeItems(rootPath, allDiskItems, allDiskItems);
             if (token && token !== window.activeBrowserRenderToken) return;
 
@@ -404,8 +517,6 @@ async function loadRootTree(rootPath, containerId, token = null) {
             container.innerHTML = "";
 
             if (finalItems.length === 0) {
-                const mode = window.viewLocationMode || 'local';
-                const compMode = window.syncComparisonMode || 'off';
                 const curProj = (typeof settings !== 'undefined') ? settings.currentProject : null;
                 const projName = curProj?.name || curProj?.id || 'surf_love';
 
@@ -471,17 +582,7 @@ async function loadRootTree(rootPath, containerId, token = null) {
             }
             container.appendChild(fragment);
 
-            // Expandir nodos ya guardados una vez que el árbol está en el DOM
-            for (const node of container.children) {
-                const item = node._item;
-                if (item && item.isDirectory) {
-                    const normPath = item.path.replace(/\\/g, '/').toLowerCase();
-                    const shouldAutoExpand = window.explorerOnlyMyTasks && finalItems.length <= 2;
-                    if (isPathExpanded(normPath) || shouldAutoExpand) {
-                        await toggleNode(node, item, 0, node.querySelector('.tree-node'));
-                    }
-                }
-            }
+            expandSavedChildrenInBackground(container, 0, finalItems.length, token);
         } else {
             container.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${data.error}</div>`;
         }
@@ -615,8 +716,38 @@ async function toggleNode(wrapper, item, level, rowElement) {
                     const data = await fetchDir(item.path);
                     container.innerHTML = "";
                     const allDiskItems = (data && data.items) ? data.items : [];
-                    const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
                     const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
+                    const mode = window.viewLocationMode || 'local';
+                    const compMode = window.syncComparisonMode || 'off';
+                    const isDirOnlyLevel = allDiskItems.length > 0 && allDiskItems.every(i => i.isDirectory);
+
+                    if (mode === 'local' && (compMode === 'drive' || compMode === 'server') && isDirOnlyLevel) {
+                        const localCopies = allDiskItems.map(i => ({ ...i }));
+                        const quickFiltered = (typeof window.filterExplorerItems === 'function')
+                            ? window.filterExplorerItems(localCopies, containerId, item.path, allDiskItems)
+                            : localCopies;
+                        if (quickFiltered.length > 0) {
+                            quickFiltered.sort((a, b) => a.name.localeCompare(b.name));
+                            const fragment = document.createDocumentFragment();
+                            for (const child of quickFiltered) {
+                                fragment.appendChild(createTreeNode(child, level + 1, containerId));
+                            }
+                            container.appendChild(fragment);
+                            wrapper._loaded = true;
+                            expandSavedChildrenInBackground(container, level + 1, quickFiltered.length, window.activeBrowserRenderToken);
+                            applyBackgroundSyncDecoration({
+                                container,
+                                containerId,
+                                dirPath: item.path,
+                                allDiskItems,
+                                level: level + 1,
+                                token: window.activeBrowserRenderToken
+                            });
+                            return;
+                        }
+                    }
+
+                    const decoratedItems = await getDecoratedTreeItems(item.path, allDiskItems, allDiskItems);
                     const filteredItems = (typeof window.filterExplorerItems === 'function')
                         ? window.filterExplorerItems(decoratedItems, containerId, item.path, allDiskItems)
                         : decoratedItems;
@@ -651,8 +782,10 @@ async function toggleNode(wrapper, item, level, rowElement) {
                             }
                         }
                         container.appendChild(fragment);
-                        for (const { node, child } of nodesToExpand) {
-                            await toggleNode(node, child, level + 1, node.querySelector('.tree-node'));
+                        if (nodesToExpand.length > 0) {
+                            await Promise.all(nodesToExpand.map(({ node, child }) =>
+                                toggleNode(node, child, level + 1, node._row || node.querySelector('.tree-node'))
+                            ));
                         }
                     }
                     wrapper._loaded = true;

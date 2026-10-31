@@ -806,7 +806,11 @@ const settings = {
             fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
 
             if (typeof loadActiveProjectSyncCatalog === 'function') {
-                await loadActiveProjectSyncCatalog(true);
+                if (window.isPipetaMode) {
+                    await loadActiveProjectSyncCatalog(true);
+                } else {
+                    loadActiveProjectSyncCatalog(true).catch(() => {});
+                }
             }
 
             if (typeof refreshCurrentView === 'function') {
@@ -3018,7 +3022,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.84'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.85'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3049,11 +3053,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.84'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.85'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.84'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.85'}.zip</code>).
                             </div>
                         </div>
 
@@ -3094,7 +3098,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.84'}
+                            ${window.APP_VERSION || 'v1.1.85'}
                         </span>
                     </h3>
 
@@ -3106,7 +3110,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.84 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.85 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Carga Instantánea del Explorer (Munro &amp; Remoto):</b> El árbol local de Proyecto y Media ahora se pinta de inmediato (&lt; 0.3s) y decora los badges de comparación contra Drive/Server de forma asíncrona en segundo plano sin trabar la vista.</li>
+                                    <li><b>Aislamiento Estricto LAN vs WAN y Corte en 404:</b> Las estaciones dentro del estudio consultan exclusivamente al servidor LAN sin caer en URLs externas/túneles, cacheando sub-catálogos inexistentes.</li>
+                                    <li><b>Resumen Pre-calculado en Manifest (13 KB vs 140 MB) y Arranque No-Bloqueante:</b> Los contadores de sincronización raíz se guardan firmados en <code>manifest.json</code> evitando parsear sub-catálogos pesados al abrir, y la hidratación inicial de caché corre en segundo plano sin bloquear el arranque.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.84</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Sync Queue - Botón Cancelar Todo y Limpieza Bidireccional:</b> Se agregó el botón <code>🛑 Cancelar Todo</code> en la pestaña activa para abortar y vaciar todas las tareas en cola en un solo paso. Toda cancelación propaga la señal vía HTTP al Servidor Central y limpia de inmediato los archivos residuales locales (evitando colas huérfanas en puestos remotos o redes sin SMB como Nonstop).</li>
                                     <li><b>Sanitización Automática de Órdenes Zombi:</b> Al iniciar la aplicación y al sincronizar con el Servidor Central, las órdenes pendientes expiradas de sesiones previas se depuran automáticamente para que nunca más queden trabadas en espera.</li>
@@ -4179,8 +4191,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.84'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.84'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.85'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.85'}.zip`;
 
         if (btn) {
             btn.disabled = true;
