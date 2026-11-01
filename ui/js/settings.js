@@ -705,6 +705,15 @@ const settings = {
         }
     },
 
+    getUserAllowedProjects: (userObj = null) => {
+        const user = userObj || (typeof window.getPipetaActiveUserObj === 'function' ? window.getPipetaActiveUserObj() : null);
+        const allProjects = (settings.projects || []).filter(p => !settings.isBaseProject(p));
+        if (!user || user.role === 'admin' || user.username === 'admin' || user.isSystem) {
+            return allProjects;
+        }
+        return allProjects.filter(p => typeof window.isProjectAllowedForUser === 'function' ? window.isProjectAllowedForUser(p, user) : true);
+    },
+
     updateHeaderProjectSelector: () => {
         const select = document.getElementById('headerProjectSelect');
         if (!select) return;
@@ -714,27 +723,47 @@ const settings = {
             return;
         }
 
-        // Filtrar Proyecto Base: no debe mostrarse en el selector de la barra superior
-        const visibleProjects = settings.projects.filter(p => !settings.isBaseProject(p));
+        // Filtrar Proyectos permitidos (Modelo Híbrido: Admin=Todo, Lead/User=Ramón + Configurados)
+        const visibleProjects = settings.getUserAllowedProjects();
 
         if (visibleProjects.length === 0) {
-            select.innerHTML = '<option value="">(Sin proyectos configurados)</option>';
+            select.innerHTML = '<option value="">(Sin proyectos asignados)</option>';
+            settings.currentProject = null;
+            localStorage.removeItem('pipeta_active_project_id');
+
+            const workLabel = document.getElementById('label-work-path');
+            const mediaLabel = document.getElementById('label-media-path');
+            if (workLabel) workLabel.innerHTML = '<span style="color:#ff6b6b; font-size:0.75rem; font-weight:bold;">🔒 Sin proyectos asignados</span>';
+            if (mediaLabel) mediaLabel.innerHTML = '<span style="color:#ff6b6b; font-size:0.75rem; font-weight:bold;">🔒 Sin proyectos asignados</span>';
+
+            const treeWork = document.getElementById('tree-work');
+            const treeMedia = document.getElementById('tree-media');
+            const emptyMsg = `
+                <div class="empty-catalog-card" style="margin: 35px 15px; padding: 22px; background: rgba(28, 36, 48, 0.7); border: 1px dashed rgba(255, 107, 107, 0.4); border-radius: 8px; text-align: center;">
+                    <div style="font-size: 1.8rem; margin-bottom: 6px;">🔒</div>
+                    <div style="font-weight: 600; color: #eceff4; font-size: 0.95rem; margin-bottom: 6px;">Sin proyectos asignados</div>
+                    <div style="font-size: 0.78rem; color: #8892b0; line-height: 1.4;">
+                        No tienes tareas asignadas en Ramón ni proyectos habilitados por el administrador.<br>Solicita acceso o revisa tus asignaciones en Ramón.
+                    </div>
+                </div>`;
+            if (treeWork) treeWork.innerHTML = emptyMsg;
+            if (treeMedia) treeMedia.innerHTML = emptyMsg;
             return;
         }
 
         // Determinar qué proyecto debe figurar seleccionado
         const savedId = localStorage.getItem('pipeta_active_project_id');
-        let selectedProj = visibleProjects.find(p => p.id === savedId);
+        let selectedProj = visibleProjects.find(p => p.id === savedId || p.name === savedId);
         if (!selectedProj) {
-            if (settings.currentProject && !settings.isBaseProject(settings.currentProject)) {
+            if (settings.currentProject && visibleProjects.some(p => p.id === settings.currentProject.id)) {
                 selectedProj = settings.currentProject;
             } else {
                 selectedProj = visibleProjects[0];
             }
         }
 
-        // Si currentProject es nulo, inicializarlo con el seleccionado real
-        if (!settings.currentProject) {
+        // Si currentProject es nulo o ya no está en los permitidos, posicionar en el primero permitido
+        if (!settings.currentProject || !visibleProjects.some(p => p.id === settings.currentProject.id)) {
             settings.currentProject = selectedProj;
             if (selectedProj) {
                 localStorage.setItem('pipeta_active_project_id', selectedProj.id);
@@ -3022,7 +3051,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.86'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.87'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3053,11 +3082,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.86'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.87'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.86'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.87'}.zip</code>).
                             </div>
                         </div>
 
@@ -3098,7 +3127,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.86'}
+                            ${window.APP_VERSION || 'v1.1.87'}
                         </span>
                     </h3>
 
@@ -3110,7 +3139,14 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.86 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.87 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Modelo Híbrido de Asignación de Proyectos:</b> El rol Administrador mantiene acceso global a todos los proyectos siempre. Los roles Lead y Artista solo tienen acceso a los proyectos donde tengan tareas activas en Ramón más aquellos habilitados manualmente por un Administrador en User Settings.</li>
+                                    <li><b>Aislamiento Total de Cachés y Red:</b> Si un proyecto no está asignado al usuario, no aparece en la interfaz y Pipeta no descarga ni carga en memoria sus catálogos, anulando el consumo innecesario de disco y red.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.86</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Reparación de Acceso Directo, Ícono y Desbloqueo Local:</b> El acceso directo del Escritorio ahora apunta siempre a la instalación local <code>C:\TOOLS\APPS\Pipeta</code> (evitando el cartel de seguridad de red de Windows al abrir desde <code>Z:</code>), corrige la ruta del ícono oficial <code>Pipeta.ico</code> y refresca automáticamente la caché de íconos de Windows Explorer.</li>
                                 </ul>
@@ -4197,8 +4233,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.86'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.86'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.87'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.87'}.zip`;
 
         if (btn) {
             btn.disabled = true;
@@ -4515,6 +4551,36 @@ const settings = {
                                style="width:100%; background:#1c222d; border:1px solid #2e3846; border-radius:4px; padding:6px 10px; color:#fff; outline:none;">
                     </div>
 
+                    <!-- PROYECTOS ASIGNADOS MANUALMENTE -->
+                    <div style="background:#101319; border:1px solid #232a35; border-radius:6px; padding:10px 12px; margin-top:4px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-weight:bold; color:var(--accent); font-size:0.78rem; text-transform:uppercase;">
+                                📁 Proyectos Asignados Manualmente (Override)
+                            </span>
+                            <span style="color:#777; font-size:0.70rem;">Acceso independiente de Ramón</span>
+                        </div>
+                        <div id="modal-assigned-projects-notice" style="display:${user?.role === 'admin' ? 'block' : 'none'}; color:#ebcb8b; font-size:0.74rem; margin-bottom:6px; font-style:italic;">
+                            ℹ️ El rol Administrador tiene acceso total a todos los proyectos del estudio siempre.
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.74rem; max-height:120px; overflow-y:auto; padding-right:4px;">
+                            ${(() => {
+                                const uAssigned = Array.isArray(user?.assignedProjects) ? user.assignedProjects.map(x => String(x).toLowerCase().replace(/^proj_/i, '')) : [];
+                                const available = (settings.projects || []).filter(p => !settings.isBaseProject(p));
+                                if (available.length === 0) return '<div style="color:#666; font-style:italic; grid-column:1/-1;">No hay proyectos disponibles</div>';
+                                return available.map(p => {
+                                    const pClean = String(p.name || p.id).toLowerCase().replace(/^proj_/i, '');
+                                    const isChecked = uAssigned.includes(pClean) || uAssigned.includes(String(p.id).toLowerCase());
+                                    return `
+                                        <label style="display:flex; align-items:center; gap:6px; background:#161b22; padding:4px 6px; border-radius:4px; border:1px solid #252d3a; cursor:pointer;">
+                                            <input type="checkbox" data-user-project-id="${p.name || p.id}" ${isChecked ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
+                                            <span style="color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><b>${p.name}</b> <span style="color:#777; font-size:0.68rem;">(${p.client || 'LASP'})</span></span>
+                                        </label>
+                                    `;
+                                }).join('');
+                            })()}
+                        </div>
+                    </div>
+
                     <!-- EXCEPCIONES DE PERMISOS POR USUARIO -->
                     <div style="background:#101319; border:1px solid #232a35; border-radius:6px; padding:10px 12px; margin-top:4px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -4603,6 +4669,12 @@ const settings = {
             else if (v === 'false') overrides[k] = false;
         });
 
+        const assignedProjects = [];
+        document.querySelectorAll('[data-user-project-id]:checked').forEach(cb => {
+            const pid = cb.getAttribute('data-user-project-id');
+            if (pid) assignedProjects.push(pid);
+        });
+
         if (existingId) {
             const u = settings.usersData.users.find(x => x.id === existingId);
             if (u) {
@@ -4614,6 +4686,7 @@ const settings = {
                 u.email = email;
                 u.avatarColor = avatarColor;
                 u.notes = notes;
+                u.assignedProjects = assignedProjects;
                 if (Object.keys(overrides).length > 0) u.permissionOverrides = overrides;
                 else delete u.permissionOverrides;
             }
@@ -4630,11 +4703,13 @@ const settings = {
                 notes,
                 isSystem: false
             };
+            newUserObj.assignedProjects = assignedProjects;
             if (Object.keys(overrides).length > 0) newUserObj.permissionOverrides = overrides;
             settings.usersData.users.push(newUserObj);
         }
 
         await settings.saveUsersConfig();
+        settings.updateHeaderProjectSelector();
         settings.closeModalOverlay();
         settings.render();
         if (typeof updateHeaderUserSelector === 'function') updateHeaderUserSelector();

@@ -116,6 +116,13 @@ async function initBrowser() {
 
     try {
         const roots = getCurrentRoots();
+        const curProj = typeof settings !== 'undefined' ? settings.currentProject : null;
+        if (curProj && typeof window.isProjectAllowedForUser === 'function' && !window.isProjectAllowedForUser(curProj)) {
+            hideExplorerLoading();
+            if (typeof settings.updateHeaderProjectSelector === 'function') settings.updateHeaderProjectSelector();
+            return;
+        }
+
         const mode = window.viewLocationMode || 'local';
         const modeLabel = mode === 'drive' ? '☁️ DRIVE' : (mode === 'server' ? '🗄️ SERVER' : '💻 LOCAL');
 

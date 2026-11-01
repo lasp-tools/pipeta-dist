@@ -1,5 +1,5 @@
 // Configuration
-window.APP_VERSION = "v1.1.86";
+window.APP_VERSION = "v1.1.87";
 if (typeof document !== 'undefined') {
     const isBetaChannel = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
     document.title = isBetaChannel ? "Pipeta Beta - Pipeline Manager" : "Pipeta - Pipeline Manager";
@@ -30,4 +30,79 @@ window.getPipetaCurrentUser = function() {
         return window.activeUser;
     }
     return 'artista';
+};
+
+window.getPipetaActiveUserObj = function() {
+    const uData = window.cachedUsersData || (typeof settings !== 'undefined' ? settings.usersData : null);
+    let active = uData?.activeUser;
+    if (!active && typeof Ramon !== 'undefined' && Ramon.session?.user) {
+        active = Ramon.session.user.login || Ramon.session.user.username;
+    }
+    if (!active) active = 'admin';
+
+    if (uData && Array.isArray(uData.users)) {
+        const activeLower = String(active).toLowerCase().trim();
+        const found = uData.users.find(u => {
+            const uName = String(u.username || '').toLowerCase().trim();
+            const lUser = String(u.laspUser || '').toLowerCase().trim();
+            const uId = String(u.id || '').toLowerCase().trim();
+            return uName === activeLower || lUser === activeLower || lUser.replace(/^lasp-/i, '') === activeLower || uId === activeLower;
+        });
+        if (found) return found;
+    }
+
+    if (active === 'admin' || (typeof Ramon !== 'undefined' && Ramon.session?.user?.is_admin)) {
+        return { username: active, role: 'admin', isSystem: true };
+    }
+    return { username: active, role: 'user', isSystem: false };
+};
+
+window.isProjectAllowedForUser = function(project, userObj = null) {
+    if (!project) return false;
+    const user = userObj || (typeof window.getPipetaActiveUserObj === 'function' ? window.getPipetaActiveUserObj() : null);
+    if (!user) return true;
+
+    // Regla de Estudio: El rol Admin tiene acceso irrestricto a todos los proyectos siempre
+    if (user.role === 'admin' || user.username === 'admin' || user.isSystem) {
+        return true;
+    }
+
+    // Identificadores y tokens del proyecto a cotejar
+    const pTokens = [];
+    if (typeof project === 'string') {
+        const s = project.toLowerCase().trim();
+        pTokens.push(s);
+        pTokens.push(s.replace(/^proj_/i, ''));
+    } else {
+        if (project.id) {
+            const id = String(project.id).toLowerCase().trim();
+            pTokens.push(id);
+            pTokens.push(id.replace(/^proj_/i, ''));
+        }
+        if (project.name) {
+            const nm = String(project.name).toLowerCase().trim();
+            pTokens.push(nm);
+            pTokens.push(nm.replace(/^proj_/i, ''));
+        }
+        if (project.code) pTokens.push(String(project.code).toLowerCase().trim());
+        if (project.projectCode) pTokens.push(String(project.projectCode).toLowerCase().trim());
+    }
+
+    // 1. Proyectos asignados manualmente en Pipeta Server (assignedProjects)
+    const assigned = Array.isArray(user.assignedProjects) ? user.assignedProjects : [];
+    if (assigned.includes('*')) return true;
+    const assignedMatch = assigned.some(a => {
+        const cleanA = String(a).toLowerCase().trim().replace(/^proj_/i, '');
+        return pTokens.includes(cleanA);
+    });
+    if (assignedMatch) return true;
+
+    // 2. Proyectos donde el usuario tiene tareas activas en Ramón (TACTIC)
+    if (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) {
+        const ramonProjects = Ramon.tasks.map(t => String(t.project || '').toLowerCase().trim()).filter(Boolean);
+        const ramonMatch = ramonProjects.some(rp => pTokens.includes(rp) || pTokens.includes(rp.replace(/^proj_/i, '')));
+        if (ramonMatch) return true;
+    }
+
+    return false;
 };

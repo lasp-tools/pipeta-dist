@@ -28,6 +28,11 @@ async function loadActiveProjectSyncCatalog(force = false) {
     const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
         ? settings.currentProject.name 
         : 'surf_love';
+
+    if (typeof window.isProjectAllowedForUser === 'function' && !window.isProjectAllowedForUser(projName)) {
+        console.warn(`[SYNC LAYER] 🔒 Proyecto '${projName}' no asignado al usuario actual. Omitiendo descarga e indexacion de catalogo.`);
+        return null;
+    }
     
     if (force || (window.pipetaSyncCatalog && window.pipetaSyncCatalog.project !== projName)) {
         window.pipetaSyncCatalog = null;

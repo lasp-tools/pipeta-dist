@@ -91,6 +91,9 @@ const Ramon = {
                     if (typeof applyRolePermissionsToUI === 'function') {
                         applyRolePermissionsToUI();
                     }
+                    if (typeof settings !== 'undefined' && typeof settings.updateHeaderProjectSelector === 'function') {
+                        settings.updateHeaderProjectSelector();
+                    }
                 }).catch(() => {});
             }, 2500);
 
@@ -592,6 +595,10 @@ const Ramon = {
                 Ramon.updateProjectSelectOptions();
                 Ramon.renderTasksList();
                 Ramon.updateCacheInfoLabel();
+            }
+
+            if (typeof settings !== 'undefined' && typeof settings.updateHeaderProjectSelector === 'function') {
+                settings.updateHeaderProjectSelector();
             }
 
             console.log(`[RAMON] Tareas obtenidas con éxito: ${Ramon.tasks.length} tareas totales en memoria.`);
