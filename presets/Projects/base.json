@@ -1,4 +1,5 @@
 {
+  "file": "base.json",
   "id": "proj_base",
   "name": "Proyecto Base",
   "client": "[cliente]",
@@ -13,9 +14,9 @@
   "defaultShotPresetId": "master_shot",
   "defaultAssetPresetId": "master_asset",
   "iaPresets": {
-    "defaultImageEngine": "NB2P",
-    "defaultVideoEngine": "SD2",
-    "defaultFraming": "CRP",
+    "defaultImageEngine": "GPT25S",
+    "defaultVideoEngine": "SD25",
+    "defaultFraming": "FLL",
     "defaultTagRoleA": "ref",
     "defaultTagRoleB": "",
     "defaultTagRoleC": "",
@@ -25,27 +26,29 @@
       "VEO3",
       "VO31",
       "GOMN",
-      "NBN2",
-      "NB2P"
+      "RUBY"
     ],
     "motorsImage": [
-      "NB2P",
       "MJ",
       "FLUX",
-      "SD2",
-      "SD25",
-      "GOMN"
+      "NBN21",
+      "NBNPRO",
+      "GPT25S",
+      "GPT25F",
+      "NBN2"
     ],
     "framings": [
       "FLL",
-      "CRP"
+      "CRP",
+      "MASK"
     ],
     "tagsA": [
       "start1001",
       "end1100",
       "f1001",
       "ref",
-      "ref1050"
+      "ref1050",
+      "MATTE"
     ],
     "tagsB": [
       "inp",
@@ -73,7 +76,7 @@
       },
       {
         "detected": "1080x1920",
-        "tag": "916"
+        "tag": "VHD"
       },
       {
         "detected": "1080x1080",
@@ -86,6 +89,10 @@
       {
         "detected": "1280x720",
         "tag": "HD"
+      },
+      {
+        "detected": "4398x1886",
+        "tag": "UHD219"
       }
     ],
     "templates": {
@@ -96,5 +103,15 @@
         "assets": {}
       }
     }
-  }
+  },
+  "templates": {
+    "referenceShotRoot": "episodios/templates",
+    "referenceAssetRoot": "assets2D/templates",
+    "customTemplates": {
+      "shots": {},
+      "assets": {}
+    }
+  },
+  "overrideBasePresets": false,
+  "updatedAt": "2026-11-01T16:20:47.718Z"
 }

@@ -437,10 +437,10 @@ class SyncQueueUI {
             <!-- SUBNAV TABS -->
             <div style="display:flex; background:#161c24; border-bottom:1px solid #232b38; padding:0 10px;">
                 <div id="tab-btn-active" class="settings-subnav-item active" onclick="window.syncQueueUI.selectTab('active')" style="padding:8px 14px; cursor:pointer; font-size:0.82rem; font-weight:bold; border-bottom:2px solid var(--accent); color:#fff;">
-                    🚀 En Curso & Pendientes
+                    En Curso & Pendientes
                 </div>
                 <div id="tab-btn-history" class="settings-subnav-item" onclick="window.syncQueueUI.selectTab('history')" style="padding:8px 14px; cursor:pointer; font-size:0.82rem; color:#888; border-bottom:2px solid transparent;">
-                    📋 Historial Reciente
+                    Historial Reciente
                 </div>
             </div>
 
@@ -730,7 +730,7 @@ class SyncQueueUI {
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span style="background:${typeColor}22; color:${typeColor}; border:1px solid ${typeColor}44; font-size:0.72rem; font-weight:bold; padding:2px 8px; border-radius:4px;">
-                                ${typeIcon} ${typeLabel}
+                                ${typeLabel}
                             </span>
                             <span style="color:#aaa; font-size:0.75rem; font-family:monospace;">${order.id}</span>
                             <span style="color:#666; font-size:0.75rem;">• ${order.project || ''}</span>
@@ -759,15 +759,15 @@ class SyncQueueUI {
                             const sizeStr = it.size ? ` (${formatQueueBytes(it.size)})` : '';
                             let pathInfoHtml = '';
                             if (order.type === 'download') {
-                                pathInfoHtml = `<span style="color:#00bcd4;">☁️ Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">💾 Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                                pathInfoHtml = `<span style="color:#00bcd4;">Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
                             } else if (order.type === 'upload') {
-                                pathInfoHtml = `<span style="color:#4caf50;">💾 Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">☁️ Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
                             } else if (order.type === 'server_download') {
-                                pathInfoHtml = `<span style="color:#ab47bc;">🏢 Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">💾 Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                                pathInfoHtml = `<span style="color:#ab47bc;">Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
                             } else if (order.type === 'server_upload') {
-                                pathInfoHtml = `<span style="color:#4caf50;">💾 Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">🏢 Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
+                                pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
                             } else if (order.type === 'higgsfield_ingest') {
-                                pathInfoHtml = `<span style="color:#c6ff00;">⚡ Origen (Higgsfield):</span> ${it.sourceUrl || it.jobId || 'CloudFront'}<br><span style="color:#4caf50;">💾 Destino (Shot):</span> ${it.targetShotFolder || it.canonicalName || it.path}`;
+                                pathInfoHtml = `<span style="color:#c6ff00;">Origen (Higgsfield):</span> ${it.sourceUrl || it.jobId || 'CloudFront'}<br><span style="color:#4caf50;">Destino (Shot):</span> ${it.targetShotFolder || it.canonicalName || it.path}`;
                             }
 
                             return `
@@ -852,13 +852,13 @@ class SyncQueueUI {
             const isPartial = order.status === 'completed_with_errors';
             
             let typeLabel = 'Descarga';
-            if (order.type === 'download') typeLabel = '📥 Descarga Drive';
-            else if (order.type === 'upload') typeLabel = '📤 Subida Drive';
-            else if (order.type === 'server_download') typeLabel = '📥 Descarga Server';
-            else if (order.type === 'server_upload') typeLabel = '📤 Subida Server';
-            else if (order.type === 'refresh_folder') typeLabel = '🔄 Refresco Carpeta';
-            else if (order.type === 'higgsfield_ingest') typeLabel = '⚡ Ingesta Higgsfield';
-            else if (order.type === 'query_higgsfield_job') typeLabel = '⚡ Consulta Higgsfield';
+            if (order.type === 'download') typeLabel = 'Descarga Drive';
+            else if (order.type === 'upload') typeLabel = 'Subida Drive';
+            else if (order.type === 'server_download') typeLabel = 'Descarga Server';
+            else if (order.type === 'server_upload') typeLabel = 'Subida Server';
+            else if (order.type === 'refresh_folder') typeLabel = 'Refresco Carpeta';
+            else if (order.type === 'higgsfield_ingest') typeLabel = 'Ingesta Higgsfield';
+            else if (order.type === 'query_higgsfield_job') typeLabel = 'Consulta Higgsfield';
 
             const statusColor = isOk ? '#4caf50' : (isCancelled ? '#9e9e9e' : (isPartial ? '#ff9800' : '#f44336'));
             const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isCancelled ? `🛑 Cancelada (${order.cancelledBy || 'usuario'})` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló'));

@@ -2480,7 +2480,25 @@ app.post('/api/server/projects-config', async (req, res) => {
             } catch(mErr){}
         }
 
-        console.log(`[PROJECTS] 📁 Proyecto guardado: ${fileName} (${projectPayload.name})`);
+        // Propagar a almacenamiento StorNext en VM 111 y red central
+        try {
+            const b64Proj = Buffer.from(JSON.stringify(projectPayload, null, 2)).toString('base64');
+            const safeFn = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const pyProjWrite = `import os,base64; data=base64.b64decode('${b64Proj}'); [os.makedirs(os.path.dirname(p), exist_ok=True) or open(p,'wb').write(data) for p in ['/mnt/z/_SYNC_CACHE/presets/Projects/${safeFn}','/mnt/z/INTERNO/TOOLS/GITHUB/TOOLS/APPS/Pipeta/presets/Projects/${safeFn}'] if os.path.exists(os.path.dirname(os.path.dirname(p)))]`;
+            execSync(`${REMOTE_STUDIO_SSH} "python3 -c \"${pyProjWrite}\""`, { timeout: 4000 });
+        } catch(pSyncErr) {}
+
+        // Encolar orden de sincronización a puestos clientes activos
+        try {
+            const clients = getRegisteredClients();
+            for (const cl of clients) {
+                if (cl && cl.hostname) {
+                    clientConfigSyncStatus.set((cl.hostname || '').toLowerCase().trim(), { status: 'queued', at: Date.now() });
+                }
+            }
+        } catch(cSyncErr) {}
+
+        console.log(`[PROJECTS] 📁 Proyecto guardado y propagado: ${fileName} (${projectPayload.name})`);
         res.json({ success: true, file: fileName, project: projectPayload });
     } catch(err) {
         res.status(500).json({ success: false, error: err.message });

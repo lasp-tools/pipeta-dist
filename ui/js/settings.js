@@ -1775,13 +1775,13 @@ const settings = {
                 // Asegurar estructura de presets en Base
                 if (isBase && cp) {
                     if (!cp.iaPresets) cp.iaPresets = {};
-                    if (!cp.iaPresets.motorsVideo) cp.iaPresets.motorsVideo = CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
-                    if (!cp.iaPresets.motorsImage) cp.iaPresets.motorsImage = CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
-                    if (!cp.iaPresets.framings) cp.iaPresets.framings = CANONICAL_BASE_PRESETS.iaPresets.framings;
-                    if (!cp.iaPresets.tagsA) cp.iaPresets.tagsA = CANONICAL_BASE_PRESETS.iaPresets.tagsA;
-                    if (!cp.iaPresets.tagsB) cp.iaPresets.tagsB = CANONICAL_BASE_PRESETS.iaPresets.tagsB;
-                    if (!cp.iaPresets.tagsC) cp.iaPresets.tagsC = CANONICAL_BASE_PRESETS.iaPresets.tagsC;
-                    if (!cp.iaPresets.resolutionTranslations) cp.iaPresets.resolutionTranslations = CANONICAL_BASE_PRESETS.iaPresets.resolutionTranslations;
+                    if (!Array.isArray(cp.iaPresets.motorsVideo)) cp.iaPresets.motorsVideo = CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
+                    if (!Array.isArray(cp.iaPresets.motorsImage)) cp.iaPresets.motorsImage = CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
+                    if (!Array.isArray(cp.iaPresets.framings)) cp.iaPresets.framings = CANONICAL_BASE_PRESETS.iaPresets.framings;
+                    if (!Array.isArray(cp.iaPresets.tagsA)) cp.iaPresets.tagsA = CANONICAL_BASE_PRESETS.iaPresets.tagsA;
+                    if (!Array.isArray(cp.iaPresets.tagsB)) cp.iaPresets.tagsB = CANONICAL_BASE_PRESETS.iaPresets.tagsB;
+                    if (!Array.isArray(cp.iaPresets.tagsC)) cp.iaPresets.tagsC = CANONICAL_BASE_PRESETS.iaPresets.tagsC;
+                    if (!Array.isArray(cp.iaPresets.resolutionTranslations)) cp.iaPresets.resolutionTranslations = CANONICAL_BASE_PRESETS.iaPresets.resolutionTranslations;
                 }
 
                 // Determinar si el proyecto actual sobrescribe o hereda
@@ -1993,8 +1993,8 @@ const settings = {
                     `;
                 } else if (activeSubTab === 'presets_ia') {
                     const isReadOnly = isBase ? !settings.devMode : !cp.overrideBasePresets;
-                    const motorsVideo = effectiveIaPresets?.motorsVideo || CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
-                    const motorsImage = effectiveIaPresets?.motorsImage || CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
+                    const motorsVideo = Array.isArray(effectiveIaPresets?.motorsVideo) ? effectiveIaPresets.motorsVideo : CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
+                    const motorsImage = Array.isArray(effectiveIaPresets?.motorsImage) ? effectiveIaPresets.motorsImage : CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
                     const framings = effectiveIaPresets?.framings || CANONICAL_BASE_PRESETS.iaPresets.framings;
                     const tagsA = effectiveIaPresets?.tagsA || CANONICAL_BASE_PRESETS.iaPresets.tagsA;
                     const tagsB = effectiveIaPresets?.tagsB || CANONICAL_BASE_PRESETS.iaPresets.tagsB;

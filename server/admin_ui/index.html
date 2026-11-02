@@ -5356,8 +5356,8 @@ async function updateSelectedFleet() {
             // PESTAÑA 4: PRESETS IA
             else if (activeProjectSubTab === 'presets_ia') {
                 const isReadOnly = !isBase && !cp.overrideBasePresets;
-                const motorsVideo = effectiveIaPresets?.motorsVideo || CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
-                const motorsImage = effectiveIaPresets?.motorsImage || CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
+                const motorsVideo = Array.isArray(effectiveIaPresets?.motorsVideo) ? effectiveIaPresets.motorsVideo : CANONICAL_BASE_PRESETS.iaPresets.motorsVideo;
+                const motorsImage = Array.isArray(effectiveIaPresets?.motorsImage) ? effectiveIaPresets.motorsImage : CANONICAL_BASE_PRESETS.iaPresets.motorsImage;
                 const framings = effectiveIaPresets?.framings || CANONICAL_BASE_PRESETS.iaPresets.framings;
                 const tagsA = effectiveIaPresets?.tagsA || CANONICAL_BASE_PRESETS.iaPresets.tagsA;
                 const tagsB = effectiveIaPresets?.tagsB || CANONICAL_BASE_PRESETS.iaPresets.tagsB;
@@ -5658,6 +5658,7 @@ async function updateSelectedFleet() {
                 if (!cp.iaPresets[listKey].includes(clean)) {
                     cp.iaPresets[listKey].push(clean);
                     renderProjectsMillerView();
+                    saveCurrentProject();
                 }
             }
         }
@@ -5667,6 +5668,7 @@ async function updateSelectedFleet() {
             if (!cp || !cp.iaPresets || !Array.isArray(cp.iaPresets[listKey])) return;
             cp.iaPresets[listKey] = cp.iaPresets[listKey].filter(t => t !== token);
             renderProjectsMillerView();
+            saveCurrentProject();
         }
 
         function setDefaultProjectToken(defaultKey, token) {
@@ -5675,6 +5677,7 @@ async function updateSelectedFleet() {
             if (!cp.iaPresets) cp.iaPresets = {};
             cp.iaPresets[defaultKey] = token;
             renderProjectsMillerView();
+            saveCurrentProject();
         }
 
         function addResolutionRule() {
@@ -5685,6 +5688,7 @@ async function updateSelectedFleet() {
 
             cp.iaPresets.resolutionTranslations.push({ detected: "1920x1080", tag: "FHD" });
             renderProjectsMillerView();
+            saveCurrentProject();
         }
 
         function updateResolutionRule(idx, field, value) {
@@ -5698,6 +5702,7 @@ async function updateSelectedFleet() {
             if (!cp || !cp.iaPresets?.resolutionTranslations) return;
             cp.iaPresets.resolutionTranslations.splice(idx, 1);
             renderProjectsMillerView();
+            saveCurrentProject();
         }
 
         function resetResolutionRules() {

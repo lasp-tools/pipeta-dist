@@ -32,7 +32,7 @@ echo.
 if not exist "%DEST%" mkdir "%DEST%"
 
 echo [2/3] Sincronizando archivos principales con Robocopy...
-robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs node_modules\.cache /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+robocopy "%SRC%" "%DEST%" /MIR /R:2 /W:2 /MT:16 /XD .git .gemini logs presets node_modules\.cache /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
 
 echo [3/3] Sincronizando presets sin sobreescribir configs del estudio...
 if exist "%SRC%\presets" (
