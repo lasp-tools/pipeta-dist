@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.87";
+const VERSION = "v1.1.88";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -487,6 +487,7 @@ function getPipetaServerCandidateUrls() {
     if (process.env.PIPETA_SERVER_URL) {
         list.push(process.env.PIPETA_SERVER_URL);
     }
+    list.push('https://piano-exclusively-function-michael.trycloudflare.com');
     list.push('https://pipeta.lasp.co');
     return [...new Set(list)];
 }
@@ -826,6 +827,7 @@ async function runEnvironmentDetection() {
         hasInternet = await Promise.any([
             probeHttps('https://1.1.1.1/cdn-cgi/trace'),
             probeHttps('https://www.gstatic.com/generate_204'),
+            probeHttps('https://piano-exclusively-function-michael.trycloudflare.com/api/server/health'),
             probeHttps('https://pipeta.lasp.co/api/health')
         ]);
     } catch (e) {
@@ -6381,6 +6383,7 @@ function getPythonExecutable() {
 
 async function executeRamonViaCentralServer(args, timeoutMs = 25000) {
     const urls = typeof getPipetaServerCandidateUrls === 'function' ? getPipetaServerCandidateUrls() : [];
+    const perUrlTimeout = Math.min(timeoutMs, 8000);
     for (const baseUrl of urls) {
         try {
             const url = `${baseUrl.replace(/\/+$/, '')}/api/server/ramon/bridge`;
@@ -6391,7 +6394,7 @@ async function executeRamonViaCentralServer(args, timeoutMs = 25000) {
                     'x-pipeta-token': PIPETA_SERVER_TOKEN
                 },
                 body: JSON.stringify({ args }),
-                signal: AbortSignal.timeout(timeoutMs)
+                signal: AbortSignal.timeout(perUrlTimeout)
             });
             if (resp.ok) {
                 const data = await resp.json();
@@ -6412,6 +6415,10 @@ async function runRamonBridge(args, timeoutMs = 30000) {
                 return remoteResult;
             }
         } catch (e) {}
+        return {
+            success: false,
+            error: "No se pudo comunicar con el servidor central de Pipeta / Ramon a traves del tunel seguro de LASP. Verifica tu conexion a internet o el estado del servidor."
+        };
     }
 
     // Ejecución local vía Python

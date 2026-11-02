@@ -3051,7 +3051,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.87'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.88'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3082,11 +3082,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.87'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.88'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.87'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.88'}.zip</code>).
                             </div>
                         </div>
 
@@ -3127,7 +3127,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.87'}
+                            ${window.APP_VERSION || 'v1.1.88'}
                         </span>
                     </h3>
 
@@ -3139,7 +3139,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.87 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.88 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Login Remoto WAN con Ramón Instantáneo:</b> Restaurado el puente seguro vía Cloudflare tunnel hacia el Pipeta Server central, permitiendo login en Ramón y consultas en &lt; 1 segundo desde puestos externos fuera del estudio.</li>
+                                    <li><b>Fail-Fast en Puestos Externos:</b> Si el servidor central no responde desde una máquina externa, se reporta el error de conectividad de forma inmediata sin demorar 25 segundos intentando alcanzar IPs privadas del estudio.</li>
+                                    <li><b>Sync Queue Visual Clean:</b> Eliminados los emojis secundarios redundantes en la cola de sincronización para una interfaz más sobria y profesional.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.87</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Modelo Híbrido de Asignación de Proyectos:</b> El rol Administrador mantiene acceso global a todos los proyectos siempre. Los roles Lead y Artista solo tienen acceso a los proyectos donde tengan tareas activas en Ramón más aquellos habilitados manualmente por un Administrador en User Settings.</li>
                                     <li><b>Aislamiento Total de Cachés y Red:</b> Si un proyecto no está asignado al usuario, no aparece en la interfaz y Pipeta no descarga ni carga en memoria sus catálogos, anulando el consumo innecesario de disco y red.</li>
@@ -4233,8 +4241,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.87'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.87'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.88'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.88'}.zip`;
 
         if (btn) {
             btn.disabled = true;

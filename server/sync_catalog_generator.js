@@ -22,6 +22,7 @@ function getCentralServerUrls() {
     if (process.env.PIPETA_SERVER_URL) {
         urls.push(process.env.PIPETA_SERVER_URL.replace(/\/+$/, ''));
     }
+    urls.push('https://piano-exclusively-function-michael.trycloudflare.com');
     urls.push('https://pipeta.lasp.co');
     return [...new Set(urls)];
 }
