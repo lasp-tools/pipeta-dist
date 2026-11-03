@@ -953,7 +953,11 @@ async function processQueue() {
             const fullPath = path.join(dir, file);
             try {
                 const data = fs.readJsonSync(fullPath);
-                if (data && data.status === 'pending' && data.type !== 'server_download' && data.type !== 'server_upload') {
+                const isAbandoned = data && data.status === 'processing' && data.startedAt && (Date.now() - new Date(data.startedAt).getTime() > 40000);
+                if (data && (data.status === 'pending' || isAbandoned) && data.type !== 'server_download' && data.type !== 'server_upload') {
+                    if (data.targetWorker && !WORKER_ID.includes(data.targetWorker) && !os.hostname().toLowerCase().includes(data.targetWorker.toLowerCase())) {
+                        continue;
+                    }
                     if (!seenOrders.has(data.id) && !activeTransfers.has(data.id) && !activeFastTasks.has(data.id)) {
                         seenOrders.add(data.id);
                         if (data.type === 'refresh_folder' || data.type === 'query_higgsfield_job') {

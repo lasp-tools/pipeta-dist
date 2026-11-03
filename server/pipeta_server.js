@@ -695,6 +695,7 @@ app.post('/api/server/refresh-folder', async (req, res) => {
             project,
             path: folderPath,
             targetType,
+            targetWorker: 'lasp-virt-030',
             status: 'pending',
             priority: 95,
             user: user || 'Artista',
