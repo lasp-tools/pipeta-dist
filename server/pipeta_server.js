@@ -681,6 +681,95 @@ app.get('/api/sync/catalog/available-projects', (req, res) => {
         return res.status(500).json({ success: false, error: e.message });
     }
 });
+app.post('/api/server/refresh-folder', async (req, res) => {
+    try {
+        const { project, path: folderPath, type: reqType, user } = req.body;
+        if (!project || !folderPath) {
+            return res.status(400).json({ success: false, error: 'Parámetros project y path requeridos' });
+        }
+        const targetType = (reqType === 'server') ? 'server' : 'drive';
+        const reqId = `rf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const orderData = {
+            id: reqId,
+            type: 'refresh_folder',
+            project,
+            path: folderPath,
+            targetType,
+            status: 'pending',
+            priority: 95,
+            user: user || 'Artista',
+            createdAt: new Date().toISOString()
+        };
+
+        // 1. Guardar localmente en ORDERS_DIR (/opt/_SYNC_CACHE/requests)
+        try {
+            fs.ensureDirSync(ORDERS_DIR);
+            fs.writeJsonSync(path.join(ORDERS_DIR, `${reqId}.json`), orderData, { spaces: 2 });
+        } catch (e) {}
+
+        // 2. Depositar directamente en VM 111 (/mnt/z/_SYNC_CACHE/requests) para que el Worker de estudio lo tome de inmediato
+        try {
+            const b64 = Buffer.from(JSON.stringify(orderData, null, 2), 'utf8').toString('base64');
+            execSync(`${REMOTE_STUDIO_SSH} "python3 -c \\"import base64; open('/mnt/z/_SYNC_CACHE/requests/${reqId}.json','wb').write(base64.b64decode('${b64}'))\\""`, { timeout: 4000 });
+        } catch (sshErr) {
+            console.warn(`[PIPETA SERVER] Error depositando orden refresh_folder en VM 111: ${sshErr.message}`);
+        }
+
+        // 3. Esperar que el Worker central procese la orden (polling hasta 18s)
+        const waitStart = Date.now();
+        let finishedOrder = null;
+        while (Date.now() - waitStart < 18000) {
+            await new Promise(r => setTimeout(r, 400));
+            // Revisar archivo local
+            const localFile = path.join(ORDERS_DIR, `${reqId}.json`);
+            if (fs.existsSync(localFile)) {
+                try {
+                    const data = fs.readJsonSync(localFile);
+                    if (data && (data.status === 'completed' || data.status === 'failed')) {
+                        finishedOrder = data;
+                        break;
+                    }
+                } catch (e) {}
+            }
+            // Consultar directamente a VM 111 si aún no sincronizó rsync local
+            const elapsed = Date.now() - waitStart;
+            if (elapsed > 1200 && (elapsed % 1200 < 500)) {
+                try {
+                    const remoteOut = execSync(`${REMOTE_STUDIO_SSH} "cat /mnt/z/_SYNC_CACHE/requests/${reqId}.json 2>/dev/null"`, { encoding: 'utf8', timeout: 2000 });
+                    if (remoteOut && remoteOut.trim().startsWith('{')) {
+                        const rData = JSON.parse(remoteOut.trim());
+                        if (rData && (rData.status === 'completed' || rData.status === 'failed')) {
+                            finishedOrder = rData;
+                            try { fs.writeJsonSync(localFile, rData); } catch (e) {}
+                            break;
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
+        if (finishedOrder) {
+            // Limpiar orden de VM 111 y local
+            try { execSync(`${REMOTE_STUDIO_SSH} "rm -f /mnt/z/_SYNC_CACHE/requests/${reqId}.json"`, { timeout: 2000 }); } catch (e) {}
+            try { const lf = path.join(ORDERS_DIR, `${reqId}.json`); if (fs.existsSync(lf)) fs.removeSync(lf); } catch (e) {}
+
+            if (finishedOrder.status === 'completed') {
+                // Sincronizar de inmediato los catálogos de este proyecto desde VM 111 a LXC 121
+                try {
+                    execSync(`rsync -az -e 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=2' lasp-linux@192.168.206.111:/mnt/z/_SYNC_CACHE/projects/${encodeURIComponent(project)}/ /opt/_SYNC_CACHE/projects/${encodeURIComponent(project)}/`, { timeout: 4000 });
+                } catch (e) {}
+                return res.json(finishedOrder.result || { success: true, delegated: true });
+            } else {
+                return res.status(500).json({ success: false, error: finishedOrder.error || 'Worker falló al refrescar carpeta' });
+            }
+        }
+
+        return res.status(504).json({ success: false, error: 'Tiempo de espera agotado esperando al Worker de sincronización' });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/api/server/set-public-url', (req, res) => {
     if (req.body && req.body.publicUrl) {
         currentPublicUrl = req.body.publicUrl;

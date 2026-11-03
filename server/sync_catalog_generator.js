@@ -43,6 +43,34 @@ function resolveCanonicalProjectName(projectName) {
     return stripped || String(projectName).trim();
 }
 
+function clearFreshnessCache(projectName = null, type = null) {
+    if (!projectName) {
+        manifestFreshnessCache.clear();
+        subCatalogFreshnessCache.clear();
+        missingSubCatalogCache.clear();
+        manifestMemoryCache.clear();
+        subCatalogMemoryCache.clear();
+        return;
+    }
+    const canon = resolveCanonicalProjectName(projectName) || projectName;
+    const lower = canon.toLowerCase();
+    for (const k of manifestFreshnessCache.keys()) {
+        if (k.toLowerCase().includes(lower)) manifestFreshnessCache.delete(k);
+    }
+    for (const k of subCatalogFreshnessCache.keys()) {
+        if (k.toLowerCase().includes(lower)) subCatalogFreshnessCache.delete(k);
+    }
+    for (const k of missingSubCatalogCache.keys()) {
+        if (k.toLowerCase().includes(lower)) missingSubCatalogCache.delete(k);
+    }
+    for (const k of manifestMemoryCache.keys()) {
+        if (k.toLowerCase().includes(lower)) manifestMemoryCache.delete(k);
+    }
+    for (const k of subCatalogMemoryCache.keys()) {
+        if (k.toLowerCase().includes(lower)) subCatalogMemoryCache.delete(k);
+    }
+}
+
 /**
  * Descarga y extrae el paquete modular completo (.tar.gz) de un proyecto desde Pipeta Server (0 SMB)
  */
@@ -307,6 +335,8 @@ function isZDriveLocalSubst() {
                     }
                 }
             }
+        } else if (!isZDriveNetwork() && projectName) {
+            fetchProjectBundleFromCentralServer(projectName);
         }
     } catch (err) {
         console.warn(`[LOCAL CACHE] Advertencia sincronizando caché local:`, err.message);
@@ -340,6 +370,12 @@ async function syncLocalCacheFromNetworkAsync(projectName = null) {
                 centralRoot = UNC_CACHE;
             }
             if (!centralRoot || path.resolve(centralRoot).toLowerCase() === path.resolve(LOCAL_CACHE_DIR).toLowerCase()) {
+                if (!isZDriveNetwork() && projectName) {
+                    const canon = resolveCanonicalProjectName(projectName);
+                    if (canon && !/^\d+$/.test(canon)) {
+                        fetchProjectBundleFromCentralServer(canon);
+                    }
+                }
                 return;
             }
 
@@ -1368,35 +1404,43 @@ function getModularManifest(projectName, type) {
                 const lastCheck = manifestFreshnessCache.get(localManifest) || 0;
                 if (now - lastCheck > 30000) {
                     manifestFreshnessCache.set(localManifest, now);
-                    const netManCandidates = [
-                        path.join('S:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
-                        path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
-                        path.join(UNC_CACHE, 'projects', projectName, type, 'manifest.json')
-                    ];
-                    try {
-                        const localSt = fs.statSync(localManifest);
-                        for (const nm of netManCandidates) {
-                            if (path.resolve(nm).toLowerCase() === path.resolve(localManifest).toLowerCase()) continue;
-                            if (fs.existsSync(nm)) {
-                                const netSt = fs.statSync(nm);
-                                if (netSt.mtimeMs > localSt.mtimeMs + 500) {
-                                    const netJson = fs.readJsonSync(nm);
-                                    // Preservar pendingSummary cacheado localmente si el manifest de red aún no lo trae
-                                    if (!netJson.pendingSummary) {
-                                        try {
-                                            const prevLocal = fs.readJsonSync(localManifest);
-                                            if (prevLocal && prevLocal.pendingSummary) {
-                                                netJson.pendingSummary = prevLocal.pendingSummary;
-                                            }
-                                        } catch (e) {}
+                    if (isZDriveNetwork()) {
+                        const netManCandidates = [
+                            path.join('S:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
+                            path.join('Z:/_SYNC_CACHE/projects', projectName, type, 'manifest.json'),
+                            path.join(UNC_CACHE, 'projects', projectName, type, 'manifest.json')
+                        ];
+                        try {
+                            const localSt = fs.statSync(localManifest);
+                            for (const nm of netManCandidates) {
+                                if (path.resolve(nm).toLowerCase() === path.resolve(localManifest).toLowerCase()) continue;
+                                if (fs.existsSync(nm)) {
+                                    const netSt = fs.statSync(nm);
+                                    if (netSt.mtimeMs > localSt.mtimeMs + 500) {
+                                        const netJson = fs.readJsonSync(nm);
+                                        // Preservar pendingSummary cacheado localmente si el manifest de red aún no lo trae
+                                        if (!netJson.pendingSummary) {
+                                            try {
+                                                const prevLocal = fs.readJsonSync(localManifest);
+                                                if (prevLocal && prevLocal.pendingSummary) {
+                                                    netJson.pendingSummary = prevLocal.pendingSummary;
+                                                }
+                                            } catch (e) {}
+                                        }
+                                        fs.writeJsonSync(localManifest, netJson, { spaces: 2 });
+                                        manifestMemoryCache.delete(localManifest);
                                     }
-                                    fs.writeJsonSync(localManifest, netJson, { spaces: 2 });
-                                    manifestMemoryCache.delete(localManifest);
+                                    break;
                                 }
-                                break;
                             }
+                        } catch (e) {}
+                    } else {
+                        // Equipo sin Z: SMB real -> Actualizar manifest por HTTP desde Pipeta Server
+                        const httpMan = fetchSubCatalogFromCentralServer(projectName, type, 'manifest.json');
+                        if (httpMan && fs.existsSync(httpMan)) {
+                            manifestMemoryCache.delete(localManifest);
                         }
-                    } catch (e) {}
+                    }
                 }
             }
             manifestPath = localManifest;
@@ -1723,25 +1767,33 @@ function resolveModularSubCatalogFile(projectName, type, subFile) {
                 const lastCheck = subCatalogFreshnessCache.get(localPrimary) || 0;
                 if (now - lastCheck > 30000) {
                     subCatalogFreshnessCache.set(localPrimary, now);
-                    const netChecks = [
-                        path.join('S:/_SYNC_CACHE/projects', projectName, type, subFile),
-                        path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile),
-                        path.join(UNC_CACHE, 'projects', projectName, type, subFile)
-                    ];
-                    try {
-                        const localSt = fs.statSync(localPrimary);
-                        for (const nc of netChecks) {
-                            if (path.resolve(nc).toLowerCase() === path.resolve(localPrimary).toLowerCase()) continue;
-                            if (fs.existsSync(nc)) {
-                                const netSt = fs.statSync(nc);
-                                if (netSt.mtimeMs > localSt.mtimeMs + 500) {
-                                    fs.copySync(nc, localPrimary, { overwrite: true });
-                                    subCatalogMemoryCache.delete(localPrimary);
+                    if (isZDriveNetwork()) {
+                        const netChecks = [
+                            path.join('S:/_SYNC_CACHE/projects', projectName, type, subFile),
+                            path.join('Z:/_SYNC_CACHE/projects', projectName, type, subFile),
+                            path.join(UNC_CACHE, 'projects', projectName, type, subFile)
+                        ];
+                        try {
+                            const localSt = fs.statSync(localPrimary);
+                            for (const nc of netChecks) {
+                                if (path.resolve(nc).toLowerCase() === path.resolve(localPrimary).toLowerCase()) continue;
+                                if (fs.existsSync(nc)) {
+                                    const netSt = fs.statSync(nc);
+                                    if (netSt.mtimeMs > localSt.mtimeMs + 500) {
+                                        fs.copySync(nc, localPrimary, { overwrite: true });
+                                        subCatalogMemoryCache.delete(localPrimary);
+                                    }
+                                    break;
                                 }
-                                break;
                             }
+                        } catch (e) {}
+                    } else {
+                        // Equipo sin Z: SMB real -> Actualizar subcatálogo por HTTP desde Pipeta Server
+                        const httpSub = fetchSubCatalogFromCentralServer(projectName, type, subFile);
+                        if (httpSub && fs.existsSync(httpSub)) {
+                            subCatalogMemoryCache.delete(localPrimary);
                         }
-                    } catch (e) {}
+                    }
                 }
             }
             return localPrimary;
@@ -3783,7 +3835,12 @@ module.exports = {
     dirExistsFast,
     fileExistsFast,
     isZDriveNetwork,
-    resolveLocalToOnlinePath
+    resolveLocalToOnlinePath,
+    clearFreshnessCache,
+    fetchSubCatalogFromCentralServer,
+    fetchProjectBundleFromCentralServer,
+    getCentralServerUrls,
+    resolveCanonicalProjectName
 };
 
 // --- CLI RUNNER ---

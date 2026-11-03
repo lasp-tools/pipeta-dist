@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.88";
+const VERSION = "v1.1.89";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -1337,6 +1337,49 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
         if (catType === 'server') {
             if (isExternal) {
                 return res.status(404).json({ success: false, isExternal: true, error: 'Catálogo de servidor no disponible en modo remoto' });
+            }
+            // En LAN de estudio pero sin Z: SMB real montado localmente (ej: subst local o unidad C:):
+            // Delegar el refresco directamente a Pipeta Server sobre HTTP (0 SMB)
+            const isZReal = cachedEnvState?.zInfo?.isRealServer && (typeof catalogGenerator.isZDriveNetwork === 'function' ? catalogGenerator.isZDriveNetwork() : true);
+            if (!isZReal || !fs.existsSync(safeP)) {
+                console.log(`[CATALOG REFRESH FOLDER] Equipo sin acceso físico directo a '${safeP}'. Delegando a Pipeta Server...`);
+                const serverUrls = typeof catalogGenerator.getCentralServerUrls === 'function' 
+                    ? catalogGenerator.getCentralServerUrls() 
+                    : ['http://192.168.206.121:3005'];
+                let lastErr = null;
+                for (const baseUrl of serverUrls) {
+                    try {
+                        const postUrl = `${baseUrl.replace(/\/+$/, '')}/api/server/refresh-folder`;
+                        const postData = JSON.stringify({
+                            project,
+                            path: folderPath,
+                            type: catType,
+                            user: os.userInfo ? os.userInfo().username : 'unknown'
+                        });
+                        const q = String.fromCharCode(34);
+                        const bslash = String.fromCharCode(92);
+                        const cmd = 'curl.exe -s -m 20 -X POST -H ' + q + 'Content-Type: application/json' + q + ' -H ' + q + 'x-pipeta-token: lasp-pipeta-sec-token-2026' + q + ' -d ' + q + postData.replace(/"/g, bslash + q) + q + ' ' + q + postUrl + q;
+                        const resp = execSync(cmd, { encoding: 'utf8', timeout: 22000, windowsHide: true });
+                        const parsed = JSON.parse(resp);
+                        if (parsed && parsed.success) {
+                            if (typeof serverDirCache !== 'undefined') serverDirCache.clear();
+                            if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+                                catalogGenerator.clearMemoryCaches();
+                            }
+                            if (typeof catalogGenerator.clearFreshnessCache === 'function') {
+                                catalogGenerator.clearFreshnessCache(project, 'server');
+                            }
+                            return res.json(parsed.result || { success: true, fromPipetaServer: true });
+                        } else if (parsed && parsed.error) {
+                            lastErr = parsed.error;
+                        }
+                    } catch (e) {
+                        lastErr = e.message;
+                    }
+                }
+                if (lastErr) {
+                    return res.status(500).json({ success: false, error: lastErr });
+                }
             }
         }
 
@@ -3170,14 +3213,18 @@ function getServerUncRoot() {
 }
 
 function ensureServerUncAccess(uncPath = null) {
-    if (global.isExternalMachine || !fs.existsSync('Z:\\')) return false;
+    if (global.isExternalMachine) return false;
     const root = (uncPath || getServerUncRoot()).replace(/\//g, '\\');
     try {
         if (fs.existsSync(root)) return true;
     } catch (e) {}
     try {
         execSync(`net use "${root}" /persistent:no`, { encoding: 'utf8', timeout: 3000, windowsHide: true });
-        return true;
+        if (fs.existsSync(root)) return true;
+    } catch (e) {}
+    try {
+        execSync(`net use "${root}" "Laspadmin.321" /user:"nonstop.tv\\lasp-mpastorino" /persistent:no`, { encoding: 'utf8', timeout: 4000, windowsHide: true });
+        return fs.existsSync(root);
     } catch (e) {
         return false;
     }
