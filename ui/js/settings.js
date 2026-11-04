@@ -3142,7 +3142,7 @@ const settings = {
                                 <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.90 (Actual)</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Actualizador Universal a Prueba de Fallos:</b> Rediseño integral de la actualización desde la interfaz. Implementa arquitectura de relevo desacoplada (Handoff Runner externo) que libera todos los locks de archivos en Windows antes de sincronizar, eliminando cualquier riesgo de archivos bloqueados o carpetas corruptas.</li>
-                                    <li><b>Detección y Autenticación Automática en Munro:</b> El sistema detecta y autentica automáticamente el almacenamiento de red del estudio (`\\192.168.206.116\Z` / `S:`) en puestos con o sin letra Z asignada (SMB o vsubs), actualizando por red LAN sin consumir internet.</li>
+                                    <li><b>Detección y Autenticación Automática en Munro:</b> El sistema detecta y autentica automáticamente el almacenamiento de red del estudio (<code>\\\\192.168.206.116\\Z</code> / <code>S:</code>) en puestos con o sin letra Z asignada (SMB o vsubs), actualizando por red LAN sin consumir internet.</li>
                                     <li><b>Modo Freelance Seguro con Staging Atómico:</b> En actualizaciones remotas vía GitHub ZIP, los archivos se descomprimen y verifican en un área temporal aislada antes de aplicarse a destino, garantizando integridad absoluta del sistema.</li>
                                 </ul>
                             </div>
