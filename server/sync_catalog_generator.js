@@ -2413,7 +2413,7 @@ function listFromModularCatalog(requestedPath, type = 'server') {
         }
     }
 
-    const canDoLiveShotLookahead = (type === 'drive' && !global.isExternalMachine && parts.length >= 2 && children.length <= 20);
+    const canDoLiveShotLookahead = (!global.isExternalMachine && parts.length >= 1);
 
     return children.map(c => {
         let localExists = false;
@@ -2428,46 +2428,60 @@ function listFromModularCatalog(requestedPath, type = 'server') {
             localExists
         };
 
-        if (copyItem.isDirectory && cacheEntry.folderStats) {
-            const childRel = (rel ? `${rel}/${c.name}` : c.name).toLowerCase();
-            const fSt = cacheEntry.folderStats.get(childRel);
-            let upC = fSt ? (fSt.upload || 0) : 0;
-            let downC = fSt ? (fSt.download || 0) : 0;
+        if (copyItem.isDirectory) {
+            let upC = 0;
+            let downC = 0;
+            if (cacheEntry.folderStats) {
+                const childRel = (rel ? `${rel}/${c.name}` : c.name).toLowerCase();
+                const fSt = cacheEntry.folderStats.get(childRel);
+                upC = fSt ? (fSt.upload || 0) : 0;
+                downC = fSt ? (fSt.download || 0) : 0;
+            }
 
-            // Live 1-level lookahead en carpetas de plano/asset para detectar archivos recién creados en Z: aún no escaneados por el Worker
+            // Live lookahead en carpetas locales para detectar archivos creados en Z: que faltan subir a Server o Drive
             if (canDoLiveShotLookahead && copyItem.targetLocalPath) {
                 try {
                     let physPath = copyItem.targetLocalPath;
-                    // Solo chequear S: como fallback si esta máquina tiene Z: real en SMB, NUNCA en máquinas con subst local Z:
                     if (!isZLocalOrSubst()) {
                         const sAlt = physPath.replace(/^Z:/i, 'S:');
                         if (!fs.existsSync(physPath) && fs.existsSync(sAlt)) physPath = sAlt;
                     }
                     if (fs.existsSync(physPath)) {
-                        const diskEntries = fs.readdirSync(physPath, { withFileTypes: true });
-                        const childDriveKey = copyItem.targetLocalPath.toLowerCase();
-                        const driveChildItems = cacheEntry.parentIndex.get(childDriveKey) || [];
-                        const driveChildNames = new Set(driveChildItems.map(di => (di.name || '').toLowerCase()));
+                        const countLocalUncataloged = (dirPath, depth = 0) => {
+                            if (depth > 2) return 0;
+                            let missing = 0;
+                            try {
+                                const diskEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+                                const dirKey = dirPath.replace(/\\/g, '/').replace(/^S:/i, 'Z:').toLowerCase();
+                                const catChildItems = cacheEntry.parentIndex.get(dirKey) || [];
+                                const catChildNames = new Set(catChildItems.map(di => (di.name || '').toLowerCase()));
+                                const uncatalogedSeqs = new Set();
 
-                        const uncatalogedSeqs = new Set();
-                        let directMissingInDrive = 0;
-                        for (const de of diskEntries) {
-                            if (de.name.toLowerCase() === '_gsdata_' || JUNK_FILE_REGEX.test(de.name)) continue;
-                            if (!driveChildNames.has(de.name.toLowerCase())) {
-                                const m = !de.isDirectory() ? de.name.match(SEQ_IMG_REGEX) : null;
-                                if (m) {
-                                    const seqK = (m[1] + '###' + m[3]).toLowerCase();
-                                    if (!uncatalogedSeqs.has(seqK)) {
-                                        uncatalogedSeqs.add(seqK);
-                                        directMissingInDrive++;
+                                for (const de of diskEntries) {
+                                    if (de.name.toLowerCase() === '_gsdata_' || JUNK_FILE_REGEX.test(de.name)) continue;
+                                    const nameLower = de.name.toLowerCase();
+                                    if (!catChildNames.has(nameLower)) {
+                                        const m = !de.isDirectory() ? de.name.match(SEQ_IMG_REGEX) : null;
+                                        if (m) {
+                                            const seqK = (m[1] + '###' + m[3]).toLowerCase();
+                                            if (!uncatalogedSeqs.has(seqK)) {
+                                                uncatalogedSeqs.add(seqK);
+                                                missing++;
+                                            }
+                                        } else {
+                                            missing++;
+                                        }
+                                    } else if (de.isDirectory()) {
+                                        missing += countLocalUncataloged(path.join(dirPath, de.name), depth + 1);
                                     }
-                                } else {
-                                    directMissingInDrive++;
                                 }
-                            }
-                        }
-                        if (directMissingInDrive > upC) {
-                            upC = directMissingInDrive;
+                            } catch (e) {}
+                            return missing;
+                        };
+
+                        const directMissing = countLocalUncataloged(physPath, 0);
+                        if (directMissing > upC) {
+                            upC = directMissing;
                         }
                     }
                 } catch (e) {}

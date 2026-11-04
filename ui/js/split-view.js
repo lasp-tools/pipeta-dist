@@ -211,17 +211,8 @@ async function getDecoratedTreeItems(dirPath, rawItems, allRawItems = null) {
                     itemCopy.hasPendingSync = catItem.hasPendingSync;
                     itemCopy.pendingType = catItem.pendingType;
                     itemCopy.pendingCount = catItem.pendingCount;
-                    const isRealSrv = typeof window.isZRealServer !== 'function' || window.isZRealServer();
-                    itemCopy.pendingUploadCount = isRealSrv ? (catItem.pendingUploadCount || 0) : 0;
+                    itemCopy.pendingUploadCount = catItem.pendingUploadCount || 0;
                     itemCopy.pendingDownloadCount = catItem.pendingDownloadCount || 0;
-                    if (!isRealSrv && itemCopy.pendingUploadCount === 0 && itemCopy.pendingDownloadCount === 0) {
-                        itemCopy.hasPendingSync = false;
-                        itemCopy.pendingType = null;
-                        itemCopy.pendingCount = 0;
-                    } else if (!isRealSrv && itemCopy.pendingUploadCount === 0 && itemCopy.pendingDownloadCount > 0) {
-                        itemCopy.pendingType = 'download';
-                        itemCopy.pendingCount = itemCopy.pendingDownloadCount;
-                    }
                 }
             } else {
                 itemCopy.syncStatus = 'upload_drive';
@@ -459,6 +450,10 @@ async function applyBackgroundSyncDecoration({ container, containerId, dirPath, 
                     }
                 }
             }
+        }
+        const parentWrapper = container.closest('.node-wrapper');
+        if (parentWrapper && typeof bubbleUpdateFolderBadges === 'function') {
+            bubbleUpdateFolderBadges(parentWrapper);
         }
     } catch (e) {
         console.warn('[EXPLORER] Error decorando sincronización en segundo plano:', e);
@@ -741,6 +736,12 @@ async function toggleNode(wrapper, item, level, rowElement) {
                             }
                             container.appendChild(fragment);
                             wrapper._loaded = true;
+        if (typeof bubbleUpdateFolderBadges === 'function') {
+            bubbleUpdateFolderBadges(wrapper);
+        }
+                    if (typeof bubbleUpdateFolderBadges === 'function') {
+                        bubbleUpdateFolderBadges(wrapper);
+                    }
                             expandSavedChildrenInBackground(container, level + 1, quickFiltered.length, window.activeBrowserRenderToken);
                             applyBackgroundSyncDecoration({
                                 container,
@@ -796,6 +797,12 @@ async function toggleNode(wrapper, item, level, rowElement) {
                         }
                     }
                     wrapper._loaded = true;
+        if (typeof bubbleUpdateFolderBadges === 'function') {
+            bubbleUpdateFolderBadges(wrapper);
+        }
+                    if (typeof bubbleUpdateFolderBadges === 'function') {
+                        bubbleUpdateFolderBadges(wrapper);
+                    }
                 } catch (err) {
                     console.error("Error al desplegar nodo:", err);
                     container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#e06c75; font-size:0.8rem;">(Error al cargar carpeta)</div>`;
@@ -1019,11 +1026,25 @@ function updateParentFolderBadge(wrapper, completedOrderType) {
         : (item.pendingType === 'download' ? (item.pendingCount || 0) : 0);
 
     if (wrapper._childrenContainer && wrapper._loaded) {
-        const upBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badges-right-slot [data-badge-dir="upload"]');
-        const downBadges = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper > .tree-node .sync-badges-right-slot [data-badge-dir="download"]');
-        upC = upBadges.length;
-        downC = downBadges.length;
-    } else {
+        let upTotal = 0;
+        let downTotal = 0;
+        const directWrappers = wrapper._childrenContainer.querySelectorAll(':scope > .node-wrapper');
+        for (const childWrap of directWrappers) {
+            const cItem = childWrap._item;
+            if (!cItem) continue;
+            const cStatus = cItem.syncStatus;
+            if (cStatus === 'upload_server' || cStatus === 'upload_drive') {
+                upTotal += (cItem.pendingUploadCount || 1);
+            } else if (cStatus === 'ghost_server' || cStatus === 'ghost_drive' || cStatus === 'partial_server' || cStatus === 'partial_drive') {
+                downTotal += (cItem.pendingDownloadCount || 1);
+            } else if (cItem.isDirectory && (cItem.hasPendingSync || (cItem.pendingUploadCount > 0) || (cItem.pendingDownloadCount > 0))) {
+                upTotal += (cItem.pendingUploadCount || 0);
+                downTotal += (cItem.pendingDownloadCount || 0);
+            }
+        }
+        upC = upTotal;
+        downC = downTotal;
+    } else if (completedOrderType) {
         if (completedOrderType === 'upload' || completedOrderType === 'server_upload') {
             upC = Math.max(0, upC - 1);
         } else if (completedOrderType === 'download' || completedOrderType === 'server_download') {
@@ -1039,10 +1060,22 @@ function updateParentFolderBadge(wrapper, completedOrderType) {
     item.pendingDownloadCount = downC;
     item.pendingCount = upC + downC;
     item.hasPendingSync = item.pendingCount > 0;
-    item.pendingType = upC > 0 ? 'upload' : (downC > 0 ? 'download' : null);
+    item.pendingType = (upC > 0 && downC > 0) ? 'both' : (upC > 0 ? 'upload' : (downC > 0 ? 'download' : null));
 
     renderRowSyncBadges(row, item);
 }
+
+function bubbleUpdateFolderBadges(wrapper, completedOrderType) {
+    let cur = wrapper;
+    while (cur) {
+        if (cur._item && cur._item.isDirectory) {
+            updateParentFolderBadge(cur, completedOrderType);
+        }
+        const parentContainer = cur.parentElement?.closest('.node-children');
+        cur = parentContainer ? parentContainer.closest('.node-wrapper') : null;
+    }
+}
+window.bubbleUpdateFolderBadges = bubbleUpdateFolderBadges;
 
 async function refreshFolderChildrenInPlace(wrapper, item) {
     const container = wrapper._childrenContainer;
@@ -1088,6 +1121,9 @@ async function refreshFolderChildrenInPlace(wrapper, item) {
             }
         }
         wrapper._loaded = true;
+        if (typeof bubbleUpdateFolderBadges === 'function') {
+            bubbleUpdateFolderBadges(wrapper);
+        }
     } catch (err) {
         console.error('[EXPLORER] Error refrescando hijos de carpeta in-place:', err);
     }
@@ -1134,11 +1170,9 @@ async function updateTransferredItemsInDOM(order) {
 
                     // Actualizar insignias de las carpetas padre hacia arriba
                     let parentContainer = row.closest('.node-children');
-                    while (parentContainer) {
-                        const parentWrapper = parentContainer.closest('.node-wrapper');
-                        if (!parentWrapper) break;
-                        updateParentFolderBadge(parentWrapper, orderType);
-                        parentContainer = parentWrapper.parentElement?.closest('.node-children');
+                    const parentWrapper = parentContainer ? parentContainer.closest('.node-wrapper') : null;
+                    if (parentWrapper && typeof bubbleUpdateFolderBadges === 'function') {
+                        bubbleUpdateFolderBadges(parentWrapper, orderType);
                     }
                 }
             }

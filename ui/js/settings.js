@@ -3051,7 +3051,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.92'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.93'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3082,11 +3082,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.92'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.93'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.92'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.93'}.zip</code>).
                             </div>
                         </div>
 
@@ -3127,7 +3127,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.92'}
+                            ${window.APP_VERSION || 'v1.1.93'}
                         </span>
                     </h3>
 
@@ -3139,7 +3139,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
-                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.1.92 (Actual)</div>
+                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.1.93 (Actual)</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>Detección y Propagación Bidireccional de Pendientes de Subida:</b> Las carpetas locales con elementos nuevos para subir a Servidor o Drive ahora reflejan inmediatamente el estado de subida (⬆️* Subir) tanto cerradas como abiertas, propagándose automáticamente por toda la jerarquía de directorios.</li>
+                                    <li><b>Eliminación de Tildes Falsos (✓):</b> Ninguna carpeta con archivos o secuencias pendientes de subir o descargar volverá a mostrar un tilde verde erróneo.</li>
+                                    <li><b>Actualización Dinámica de Insignias en Árbol:</b> La apertura y navegación por carpetas recalculan en vivo los contadores de subida y bajada de sus ancestros en el DOM.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.92</div>
                                 <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
                                     <li><b>Purga Automática de Órdenes de Inspección (rf_):</b> Se eliminó la acumulación de archivos de inspección de catálogo huérfanos que saturaban la cola de sincronización.</li>
                                     <li><b>Cola de Sincronización Exclusiva para Archivos:</b> Las inspecciones y refrescos rápidos de carpetas ya no se encolan como si fueran transferencias pesadas (0% fijo), manteniendo la cola limpia únicamente para subidas y bajadas reales.</li>
@@ -4274,8 +4282,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.92'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.92'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.93'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.93'}.zip`;
 
         if (btn) {
             btn.disabled = true;
