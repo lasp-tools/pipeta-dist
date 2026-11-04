@@ -36,11 +36,24 @@ window.getPipetaCurrentUser = function() {
 
 window.getPipetaActiveUserObj = function() {
     const uData = window.cachedUsersData || (typeof settings !== 'undefined' ? settings.usersData : null);
-    let active = uData?.activeUser;
-    if (!active && typeof Ramon !== 'undefined' && Ramon.session?.user) {
+    let active = null;
+    
+    // 1. Prioridad Absoluta: Sesión activa de Ramón (TACTIC) o sesión local explícita
+    if (typeof Ramon !== 'undefined' && Ramon.session?.user) {
         active = Ramon.session.user.login || Ramon.session.user.username;
     }
-    if (!active) active = 'admin';
+    // 2. Si no hay sesión de Ramón pero hay usuario activo en settings/uData
+    if (!active && uData?.activeUser) {
+        active = uData.activeUser;
+    }
+    // 3. Fallback a window.activeUser si existe
+    if (!active && typeof window.activeUser === 'string' && window.activeUser) {
+        active = window.activeUser;
+    }
+
+    if (!active) {
+        return null;
+    }
 
     if (uData && Array.isArray(uData.users)) {
         const activeLower = String(active).toLowerCase().trim();
@@ -62,7 +75,7 @@ window.getPipetaActiveUserObj = function() {
 window.isProjectAllowedForUser = function(project, userObj = null) {
     if (!project) return false;
     const user = userObj || (typeof window.getPipetaActiveUserObj === 'function' ? window.getPipetaActiveUserObj() : null);
-    if (!user) return true;
+    if (!user) return false;
 
     // Regla de Estudio: El rol Admin tiene acceso irrestricto a todos los proyectos siempre
     if (user.role === 'admin' || user.username === 'admin' || user.isSystem) {
@@ -102,7 +115,10 @@ window.isProjectAllowedForUser = function(project, userObj = null) {
     // 2. Proyectos donde el usuario tiene tareas activas en Ramón (TACTIC)
     if (typeof Ramon !== 'undefined' && Array.isArray(Ramon.tasks)) {
         const ramonProjects = Ramon.tasks.map(t => String(t.project || '').toLowerCase().trim()).filter(Boolean);
-        const ramonMatch = ramonProjects.some(rp => pTokens.includes(rp) || pTokens.includes(rp.replace(/^proj_/i, '')));
+        const ramonMatch = ramonProjects.some(rp => {
+            const cleanRp = rp.replace(/^proj_/i, '');
+            return pTokens.includes(rp) || pTokens.includes(cleanRp);
+        });
         if (ramonMatch) return true;
     }
 

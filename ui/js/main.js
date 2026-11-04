@@ -205,19 +205,26 @@ window.checkUserPermission = (permKey) => {
     const uData = window.cachedUsersData || settings?.usersData;
     if (!uData) return true;
 
-    // Resolve active user identity (from Ramon session or config)
-    let active = uData.activeUser;
-    if (!active && window.Ramon?.session?.user) {
+    // Resolve active user identity (Prioridad 1: Ramon session activa)
+    let active = null;
+    if (window.Ramon?.session?.user) {
         active = window.Ramon.session.user.login || window.Ramon.session.user.username;
+    }
+    if (!active && uData.activeUser) {
+        active = uData.activeUser;
+    }
+    if (!active && typeof window.activeUser === 'string' && window.activeUser) {
+        active = window.activeUser;
     }
     if (!active) active = 'admin';
 
-    const user = (uData.users || []).find(u =>
-        u.username === active ||
-        u.laspUser === active ||
-        (u.laspUser && u.laspUser.replace('lasp-', '') === active) ||
-        u.id === active
-    );
+    const activeLower = String(active).toLowerCase().trim();
+    const user = (uData.users || []).find(u => {
+        const uName = String(u.username || '').toLowerCase().trim();
+        const lUser = String(u.laspUser || '').toLowerCase().trim();
+        const uId = String(u.id || '').toLowerCase().trim();
+        return uName === activeLower || lUser === activeLower || lUser.replace(/^lasp-/i, '') === activeLower || uId === activeLower;
+    });
     if (!user) return true;
     if (user.role === 'admin' || user.username === 'admin') return true; // Full admin access
 

@@ -332,6 +332,13 @@ const Ramon = {
                 Ramon.applySessionToHeader();
                 Ramon.notifyTelemetryActiveUser();
 
+                if (typeof applyRolePermissionsToUI === 'function') {
+                    applyRolePermissionsToUI();
+                }
+                if (typeof settings !== 'undefined' && typeof settings.updateHeaderProjectSelector === 'function') {
+                    settings.updateHeaderProjectSelector();
+                }
+
                 // Sincronización silenciosa en segundo plano + carga de índice Drive
                 fetch('/api/app/sync-configs', { method: 'POST' }).then(async () => {
                     if (typeof settings !== 'undefined' && typeof settings.loadUsersConfig === 'function') {
@@ -339,6 +346,9 @@ const Ramon = {
                     }
                     if (typeof applyRolePermissionsToUI === 'function') {
                         applyRolePermissionsToUI();
+                    }
+                    if (typeof settings !== 'undefined' && typeof settings.updateHeaderProjectSelector === 'function') {
+                        settings.updateHeaderProjectSelector();
                     }
                 }).catch(() => {});
 
@@ -377,8 +387,15 @@ const Ramon = {
     logout: () => {
         try { localStorage.removeItem('pipeta_session'); } catch(e){}
         Ramon.session = null;
+        Ramon.tasks = [];
         Ramon.applySessionToHeader();
         Ramon.notifyTelemetryActiveUser();
+        if (typeof applyRolePermissionsToUI === 'function') {
+            applyRolePermissionsToUI();
+        }
+        if (typeof settings !== 'undefined' && typeof settings.updateHeaderProjectSelector === 'function') {
+            settings.updateHeaderProjectSelector();
+        }
         Ramon.showLoginModal();
     },
 

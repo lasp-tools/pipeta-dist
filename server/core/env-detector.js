@@ -422,6 +422,7 @@ async function syncConfigsFromMasterNetwork(options = {}) {
                                                         ...localU,
                                                         role: srvMatch.role || localU.role,
                                                         permissionOverrides: srvMatch.permissionOverrides || {},
+                                                        assignedProjects: srvMatch.assignedProjects || localU.assignedProjects || [],
                                                         maxConcurrentDownloadsOverride: srvMatch.maxConcurrentDownloadsOverride !== undefined
                                                             ? srvMatch.maxConcurrentDownloadsOverride
                                                             : localU.maxConcurrentDownloadsOverride

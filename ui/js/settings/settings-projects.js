@@ -409,10 +409,13 @@ Object.assign(settings, {
     getUserAllowedProjects: (userObj = null) => {
         const user = userObj || (typeof window.getPipetaActiveUserObj === 'function' ? window.getPipetaActiveUserObj() : null);
         const allProjects = (settings.projects || []).filter(p => !settings.isBaseProject(p));
-        if (!user || user.role === 'admin' || user.username === 'admin' || user.isSystem) {
+        if (!user) {
+            return [];
+        }
+        if (user.role === 'admin' || user.username === 'admin' || user.isSystem) {
             return allProjects;
         }
-        return allProjects.filter(p => typeof window.isProjectAllowedForUser === 'function' ? window.isProjectAllowedForUser(p, user) : true);
+        return allProjects.filter(p => typeof window.isProjectAllowedForUser === 'function' ? window.isProjectAllowedForUser(p, user) : false);
     },
 
     updateHeaderProjectSelector: () => {
@@ -470,11 +473,11 @@ Object.assign(settings, {
             }
         }
 
-        // Si NO estamos editando Proyecto Base con Settings abierto y currentProject es nulo/no permitido, posicionar en selectedProj
+        // Si NO estamos editando Proyecto Base con Settings abierto y currentProject es nulo o no permitido, posicionar en selectedProj
         if (!isEditingBaseInSettings && (!settings.currentProject || !visibleProjects.some(p => p.id === settings.currentProject.id))) {
-            settings.currentProject = selectedProj;
-            if (selectedProj && typeof localStorage !== 'undefined') {
-                localStorage.setItem('pipeta_active_project_id', selectedProj.id);
+            if (selectedProj) {
+                settings.selectHeaderProject(selectedProj.id);
+                return;
             }
         }
 
