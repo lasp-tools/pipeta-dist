@@ -1321,9 +1321,9 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             catalogGenerator.clearMemoryCaches();
         }
 
-        // Refresco directo de servidor en red LAN (!isExternal):
-        // refreshSubCatalog resuelve automáticamente S:, UNC (\\192.168.206.116\Z) o Z: en milisegundos sin bloqueos
-        if (catType === 'server' && !isExternal && typeof catalogGenerator.refreshSubCatalog === 'function') {
+        // En el Servidor Central real (StorNext directo / VM 105) con Z: nativo: ejecutar directamente
+        const isHostRealServer = cachedEnvState?.zInfo?.isRealServer && (typeof catalogGenerator.isZDriveNetwork === 'function' ? catalogGenerator.isZDriveNetwork() : true);
+        if (catType === 'server' && !isExternal && isHostRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
             try {
                 const srvModularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
                 if (srvModularRes && srvModularRes.success) {
@@ -1337,7 +1337,7 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                     return res.json(srvModularRes);
                 }
             } catch (localModularErr) {
-                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog directo:`, localModularErr.message);
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog en servidor real:`, localModularErr.message);
             }
         }
 
@@ -1540,9 +1540,77 @@ function ensureDirCached(dir) {
 
 const locallySyncedOrders = new Set();
 
-function autoSyncCompletedOrderFilesToLocal(order) {
-    // Desactivado: fs.copySync bloqueaba el bucle principal de Node.js congelando las peticiones HTTP y copiando gigabytes no solicitados a Z:
-    return;
+const pulledOrdersToLocal = new Set();
+
+async function autoPullCompletedDownloadToVSub(order) {
+    if (!order || order.status !== 'completed' || order.type !== 'download') return;
+    if (pulledOrdersToLocal.has(order.id)) return;
+
+    // Solo aplica a equipos que corren con vsubs locales en red de estudio (!isExternal && !isRealServer)
+    const isVsub = !global.isExternalMachine && !cachedEnvState?.zInfo?.isRealServer;
+    if (!isVsub) return;
+
+    // Solo para órdenes generadas por este equipo o por este usuario
+    const myHost = (os.hostname() || '').toLowerCase();
+    const myUser = (os.userInfo ? os.userInfo().username : '').toLowerCase();
+    const isMyOrder = (order.requestHost && order.requestHost.toLowerCase() === myHost) ||
+                      (order.user && order.user.toLowerCase() === myUser);
+    if (!isMyOrder) return;
+
+    pulledOrdersToLocal.add(order.id);
+
+    const items = order.items || [];
+    if (!items.length) return;
+
+    console.log(`[PULL TO VSUB] 📥 Orden #${order.id} completada en StorNext por Worker Central. Copiando a disco local vsubs Z:...`);
+
+    const uncRoot = (typeof getServerUncRoot === 'function') ? getServerUncRoot() : '//192.168.206.116/Z';
+    if (uncRoot && typeof ensureServerUncAccess === 'function') {
+        ensureServerUncAccess(uncRoot);
+    }
+
+    setImmediate(async () => {
+        for (const it of items) {
+            const destPath = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+            if (!destPath) continue;
+
+            const srcCandidates = [
+                destPath.replace(/^[a-zA-Z]:/i, 'S:'),
+                destPath.replace(/^[a-zA-Z]:/i, uncRoot || '//192.168.206.116/Z')
+            ];
+
+            let foundSrc = null;
+            for (const s of srcCandidates) {
+                try {
+                    if (fs.existsSync(s)) {
+                        foundSrc = s;
+                        break;
+                    }
+                } catch(e) {}
+            }
+
+            if (foundSrc) {
+                try {
+                    const st = fs.statSync(foundSrc);
+                    if (st.isDirectory()) {
+                        const { exec } = require('child_process');
+                        const q = String.fromCharCode(34);
+                        exec(`robocopy ${q}${foundSrc}${q} ${q}${destPath}${q} /E /XO /XN /XC /NFL /NDL /NJH /NJS /R:1 /W:1`, (err) => {
+                            console.log(`[PULL TO VSUB] ✅ Carpeta sincronizada a Z: local: ${destPath}`);
+                        });
+                    } else {
+                        const destExists = fs.existsSync(destPath);
+                        if (!destExists || (fs.statSync(destPath).size !== st.size)) {
+                            await streamCopyFile(foundSrc, destPath, null);
+                            console.log(`[PULL TO VSUB] ✅ Archivo sincronizado a Z: local: ${destPath}`);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[PULL TO VSUB] Error copiando ${foundSrc} a ${destPath}:`, err.message);
+                }
+            }
+        }
+    });
 }
 
 function streamCopyFile(srcFile, destFile, onChunk, abortSignal = null) {
@@ -2429,9 +2497,9 @@ app.get('/api/sync/orders', (req, res) => {
                             ? content.priority 
                             : (content.type === 'higgsfield_ingest' || content.type === 'refresh_folder' ? 80 : 50);
                         orders.push(content);
-                        // if (content.status === 'completed') {
-                        //     autoSyncCompletedOrderFilesToLocal(content);
-                        // }
+                        if (content.status === 'completed' && content.type === 'download') {
+                            autoPullCompletedDownloadToVSub(content);
+                        }
                     }
                 }
             }
