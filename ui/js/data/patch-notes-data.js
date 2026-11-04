@@ -1,9 +1,20 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.0",
+        "version": "v1.2.1",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Filtrado Estricto de Proyectos por Usuario:</b> Los artistas y usuarios estándar solo ven los proyectos que tienen asignados manualmente desde Pipeta Server (<code>assignedProjects</code>) o que tienen tareas activas en Ramón (TACTIC).",
+            "<b>Prioridad de Sesión Ramón en Tiempo Real:</b> La resolución de permisos y proyectos ahora prioriza de forma absoluta la cuenta conectada en Ramón, evitando asignaciones erróneas de roles heredados.",
+            "<b>Manejo Automático de Proyectos no Asignados:</b> Si un usuario no tiene proyectos permitidos, el sistema muestra el estado bloqueado informativo <code>🔒 Sin proyectos asignados</code> sin exponer datos ajenos.",
+            "<b>Sincronización de Permisos Multi-Puesto:</b> Las excepciones y listas de proyectos asignados en Pipeta Server se propagan automáticamente a puestos locales y remotos."
+        ]
+    },
+    {
+        "version": "v1.2.0",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Arquitectura Modular Integral (Backend y Frontend):</b> Servidor Express desacoplado en 10 routers especializados (<code>fs</code>, <code>sync</code>, <code>system</code>, <code>updater</code>, <code>ia</code>, <code>ramon</code>, etc.) y frontend modularizado con gestión reactiva mediante <code>PipetaStore</code>.",
             "<b>Detección Multi-Entorno Robusta:</b> Detección automática y transparente de los 5 entornos operativos: red de estudio con SMB, puestos locales con <code>Z:</code> virtualizado (vsubs), operación 100% offline sin internet, y puestos freelance remotos.",
