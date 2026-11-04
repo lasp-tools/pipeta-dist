@@ -6,7 +6,7 @@ title Sincronizar Pipeta (Local / Remoto)
 
 
 
-set "APP_VERSION=v1.1.90"
+set "APP_VERSION=v1.1.91"
 
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
@@ -508,7 +508,7 @@ echo.
 
 echo ============================================================
 
-echo   OK: Pipeta v1.1.90 sincronizada con exito en %DEST%
+echo   OK: Pipeta v1.1.91 sincronizada con exito en %DEST%
 
 echo ============================================================
 

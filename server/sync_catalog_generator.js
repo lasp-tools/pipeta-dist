@@ -1894,7 +1894,7 @@ function isZLocalOrSubst() {
 
 function computeSubCatalogFolderDiff(projectName, subFile, driveData) {
     const folderStats = new Map();
-    if (isZLocalOrSubst() || !driveData) return folderStats;
+    if (!driveData) return folderStats;
 
     const srvSubPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
     if (!srvSubPath) return folderStats;
@@ -1953,7 +1953,7 @@ function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
     if (!subFilePath) return null;
 
     let srvMtime = 0;
-    if (type === 'drive' && !isZLocalOrSubst()) {
+    if (type === 'drive') {
         const srvPath = resolveModularSubCatalogFile(projectName, 'server', subFile);
         if (srvPath) {
             try { srvMtime = fs.statSync(srvPath).mtimeMs; } catch (e) {}
@@ -1969,7 +1969,7 @@ function getOrBuildSubCatalogCacheEntry(projectName, type, subFile) {
         }
         const data = fs.readJsonSync(subFilePath);
         const indexRes = buildSubCatalogIndex(data);
-        const folderStats = (type === 'drive' && !isZLocalOrSubst())
+        const folderStats = (type === 'drive')
             ? computeSubCatalogFolderDiff(projectName, subFile, data)
             : new Map();
         const cacheEntry = {
@@ -2074,7 +2074,7 @@ function refreshDriveManifestPendingSummary(projectName, targetSubKey = null, re
 
         if (replicateToNetwork) {
             const alias = driveMan.projectCode;
-            const centralCacheDirs = ['S:/_SYNC_CACHE', 'Z:/_SYNC_CACHE']
+            const centralCacheDirs = ['S:/_SYNC_CACHE', '//192.168.206.116/Z/_SYNC_CACHE', 'Z:/_SYNC_CACHE']
                 .filter(r => fs.existsSync(r) && path.resolve(LOCAL_CACHE_DIR).toLowerCase() !== path.resolve(r).toLowerCase());
             for (const cDir of centralCacheDirs) {
                 try {
@@ -2107,7 +2107,7 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
         if (now - cached.time < 60000) return cached.data;
     }
 
-    if (type === 'drive' && !isZLocalOrSubst()) {
+    if (type === 'drive') {
         const subKey = subFile.replace(/\\/g, '/').replace(/\.json$/i, '');
         const driveMan = getModularManifest(canonProj, 'drive');
         const srvMan = getModularManifest(canonProj, 'server');
@@ -2606,9 +2606,22 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
         let rootPhysicalBase = isWork
             ? (config.roots?.work ? normalizeSlash(config.roots.work) : 'Z:/' + (config.client || '') + '/' + projectName)
             : (config.roots?.media ? normalizeSlash(config.roots.media) : 'Z:/INTERNO/MEDIA/' + (config.client || '') + '/' + projectName);
-        const sCandidate = rootPhysicalBase.replace(/^Z:/i, 'S:');
+        const sCandidate = rootPhysicalBase.replace(/^[a-zA-Z]:/i, 'S:');
+        const uncCandidate = rootPhysicalBase.replace(/^[a-zA-Z]:/i, '//192.168.206.116/Z');
         if (fs.existsSync(sCandidate)) {
             rootPhysicalBase = sCandidate;
+        } else if (fs.existsSync(uncCandidate)) {
+            rootPhysicalBase = uncCandidate;
+        } else if (!isZLocalOrSubst() && fs.existsSync(rootPhysicalBase)) {
+            // Z: real de red montado
+        } else {
+            try {
+                const q = String.fromCharCode(34);
+                require('child_process').execSync('net use ' + q + '\\\\192.168.206.116\\Z' + q + ' ' + q + 'Laspadmin.321' + q + ' /user:' + q + 'nonstop.tv\\lasp-mpastorino' + q + ' /persistent:no', { timeout: 3000, windowsHide: true });
+            } catch (e) {}
+            if (fs.existsSync(uncCandidate)) {
+                rootPhysicalBase = uncCandidate;
+            }
         }
         const fullPhysical = effectiveScanRel ? path.join(rootPhysicalBase, effectiveScanRel) : rootPhysicalBase;
         if (fs.existsSync(fullPhysical)) {

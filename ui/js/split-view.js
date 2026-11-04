@@ -934,7 +934,7 @@ function buildRowSyncBadges(item) {
     if (status === 'matched_drive' || status === 'matched_server') {
         const targetType = status === 'matched_server' ? 'server' : 'drive';
         const labelTarget = targetType === 'server' ? 'Servidor Central' : 'Google Drive';
-        if (item.isDirectory && item.hasPendingSync) {
+        if (item.isDirectory && (item.hasPendingSync || (item.pendingDownloadCount > 0) || (item.pendingUploadCount > 0))) {
             const upC = item.pendingUploadCount !== undefined
                 ? item.pendingUploadCount
                 : (item.pendingType === 'upload' ? (item.pendingCount || 1) : 0);

@@ -721,7 +721,7 @@ class SyncQueueUI {
                            </div>`
                         : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
                             <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                            <span>Transfiriendo en VM 105...</span>
+                            <span>${order.workerHostname ? ('En ' + order.workerHostname) : 'Worker Central'}...</span>
                            </div>`))
                 : `<span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>`;
 

@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.90";
+const VERSION = "v1.1.91";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -1321,15 +1321,23 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             catalogGenerator.clearMemoryCaches();
         }
 
-        // Si Z: es el servidor de red real y la carpeta existe físicamente, actualizar también el sub-catálogo de servidor
-        if (!isExternal && cachedEnvState?.zInfo?.isRealServer && typeof catalogGenerator.refreshSubCatalog === 'function' && fs.existsSync(safeP)) {
+        // Refresco directo de servidor en red LAN (!isExternal):
+        // refreshSubCatalog resuelve automáticamente S:, UNC (\\192.168.206.116\Z) o Z: en milisegundos sin bloqueos
+        if (catType === 'server' && !isExternal && typeof catalogGenerator.refreshSubCatalog === 'function') {
             try {
                 const srvModularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
-                if (catType === 'server' && srvModularRes && srvModularRes.success) {
+                if (srvModularRes && srvModularRes.success) {
+                    if (typeof serverDirCache !== 'undefined') serverDirCache.clear();
+                    if (typeof catalogGenerator.clearMemoryCaches === 'function') {
+                        catalogGenerator.clearMemoryCaches();
+                    }
+                    if (typeof catalogGenerator.clearFreshnessCache === 'function') {
+                        catalogGenerator.clearFreshnessCache(project, 'server');
+                    }
                     return res.json(srvModularRes);
                 }
             } catch (localModularErr) {
-                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog (server):`, localModularErr.message);
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog directo:`, localModularErr.message);
             }
         }
 
@@ -1926,6 +1934,7 @@ app.post('/api/sync/request-download', async (req, res) => {
             type: isServer ? 'server_download' : 'download',
             project,
             user: user || (os.userInfo ? os.userInfo().username : 'unknown'),
+            requestHost: os.hostname(),
             createdAt: new Date().toISOString(),
             status: isServer ? 'processing' : 'pending',
             priority,
@@ -1933,6 +1942,36 @@ app.post('/api/sync/request-download', async (req, res) => {
         };
 
         const filePath = saveOrderInCandidateDirs(orderId, orderData);
+
+        // Optimización inteligente en red LAN: si los ítems solicitados de Drive YA existen en el Servidor Central (StorNext),
+        // transformarla automáticamente en copia directa local desde StorNext hacia Z: (velocidad LAN, 0 internet)
+        let allExistOnCentral = false;
+        if (!isServer && !isExternal && !cachedEnvState?.zInfo?.isRealServer) {
+            try {
+                const uncRoot = (typeof getServerUncRoot === 'function') ? getServerUncRoot() : '//192.168.206.116/Z';
+                if (uncRoot && typeof ensureServerUncAccess === 'function') ensureServerUncAccess(uncRoot);
+                allExistOnCentral = items.every(it => {
+                    const targetLocal = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+                    if (!targetLocal) return false;
+                    const sCand = targetLocal.replace(/^[a-zA-Z]:/i, 'S:');
+                    const uncCand = targetLocal.replace(/^[a-zA-Z]:/i, uncRoot);
+                    return fs.existsSync(sCand) || fs.existsSync(uncCand);
+                });
+            } catch(e) {
+                allExistOnCentral = false;
+            }
+        }
+
+        if (allExistOnCentral) {
+            console.log(`[SYNC ORDER] 🚀 Optimización LAN: Todos los ítems solicitados ya residen en StorNext. Copiando directamente al disco local: ${orderId}`);
+            orderData.type = 'server_download';
+            orderData.status = 'processing';
+            saveOrderInCandidateDirs(orderId, orderData);
+            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+                console.error(`[LOCAL DOWNLOAD] Error en orden optimizada ${orderId}:`, err);
+            });
+            return res.json({ success: true, orderId, count: items.length, status: 'processing', priority, source: 'stornext_fast_lane' });
+        }
 
         if (isServer) {
             console.log(`[SYNC ORDER] Orden de descarga de SERVIDOR iniciada localmente: ${orderId} (${items.length} items) [Prioridad: ${priority}]`);

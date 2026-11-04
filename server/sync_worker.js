@@ -958,6 +958,13 @@ async function processQueue() {
                     if (data.targetWorker && !WORKER_ID.includes(data.targetWorker) && !os.hostname().toLowerCase().includes(data.targetWorker.toLowerCase())) {
                         continue;
                     }
+                    if (data.type === 'refresh_folder' && data.targetType === 'server') {
+                        // Solo workers con acceso físico real al Servidor Central (StorNext) pueden ejecutar refrescos de servidor
+                        const hasRealServer = !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO') || (fs.existsSync('Z:/INTERNO') && global.isZRealServer !== false));
+                        if (!hasRealServer) {
+                            continue;
+                        }
+                    }
                     if (!seenOrders.has(data.id) && !activeTransfers.has(data.id) && !activeFastTasks.has(data.id)) {
                         seenOrders.add(data.id);
                         if (data.type === 'refresh_folder' || data.type === 'query_higgsfield_job') {
