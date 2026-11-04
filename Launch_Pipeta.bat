@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.89"
+set "APP_VERSION=v1.1.90"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 
@@ -95,6 +95,12 @@ if "%PIPETA_NO_BROWSER%"=="1" (
     "%NODE_BIN%" server.js %*
 )
 set "EXIT_CODE=%errorlevel%"
+
+set "UPDATING_FLAG=%TEMP%\pipeta_updating.flag"
+if exist "%UPDATING_FLAG%" (
+    echo [INFO] Actualizacion de Pipeta en curso. Cerrando launcher...
+    exit /b 0
+)
 
 set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
 if exist "%RESTART_FLAG%" (

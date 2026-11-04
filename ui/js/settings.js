@@ -3051,7 +3051,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.89'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.90'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3082,11 +3082,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.89'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.90'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.89'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.90'}.zip</code>).
                             </div>
                         </div>
 
@@ -3127,7 +3127,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.89'}
+                            ${window.APP_VERSION || 'v1.1.90'}
                         </span>
                     </h3>
 
@@ -3139,7 +3139,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.89 (Actual)</div>
+                                <div style="font-weight:bold; color:#fff; font-size:0.88rem;">v1.1.90 (Actual)</div>
+                                <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
+                                    <li><b>Actualizador Universal a Prueba de Fallos:</b> Rediseño integral de la actualización desde la interfaz. Implementa arquitectura de relevo desacoplada (Handoff Runner externo) que libera todos los locks de archivos en Windows antes de sincronizar, eliminando cualquier riesgo de archivos bloqueados o carpetas corruptas.</li>
+                                    <li><b>Detección y Autenticación Automática en Munro:</b> El sistema detecta y autentica automáticamente el almacenamiento de red del estudio (`\\192.168.206.116\Z` / `S:`) en puestos con o sin letra Z asignada (SMB o vsubs), actualizando por red LAN sin consumir internet.</li>
+                                    <li><b>Modo Freelance Seguro con Staging Atómico:</b> En actualizaciones remotas vía GitHub ZIP, los archivos se descomprimen y verifican en un área temporal aislada antes de aplicarse a destino, garantizando integridad absoluta del sistema.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:15px; border-left:3px solid #555; padding-left:10px; opacity:0.85;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.89</div>
                                 <ul style="margin:4px 0 0 0; padding-left:18px; color:#bbb;">
                                     <li><b>Modo Pipeta Server para puestos sin Z SMB:</b> Los equipos dentro del estudio que no tengan el volumen SMB Z: montado o utilicen unidades virtuales/locales ahora sincronizan automáticamente los catálogos modulares y manifiestos vía HTTP directo con Pipeta Server en &lt; 200ms.</li>
                                     <li><b>Refresco de Carpetas en Servidor Central:</b> La acción de refrescar carpetas en modo Servidor se delega transparentemente a Pipeta Server cuando no hay acceso SMB local directo, eliminando el error de tiempo de espera del Worker y actualizando la vista inmediatamente con los nuevos archivos de red.</li>
@@ -4249,8 +4257,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.89'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.89'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.90'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.90'}.zip`;
 
         if (btn) {
             btn.disabled = true;

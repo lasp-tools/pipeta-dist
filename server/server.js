@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.89";
+const VERSION = "v1.1.90";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -3807,6 +3807,7 @@ app.post('/api/app/update-from-server', async (req, res) => {
     const candidateSources = (!global.isExternalMachine) ? [
         customSource,
         'Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
+        'S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta',
         '\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta'
     ].filter(s => s && s.trim().length > 0) : [];
 
@@ -3815,6 +3816,9 @@ $candidateSources = @(
     ${candidateSources.map(s => '"' + s.split('\\').join('\\\\') + '"').join(',\n    ')}
 )
 $foundSource = $null
+if (-not (Test-Path "\\\\192.168.206.116\\Z\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\server\\server.js")) {
+    & net.exe use \\\\192.168.206.116\\Z "Laspadmin.321" /user:"nonstop.tv\\lasp-mpastorino" /persistent:no 2>&1 | Out-Null
+}
 foreach ($src in $candidateSources) {
     if (Test-Path "$src\\server\\server.js") {
         $foundSource = $src
