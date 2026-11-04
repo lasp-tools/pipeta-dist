@@ -22,9 +22,26 @@ async function fetchDir(path, options = {}) {
     }
 }
 
+async function getJson(url) {
+    const res = await fetch(url);
+    return await res.json();
+}
+
+async function postJson(url, body = {}) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return await res.json();
+}
+
 // Global API Object for I/O
 const API = {
     fetchDir: fetchDir, // Alias
+    getJson: getJson,
+    postJson: postJson,
+
     fs: {
         // FS Helpers for Asset Designer (Node Backend)
         getFiles: async (dirPath, options = {}) => {
@@ -47,12 +64,7 @@ const API = {
 
         writeFile: async (path, content) => {
             try {
-                const res = await fetch('/api/fs/writeFile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path, content })
-                });
-                return await res.json();
+                return await postJson('/api/fs/writeFile', { path, content });
             } catch (e) { console.error(e); return false; }
         },
 
@@ -75,177 +87,120 @@ const API = {
         },
 
         fetchDir: (path, cb) => fetchDir(path, cb),
-        open: async (path) => {
-            return await fetch('/api/fs/open', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path })
-            }).then(r => r.json());
-        },
-        openFolder: async (path) => {
-            return await fetch('/api/fs/open', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path })
-            }).then(r => r.json());
-        },
-        mkdir: async (path) => {
-            return await fetch('/api/fs/mkdir', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path })
-            }).then(r => r.json());
-        },
-        rename: async (oldPath, newPath, project) => {
-            return await fetch('/api/fs/rename', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ oldPath, newPath, project })
-            }).then(r => r.json());
-        },
-        copy: async (src, dest) => {
-            return await fetch('/api/fs/copy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ src, dest })
-            }).then(r => r.json());
-        },
+        open: async (path) => postJson('/api/fs/open', { path }),
+        openFolder: async (path) => postJson('/api/fs/open', { path }),
+        mkdir: async (path) => postJson('/api/fs/mkdir', { path }),
+        rename: async (oldPath, newPath, project) => postJson('/api/fs/rename', { oldPath, newPath, project }),
+        copy: async (src, dest) => postJson('/api/fs/copy', { src, dest }),
         stat: async (path) => {
             try {
-                const res = await fetch('/api/fs/stat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path })
-                });
-                return await res.json();
+                return await postJson('/api/fs/stat', { path });
             } catch (e) {
                 return { exists: false, error: e.message };
             }
         },
-        delete: async (path) => {
-            return await fetch('/api/fs/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path })
-            }).then(r => r.json());
-        }
+        delete: async (path) => postJson('/api/fs/delete', { path })
     },
+
     system: {
         getInfo: async () => {
             try {
-                const res = await fetch('/api/system/info');
-                return await res.json();
+                return await getJson('/api/system/info');
             } catch (e) {
                 console.error("API Error: getInfo", e);
                 return { username: 'unknown' };
             }
         },
-        pickFolder: async (initialPath) => fetch('/api/system/pickFolder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initialPath })
-        }).then(r => r.json()),
-        pickFile: async (initialPath, filter) => fetch('/api/system/pickFile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initialPath, filter })
-        }).then(r => r.json())
+        pickFolder: async (initialPath) => postJson('/api/system/pickFolder', { initialPath }),
+        pickFile: async (initialPath, filter) => postJson('/api/system/pickFile', { initialPath, filter }),
+        version: async () => getJson('/api/system/version'),
+        health: async () => getJson('/api/health'),
+        diskUsage: async (paths = []) => postJson('/api/system/disk-usage', { paths }),
+        getLastProject: async () => getJson('/api/system/last-project'),
+        saveLastProject: async (projectId, projectName) => postJson('/api/system/last-project', { projectId, projectName }),
+        createShortcut: async () => postJson('/api/system/create-shortcut', {}),
+        openErrorLog: async () => postJson('/api/system/open-error-log', {}),
+        openReportsFolder: async () => postJson('/api/system/open-reports-folder', {}),
+        diagnosticReport: async (payload = {}) => postJson('/api/system/diagnostic-report', payload),
+        packageDist: async (payload = {}) => postJson('/api/system/package-dist', payload),
+        checkUpdate: async () => getJson('/api/system/check-update'),
+        updateFromServer: async () => postJson('/api/system/update-from-server', {})
     },
+
+    sync: {
+        detectEnv: async (force = false) => getJson('/api/sync/detect-env' + (force ? '?force=true' : '')),
+        getCatalogs: async () => getJson('/api/sync/catalogs'),
+        getWorkerStatus: async () => getJson('/api/sync/worker-status'),
+        getCatalog: async (project, force = false) => getJson(`/api/sync/catalog?project=${encodeURIComponent(project)}${force ? '&force=true' : ''}`),
+        getServerCatalog: async (project, force = false) => getJson(`/api/sync/server-catalog?project=${encodeURIComponent(project)}${force ? '&force=true' : ''}`),
+        initProjectCatalog: async (project, client) => postJson('/api/sync/catalog/init-project', { project, client }),
+        clearCatalogCache: async () => postJson('/api/sync/catalog/clear-cache', {}),
+        refreshFolder: async (project, path, type = 'drive') => postJson('/api/sync/catalog/refresh-folder', { project, path, type }),
+        generateCatalog: async (project, roots = {}) => postJson('/api/sync/generate-catalog', { project, roots }),
+        setLocationMode: async (mode) => postJson('/api/sync/location-mode', { mode }),
+        testConnection: async (uncPath) => postJson('/api/sync/test-connection', { uncPath }),
+        requestDownload: async (payload) => postJson('/api/sync/request-download', payload),
+        requestUpload: async (payload) => postJson('/api/sync/request-upload', payload),
+        getQueue: async (user) => getJson('/api/sync/queue' + (user ? `?user=${encodeURIComponent(user)}` : ''))
+    },
+
+    ia: {
+        getCustomTokens: async (project) => getJson(`/api/ia/custom-tokens?project=${encodeURIComponent(project || '')}`),
+        saveCustomTokens: async (project, tokens) => postJson('/api/ia/custom-tokens', { project, tokens }),
+        watcherStatus: async () => getJson('/api/ia/watcher/status'),
+        toggleWatcher: async (enabled, watchDir) => postJson('/api/ia/watcher/toggle', { enabled, watchDir }),
+        ingest: async (payload) => postJson('/api/ia/ingest', payload)
+    },
+
     templates: {
-        upload: async ({ type, processName, filename, fileData }) => fetch('/api/templates/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type, processName, filename, fileData })
-        }).then(r => r.json()),
-        findReference: async (refRoot, processName) => fetch('/api/templates/findReference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refRoot, processName })
-        }).then(r => r.json())
+        upload: async ({ type, processName, filename, fileData }) => postJson('/api/templates/upload', { type, processName, filename, fileData }),
+        findReference: async (refRoot, processName) => postJson('/api/templates/findReference', { refRoot, processName })
     },
+
     users: {
-        get: async () => fetch('/api/users').then(r => r.json()),
-        save: async (data) => fetch('/api/users', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        }).then(r => r.json()),
-        verifyAdmin: async (password) => fetch('/api/users/verify-admin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        }).then(r => r.json()),
-        setActive: async (laspUser) => fetch('/api/users/set-active', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ laspUser })
-        }).then(r => r.json())
+        get: async () => getJson('/api/users'),
+        save: async (data) => postJson('/api/users', data),
+        verifyAdmin: async (password) => postJson('/api/users/verify-admin', { password }),
+        setActive: async (laspUser) => postJson('/api/users/set-active', { laspUser })
     },
+
     ramon: {
-        status: async () => fetch('/api/ramon/status').then(r => r.json()),
-        login: async (username, password) => fetch('/api/ramon/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        }).then(r => r.json()),
+        status: async () => getJson('/api/ramon/status'),
+        login: async (username, password) => postJson('/api/ramon/login', { username, password }),
+        logout: async () => postJson('/api/ramon/logout', {}),
         getTasks: async (user, project, force = false) => {
             let url = `/api/ramon/tasks?user=${encodeURIComponent(user)}`;
             if (project) url += `&project=${encodeURIComponent(project)}`;
             if (force) url += `&force=true`;
-            return fetch(url).then(r => r.json());
+            return getJson(url);
         },
-        invalidateTasksCache: async (user) => fetch('/api/ramon/tasks/invalidate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: user || '' })
-        }).then(r => r.json()),
+        invalidateTasksCache: async (user) => postJson('/api/ramon/tasks/invalidate', { user: user || '' }),
         getProjects: async (force = false) => {
             let url = `/api/ramon/projects`;
             if (force) url += `?force=true`;
-            return fetch(url).then(r => r.json());
+            return getJson(url);
         },
         getProjectTasks: async (project, force = false) => {
             let url = `/api/ramon/project-tasks?project=${encodeURIComponent(project)}`;
             if (force) url += `&force=true`;
-            return fetch(url).then(r => r.json());
+            return getJson(url);
         }
     },
+
     statuses: {
-        get: async () => fetch('/api/statuses').then(r => r.json()),
-        save: async (data) => fetch('/api/statuses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        }).then(r => r.json())
+        get: async () => getJson('/api/statuses'),
+        save: async (data) => postJson('/api/statuses', data)
     },
+
     workflow: {
-        loadTracker: async (projectPath, workflowDir) => fetch('/api/workflow/shot-tracker/load', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectPath, workflowDir })
-        }).then(r => r.json()),
-        saveTracker: async (workflowDir, trackerData) => fetch('/api/workflow/shot-tracker/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workflowDir, trackerData })
-        }).then(r => r.json()),
-        exportUserTasks: async (workflowDir, laspUser, userTasks, projectInfo) => fetch('/api/workflow/user-tasks/export', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workflowDir, laspUser, userTasks, projectInfo })
-        }).then(r => r.json()),
-        loadUserTasks: async (workflowDir, laspUser) => fetch('/api/workflow/user-tasks/load', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workflowDir, laspUser })
-        }).then(r => r.json()),
-        ensureProcessFolders: async (folderPaths) => fetch('/api/workflow/ensure-process-folders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folderPaths })
-        }).then(r => r.json())
+        loadTracker: async (projectPath, workflowDir) => postJson('/api/workflow/shot-tracker/load', { projectPath, workflowDir }),
+        saveTracker: async (workflowDir, trackerData) => postJson('/api/workflow/shot-tracker/save', { workflowDir, trackerData }),
+        exportUserTasks: async (workflowDir, laspUser, userTasks, projectInfo) => postJson('/api/workflow/user-tasks/export', { workflowDir, laspUser, userTasks, projectInfo }),
+        loadUserTasks: async (workflowDir, laspUser) => postJson('/api/workflow/user-tasks/load', { workflowDir, laspUser }),
+        ensureProcessFolders: async (folderPaths) => postJson('/api/workflow/ensure-process-folders', { folderPaths })
     }
 };
 
-// Ensure API is available globally on window
+// Ensure API and fetchDir are available globally on window
+window.fetchDir = fetchDir;
 window.API = API;

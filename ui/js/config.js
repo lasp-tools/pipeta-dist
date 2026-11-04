@@ -1,17 +1,19 @@
 // Configuration
-window.APP_VERSION = "v1.1.93";
+window.APP_VERSION = "v1.2.0";
+window.IS_BETA_CHANNEL = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
+window.PIPETA_LOCAL_APP_DIR = window.IS_BETA_CHANNEL ? "C:\\TOOLS\\APPS\\Pipeta_Beta" : "C:\\TOOLS\\APPS\\Pipeta";
+
 if (typeof document !== 'undefined') {
-    const isBetaChannel = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
-    document.title = isBetaChannel ? "Pipeta Beta - Pipeline Manager" : "Pipeta - Pipeline Manager";
+    document.title = window.IS_BETA_CHANNEL ? "Pipeta Beta - Pipeline Manager" : "Pipeta - Pipeline Manager";
 }
 
 const ROOTS = {
     work: "M:/Mi unidad/Z/mango/ick",
     media: "M:/Mi unidad/Z/INTERNO/MEDIA/mango/ick"
 };
+window.ROOTS = ROOTS;
 
 // --- GLOBAL STATE ---
-let currentBrowserMode = 'split';
 let selectedContextPath = "";
 let isMirrorMode = false;
 let isMirroringInProgress = false; // Prevent infinite loop

@@ -1,156 +1,42 @@
 // ------------------------------------------
-// --- CREATOR WINDOW (UNIFIED TABS) ---
-// ------------------------------------------
-
-window.CreatorWindow = {
-    activeTab: localStorage.getItem('pipeta_creator_active_tab') || 'asset',
-
-    toggle: async (tab) => {
-        if ((typeof AssetCreator !== 'undefined' && AssetCreator.isVisible) || 
-            (typeof ShotCreator !== 'undefined' && ShotCreator.isVisible)) {
-            CreatorWindow.close();
-        } else {
-            await CreatorWindow.open(tab || CreatorWindow.activeTab);
-        }
-    },
-
-    open: async (tab) => {
-        if (tab) CreatorWindow.activeTab = tab;
-        localStorage.setItem('pipeta_creator_active_tab', CreatorWindow.activeTab);
-
-        const btn = document.getElementById('sidebarCreatorBtn');
-        if (btn) btn.classList.add('active');
-
-        if (CreatorWindow.activeTab === 'shot') {
-            if (typeof AssetCreator !== 'undefined') AssetCreator.close();
-            if (typeof ShotCreator !== 'undefined') await ShotCreator.open();
-        } else {
-            if (typeof ShotCreator !== 'undefined') ShotCreator.close();
-            if (typeof AssetCreator !== 'undefined') await AssetCreator.open();
-        }
-    },
-
-    close: () => {
-        if (typeof AssetCreator !== 'undefined') AssetCreator.close();
-        if (typeof ShotCreator !== 'undefined') ShotCreator.close();
-        const btn = document.getElementById('sidebarCreatorBtn');
-        if (btn) btn.classList.remove('active');
-    },
-
-    switchTo: async (tab) => {
-        if (tab === CreatorWindow.activeTab) return;
-        CreatorWindow.activeTab = tab;
-        localStorage.setItem('pipeta_creator_active_tab', tab);
-
-        const fromWin = tab === 'shot' ? AssetCreator?.container : ShotCreator?.container;
-        const toWin = tab === 'shot' ? ShotCreator?.container : AssetCreator?.container;
-
-        if (fromWin && toWin) {
-            if (fromWin.style.top) toWin.style.top = fromWin.style.top;
-            if (fromWin.style.left) toWin.style.left = fromWin.style.left;
-            toWin.style.transform = fromWin.style.transform || "none";
-        }
-
-        if (tab === 'shot') {
-            if (typeof AssetCreator !== 'undefined') AssetCreator.close();
-            if (typeof ShotCreator !== 'undefined') await ShotCreator.open();
-        } else {
-            if (typeof ShotCreator !== 'undefined') ShotCreator.close();
-            if (typeof AssetCreator !== 'undefined') await AssetCreator.open();
-        }
-
-        const btn = document.getElementById('sidebarCreatorBtn');
-        if (btn) btn.classList.add('active');
-    }
-};
-
-// ------------------------------------------
 // --- ASSET CREATOR MODULE ---
+// Shared window controller & helpers: ui/js/creators/creator-shared.js
 // ------------------------------------------
 
 const AssetCreator = {
-    isVisible: false,
-    container: null,
+    ...window.CreatorShared.createCommonMixin({
+        name: 'AssetCreator',
+        lsPrefix: 'pipeta_ac',
+        domPrefix: 'ac',
+        presetsSubdir: 'AssetDesigner',
+        customTemplatesKey: 'assets',
+        referenceRootKey: 'referenceAssetRoot',
+        defaultReferenceSub: 'assets2D/templates',
+        allProcChkId: 'chk-proc-all-ac',
+        dragHandleId: 'asset-creator-drag',
+        getSelf: () => AssetCreator,
+        getOther: () => (typeof ShotCreator !== 'undefined' ? ShotCreator : null)
+    }),
+
     currentContext: { client: null, project: null, projectObj: null, mainCategory: null, category: null, valid: false, resolvedPath: null, isRoot: false },
+
     mainCategoryNodes: [],
+
     categoryNodes: [],
+
     selectedMainCatId: null,
+
     selectedSubCatId: null,
+
     processNodes: [],
-    presets: [],
-    selectedPreset: null,
-    presetsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\AssetDesigner",
-    systemInfo: { username: "unknown" },
 
-    // Batch Mode State
-    mode: 'create', // 'create' | 'batch'
+    mode: 'create',
+
     injectionScope: 'explorer',
-    createVersionZero: false,
-    createTemplateV001: localStorage.getItem('pipeta_ac_create_template_v001') === 'true',
-    templateSource: localStorage.getItem('pipeta_ac_template_source') || 'reference',
-    manualTemplatePath: localStorage.getItem('pipeta_ac_manual_template_path') || '',
+
     foundAssets: [],
+
     selectedAssets: [],
-
-    toggleTemplateV001: (checked) => {
-        AssetCreator.createTemplateV001 = checked;
-        localStorage.setItem('pipeta_ac_create_template_v001', checked ? 'true' : 'false');
-        AssetCreator.render();
-    },
-
-    setTemplateSource: (source) => {
-        AssetCreator.templateSource = source;
-        localStorage.setItem('pipeta_ac_template_source', source);
-        AssetCreator.render();
-    },
-
-    browseManualTemplate: async () => {
-        const res = await API.system.pickFile('Z:\\', 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*');
-        if (res && res.success && res.path) {
-            AssetCreator.manualTemplatePath = res.path;
-            localStorage.setItem('pipeta_ac_manual_template_path', res.path);
-            AssetCreator.render();
-        }
-    },
-
-    getTemplateFileForProcess: async (processName, childNode) => {
-        const cleanProc = (processName || '').toLowerCase().trim();
-        const activeProjId = localStorage.getItem('pipeta_active_project_id');
-        let currentProj = (settings?.projects || []).find(p => p.id === activeProjId) || settings?.currentProject;
-
-        if (AssetCreator.templateSource === 'manual') {
-            if (AssetCreator.manualTemplatePath) {
-                const ext = '.' + AssetCreator.manualTemplatePath.split('.').pop();
-                return { sourcePath: AssetCreator.manualTemplatePath, ext: ext };
-            }
-            return null;
-        }
-
-        if (AssetCreator.templateSource === 'custom') {
-            const customMap = currentProj?.templates?.customTemplates?.assets || {};
-            const customPath = customMap[cleanProc] || customMap[processName];
-            if (customPath) {
-                const ext = '.' + customPath.split('.').pop();
-                return { sourcePath: customPath, ext: ext };
-            }
-            return null;
-        }
-
-        // Default: 'reference'
-        const workRoot = currentProj?.roots?.work || 'Z:/';
-        const refSub = currentProj?.templates?.referenceAssetRoot || 'assets2D/templates';
-        const fullRefRoot = refSub.startsWith('Z:') || refSub.startsWith('C:') || refSub.startsWith('/') ? refSub : `${workRoot}/${refSub}`.replace(/\\/g, '/');
-
-        try {
-            const res = await API.templates.findReference(fullRefRoot, cleanProc);
-            if (res && res.found && res.filePath) {
-                return { sourcePath: res.filePath, ext: res.ext || ('.' + res.fileName.split('.').pop()) };
-            }
-        } catch(e) {
-            console.error("Error looking up reference template in AssetCreator:", e);
-        }
-        return null;
-    },
 
     switchMode: (newMode) => {
         AssetCreator.mode = newMode;
@@ -298,46 +184,14 @@ const AssetCreator = {
     },
 
     loadPresets: async () => {
-        AssetCreator.presets = [];
-        const seenIds = new Set();
-        const seenFiles = new Set();
-        const searchDirs = [
-            AssetCreator.presetsPath,
-            "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\AssetDesigner"
-        ];
-
         try {
-            if (window.API && API.fs && API.fs.getFiles) {
-                for (const dir of searchDirs) {
-                    try {
-                        const files = await API.fs.getFiles(dir);
-                        if (files && Array.isArray(files)) {
-                            for (const f of files) {
-                                if (f.endsWith('.json')) {
-                                    const fileBase = f.toLowerCase();
-                                    if (seenFiles.has(fileBase)) continue;
-                                    const content = await API.fs.readFile(dir + "\\" + f);
-                                    if (content) {
-                                        try {
-                                            const preset = JSON.parse(content);
-                                            const pId = preset.id || f.replace('.json', '');
-                                            if (seenIds.has(pId)) continue;
-                                            preset.id = pId;
-                                            AssetCreator.presets.push(preset);
-                                            seenIds.add(pId);
-                                            seenFiles.add(fileBase);
-                                        } catch (e) {
-                                            console.error("Error parsing preset:", f, e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (dirErr) {}
-                }
-            }
+            const { presets } = await CreatorShared.loadPresetsFromDirs([
+                AssetCreator.presetsPath,
+                CreatorShared.getRepoPresetsPath("AssetDesigner"),
+                "Z:\\INTERNO\\TOOLS\\Mati\\Propios\\Scripts\\Pipeta\\presets\\AssetDesigner"
+            ]);
+            AssetCreator.presets = presets;
 
-            // Restore last selected preset or project default / master_asset
             const lastId = localStorage.getItem('pipeta_ac_last_preset');
             const targetDefaultId = (typeof settings !== 'undefined' && settings.activeProject && settings.activeProject.defaultAssetPresetId)
                 ? settings.activeProject.defaultAssetPresetId
@@ -355,7 +209,6 @@ const AssetCreator = {
                 const defIdx = AssetCreator.presets.findIndex(p => p.id === targetDefaultId || p.name?.toLowerCase() === targetDefaultId.toLowerCase());
                 AssetCreator.selectPreset(defIdx !== -1 ? defIdx : 0);
             }
-
         } catch (e) {
             console.error("AssetCreator: Error loading presets", e);
         }
@@ -371,16 +224,6 @@ const AssetCreator = {
         AssetCreator.render();
     },
 
-    close: () => {
-        AssetCreator.isVisible = false;
-        if (AssetCreator.container) {
-            AssetCreator.container.style.display = 'none';
-        }
-        if (typeof ShotCreator === 'undefined' || !ShotCreator.isVisible) {
-            document.getElementById('sidebarCreatorBtn')?.classList.remove('active');
-        }
-    },
-
     selectProject: async (projId) => {
         if (typeof settings !== 'undefined' && settings.projects) {
             const proj = settings.projects.find(p => p.id === projId);
@@ -394,19 +237,6 @@ const AssetCreator = {
                 AssetCreator.render();
             }
         }
-    },
-
-    selectPreset: (index) => {
-        if (index === "" || index === null || index === undefined) {
-            AssetCreator.selectedPreset = null;
-        } else {
-            AssetCreator.selectedPreset = AssetCreator.presets[index];
-            AssetCreator.analyzePreset(AssetCreator.selectedPreset);
-            if (AssetCreator.selectedPreset) {
-                localStorage.setItem('pipeta_ac_last_preset', AssetCreator.selectedPreset.id);
-            }
-        }
-        AssetCreator.render();
     },
 
     analyzePreset: (preset) => {
@@ -523,7 +353,6 @@ const AssetCreator = {
         AssetCreator.processNodes = matchedProcesses;
     },
 
-    // Process Selection Persistence & Master Toggle
     getSavedSelectedProcesses: (presetId, subCatId) => {
         if (!presetId) return null;
         try {
@@ -543,20 +372,6 @@ const AssetCreator = {
             const key = 'pipeta_ac_selected_procs_' + presetId + (subCatId ? '_' + subCatId : '');
             localStorage.setItem(key, JSON.stringify(checked));
         } catch(e) {}
-    },
-
-    toggleAllProcesses: (checked) => {
-        const checkboxes = document.querySelectorAll('.ac-proc-chk');
-        checkboxes.forEach(cb => { cb.checked = checked; });
-        AssetCreator.saveSelectedProcesses();
-    },
-
-    handleProcessCheckChange: () => {
-        const checkboxes = Array.from(document.querySelectorAll('.ac-proc-chk'));
-        const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-        const masterCb = document.getElementById('chk-proc-all-ac');
-        if (masterCb) masterCb.checked = allChecked;
-        AssetCreator.saveSelectedProcesses();
     },
 
     resolveContext: (customPath) => {
@@ -839,60 +654,13 @@ const AssetCreator = {
                         </div>
 
                         <!-- File Options -->
-                        <div style="flex:0 0 auto; background:#181818; padding:10px; border-radius:4px; border:1px solid #333;">
-                             <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Opciones de Archivo</label>
-                             
-                             <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                 <input type="checkbox" id="chk-v0-files" onchange="AssetCreator.createVersionZero = this.checked" ${AssetCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
-                                 <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
-                             </div>
-
-                             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
-                                 <div style="display:flex; align-items:center;">
-                                     <input type="checkbox" id="chk-template-v001-ac" onchange="AssetCreator.toggleTemplateV001(this.checked)" ${AssetCreator.createTemplateV001 ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
-                                     <label for="chk-template-v001-ac" style="margin-left:8px; font-size:0.85rem; color:#fff; font-weight:bold; cursor:pointer;">📄 Crear v001 con Template</label>
-                                 </div>
-
-                                 ${AssetCreator.createTemplateV001 ? `
-                                     <div style="display:flex; flex-direction:column; gap:8px; padding:10px; background:#12151c; border:1px solid #28303d; border-radius:4px; margin-left:22px; font-size:0.8rem;">
-                                         <div>
-                                             <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Origen del Template:</label>
-                                             <select onchange="AssetCreator.setTemplateSource(this.value)" style="width:100%; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 8px; border-radius:3px; font-size:0.8rem;">
-                                                 <option value="reference" ${AssetCreator.templateSource === 'reference' ? 'selected' : ''}>⭐ Reference Asset (Default Proyecto)</option>
-                                                 <option value="custom" ${AssetCreator.templateSource === 'custom' ? 'selected' : ''}>🛠️ Custom Template (Configurado por Proceso)</option>
-                                                 <option value="manual" ${AssetCreator.templateSource === 'manual' ? 'selected' : ''}>📁 Create From... (Elegir archivo a mano)</option>
-                                             </select>
-                                         </div>
-
-                                         ${AssetCreator.templateSource === 'reference' ? `
-                                             <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
-                                                 Ruta: <b style="color:var(--accent); font-family:monospace;">${settings?.currentProject?.templates?.referenceAssetRoot || 'assets2D/templates'}</b>
-                                                 <div style="color:#666; margin-top:2px;">Clona la última versión encontrada en esa carpeta.</div>
-                                             </div>
-                                         ` : ''}
-
-                                         ${AssetCreator.templateSource === 'custom' ? `
-                                             <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
-                                                 <span>Usa los templates específicos configurados por proceso en <b>Configuración > Proyectos > Templates</b>.</span>
-                                             </div>
-                                         ` : ''}
-
-                                         ${AssetCreator.templateSource === 'manual' ? `
-                                             <div style="display:flex; flex-direction:column; gap:4px;">
-                                                 <label style="color:#aaa; font-size:0.75rem;">Archivo Base a Clonar:</label>
-                                                 <div style="display:flex; gap:6px;">
-                                                     <input type="text" value="${escapeHtml(AssetCreator.manualTemplatePath || '')}" 
-                                                            placeholder="Seleccionar archivo .blend, .psd, .hip..." 
-                                                            onchange="AssetCreator.manualTemplatePath = this.value; localStorage.setItem('pipeta_ac_manual_template_path', this.value);"
-                                                            style="flex:1; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 6px; font-size:0.75rem; border-radius:3px; font-family:monospace;">
-                                                     <button class="btn" onclick="AssetCreator.browseManualTemplate()" style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 8px; font-size:0.75rem; cursor:pointer;">📁</button>
-                                                 </div>
-                                             </div>
-                                         ` : ''}
-                                     </div>
-                                 ` : ''}
-                             </div>
-                        </div>
+                        ${CreatorShared.renderFileOptionsHTML('AssetCreator', AssetCreator, {
+                            chkTemplateId: 'chk-template-v001-ac',
+                            lsManualKey: 'pipeta_ac_manual_template_path',
+                            refPathDisplay: (typeof settings !== 'undefined' && settings?.currentProject?.templates?.referenceAssetRoot) || 'assets2D/templates',
+                            refOptionLabel: '⭐ Reference Asset (Default Proyecto)',
+                            manualPlaceholder: 'Seleccionar archivo .blend, .psd, .hip...'
+                        })}
                     </div>
                 </div>
             `;
@@ -903,24 +671,7 @@ const AssetCreator = {
         }
 
         AssetCreator.container.innerHTML = `
-            <div class="validator-header" style="display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 15px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <img src="icons/asset_creator.svg" style="width:18px;">
-                    <span style="font-size:0.95rem; font-weight:bold; color:#fff; margin-right:4px;">Creator</span>
-                    <div style="display:flex; background:#181818; border-radius:4px; padding:2px; border:1px solid #333; gap:2px;">
-                        <button type="button" class="creator-tab-btn active" onclick="CreatorWindow.switchTo('asset')" style="background:#2b3a4a; color:#fff; font-weight:bold; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
-                            📦 Asset Creator
-                        </button>
-                        <button type="button" class="creator-tab-btn" onclick="CreatorWindow.switchTo('shot')" style="background:transparent; color:#888; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
-                            🎬 Shot Creator
-                        </button>
-                    </div>
-                </div>
-                <div style="flex:1; cursor:grab; height:100%;" id="asset-creator-drag"></div>
-                <div class="win-controls">
-                    <button onclick="CreatorWindow.close()">×</button>
-                </div>
-            </div>
+            ${CreatorShared.renderWindowHeaderHTML('asset', 'asset-creator-drag', 'icons/asset_creator.svg')}
             
             <div class="validator-body" style="padding: 16px 20px; display:flex; flex-direction: column; background:#111; position:relative;">
                 ${overlayHTML}
@@ -949,20 +700,6 @@ const AssetCreator = {
         `;
 
         AssetCreator.makeDraggable();
-    },
-
-    showOverlay: (content) => {
-        const ov = document.getElementById('ac-overlay');
-        const cont = document.getElementById('ac-overlay-content');
-        if (ov && cont) {
-            cont.innerHTML = content;
-            ov.style.display = 'flex';
-        }
-    },
-
-    hideOverlay: () => {
-        const ov = document.getElementById('ac-overlay');
-        if (ov) ov.style.display = 'none';
     },
 
     validateAndConfirm: async () => {
@@ -1152,8 +889,6 @@ const AssetCreator = {
         }, 1800);
     },
 
-    writeMetadataFile: async () => {},
-
     createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], assetName = "") => {
         const children = allNodes.filter(n => n.parent === parentId);
         for (const child of children) {
@@ -1274,36 +1009,10 @@ const AssetCreator = {
 
             await AssetCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, assetName);
         }
-    },
-
-    makeDraggable: () => {
-        const header = document.getElementById('asset-creator-drag');
-        if (!header) return;
-
-        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        header.onmousedown = (e) => {
-            e = e || window.event;
-            e.preventDefault();
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-            document.onmouseup = () => {
-                document.onmouseup = null;
-                document.onmousemove = null;
-            };
-            document.onmousemove = (e) => {
-                e = e || window.event;
-                e.preventDefault();
-                pos1 = pos3 - e.clientX;
-                pos2 = pos4 - e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                AssetCreator.container.style.top = (AssetCreator.container.offsetTop - pos2) + "px";
-                AssetCreator.container.style.left = (AssetCreator.container.offsetLeft - pos1) + "px";
-                AssetCreator.container.style.transform = "none";
-            };
-        };
     }
 };
+
+window.AssetCreator = AssetCreator;
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => AssetCreator.init());

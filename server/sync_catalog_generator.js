@@ -2514,6 +2514,13 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
     const normTarget = normalizeSlash(targetPath).replace(/^S:/i, 'Z:');
     const lowerNorm = normTarget.toLowerCase();
 
+    if (type === 'server') {
+        const hasServerStorage = !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO') || (!isZLocalOrSubst() && fs.existsSync('Z:/INTERNO')));
+        if (!hasServerStorage) {
+            throw new Error('Equipo sin acceso físico directo al servidor central (StorNext)');
+        }
+    }
+
     let isWork = false;
     let isMedia = false;
     let rel = '';

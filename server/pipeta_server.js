@@ -695,7 +695,6 @@ app.post('/api/server/refresh-folder', async (req, res) => {
             project,
             path: folderPath,
             targetType,
-            targetWorker: 'lasp-virt-030',
             status: 'pending',
             priority: 95,
             user: user || 'Artista',
@@ -711,7 +710,7 @@ app.post('/api/server/refresh-folder', async (req, res) => {
         // 2. Depositar directamente en VM 111 (/mnt/z/_SYNC_CACHE/requests) para que el Worker de estudio lo tome de inmediato
         try {
             const b64 = Buffer.from(JSON.stringify(orderData, null, 2), 'utf8').toString('base64');
-            execSync(`${REMOTE_STUDIO_SSH} "python3 -c \\"import base64; open('/mnt/z/_SYNC_CACHE/requests/${reqId}.json','wb').write(base64.b64decode('${b64}'))\\""`, { timeout: 4000 });
+            execSync(`${REMOTE_STUDIO_SSH} "echo '${b64}' | base64 -d > /mnt/z/_SYNC_CACHE/requests/${reqId}.json"`, { timeout: 4000 });
         } catch (sshErr) {
             console.warn(`[PIPETA SERVER] Error depositando orden refresh_folder en VM 111: ${sshErr.message}`);
         }
@@ -719,7 +718,7 @@ app.post('/api/server/refresh-folder', async (req, res) => {
         // 3. Esperar que el Worker central procese la orden (polling hasta 18s)
         const waitStart = Date.now();
         let finishedOrder = null;
-        while (Date.now() - waitStart < 18000) {
+        while (Date.now() - waitStart < 60000) {
             await new Promise(r => setTimeout(r, 400));
             // Revisar archivo local
             const localFile = path.join(ORDERS_DIR, `${reqId}.json`);

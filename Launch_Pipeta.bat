@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.1.93"
+set "APP_VERSION=v1.2.0"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 
@@ -84,7 +84,21 @@ cd /d "%SERVER_DIR%"
 set "PORT=%APP_PORT%"
 
 :: Limpiar procesos previos de Pipeta en ejecucion
-powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr /r /c:":%APP_PORT% *LISTENING"') do (
+    if not "%%p"=="0" (
+        taskkill /F /PID %%p >nul 2>&1
+    )
+)
+
+
+:: Auto-hidratar presets de proyectos si faltan en la instalacion local
+if not exist "%LOCAL_DIR%\presets\Projects\compound_nine.json" (
+    if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\presets\Projects\compound_nine.json" (
+        robocopy "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\presets\Projects" "%LOCAL_DIR%\presets\Projects" /E /NDL /NFL /NJH /NJS >nul 2>&1
+    ) else if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\presets\Projects\compound_nine.json" (
+        robocopy "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\presets\Projects" "%LOCAL_DIR%\presets\Projects" /E /NDL /NFL /NJH /NJS >nul 2>&1
+    )
+)
 
 :START_SERVER
 echo [INFO] Iniciando %APP_NAME% %APP_VERSION% en puerto %APP_PORT%...

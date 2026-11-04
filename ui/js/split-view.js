@@ -66,9 +66,7 @@ function showExplorerLoading(containerId = null, text = 'Cargando contenido...')
         ? [document.getElementById(containerId)].filter(Boolean)
         : [
             document.getElementById('split-pane-project'), 
-            document.getElementById('split-pane-media'),
-            document.getElementById('pipeta-project-container')?.parentElement,
-            document.getElementById('pipeta-media-container')?.parentElement
+            document.getElementById('split-pane-media')
           ].filter(Boolean);
 
     targets.forEach(pane => {
@@ -1201,25 +1199,6 @@ async function updateTransferredItemsInDOM(order) {
                         }
                     }
                     break;
-                }
-            }
-        }
-
-        // 2. Bloques de vista Miller Columns (Pipeta view)
-        const allBlocks = document.querySelectorAll('.pipeta-block');
-        for (const block of allBlocks) {
-            const p = (block.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
-            if (p === normTarget) {
-                anyUpdated = true;
-                block.classList.remove('sync-ghost');
-                const badges = block.querySelectorAll('.sync-badge-action');
-                badges.forEach(b => b.remove());
-                if (!block.querySelector('.sync-badge-ok')) {
-                    const okSpan = document.createElement('span');
-                    okSpan.className = 'sync-badge-ok';
-                    okSpan.style.marginLeft = '8px';
-                    okSpan.textContent = '✓';
-                    block.appendChild(okSpan);
                 }
             }
         }

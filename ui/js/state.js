@@ -179,13 +179,13 @@ window.getExplorerAssignedTaskNames = function() {
     return assigned;
 };
 
-// Filtro unificado para Split View y Miller Columns
+// Filtro unificado para el Explorador (Split View)
 window.filterExplorerItems = function(items, containerId, dirPath, allDiskItems) {
     if (!Array.isArray(items)) return [];
     let result = items;
 
     // 1. Project Filter (window.pipetaUseFilter)
-    if (window.pipetaUseFilter && (containerId === 'tree-work' || containerId === 'pipeta-project-container')) {
+    if (window.pipetaUseFilter && containerId === 'tree-work') {
         const roots = (typeof getCurrentRoots === 'function') ? getCurrentRoots() : null;
         const normDir = (dirPath || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
         const normWorkRoot = (roots?.work || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -454,22 +454,6 @@ function selectBlock(el, name) {
     document.querySelectorAll('.design-block').forEach(b => b.classList.remove('selected'));
     el.classList.add('selected');
     document.getElementById('settingName').value = name;
-}
-
-// --- VIEW SWITCHING ---
-// --- VIEW SWITCHING (Split View is permanent standard) ---
-function switchBrowserMode(mode) {
-    currentBrowserMode = 'split';
-    try {
-        localStorage.setItem('pipeta_browser_mode', 'split');
-    } catch(e){}
-
-    if (typeof updateHeaderTools === 'function') {
-        updateHeaderTools('view-browser');
-    }
-
-    const splitEl = document.getElementById('browser-mode-split');
-    if (splitEl) splitEl.style.display = 'flex';
 }
 
 let _isRefreshingView = false;
@@ -1054,3 +1038,14 @@ window.collapseImageSequences = function(items) {
 
     return result;
 };
+
+window.updateDesignContext = updateDesignContext;
+window.selectBlock = selectBlock;
+window.refreshCurrentView = refreshCurrentView;
+window.detectSystemEnvironment = detectSystemEnvironment;
+window.getZEnvStatusLabel = getZEnvStatusLabel;
+window.setSyncComparisonMode = setSyncComparisonMode;
+window.refreshSyncCatalogManual = refreshSyncCatalogManual;
+window.switchViewLocation = switchViewLocation;
+window.getCurrentRoots = getCurrentRoots;
+window.initSplitDivider = initSplitDivider;

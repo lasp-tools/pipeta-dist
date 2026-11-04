@@ -173,103 +173,6 @@
     margin-left: 10px;
 }
 
-/* PIPETA VIEW (MILLER COLUMNS) */
-.pipeta-container {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    background: #111;
-}
-
-.pipeta-pane {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-    border-bottom: 1px solid #333;
-}
-
-.pipeta-breadcrumbs {
-    padding: 8px 15px;
-    background: #1a1a1a;
-    border-bottom: 1px solid #333;
-    color: #888;
-    font-size: 0.9rem;
-    white-space: nowrap;
-    overflow-x: auto;
-}
-
-.pipeta-breadcrumbs b,
-.breadcrumb-item {
-    color: #ddd;
-    cursor: pointer;
-    transition: color 0.1s, background 0.1s;
-    padding: 2px 4px;
-    border-radius: 3px;
-}
-
-.breadcrumb-item:hover {
-    color: var(--accent);
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.pipeta-breadcrumbs .crumb-sep {
-    color: #444;
-    margin: 0 5px;
-}
-
-.pipeta-scroller {
-    flex: 1;
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-    background: #151515;
-    position: relative;
-}
-
-.miller-column {
-    width: 200px;
-    min-width: 200px;
-    border-right: 1px solid #333;
-    overflow-y: auto;
-    background: #181818;
-    display: flex;
-    flex-direction: column;
-}
-
-.pipeta-block {
-    padding: 10px 15px;
-    border-bottom: 1px solid #252525;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: #ccc;
-    transition: background 0.1s;
-    border-left: 3px solid transparent;
-}
-
-.pipeta-block:hover {
-    background: #222;
-    color: white;
-}
-
-.pipeta-block.active,
-.pipeta-block.selected {
-    background: #2a2a2a;
-    color: var(--accent);
-    border-left-color: var(--accent);
-}
-
-.pipeta-scroll-area {
-    display: flex;
-    flex: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-    background: #151515;
-    position: relative;
-    padding-bottom: 10px;
-}
-
 /* DESIGN MODE (Old remnants, kept for safety) */
 .design-grid {
     display: grid;
@@ -356,36 +259,6 @@
 }
 
 /* --- SYNC LAYER OVERLAY & GHOST ITEMS --- */
-.pipeta-block.sync-ghost {
-    font-style: italic;
-    color: #88c0d0 !important;
-    background: rgba(136, 192, 208, 0.05);
-    border-left: 3px dashed #88c0d0 !important;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    user-select: none;
-}
-
-.pipeta-block.sync-ghost:hover {
-    background: rgba(136, 192, 208, 0.12);
-    color: #eceff4 !important;
-}
-
-.pipeta-block.sync-pending-upload {
-    border-left: 3px solid #ebcb8b !important;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.pipeta-block.sync-matched {
-    border-left: 3px solid #a3be8c !important;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
 .sync-badge-action {
     display: inline-flex;
     align-items: center;
@@ -522,7 +395,7 @@ body.pipeta-fast-rendering *::after {
 }
 
 /* Ensure panes have relative positioning for overlays */
-.split-pane, .pipeta-pane, #browser-mode-split, #browser-mode-pipeta {
+.split-pane, #browser-mode-split {
     position: relative;
 }
 

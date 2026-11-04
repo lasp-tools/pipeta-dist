@@ -227,6 +227,21 @@
       "authSource": "ramon",
       "autoRegistered": true,
       "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_mini_01_3211",
+      "username": "lasp-mini-01",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-mini-01",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en LASP-MINI-010 (2026-11-02)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
     }
   ],
   "activeUser": "admin",

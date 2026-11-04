@@ -1,0 +1,13 @@
+{
+  "name": "pipeta",
+  "appName": "PIPETA",
+  "version": "v1.2.0",
+  "channel": "main",
+  "port": 3002,
+  "localDir": "C:\\TOOLS\\APPS\\Pipeta",
+  "networkDir": "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta",
+  "prodStudioDir": "S:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta",
+  "shortcutName": "Pipeta.lnk",
+  "launcherBat": "Launch_Pipeta.bat",
+  "updaterBat": "Actualizar_Pipeta_desde_Red.bat"
+}

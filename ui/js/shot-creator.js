@@ -1,92 +1,43 @@
 // ------------------------------------------
 // --- SHOT CREATOR MODULE ---
+// Shared window controller & helpers: ui/js/creators/creator-shared.js
 // ------------------------------------------
 
 const ShotCreator = {
-    isVisible: false,
-    container: null,
+    ...window.CreatorShared.createCommonMixin({
+        name: 'ShotCreator',
+        lsPrefix: 'pipeta_sc',
+        domPrefix: 'sc',
+        presetsSubdir: 'ShotDesigner',
+        customTemplatesKey: 'shots',
+        referenceRootKey: 'referenceShotRoot',
+        defaultReferenceSub: 'episodios/templates',
+        allProcChkId: 'chk-proc-all',
+        dragHandleId: 'shot-creator-drag',
+        getFallbackWorkRoot: () => (typeof ShotCreator.getWorkRoot === 'function' ? ShotCreator.getWorkRoot() : ShotCreator.currentContext?.workRoot),
+        getSelf: () => ShotCreator,
+        getOther: () => (typeof AssetCreator !== 'undefined' ? AssetCreator : null)
+    }),
+
     currentContext: { client: null, project: null, category: null, valid: false },
-    categoryNodes: [], // In Shot context, this might be Sequences or Episodes if marked as Category
+
+    categoryNodes: [],
+
     processNodes: [],
-    mediaFolderNodes: [], // For mirror path subfolders
-    presets: [],
-    selectedPreset: null,
-    presetsPath: "C:\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner",
+
+    mediaFolderNodes: [],
+
     autoNamingEnabled: false,
-    createVersionZero: true,
-    createTemplateV001: localStorage.getItem('pipeta_sc_create_template_v001') === 'true',
-    templateSource: localStorage.getItem('pipeta_sc_template_source') || 'reference',
-    manualTemplatePath: localStorage.getItem('pipeta_sc_manual_template_path') || '',
-    systemInfo: { username: "unknown" },
 
-    toggleTemplateV001: (checked) => {
-        ShotCreator.createTemplateV001 = checked;
-        localStorage.setItem('pipeta_sc_create_template_v001', checked ? 'true' : 'false');
-        ShotCreator.render();
-    },
-
-    setTemplateSource: (source) => {
-        ShotCreator.templateSource = source;
-        localStorage.setItem('pipeta_sc_template_source', source);
-        ShotCreator.render();
-    },
-
-    browseManualTemplate: async () => {
-        const res = await API.system.pickFile('Z:\\', 'Archivos de Template (*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt)|*.nk;*.blend;*.hip;*.psd;*.aep;*.prproj;*.txt|Todos los archivos (*.*)|*.*');
-        if (res && res.success && res.path) {
-            ShotCreator.manualTemplatePath = res.path;
-            localStorage.setItem('pipeta_sc_manual_template_path', res.path);
-            ShotCreator.render();
-        }
-    },
-
-    getTemplateFileForProcess: async (processName, childNode) => {
-        const cleanProc = (processName || '').toLowerCase().trim();
-        const activeProjId = localStorage.getItem('pipeta_active_project_id');
-        let currentProj = (settings?.projects || []).find(p => p.id === activeProjId) || settings?.currentProject;
-
-        if (ShotCreator.templateSource === 'manual') {
-            if (ShotCreator.manualTemplatePath) {
-                const ext = '.' + ShotCreator.manualTemplatePath.split('.').pop();
-                return { sourcePath: ShotCreator.manualTemplatePath, ext: ext };
-            }
-            return null;
-        }
-
-        if (ShotCreator.templateSource === 'custom') {
-            const customMap = currentProj?.templates?.customTemplates?.shots || {};
-            const customPath = customMap[cleanProc] || customMap[processName];
-            if (customPath) {
-                const ext = '.' + customPath.split('.').pop();
-                return { sourcePath: customPath, ext: ext };
-            }
-            return null;
-        }
-
-        // Default: 'reference'
-        const workRoot = currentProj?.roots?.work || ShotCreator.getWorkRoot() || 'Z:/';
-        const refSub = currentProj?.templates?.referenceShotRoot || 'episodios/templates';
-        const fullRefRoot = refSub.startsWith('Z:') || refSub.startsWith('C:') || refSub.startsWith('/') ? refSub : `${workRoot}/${refSub}`.replace(/\\/g, '/');
-
-        try {
-            const res = await API.templates.findReference(fullRefRoot, cleanProc);
-            if (res && res.found && res.filePath) {
-                return { sourcePath: res.filePath, ext: res.ext || ('.' + res.fileName.split('.').pop()) };
-            }
-        } catch(e) {
-            console.error("Error looking up reference template in ShotCreator:", e);
-        }
-        return null;
-    },
-
-    // Batch Mode State
-    // Hierarchy State
     hierarchy: {
         episodes: [],
         scenes: []
     },
-    creationLevel: 'shot', // 'episode' | 'scene' | 'shot'
+
+    creationLevel: 'shot',
+
     selectedParentEpisode: null,
+
     selectedParentScene: null,
 
     switchMode: (newMode) => {
@@ -151,7 +102,6 @@ const ShotCreator = {
         }
     },
 
-    // Helper to find the relative path from Project Node to the Container of the target level
     getRelativeContainerPath: (level) => {
         if (!ShotCreator.selectedPreset || !ShotCreator.selectedPreset.nodes) return null;
 
@@ -181,8 +131,6 @@ const ShotCreator = {
         return pathParts.join('/');
     },
 
-    // New Helper to build the final path on disk for a target item (Episode, Scene or Shot)
-    // based on the preset hierarchy and selected parents.
     getFullResolvedPath: (level, itemName, isMirror = false) => {
         if (!ShotCreator.selectedPreset || !ShotCreator.selectedPreset.nodes) return null;
 
@@ -429,8 +377,6 @@ const ShotCreator = {
         ShotCreator.render();
     },
 
-    // loadShotsForCategory Duplicate stub removed
-
     init: async () => {
         ShotCreator.container = document.getElementById('shot-creator-window');
         if (!ShotCreator.container) {
@@ -453,42 +399,14 @@ const ShotCreator = {
     },
 
     loadPresets: async () => {
-        ShotCreator.presets = [];
         try {
-            const candidateDirs = [
+            const { presets, activeDir } = await CreatorShared.loadPresetsFromDirs([
                 ShotCreator.presetsPath,
-                "Z:\\INTERNO\\TOOLS\\GITHUB\\TOOLS\\APPS\\Pipeta\\presets\\ShotDesigner",
-            ];
-            for (const cDir of candidateDirs) {
-                if (window.API && API.fs && API.fs.getFiles) {
-                    try {
-                        const files = await API.fs.getFiles(cDir);
-                        if (files && files.length > 0) {
-                            for (const f of files) {
-                                if (f.endsWith('.json')) {
-                                    const content = await API.fs.readFile(cDir + "\\" + f);
-                                    if (content) {
-                                        try {
-                                            const preset = JSON.parse(content);
-                                            if (!ShotCreator.presets.some(p => p.id === preset.id)) {
-                                                ShotCreator.presets.push(preset);
-                                            }
-                                        } catch (e) {
-                                            console.error("Error parsing preset:", f, e);
-                                        }
-                                    }
-                                }
-                            }
-                            if (ShotCreator.presets.length > 0) {
-                                ShotCreator.presetsPath = cDir;
-                                break;
-                            }
-                        }
-                    } catch(err) {}
-                }
-            }
+                CreatorShared.getRepoPresetsPath("ShotDesigner")
+            ], { stopOnFirstNonEmptyDir: true });
+            ShotCreator.presets = presets;
+            if (activeDir) ShotCreator.presetsPath = activeDir;
 
-            // Restore last selected preset or fallback to project default/master_shot
             const lastId = localStorage.getItem('pipeta_sc_last_preset');
             let foundIdx = -1;
             if (lastId) {
@@ -521,16 +439,6 @@ const ShotCreator = {
         ShotCreator.render();
     },
 
-    close: () => {
-        ShotCreator.isVisible = false;
-        if (ShotCreator.container) {
-            ShotCreator.container.style.display = 'none';
-        }
-        if (typeof AssetCreator === 'undefined' || !AssetCreator.isVisible) {
-            document.getElementById('sidebarCreatorBtn')?.classList.remove('active');
-        }
-    },
-
     selectProject: async (projId) => {
         if (typeof settings !== 'undefined' && settings.projects) {
             const proj = settings.projects.find(p => p.id === projId);
@@ -542,20 +450,6 @@ const ShotCreator = {
                 ShotCreator.render();
             }
         }
-    },
-
-    selectPreset: (index) => {
-        if (index === "" || index === null) {
-            ShotCreator.selectedPreset = null;
-        } else {
-            ShotCreator.selectedPreset = ShotCreator.presets[index];
-            ShotCreator.analyzePreset(ShotCreator.selectedPreset);
-            // Save persistence
-            if (ShotCreator.selectedPreset) {
-                localStorage.setItem('pipeta_sc_last_preset', ShotCreator.selectedPreset.id);
-            }
-        }
-        ShotCreator.render();
     },
 
     analyzePreset: (preset) => {
@@ -602,7 +496,6 @@ const ShotCreator = {
         ShotCreator.resolveContext();
     },
 
-    // Process Selection Persistence & Master Toggle
     getSavedSelectedProcesses: (presetId) => {
         if (!presetId) return null;
         try {
@@ -621,21 +514,6 @@ const ShotCreator = {
         } catch(e) {}
     },
 
-    toggleAllProcesses: (checked) => {
-        const checkboxes = document.querySelectorAll('.sc-proc-chk');
-        checkboxes.forEach(cb => { cb.checked = checked; });
-        ShotCreator.saveSelectedProcesses();
-    },
-
-    handleProcessCheckChange: () => {
-        const checkboxes = Array.from(document.querySelectorAll('.sc-proc-chk'));
-        const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-        const masterCb = document.getElementById('chk-proc-all');
-        if (masterCb) masterCb.checked = allChecked;
-        ShotCreator.saveSelectedProcesses();
-    },
-
-    // Result tags like [proyecto], [Episodio], etc into strings based on current UI state
     resolvePatternTags: (pattern, itemName = "") => {
         if (!pattern) return "";
         let res = pattern;
@@ -1167,61 +1045,13 @@ const ShotCreator = {
                         ${rightColContentHTML}
                         
                         <!-- File Options -->
-                        <div style="flex:0 0 auto; background:#181818; padding:10px; border-radius:4px; border:1px solid #333;">
-                             <label style="display:block; margin-bottom:8px; color:#aaa; font-weight:bold; font-size:0.85rem; border-bottom:1px solid #333; padding-bottom:4px;">Opciones de Archivo</label>
-                             
-                             <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                  <input type="checkbox" id="chk-v0-files" onchange="ShotCreator.createVersionZero = this.checked" ${ShotCreator.createVersionZero ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
-                                  <label for="chk-v0-files" style="margin-left:8px; font-size:0.85rem; cursor:pointer; color:#ccc;">Crear Archivos Versión Cero (.txt)</label>
-                              </div>
-
-                              <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
-                                  <div style="display:flex; align-items:center;">
-                                      <input type="checkbox" id="chk-template-v001-sc" onchange="ShotCreator.toggleTemplateV001(this.checked)" ${ShotCreator.createTemplateV001 ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;">
-                                      <label for="chk-template-v001-sc" style="margin-left:8px; font-size:0.85rem; color:#fff; font-weight:bold; cursor:pointer;">📄 Crear v001 con Template</label>
-                                  </div>
-
-                                  ${ShotCreator.createTemplateV001 ? `
-                                      <div style="display:flex; flex-direction:column; gap:8px; padding:10px; background:#12151c; border:1px solid #28303d; border-radius:4px; margin-left:22px; font-size:0.8rem;">
-                                          <div>
-                                              <label style="color:#aaa; display:block; margin-bottom:4px; font-weight:bold;">Origen del Template:</label>
-                                              <select onchange="ShotCreator.setTemplateSource(this.value)" style="width:100%; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 8px; border-radius:3px; font-size:0.8rem;">
-                                                  <option value="reference" ${ShotCreator.templateSource === 'reference' ? 'selected' : ''}>⭐ Reference Episode / Root (Default Proyecto)</option>
-                                                  <option value="custom" ${ShotCreator.templateSource === 'custom' ? 'selected' : ''}>🛠️ Custom Template (Configurado por Proceso)</option>
-                                                  <option value="manual" ${ShotCreator.templateSource === 'manual' ? 'selected' : ''}>📁 Create From... (Elegir archivo a mano)</option>
-                                              </select>
-                                          </div>
-
-                                          ${ShotCreator.templateSource === 'reference' ? `
-                                              <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
-                                                  Ruta: <b style="color:var(--accent); font-family:monospace;">${settings?.currentProject?.templates?.referenceShotRoot || 'episodios/templates'}</b>
-                                                  <div style="color:#666; margin-top:2px;">Clona la última versión encontrada en esa carpeta.</div>
-                                              </div>
-                                          ` : ''}
-
-                                          ${ShotCreator.templateSource === 'custom' ? `
-                                              <div style="color:#888; font-size:0.75rem; background:#181d26; padding:6px 8px; border-radius:3px; border:1px solid #28303d;">
-                                                  <span>Usa los templates específicos configurados por proceso en <b>Configuración > Proyectos > Templates</b>.</span>
-                                              </div>
-                                          ` : ''}
-
-                                          ${ShotCreator.templateSource === 'manual' ? `
-                                              <div style="display:flex; flex-direction:column; gap:4px;">
-                                                  <label style="color:#aaa; font-size:0.75rem;">Archivo Base a Clonar:</label>
-                                                  <div style="display:flex; gap:6px;">
-                                                      <input type="text" value="${escapeHtml(ShotCreator.manualTemplatePath || '')}" 
-                                                             placeholder="Seleccionar archivo .nk, .blend, .psd..." 
-                                                             onchange="ShotCreator.manualTemplatePath = this.value; localStorage.setItem('pipeta_sc_manual_template_path', this.value);"
-                                                             style="flex:1; background:#1c222d; border:1px solid #3a4556; color:#fff; padding:4px 6px; font-size:0.75rem; border-radius:3px; font-family:monospace;">
-                                                      <button class="btn" onclick="ShotCreator.browseManualTemplate()" style="background:#263238; border:1px solid #37474f; color:#fff; padding:4px 8px; font-size:0.75rem; cursor:pointer;">📁</button>
-                                                  </div>
-                                              </div>
-                                          ` : ''}
-                                      </div>
-                                  ` : ''}
-                              </div>
-
-                        </div>
+                        ${CreatorShared.renderFileOptionsHTML('ShotCreator', ShotCreator, {
+                            chkTemplateId: 'chk-template-v001-sc',
+                            lsManualKey: 'pipeta_sc_manual_template_path',
+                            refPathDisplay: (typeof settings !== 'undefined' && settings?.currentProject?.templates?.referenceShotRoot) || 'episodios/templates',
+                            refOptionLabel: '⭐ Reference Episode / Root (Default Proyecto)',
+                            manualPlaceholder: 'Seleccionar archivo .nk, .blend, .hip, .aep...'
+                        })}
                     </div>
                 </div>
             `;
@@ -1231,24 +1061,7 @@ const ShotCreator = {
         }
 
         ShotCreator.container.innerHTML = `
-            <div class="validator-header" style="display:flex; align-items:center; justify-content:space-between; height:46px; padding:0 15px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <img src="icons/asset_creator.svg" style="width:18px;">
-                    <span style="font-size:0.95rem; font-weight:bold; color:#fff; margin-right:4px;">Creator</span>
-                    <div style="display:flex; background:#181818; border-radius:4px; padding:2px; border:1px solid #333; gap:2px;">
-                        <button type="button" class="creator-tab-btn" onclick="CreatorWindow.switchTo('asset')" style="background:transparent; color:#888; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
-                            📦 Asset Creator
-                        </button>
-                        <button type="button" class="creator-tab-btn active" onclick="CreatorWindow.switchTo('shot')" style="background:#2b3a4a; color:#fff; font-weight:bold; border:none; border-radius:3px; padding:3px 12px; font-size:0.78rem; cursor:pointer;">
-                            🎬 Shot Creator
-                        </button>
-                    </div>
-                </div>
-                <div style="flex:1; cursor:grab; height:100%;" id="shot-creator-drag"></div>
-                 <div class="win-controls">
-                    <button onclick="CreatorWindow.close()">×</button>
-                </div>
-            </div>
+            ${CreatorShared.renderWindowHeaderHTML('shot', 'shot-creator-drag', 'icons/shot_creator.svg')}
             <div class="validator-body" style="padding: 20px; display:flex; flex-direction: column; background:#111; position:relative;">
                 ${overlayHTML}
                 <div style="display:flex; gap:15px; margin-top:0; margin-bottom:15px;">
@@ -1275,22 +1088,6 @@ const ShotCreator = {
         `;
 
         ShotCreator.makeDraggable();
-    },
-
-    showOverlay: (html) => {
-        const ov = document.getElementById('sc-overlay');
-        const content = document.getElementById('sc-overlay-content');
-        if (ov && content) {
-            content.innerHTML = html;
-            ov.style.display = 'flex';
-        }
-    },
-
-    hideOverlay: () => {
-        const ov = document.getElementById('sc-overlay');
-        if (ov) {
-            ov.style.display = 'none';
-        }
     },
 
     validateAndConfirm: async () => {
@@ -1527,7 +1324,6 @@ const ShotCreator = {
         `);
     },
 
-    // Helper to resolve all possible tags in a name/pattern
     resolveNodePattern: (pattern, ctx, node = null) => {
         if (!pattern) return "";
         let res = pattern;
@@ -1602,8 +1398,6 @@ const ShotCreator = {
 
         return res;
     },
-
-    writeMetadataFile: async () => {},
 
     createNodesRecursively: async (parentId, parentPath, allNodes, allowedProcesses = [], shotName = "", isFullMedia = true, inheritedVars = {}) => {
         const levelWeight = { 'episode': 1, 'scene': 2, 'shot': 3 };
@@ -1793,36 +1587,10 @@ const ShotCreator = {
                 await ShotCreator.createNodesRecursively(child.id, fullPath, allNodes, allowedProcesses, shotName, isFullMedia, ctx.vars);
             }
         }
-    },
-
-    makeDraggable: () => {
-        const header = document.getElementById('shot-creator-drag');
-        if (!header) return;
-
-        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        header.onmousedown = (e) => {
-            e = e || window.event;
-            e.preventDefault();
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-            document.onmouseup = () => {
-                document.onmouseup = null;
-                document.onmousemove = null;
-            };
-            document.onmousemove = (e) => {
-                e = e || window.event;
-                e.preventDefault();
-                pos1 = pos3 - e.clientX;
-                pos2 = pos4 - e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                ShotCreator.container.style.top = (ShotCreator.container.offsetTop - pos2) + "px";
-                ShotCreator.container.style.left = (ShotCreator.container.offsetLeft - pos1) + "px";
-                ShotCreator.container.style.transform = "none"; // Remove centering
-            };
-        };
     }
 };
+
+window.ShotCreator = ShotCreator;
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => ShotCreator.init());

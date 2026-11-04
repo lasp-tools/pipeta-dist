@@ -150,21 +150,17 @@ const Tutorials = {
             id: 'explorer',
             icon: 'icons/view_classic.svg',
             title: 'Explorer & Navegación',
-            subtitle: 'Split, Miller, Ubicaciones y Comparación Cloud',
+            subtitle: 'Árbol Proyecto/Media, Ubicaciones y Comparación Cloud',
             color: '#FF9800',
             content: `
                 <h2 style="margin-top:0; color:#FF9800;">🗂️ Explorer & Integridad de Estructura</h2>
                 <p style="color:#ccc; line-height:1.8;">El <b>Explorer</b> es el gestor de archivos especializado para VFX de Pipeta. Permite inspeccionar en profundidad la estructura de carpetas de Proyecto y Media, gestionar secuencias de imágenes y auditar la sincronización entre local, el servidor central y Google Drive.</p>
 
-                <h3 style="color:#FF9800; border-bottom:1px solid #333; padding-bottom:5px;">Vistas de Navegación</h3>
+                <h3 style="color:#FF9800; border-bottom:1px solid #333; padding-bottom:5px;">Vista de Navegación</h3>
                 <div style="display:flex; gap:15px; margin-bottom:20px;">
                     <div style="flex:1; background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
-                        <h4 style="color:#fff; margin-top:0;">🌳 Vista Árbol (Split Work / Media)</h4>
-                        <p style="color:#999; font-size:0.88rem;">Dos paneles verticales sincronizados: <b style="color:var(--accent);">Proyecto (Work)</b> arriba y <b style="color:#4caf50;">Media</b> abajo. Permite comprobar visualmente que cada plano tenga su carpeta de renders asociada.</p>
-                    </div>
-                    <div style="flex:1; background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
-                        <h4 style="color:#fff; margin-top:0;">📊 Vista Miller (Columnas Pipeta)</h4>
-                        <p style="color:#999; font-size:0.88rem;">Despliegue horizontal por columnas infinitas al estilo macOS Finder. Máxima agilidad para navegar jerarquías profundas (Episodio → Secuencia → Shot → Proceso).</p>
+                        <h4 style="color:#fff; margin-top:0;">🌳 Vista Árbol (Split Proyecto / Media)</h4>
+                        <p style="color:#999; font-size:0.88rem;">Dos paneles verticales sincronizados: <b style="color:var(--accent);">Proyecto (Work)</b> arriba y <b style="color:#4caf50;">Media</b> abajo. Permite comprobar visualmente que cada plano o asset tenga su estructura y carpeta de renders asociada.</p>
                     </div>
                 </div>
 
