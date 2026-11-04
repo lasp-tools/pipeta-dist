@@ -953,6 +953,15 @@ async function processQueue() {
             const fullPath = path.join(dir, file);
             try {
                 const data = fs.readJsonSync(fullPath);
+                // Auto-purgar de inmediato cualquier orden de inspección efímera (rf_) abandonada o vieja para no trabar workers
+                if (data && data.type === 'refresh_folder') {
+                    const ageMs = Date.now() - new Date(data.createdAt || data.startedAt || 0).getTime();
+                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled' || ageMs > 25000) {
+                        try { fs.removeSync(fullPath); } catch(e) {}
+                        continue;
+                    }
+                }
+
                 const isAbandoned = data && data.status === 'processing' && data.startedAt && (Date.now() - new Date(data.startedAt).getTime() > 40000);
                 if (data && (data.status === 'pending' || isAbandoned) && data.type !== 'server_download' && data.type !== 'server_upload') {
                     if (data.targetWorker && !WORKER_ID.includes(data.targetWorker) && !os.hostname().toLowerCase().includes(data.targetWorker.toLowerCase())) {

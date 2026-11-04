@@ -36,7 +36,7 @@ console.warn = function(...args) { _origWarn(_formatTimestamp(), ...args); };
 console.error = function(...args) { _origError(_formatTimestamp(), ...args); };
 console.info = function(...args) { _origInfo(_formatTimestamp(), ...args); };
 
-const VERSION = "v1.1.91";
+const VERSION = "v1.1.92";
 const os = require('os'); // Added os module
 
 // Restart Flag Check (Prevents duplicate tabs on reload)
@@ -1321,9 +1321,9 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
             catalogGenerator.clearMemoryCaches();
         }
 
-        // En el Servidor Central real (StorNext directo / VM 105) con Z: nativo: ejecutar directamente
-        const isHostRealServer = cachedEnvState?.zInfo?.isRealServer && (typeof catalogGenerator.isZDriveNetwork === 'function' ? catalogGenerator.isZDriveNetwork() : true);
-        if (catType === 'server' && !isExternal && isHostRealServer && typeof catalogGenerator.refreshSubCatalog === 'function') {
+        // En red LAN de estudio (!isExternal):
+        // Ejecutar escaneo puntual de la carpeta en StorNext (2 segundos) y actualizar subcatálogo sin encolar órdenes
+        if (catType === 'server' && !isExternal && typeof catalogGenerator.refreshSubCatalog === 'function') {
             try {
                 const srvModularRes = await catalogGenerator.refreshSubCatalog(project, safeP, 'server');
                 if (srvModularRes && srvModularRes.success) {
@@ -1337,7 +1337,7 @@ app.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                     return res.json(srvModularRes);
                 }
             } catch (localModularErr) {
-                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog en servidor real:`, localModularErr.message);
+                console.warn(`[CATALOG REFRESH FOLDER] Falló refreshSubCatalog directo:`, localModularErr.message);
             }
         }
 
@@ -2484,8 +2484,23 @@ app.get('/api/sync/orders', (req, res) => {
 
                 for (const f of files) {
                     const fullP = path.join(dir, f);
+                    // Purgar de inmediato órdenes de refresco efímeras mayores a 30s para que nunca queden zombies
+                    if (f.startsWith('rf_')) {
+                        try {
+                            const st = fs.statSync(fullP);
+                            if (now - st.mtimeMs > 30000) {
+                                fs.unlinkSync(fullP);
+                                continue;
+                            }
+                        } catch(e) {}
+                    }
+
                     const content = readOrderJsonCached(fullP);
                     if (content && content.id && !seenOrders.has(content.id)) {
+                        // Las inspecciones de carpeta son operaciones de UI efímeras, no transferencias pesadas de cola
+                        if (content.type === 'refresh_folder') {
+                            continue;
+                        }
                         seenOrders.add(content.id);
                         if (activeLocalTransfers.has(content.id)) {
                             const act = activeLocalTransfers.get(content.id);

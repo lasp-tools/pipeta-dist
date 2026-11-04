@@ -3051,7 +3051,7 @@ const settings = {
                                 <span>📦 Empaquetar Versión Portable (.zip)</span>
                             </div>
                             <span style="font-size:0.75rem; background:#222; padding:2px 8px; border-radius:4px; color:#aaa; font-family:monospace;">
-                                Pipeta ${window.APP_VERSION || 'v1.1.91'}
+                                Pipeta ${window.APP_VERSION || 'v1.1.92'}
                             </span>
                         </div>
                         <p style="color:#aaa; font-size:0.82rem; line-height:1.5; margin-top:0; margin-bottom:14px;">
@@ -3082,11 +3082,11 @@ const settings = {
                                 <input type="checkbox" id="pkgIncludeRamon" style="width:16px; height:16px; cursor:pointer;">
                                 <span>
                                     <b>Incluir Ramón y dependencias</b> (Python 3.10 portable + TACTIC Client) 
-                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.91'}_Ramon.zip</code> (~35 MB extra)</span>
+                                    <span style="color:#00bcd4; font-size:0.75rem; margin-left:6px;">➔ Genera <code>Pipeta_${window.APP_VERSION || 'v1.1.92'}_Ramon.zip</code> (~35 MB extra)</span>
                                 </span>
                             </label>
                             <div style="font-size:0.75rem; color:#888; margin-left:26px; margin-top:3px;">
-                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.91'}.zip</code>).
+                                Ideal para enviar por primera vez a usuarios externos en su casa. Para actualizaciones de código subsiguientes, podés dejarlo destildado para generar una versión más ligera (<code>Pipeta_${window.APP_VERSION || 'v1.1.92'}.zip</code>).
                             </div>
                         </div>
 
@@ -3127,7 +3127,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.1.91'}
+                            ${window.APP_VERSION || 'v1.1.92'}
                         </span>
                     </h3>
 
@@ -3138,9 +3138,16 @@ const settings = {
                         </div>
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
-                            <div style="margin-bottom:15px; border-left:3px solid var(--accent); padding-left:10px;">
-                                <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
-                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.1.91 (Actual)</div>
+                            <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
+                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.1.92 (Actual)</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>Purga Automática de Órdenes de Inspección (rf_):</b> Se eliminó la acumulación de archivos de inspección de catálogo huérfanos que saturaban la cola de sincronización.</li>
+                                    <li><b>Cola de Sincronización Exclusiva para Archivos:</b> Las inspecciones y refrescos rápidos de carpetas ya no se encolan como si fueran transferencias pesadas (0% fijo), manteniendo la cola limpia únicamente para subidas y bajadas reales.</li>
+                                    <li><b>Refresco Directo LAN sin Tickets:</b> <code>Refrescar Carpeta</code> en red de estudio se procesa de forma síncrona en 2 segundos, actualizando la vista inmediatamente sin colgar workers.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.91</div>
                                 <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
                                     <li><b>Refresco Directo de Servidor en LAN (0 Bloqueos):</b> <code>Refrescar Carpeta</code> en modo Servidor ahora resuelve StorNext directamente en milisegundos mediante SMB / UNC (<code>\\192.168.206.116\Z</code> o <code>S:</code>) sin depender de colas ni generar timeouts de worker.</li>
                                     <li><b>Cálculo Universal de Diferencias de Carpetas:</b> Se eliminaron las restricciones que impedían calcular diffs de subcatálogos en puestos con unidades virtuales locales, garantizando que ninguna carpeta con elementos faltantes muestre erróneamente un tilde de OK.</li>
@@ -4267,8 +4274,8 @@ const settings = {
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.91'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.91'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.92'}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.92'}.zip`;
 
         if (btn) {
             btn.disabled = true;
