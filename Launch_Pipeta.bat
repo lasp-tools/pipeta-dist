@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.2.1"
+set "APP_VERSION=v1.2.2"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 

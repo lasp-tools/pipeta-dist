@@ -1,9 +1,20 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.1",
+        "version": "v1.2.2",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Refresco Híbrido Instantáneo (&lt; 500 ms):</b> Clic derecho y refresco de carpeta resuelto en tiempo real directamente por Pipeta Server vía StorNext SMB sin demoras ni colas lentas.",
+            "<b>Catálogos de Servidor en Puestos con Z Virtual (vsub):</b> Los puestos con Z virtualizado o carpetas locales aún no creadas consultan y visualizan de inmediato el catálogo del servidor central.",
+            "<b>Desacople Total de Servidor Auxiliar (VM 111):</b> Eliminada toda dependencia y bloqueos de red hacia la VM 111, unificando la administración en Pipeta Server y StorNext (116).",
+            "<b>Auto-Actualizador Nativo de Flota:</b> Migración de llamadas de sincronización a fetch HTTP nativo con handoff desacoplado sin bloqueos de proceso."
+        ]
+    },
+    {
+        "version": "v1.2.1",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Filtrado Estricto de Proyectos por Usuario:</b> Los artistas y usuarios estándar solo ven los proyectos que tienen asignados manualmente desde Pipeta Server (<code>assignedProjects</code>) o que tienen tareas activas en Ramón (TACTIC).",
             "<b>Prioridad de Sesión Ramón en Tiempo Real:</b> La resolución de permisos y proyectos ahora prioriza de forma absoluta la cuenta conectada en Ramón, evitando asignaciones erróneas de roles heredados.",
