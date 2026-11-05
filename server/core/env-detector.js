@@ -123,9 +123,7 @@ async function runEnvironmentDetection() {
         });
         hasInternet = await Promise.any([
             probeHttps('https://1.1.1.1/cdn-cgi/trace'),
-            probeHttps('https://www.gstatic.com/generate_204'),
-            probeHttps('https://piano-exclusively-function-michael.trycloudflare.com/api/server/health'),
-            probeHttps('https://pipeta.lasp.co/api/health')
+            probeHttps('https://www.gstatic.com/generate_204')
         ]);
     } catch (e) {
         hasInternet = false;

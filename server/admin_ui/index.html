@@ -4631,6 +4631,44 @@ async function updateSelectedFleet() {
             if (selDlOv) selDlOv.value = 'inherit';
         }
 
+        
+        function renderModalUserAssignedProjects(user) {
+            const container = document.getElementById('modalUserAssignedProjectsList');
+            const noticeEl = document.getElementById('modalAssignedProjectsAdminNotice');
+            if (!container) return;
+
+            const currentRole = document.getElementById('modal-u-role')?.value || user?.role || 'user';
+            if (noticeEl) noticeEl.style.display = currentRole === 'admin' ? 'block' : 'none';
+
+            const uAssigned = Array.isArray(user?.assignedProjects)
+                ? user.assignedProjects.map(x => String(x).toLowerCase().replace(/^proj_/i, ''))
+                : [];
+
+            const available = (serverProjects || []).filter(p => !p.isBase && p.file !== 'base.json' && (p.name || '').toLowerCase() !== 'base');
+
+            if (available.length === 0) {
+                container.innerHTML = '<div style="color:#666; font-style:italic; grid-column:1/-1; padding:8px;">No hay proyectos disponibles en el catálogo del servidor</div>';
+                return;
+            }
+
+            container.innerHTML = available.map(p => {
+                const pName = p.name || p.id;
+                const pClean = String(p.name || p.id || '').toLowerCase().replace(/^proj_/i, '');
+                const pIdClean = String(p.id || '').toLowerCase().replace(/^proj_/i, '');
+                const isChecked = uAssigned.includes(pClean) || uAssigned.includes(pIdClean) || (user?.assignedProjects || []).includes(pName);
+                const pClient = p.client || 'LASP';
+                return `
+                    <label style="display:flex; align-items:center; gap:7px; background:#161b22; padding:6px 8px; border-radius:4px; border:1px solid #252d3a; cursor:pointer; user-select:none;">
+                        <input type="checkbox" data-user-project-id="${pName}" ${isChecked ? 'checked' : ''} style="accent-color:#00bcd4; width:15px; height:15px; cursor:pointer;">
+                        <span style="color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.75rem;">
+                            <b style="color:#fff;">${pName}</b> 
+                            <span style="color:#777; font-size:0.68rem;">(${pClient})</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+        }
+
         function openCreateUserModal() {
             document.getElementById('userModalTitle').innerText = '👤 Nuevo Usuario';
             document.getElementById('modal-u-id').value = '';
@@ -4646,11 +4684,21 @@ async function updateSelectedFleet() {
             if (selDlOv) selDlOv.value = 'inherit';
 
             const selRole = document.getElementById('modal-u-role');
-            selRole.onchange = () => renderUserOverridesControls(null, selRole.value);
+            selRole.onchange = () => {
+                renderUserOverridesControls(null, selRole.value);
+                const noticeEl = document.getElementById('modalAssignedProjectsAdminNotice');
+                if (noticeEl) noticeEl.style.display = selRole.value === 'admin' ? 'block' : 'none';
+            };
             renderUserOverridesControls(null, 'user');
             selRole.innerHTML = (serverUsersConfig.roles || []).map(r => `
                 <option value="${r.id}" ${r.id === 'user' ? 'selected' : ''}>${r.name} (${r.id})</option>
             `).join('');
+
+            if (!serverProjects || serverProjects.length === 0) {
+                fetchServerProjectsConfig().then(() => renderModalUserAssignedProjects(null));
+            } else {
+                renderModalUserAssignedProjects(null);
+            }
 
             document.getElementById('userEditModalOverlay').classList.add('open');
         }
@@ -4687,8 +4735,18 @@ async function updateSelectedFleet() {
             selRole.innerHTML = (serverUsersConfig.roles || []).map(r => `
                 <option value="${r.id}" ${r.id === user.role ? 'selected' : ''}>${r.name} (${r.id})</option>
             `).join('');
-            selRole.onchange = () => renderUserOverridesControls(user, selRole.value);
+            selRole.onchange = () => {
+                renderUserOverridesControls(user, selRole.value);
+                const noticeEl = document.getElementById('modalAssignedProjectsAdminNotice');
+                if (noticeEl) noticeEl.style.display = selRole.value === 'admin' ? 'block' : 'none';
+            };
             renderUserOverridesControls(user, user.role || 'user');
+
+            if (!serverProjects || serverProjects.length === 0) {
+                fetchServerProjectsConfig().then(() => renderModalUserAssignedProjects(user));
+            } else {
+                renderModalUserAssignedProjects(user);
+            }
 
             document.getElementById('userEditModalOverlay').classList.add('open');
         }
@@ -4728,6 +4786,12 @@ async function updateSelectedFleet() {
                 else if (k && sel.value === 'deny') permissionOverrides[k] = false;
             });
 
+            const assignedProjects = [];
+            document.querySelectorAll('#modalUserAssignedProjectsList input[type="checkbox"]:checked').forEach(cb => {
+                const pid = cb.getAttribute('data-user-project-id');
+                if (pid && !assignedProjects.includes(pid)) assignedProjects.push(pid);
+            });
+
             if (!username) {
                 alert('El Nombre de Usuario es obligatorio.');
                 return;
@@ -4751,6 +4815,7 @@ async function updateSelectedFleet() {
                         avatarColor,
                         authSource,
                         maxConcurrentDownloadsOverride,
+                        assignedProjects,
                         permissionOverrides
                     };
                 }
@@ -4770,6 +4835,7 @@ async function updateSelectedFleet() {
                     isSystem: false,
                     authSource,
                     maxConcurrentDownloadsOverride,
+                    assignedProjects,
                     permissionOverrides
                 });
             }
@@ -6262,6 +6328,25 @@ async function updateSelectedFleet() {
                         </select>
                         <div style="font-size: 0.68rem; color: #888; margin-top: 4px;">
                             Define cuántas transferencias simultáneas puede tomar el Worker para este usuario al mismo tiempo.
+                        </div>
+                    </div>
+
+                    <!-- PROYECTOS ASIGNADOS MANUALMENTE -->
+                    <div style="background: #101319; border: 1px solid #232a35; border-radius: 6px; padding: 10px 12px; margin-top: 2px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-weight: bold; color: #00bcd4; font-size: 0.78rem; text-transform: uppercase; display: flex; align-items: center; gap: 5px;">
+                                <span>📌</span> Proyectos Asignados Manualmente (Override)
+                            </span>
+                            <span style="color: #777; font-size: 0.70rem;">Acceso independiente de Ramón</span>
+                        </div>
+                        <div id="modalAssignedProjectsAdminNotice" style="display: none; color: #ebcb8b; font-size: 0.72rem; margin-bottom: 6px; font-style: italic;">
+                            ℹ️ El rol Administrador tiene acceso total a todos los proyectos del estudio siempre.
+                        </div>
+                        <div id="modalUserAssignedProjectsList" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.74rem; max-height: 140px; overflow-y: auto; padding-right: 4px;">
+                            <!-- Checkboxes cargados dinámicamente -->
+                        </div>
+                        <div style="font-size: 0.68rem; color: #888; margin-top: 6px;">
+                            Habilita el proyecto en el selector de Pipeta de este usuario aunque no tenga tareas activas en Ramón.
                         </div>
                     </div>
 
