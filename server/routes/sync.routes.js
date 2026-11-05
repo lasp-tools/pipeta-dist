@@ -1035,17 +1035,24 @@ router.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                 for (const baseUrl of serverUrls) {
                     try {
                         const postUrl = `${baseUrl.replace(/\/+$/, '')}/api/server/refresh-folder`;
-                        const postData = JSON.stringify({
+                        const postPayload = {
                             project,
                             path: folderPath,
                             type: catType,
-                            user: os.userInfo ? os.userInfo().username : 'unknown'
+                            user: (os.userInfo ? os.userInfo().username : 'unknown')
+                        };
+
+                        const fetchResp = await fetch(postUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-pipeta-token': 'lasp-pipeta-sec-token-2026'
+                            },
+                            body: JSON.stringify(postPayload),
+                            signal: AbortSignal.timeout(6000)
                         });
-                        const q = String.fromCharCode(34);
-                        const bslash = String.fromCharCode(92);
-                        const cmd = 'curl.exe -s -m 60 -X POST -H ' + q + 'Content-Type: application/json' + q + ' -H ' + q + 'x-pipeta-token: lasp-pipeta-sec-token-2026' + q + ' -d ' + q + postData.replace(/"/g, bslash + q) + q + ' ' + q + postUrl + q;
-                        const resp = execSync(cmd, { encoding: 'utf8', timeout: 65000, windowsHide: true });
-                        const parsed = JSON.parse(resp);
+
+                        const parsed = await fetchResp.json();
                         if (parsed && parsed.success) {
                             serverDirCache.clear();
                             if (typeof catalogGenerator.clearMemoryCaches === 'function') {
@@ -1064,7 +1071,7 @@ router.post('/api/sync/catalog/refresh-folder', async (req, res) => {
                                     }
                                 } catch (fErr) {}
                             }
-                            return res.json(parsed.result || { success: true, fromPipetaServer: true, subCatalog: parsed.subCatalog });
+                            return res.json(parsed.result || { success: true, fromPipetaServer: true, subCatalog: parsed.subCatalog, itemsCount: parsed.itemsCount });
                         } else if (parsed && parsed.error) {
                             lastErr = parsed.error;
                         }

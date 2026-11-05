@@ -53,7 +53,9 @@ router.get('/api/fs/list', (req, res) => {
                 ? catalogGenerator.isZDriveNetwork()
                 : true;
 
-            if (isNetworkZ && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive' && localSource !== 'server_catalog' && source !== 'server') {
+            const isZPath = lowerSafeP.startsWith('z:/') || lowerSafeP.startsWith('s:/');
+
+            if ((isNetworkZ || isZPath) && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive' && localSource !== 'server_catalog' && source !== 'server') {
                 const serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
                     ? catalogGenerator.listFromModularCatalog(safeP, 'server')
                     : null;
