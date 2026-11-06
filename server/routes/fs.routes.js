@@ -108,6 +108,76 @@ router.get('/api/fs/list', (req, res) => {
                 }
 
                 if (serverItems !== null) {
+                    // LIVE RECONCILIATION FOR VSUBS / LAN WORKSTATIONS:
+                    // Si el puesto tiene conectividad con StorNext (S: o UNC //192.168.206.116/Z o Z: red),
+                    // comprobar en ~5ms si hay archivos recién renderizados en esta carpeta física del servidor
+                    // para que aparezcan de inmediato sin esperar 1h ni depender de escaneos manuales.
+                    if (!cachedEnvState?.isExternalMachine) {
+                        try {
+                            let srvPhysicalDir = null;
+                            if (fs.existsSync('S:/INTERNO')) {
+                                const candidate = safeP.replace(/^[a-zA-Z]:/i, 'S:');
+                                if (fs.existsSync(candidate)) srvPhysicalDir = candidate;
+                            } else if (fs.existsSync('//192.168.206.116/Z/INTERNO')) {
+                                const candidate = safeP.replace(/^[a-zA-Z]:/i, '//192.168.206.116/Z');
+                                if (fs.existsSync(candidate)) srvPhysicalDir = candidate;
+                            } else if (fs.existsSync(safeP)) {
+                                const isNet = (typeof catalogGenerator.isZDriveNetwork === 'function') ? catalogGenerator.isZDriveNetwork() : false;
+                                if (isNet) srvPhysicalDir = safeP;
+                            }
+
+                            if (srvPhysicalDir) {
+                                const diskEntries = fs.readdirSync(srvPhysicalDir, { withFileTypes: true });
+                                const catNames = new Set(serverItems.map(si => (si.name || '').toLowerCase()));
+                                let hasNewItems = false;
+
+                                for (const de of diskEntries) {
+                                    if (de.name.toLowerCase() === '_gsdata_') continue;
+                                    if (!catNames.has(de.name.toLowerCase())) {
+                                        hasNewItems = true;
+                                        const fullPhys = path.join(srvPhysicalDir, de.name);
+                                        let sz = 0;
+                                        let mt = null;
+                                        try {
+                                            const st = fs.statSync(fullPhys);
+                                            sz = st.size;
+                                            mt = st.mtime ? st.mtime.toISOString() : null;
+                                        } catch (e) {}
+
+                                        const normLogical = `${safeP.replace(/\/+$/, '')}/${de.name}`;
+                                        serverItems.push({
+                                            name: de.name,
+                                            isDirectory: de.isDirectory(),
+                                            path: normLogical,
+                                            serverPath: normLogical,
+                                            targetLocalPath: normLogical,
+                                            size: sz,
+                                            modTime: mt,
+                                            mtime: mt,
+                                            fromCatalog: false,
+                                            isServer: true
+                                        });
+                                        catNames.add(de.name.toLowerCase());
+                                    }
+                                }
+
+                                if (hasNewItems) {
+                                    setImmediate(() => {
+                                        try {
+                                            const projInfo = catalogGenerator.findProjectManifestForPath ? catalogGenerator.findProjectManifestForPath(safeP, 'server') : null;
+                                            const proj = projInfo?.projectName || 'surf_love';
+                                            if (typeof catalogGenerator.refreshSubCatalog === 'function') {
+                                                catalogGenerator.refreshSubCatalog(proj, safeP, 'server').catch(() => {});
+                                            }
+                                        } catch (e) {}
+                                    });
+                                }
+                            }
+                        } catch (liveErr) {
+                            console.warn('[FS LIST] Error en chequeo live de server_catalog:', liveErr.message);
+                        }
+                    }
+
                     const cleanItems = serverItems.map(item => ({
                         ...item,
                         path: (item.path || '').replace(/^S:/i, 'Z:'),

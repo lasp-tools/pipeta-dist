@@ -282,7 +282,7 @@ class ContextMenu {
                         window.CatalogRefreshStepper.setStep('refresh');
                     }
                     if (typeof refreshCurrentView === 'function') {
-                        await refreshCurrentView();
+                        await refreshCurrentView(true);
                     }
                     if (window.CatalogRefreshStepper) {
                         window.CatalogRefreshStepper.finish(`✅ "${folderName}" al día (${res.itemsCount || 0} items en ${targetLabel})`);
@@ -299,7 +299,7 @@ class ContextMenu {
                         await loadActiveProjectSyncCatalog(true);
                     }
                     if (typeof refreshCurrentView === 'function') {
-                        await refreshCurrentView();
+                        await refreshCurrentView(true);
                     }
                 }
             } else {
