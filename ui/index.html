@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pipeta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
-    <link rel="stylesheet" href="css/theme.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/components.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/layout.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/browser.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/asset-designer.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/shot-designer.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.2.4">
-    <link rel="stylesheet" href="css/console.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/theme.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/components.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/layout.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/browser.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/asset-designer.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/shot-designer.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.2.5">
+    <link rel="stylesheet" href="css/console.css?v=v1.2.5">
 </head>
 
 <body>
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.2.4</span>
+                <span class="app-version" id="appVersion">v1.2.5</span>
             </div>
         </div>
 
@@ -455,15 +455,15 @@
                                 <div id="tokShotIdVal" style="font-family:monospace; font-size:0.85rem; color:var(--accent); text-align:center; padding:3px 0;">SURF_B03_066_1200</div>
                             </div>
 
-                            <!-- Token Motor -->
+                            <!-- Token Modelo -->
                             <div class="ia-token-card ia-token-card-active" id="tokCard_motor">
-                                <button type="button" id="tokBtn_motor" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('motor')">MOTOR</button>
+                                <button type="button" id="tokBtn_motor" class="ia-token-mod-btn active" onclick="toggleIaTokenModule('motor')">MODELO</button>
                                 <input type="checkbox" id="tokMotorToggle" checked style="display:none;" onchange="updateIaTokenModuleUI('motor'); updateIaPreview();">
                                 <select id="tokMotorSelect" class="prop-input" style="padding:3px; font-size:0.8rem; margin-bottom:4px;" onchange="handleIaMotorChange(this.value)">
                                     <option value="auto">Auto</option>
                                     <option value="auto_hf">Higgsfield (metadata)</option>
                                     <option disabled>──────────</option>
-                                    <optgroup label="Motores de Video">
+                                    <optgroup label="Modelos de Video">
                                         <option value="SD2">SD2</option>
                                         <option value="SD25">SD25</option>
                                         <option value="VEO3">VEO3</option>
@@ -471,7 +471,7 @@
                                         <option value="GOMN">GOMN</option>
                                         <option value="HFMC">HFMC</option>
                                     </optgroup>
-                                    <optgroup label="Motores de Imagen">
+                                    <optgroup label="Modelos de Imagen">
                                         <option value="NB2P">NB2P</option>
                                         <option value="NBN2">NBN2</option>
                                         <option value="NBN21">NBN21</option>
@@ -481,7 +481,7 @@
                                         <option value="GPT25F">GPT25F</option>
                                     </optgroup>
                                 </select>
-                                <input id="tokMotorCustom" class="prop-input" placeholder="Manual (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaMotorCustomChange(this.value)">
+                                <input id="tokMotorCustom" class="prop-input" placeholder="Manual Modelo (ej: SD3)" style="padding:3px; font-size:0.8rem; display:none;" oninput="handleIaMotorCustomChange(this.value)">
                             </div>
 
                             <!-- Token Res -->
@@ -714,57 +714,57 @@
     </div>
 
     <!-- SCRIPT MODULES -->
-    <script src="js/config.js?v=v1.2.4"></script>
-    <script src="js/core/pipeta-store.js?v=v1.2.4"></script>
-    <script src="js/state.js?v=v1.2.4"></script>
-    <script src="js/api.js?v=v1.2.4"></script>
-    <script src="js/ramon.js?v=v1.2.4"></script>
-    <script src="js/console.js?v=v1.2.4"></script>
-    <script src="js/selection.js?v=v1.2.4"></script>
-    <script src="js/inspector.js?v=v1.2.4"></script>
-    <script src="js/validator.js?v=v1.2.4"></script>
-    <script src="js/context-menu.js?v=v1.2.4"></script>
+    <script src="js/config.js?v=v1.2.5"></script>
+    <script src="js/core/pipeta-store.js?v=v1.2.5"></script>
+    <script src="js/state.js?v=v1.2.5"></script>
+    <script src="js/api.js?v=v1.2.5"></script>
+    <script src="js/ramon.js?v=v1.2.5"></script>
+    <script src="js/console.js?v=v1.2.5"></script>
+    <script src="js/selection.js?v=v1.2.5"></script>
+    <script src="js/inspector.js?v=v1.2.5"></script>
+    <script src="js/validator.js?v=v1.2.5"></script>
+    <script src="js/context-menu.js?v=v1.2.5"></script>
     <!-- Static Data -->
-    <script src="js/data/patch-notes-data.js?v=v1.2.4"></script>
-    <script src="js/data/shortcuts-data.js?v=v1.2.4"></script>
+    <script src="js/data/patch-notes-data.js?v=v1.2.5"></script>
+    <script src="js/data/shortcuts-data.js?v=v1.2.5"></script>
     <!-- Settings Modular -->
-    <script src="js/settings/settings-core.js?v=v1.2.4"></script>
-    <script src="js/settings/settings-projects.js?v=v1.2.4"></script>
-    <script src="js/settings/settings-sync.js?v=v1.2.4"></script>
-    <script src="js/settings/settings-users.js?v=v1.2.4"></script>
-    <script src="js/settings/settings-export.js?v=v1.2.4"></script>
+    <script src="js/settings/settings-core.js?v=v1.2.5"></script>
+    <script src="js/settings/settings-projects.js?v=v1.2.5"></script>
+    <script src="js/settings/settings-sync.js?v=v1.2.5"></script>
+    <script src="js/settings/settings-users.js?v=v1.2.5"></script>
+    <script src="js/settings/settings-export.js?v=v1.2.5"></script>
     <!-- Sync Overlay (Decommissioned Miller view logic converted to sync overlay) -->
-    <script src="js/sync-overlay.js?v=v1.2.4"></script>
+    <script src="js/sync-overlay.js?v=v1.2.5"></script>
     <!-- Views -->
-    <script src="js/mirror.js?v=v1.2.4"></script>
-    <script src="js/split-view.js?v=v1.2.4"></script>
+    <script src="js/mirror.js?v=v1.2.5"></script>
+    <script src="js/split-view.js?v=v1.2.5"></script>
     <!-- Designers (Canvas Shared + Specific) -->
-    <script src="js/designers/designer-canvas-shared.js?v=v1.2.4"></script>
-    <script src="js/asset-designer.js?v=v1.2.4"></script>
-    <script src="js/shot-designer.js?v=v1.2.4"></script>
+    <script src="js/designers/designer-canvas-shared.js?v=v1.2.5"></script>
+    <script src="js/asset-designer.js?v=v1.2.5"></script>
+    <script src="js/shot-designer.js?v=v1.2.5"></script>
     <!-- Creators (Shared + Specific) -->
-    <script src="js/creators/creator-shared.js?v=v1.2.4"></script>
-    <script src="js/asset-creator.js?v=v1.2.4"></script>
-    <script src="js/shot-creator.js?v=v1.2.4"></script>
+    <script src="js/creators/creator-shared.js?v=v1.2.5"></script>
+    <script src="js/asset-creator.js?v=v1.2.5"></script>
+    <script src="js/shot-creator.js?v=v1.2.5"></script>
     <!-- Tutorials -->
-    <script src="js/tutorials.js?v=v1.2.4"></script>
+    <script src="js/tutorials.js?v=v1.2.5"></script>
     <!-- Sync -->
-    <script src="js/sync-analyzer.js?v=v1.2.4"></script>
-    <script src="js/sync-queue.js?v=v1.2.4"></script>
-    <script src="js/sync-conflict.js?v=v1.2.4"></script>
+    <script src="js/sync-analyzer.js?v=v1.2.5"></script>
+    <script src="js/sync-queue.js?v=v1.2.5"></script>
+    <script src="js/sync-conflict.js?v=v1.2.5"></script>
     <!-- IA Ingest Modular -->
-    <script src="js/ia/ia-tokens.js?v=v1.2.4"></script>
-    <script src="js/ia/ia-context.js?v=v1.2.4"></script>
-    <script src="js/ia/ia-higgsfield.js?v=v1.2.4"></script>
-    <script src="js/ia/ia-ingest-queue.js?v=v1.2.4"></script>
+    <script src="js/ia/ia-tokens.js?v=v1.2.5"></script>
+    <script src="js/ia/ia-context.js?v=v1.2.5"></script>
+    <script src="js/ia/ia-higgsfield.js?v=v1.2.5"></script>
+    <script src="js/ia/ia-ingest-queue.js?v=v1.2.5"></script>
     <!-- Auditors & Trackers -->
-    <script src="js/file-auditor.js?v=v1.2.4"></script>
-    <script src="js/shot-navigator.js?v=v1.2.4"></script>
+    <script src="js/file-auditor.js?v=v1.2.5"></script>
+    <script src="js/shot-navigator.js?v=v1.2.5"></script>
     <!-- Dock Manager & Header Toolbar -->
-    <script src="js/dock-manager.js?v=v1.2.4"></script>
-    <script src="js/header-toolbar.js?v=v1.2.4"></script>
+    <script src="js/dock-manager.js?v=v1.2.5"></script>
+    <script src="js/header-toolbar.js?v=v1.2.5"></script>
     <!-- Main Entry -->
-    <script src="js/main.js?v=v1.2.4"></script>
+    <script src="js/main.js?v=v1.2.5"></script>
 
     <!-- SNAP GHOST (DROP TO DOCK PREVIEW) -->
     <div id="app-dock-ghost" class="app-dock-ghost">

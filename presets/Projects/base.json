@@ -26,7 +26,11 @@
       "VEO3",
       "VO31",
       "GOMN",
-      "RUBY"
+      "RUBY",
+      "GEN45",
+      "GEN4",
+      "ALPH2",
+      "TPZ"
     ],
     "motorsImage": [
       "MJ",
@@ -94,6 +98,29 @@
         "detected": "4398x1886",
         "tag": "UHD219"
       }
+    ],
+    "modelKeywords": [
+      { "keyword": "GPT Image 2_5 Sunburst", "model": "GPT25S" },
+      { "keyword": "Sunburst", "model": "GPT25S" },
+      { "keyword": "GPT 2.5 Flare", "model": "GPT25F" },
+      { "keyword": "Flare", "model": "GPT25F" },
+      { "keyword": "Seedance 2_5", "model": "SD25" },
+      { "keyword": "Seedance 2.5", "model": "SD25" },
+      { "keyword": "Seedance 2_0", "model": "SD2" },
+      { "keyword": "Seedance 2.0", "model": "SD2" },
+      { "keyword": "Seedance Pro", "model": "SD2" },
+      { "keyword": "Gen 4.5", "model": "GEN45" },
+      { "keyword": "Gen 4_5", "model": "GEN45" },
+      { "keyword": "Gen 4", "model": "GEN4" },
+      { "keyword": "Ruby", "model": "RUBY" },
+      { "keyword": "Aleph 2", "model": "ALPH2" },
+      { "keyword": "Nano Banana 2.1", "model": "NBN21" },
+      { "keyword": "Nano Banana 2", "model": "NBN2" },
+      { "keyword": "Topaz", "model": "TPZ" },
+      { "keyword": "Veo 3.1", "model": "VO31" },
+      { "keyword": "Veo 3", "model": "VEO3" },
+      { "keyword": "Flux", "model": "FLUX" },
+      { "keyword": "Midjourney", "model": "MJ" }
     ],
     "templates": {
       "referenceShotRoot": "episodios/templates",

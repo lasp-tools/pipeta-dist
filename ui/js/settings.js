@@ -11,6 +11,30 @@ const CANONICAL_RESOLUTION_RULES = [
     { detected: "1280x720", tag: "HD" }
 ];
 
+const CANONICAL_MODEL_RULES = [
+    { keyword: "GPT Image 2_5 Sunburst", model: "GPT25S" },
+    { keyword: "Sunburst", model: "GPT25S" },
+    { keyword: "GPT 2.5 Flare", model: "GPT25F" },
+    { keyword: "Flare", model: "GPT25F" },
+    { keyword: "Seedance 2_5", model: "SD25" },
+    { keyword: "Seedance 2.5", model: "SD25" },
+    { keyword: "Seedance 2_0", model: "SD2" },
+    { keyword: "Seedance 2.0", model: "SD2" },
+    { keyword: "Seedance Pro", model: "SD2" },
+    { keyword: "Gen 4.5", model: "GEN45" },
+    { keyword: "Gen 4_5", model: "GEN45" },
+    { keyword: "Gen 4", model: "GEN4" },
+    { keyword: "Ruby", model: "RUBY" },
+    { keyword: "Aleph 2", model: "ALPH2" },
+    { keyword: "Nano Banana 2.1", model: "NBN21" },
+    { keyword: "Nano Banana 2", model: "NBN2" },
+    { keyword: "Topaz", model: "TPZ" },
+    { keyword: "Veo 3.1", model: "VO31" },
+    { keyword: "Veo 3", model: "VEO3" },
+    { keyword: "Flux", model: "FLUX" },
+    { keyword: "Midjourney", model: "MJ" }
+];
+
 const CANONICAL_BASE_PRESETS = {
     id: "proj_base",
     name: "Proyecto Base",
@@ -32,7 +56,7 @@ const CANONICAL_BASE_PRESETS = {
         defaultTagRoleA: "start1001",
         defaultTagRoleB: "inp",
         defaultTagRoleC: "i2v",
-        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"],
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC", "RUBY", "GEN45", "GEN4", "ALPH2", "TPZ"],
         motorsImage: ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"],
         framings: ["FLL", "CRP"],
         tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
@@ -45,6 +69,29 @@ const CANONICAL_BASE_PRESETS = {
             { detected: "1080x1080", tag: "SQ1K" },
             { detected: "2560x1080", tag: "UW2K" },
             { detected: "1280x720", tag: "HD" }
+        ],
+        modelKeywords: [
+            { keyword: "GPT Image 2_5 Sunburst", model: "GPT25S" },
+            { keyword: "Sunburst", model: "GPT25S" },
+            { keyword: "GPT 2.5 Flare", model: "GPT25F" },
+            { keyword: "Flare", model: "GPT25F" },
+            { keyword: "Seedance 2_5", model: "SD25" },
+            { keyword: "Seedance 2.5", model: "SD25" },
+            { keyword: "Seedance 2_0", model: "SD2" },
+            { keyword: "Seedance 2.0", model: "SD2" },
+            { keyword: "Seedance Pro", model: "SD2" },
+            { keyword: "Gen 4.5", model: "GEN45" },
+            { keyword: "Gen 4_5", model: "GEN45" },
+            { keyword: "Gen 4", model: "GEN4" },
+            { keyword: "Ruby", model: "RUBY" },
+            { keyword: "Aleph 2", model: "ALPH2" },
+            { keyword: "Nano Banana 2.1", model: "NBN21" },
+            { keyword: "Nano Banana 2", model: "NBN2" },
+            { keyword: "Topaz", model: "TPZ" },
+            { keyword: "Veo 3.1", model: "VO31" },
+            { keyword: "Veo 3", model: "VEO3" },
+            { keyword: "Flux", model: "FLUX" },
+            { keyword: "Midjourney", model: "MJ" }
         ]
     },
     templates: {
@@ -1053,6 +1100,38 @@ const settings = {
         }
     },
 
+    addIaModelRule: () => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        if (!Array.isArray(settings.currentProject.iaPresets.modelKeywords)) {
+            const baseObj = settings.getBaseProject();
+            settings.currentProject.iaPresets.modelKeywords = JSON.parse(JSON.stringify(baseObj.iaPresets?.modelKeywords || CANONICAL_MODEL_RULES));
+        }
+        settings.currentProject.iaPresets.modelKeywords.push({ keyword: "Nuevo_Modelo", model: "SD25" });
+        settings.render();
+    },
+
+    removeIaModelRule: (idx) => {
+        if (!settings.currentProject || !settings.currentProject.iaPresets?.modelKeywords) return;
+        settings.currentProject.iaPresets.modelKeywords.splice(idx, 1);
+        settings.render();
+    },
+
+    resetIaModelRules: () => {
+        if (!settings.currentProject) return;
+        if (!settings.currentProject.iaPresets) settings.currentProject.iaPresets = {};
+        settings.currentProject.iaPresets.modelKeywords = JSON.parse(JSON.stringify(CANONICAL_MODEL_RULES));
+        settings.render();
+    },
+
+    updateIaModelRule: (idx, field, value) => {
+        if (!settings.currentProject || !settings.currentProject.iaPresets?.modelKeywords) return;
+        const rule = settings.currentProject.iaPresets.modelKeywords[idx];
+        if (rule) {
+            rule[field] = value.trim();
+        }
+    },
+
     updateProjectProp: (path, value) => {
         if (!settings.currentProject) return;
         const parts = path.split('.');
@@ -2000,6 +2079,7 @@ const settings = {
                     const tagsB = effectiveIaPresets?.tagsB || CANONICAL_BASE_PRESETS.iaPresets.tagsB;
                     const tagsC = effectiveIaPresets?.tagsC || CANONICAL_BASE_PRESETS.iaPresets.tagsC;
                     const rules = effectiveIaPresets?.resolutionTranslations || CANONICAL_BASE_PRESETS.iaPresets.resolutionTranslations;
+                    const modelRules = effectiveIaPresets?.modelKeywords || CANONICAL_BASE_PRESETS.iaPresets.modelKeywords || CANONICAL_MODEL_RULES;
 
                     const defVideoMotor = effectiveIaPresets?.defaultVideoEngine || 'SD2';
                     const defImageMotor = effectiveIaPresets?.defaultImageEngine || 'NB2P';
@@ -2014,7 +2094,7 @@ const settings = {
                                 <h4 style="margin:0; color:var(--accent); text-transform:uppercase; font-size:0.9rem;">
                                     ${isBase ? 'Contenedor y Editor Maestro de Presets IA' : 'Presets de IA del Proyecto'}
                                 </h4>
-                                <span style="font-size:0.75rem; color:#888;">Listas de tokens, motores permitidos y reglas de traducción de resoluciones</span>
+                                <span style="font-size:0.75rem; color:#888;">Listas de tokens, modelos permitidos y reglas de traducción de resoluciones y modelos</span>
                             </div>
                             ${isBase ? `
                                 <label style="display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:bold; color:${settings.devMode ? '#ff9800' : '#aaa'}; cursor:pointer; background:#1e1e1e; padding:4px 10px; border-radius:4px; border:1px solid ${settings.devMode ? '#ff9800' : '#444'};">
@@ -2042,7 +2122,7 @@ const settings = {
                             `
                         ) : (isReadOnly ? `
                             <div class="settings-inheritance-banner">
-                                <div>🔗 <b>Heredando del Proyecto Base:</b> Todos los motores, tags y reglas de resolución provienen de la plantilla maestra. Marca la casilla de arriba si deseas personalizar este proyecto.</div>
+                                <div>🔗 <b>Heredando del Proyecto Base:</b> Todos los modelos, tags y reglas de resolución provienen de la plantilla maestra. Marca la casilla de arriba si deseas personalizar este proyecto.</div>
                             </div>
                         ` : '')}
 
@@ -2059,8 +2139,8 @@ const settings = {
                             </div>
                             
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom:6px;">
-                                ${settings.renderTokenChipList('🎬 Motores de Video', 'motorsVideo', motorsVideo, 'defaultVideoEngine', defVideoMotor, isReadOnly, false)}
-                                ${settings.renderTokenChipList('🖼️ Motores de Imagen', 'motorsImage', motorsImage, 'defaultImageEngine', defImageMotor, isReadOnly, false)}
+                                ${settings.renderTokenChipList('🎬 Modelos de Video', 'motorsVideo', motorsVideo, 'defaultVideoEngine', defVideoMotor, isReadOnly, false)}
+                                ${settings.renderTokenChipList('🖼️ Modelos de Imagen', 'motorsImage', motorsImage, 'defaultImageEngine', defImageMotor, isReadOnly, false)}
                             </div>
 
                             ${settings.renderTokenChipList('📐 Framings Disponibles', 'framings', framings, 'defaultFraming', defFraming, isReadOnly, false)}
@@ -2112,6 +2192,55 @@ const settings = {
                                                 ${!isReadOnly ? `
                                                     <td style="padding:4px 10px; text-align:center;">
                                                         <button onclick="settings.removeIaResolutionRule(${idx})" style="background:transparent; border:none; color:#f44336; cursor:pointer; font-size:0.9rem;" title="Eliminar regla">&times;</button>
+                                                    </td>
+                                                ` : ''}
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- TABLA DE DETECCIÓN DE MODELOS POR PALABRAS CLAVE -->
+                        <div class="${isReadOnly ? 'settings-locked-panel' : ''}" style="margin-top:15px; border-top:1px dashed #333; padding-top:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <div>
+                                    <h4 style="margin:0; color:#81c784; font-size:0.85rem; text-transform:uppercase;">Detección de Modelos por Palabras Clave</h4>
+                                    <span style="font-size:0.75rem; color:#888;">Asigna automáticamente el modelo canónico al detectar palabras en el nombre o ruta del archivo (Runway, etc.)</span>
+                                </div>
+                                ${!isReadOnly ? `
+                                    <div style="display:flex; gap:6px;">
+                                        <button class="btn" onclick="settings.addIaModelRule()" style="font-size:0.75rem; padding:4px 10px; background:#4caf50; color:black; font-weight:bold;">+ Agregar</button>
+                                        <button class="btn" onclick="settings.resetIaModelRules()" style="font-size:0.75rem; padding:4px 8px; background:#333; color:#ccc;">↺ Reset Canon</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <div style="max-height:220px; overflow-y:auto; border:1px solid #333; border-radius:6px; background:#141414;">
+                                <table style="width:100%; border-collapse:collapse; font-size:0.8rem; text-align:left;">
+                                    <thead>
+                                        <tr style="background:#1e1e1e; border-bottom:1px solid #333; color:#aaa;">
+                                            <th style="padding:6px 10px;">Palabra Clave (Keyword en archivo)</th>
+                                            <th style="padding:6px 10px;">Modelo Canónico</th>
+                                            ${!isReadOnly ? `<th style="padding:6px 10px; width:40px; text-align:center;">Acción</th>` : ''}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${modelRules.map((rule, idx) => `
+                                            <tr style="border-bottom:1px solid #222;">
+                                                <td style="padding:4px 10px;">
+                                                    <input type="text" class="config-input" style="padding:4px 8px; font-size:0.8rem; font-family:monospace;" 
+                                                           value="${escapeHtml(rule.keyword)}" 
+                                                           ${isReadOnly ? 'readonly' : `onchange="settings.updateIaModelRule(${idx}, 'keyword', this.value)"`}>
+                                                </td>
+                                                <td style="padding:4px 10px;">
+                                                    <input type="text" class="config-input" style="padding:4px 8px; font-size:0.8rem; font-weight:bold; color:#81c784;" 
+                                                           value="${escapeHtml(rule.model)}" 
+                                                           ${isReadOnly ? 'readonly' : `onchange="settings.updateIaModelRule(${idx}, 'model', this.value)"`}>
+                                                </td>
+                                                ${!isReadOnly ? `
+                                                    <td style="padding:4px 10px; text-align:center;">
+                                                        <button onclick="settings.removeIaModelRule(${idx})" style="background:transparent; border:none; color:#f44336; cursor:pointer; font-size:0.9rem;" title="Eliminar regla">&times;</button>
                                                     </td>
                                                 ` : ''}
                                             </tr>
@@ -3139,7 +3268,15 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
-                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.2.4 (Actual)</div>
+                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.2.5 (Actual)</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>Transición Canónica: De "Motor" a "Modelo":</b> El token y los selectores en la interfaz ahora se denominan oficialmente <code>MODELO</code>.</li>
+                                    <li><b>Autodetección Inteligente por Palabras Clave:</b> Al arrastrar o encolar archivos de Runway, Higgsfield u otras plataformas, Pipeta analiza el nombre de archivo y ruta para mapear automáticamente el modelo canónico (ej: <code>GPT Image 2_5 Sunburst</code> a <code>GPT25S</code>, <code>Seedance 2_0</code> a <code>SD2</code>, <code>Seedance 2_5</code> a <code>SD25</code>, <code>Ruby</code> a <code>RUBY</code>, <code>Aleph 2</code> a <code>ALPH2</code>, <code>Gen 4.5</code> a <code>GEN45</code>, <code>Gen 4</code> a <code>GEN4</code>, <code>Nano Banana 2.1</code> a <code>NBN21</code>, <code>Flare</code> a <code>GPT25F</code>, <code>Topaz</code> a <code>TPZ</code>).</li>
+                                    <li><b>Editor de Reglas de Detección de Modelos:</b> Nueva tabla configurable en Settings (Presets de IA) para agregar, editar y eliminar reglas de palabras clave y resetear a canon.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.2.4</div>
                                 <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
                                     <li><b>IA Ingest en Modo Simple y Botón Toggle Único:</b> La herramienta arranca por defecto en <code>⚡ Simple</code> y la barra superior cuenta con un botón único que alterna directamente entre <code>⚡ Simple</code> y <code>🛠️ Advanced</code> en el mismo lugar sin saltos.</li>
                                     <li><b>Control de Versiones Inteligente (Split & Skip Format):</b> Nuevas opciones avanzadas de versionado en IA Ingest. <code>Split (Img / Video)</code> separa las secuencias de versión entre imágenes (ej: v001-v004) y videos (ej: v001-v002), y <code>Skip Format</code> auto-incrementa versiones entre distintos formatos (ej: .png y .jpg reciben v001 y v002 consecutivas). En Modo Simple ambas funciones operan activas por detrás.</li>

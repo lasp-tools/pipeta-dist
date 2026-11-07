@@ -205,8 +205,9 @@ function handleIaFileSelect(input) {
                 return false;
             });
             if (isAlreadyInQueue) return;
-            const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext.toLowerCase());
-            const itemMotor = isImg ? defaultImgMotor : defaultVidMotor;
+            const isImg = (typeof getIaMediaType === 'function') ? getIaMediaType(ext) === 'image' : ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext.toLowerCase());
+            const detectedKeywordModel = (typeof detectIaModelFromFilename === 'function') ? detectIaModelFromFilename(file.name, originalPath) : null;
+            const itemMotor = detectedKeywordModel || (isImg ? defaultImgMotor : defaultVidMotor);
 
             const detectedHfId = extractHfJobId(file.name) || extractHfJobId(originalPath);
             const newItem = {
@@ -217,6 +218,7 @@ function handleIaFileSelect(input) {
                 ext: ext,
                 subfolder: initialSubfolder,
                 motorChoice: 'auto',
+                detectedModel: detectedKeywordModel || null,
                 customMotor: '',
                 motor: itemMotor,
                 resChoice: 'auto',
@@ -417,11 +419,12 @@ async function enqueuePathsToIaBatch(paths = [], options = {}) {
         if (iaBatchQueue.some(it => it.originalPath === normP)) continue;
         const fileName = normP.split('/').pop();
         const ext = '.' + (fileName.split('.').pop() || '').toLowerCase();
-        const isVideo = ['.mp4', '.mov'].includes(ext);
+        const isVideo = (typeof getIaMediaType === 'function') ? getIaMediaType(ext) === 'video' : ['.mp4', '.mov'].includes(ext);
         const effective = getEffectiveIaPresets();
-        const itemMotor = isVideo
+        const detectedKeywordModel = (typeof detectIaModelFromFilename === 'function') ? detectIaModelFromFilename(fileName, normP) : null;
+        const itemMotor = detectedKeywordModel || (isVideo
             ? (effective.defaultVideoEngine || 'SD2')
-            : (effective.defaultImageEngine || 'NB2P');
+            : (effective.defaultImageEngine || 'NB2P'));
         const detectedHfId = extractHfJobId(fileName);
 
         const newItem = {
@@ -432,6 +435,7 @@ async function enqueuePathsToIaBatch(paths = [], options = {}) {
             ext: ext,
             subfolder: initialSubfolder,
             motorChoice: 'auto',
+            detectedModel: detectedKeywordModel || null,
             customMotor: '',
             motor: itemMotor,
             resChoice: 'auto',

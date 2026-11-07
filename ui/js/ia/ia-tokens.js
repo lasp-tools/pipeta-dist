@@ -100,7 +100,7 @@ function getEffectiveIaPresets() {
         defaultTagRoleA: "start1001",
         defaultTagRoleB: "inp",
         defaultTagRoleC: "i2v",
-        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC"],
+        motorsVideo: ["SD2", "SD25", "VEO3", "VO31", "GOMN", "HFMC", "RUBY", "GEN45", "GEN4", "ALPH2", "TPZ"],
         motorsImage: ["NB2P", "NBN2", "NBN21", "MJ", "FLUX", "GPT25S", "GPT25F"],
         framings: ["FLL", "CRP"],
         tagsA: ["start1001", "end1100", "f1001", "ref", "ref1050"],
@@ -113,6 +113,29 @@ function getEffectiveIaPresets() {
             { detected: "1080x1080", tag: "SQ1K" },
             { detected: "2560x1080", tag: "UW2K" },
             { detected: "1280x720", tag: "HD" }
+        ],
+        modelKeywords: [
+            { keyword: "GPT Image 2_5 Sunburst", model: "GPT25S" },
+            { keyword: "Sunburst", model: "GPT25S" },
+            { keyword: "GPT 2.5 Flare", model: "GPT25F" },
+            { keyword: "Flare", model: "GPT25F" },
+            { keyword: "Seedance 2_5", model: "SD25" },
+            { keyword: "Seedance 2.5", model: "SD25" },
+            { keyword: "Seedance 2_0", model: "SD2" },
+            { keyword: "Seedance 2.0", model: "SD2" },
+            { keyword: "Seedance Pro", model: "SD2" },
+            { keyword: "Gen 4.5", model: "GEN45" },
+            { keyword: "Gen 4_5", model: "GEN45" },
+            { keyword: "Gen 4", model: "GEN4" },
+            { keyword: "Ruby", model: "RUBY" },
+            { keyword: "Aleph 2", model: "ALPH2" },
+            { keyword: "Nano Banana 2.1", model: "NBN21" },
+            { keyword: "Nano Banana 2", model: "NBN2" },
+            { keyword: "Topaz", model: "TPZ" },
+            { keyword: "Veo 3.1", model: "VO31" },
+            { keyword: "Veo 3", model: "VEO3" },
+            { keyword: "Flux", model: "FLUX" },
+            { keyword: "Midjourney", model: "MJ" }
         ]
     };
 
@@ -134,7 +157,8 @@ function getEffectiveIaPresets() {
             tagsA: Array.isArray(proj.iaPresets.tagsA) && proj.iaPresets.tagsA.length > 0 ? proj.iaPresets.tagsA : baseIa.tagsA,
             tagsB: Array.isArray(proj.iaPresets.tagsB) && proj.iaPresets.tagsB.length > 0 ? proj.iaPresets.tagsB : baseIa.tagsB,
             tagsC: Array.isArray(proj.iaPresets.tagsC) && proj.iaPresets.tagsC.length > 0 ? proj.iaPresets.tagsC : baseIa.tagsC,
-            resolutionTranslations: Array.isArray(proj.iaPresets.resolutionTranslations) && proj.iaPresets.resolutionTranslations.length > 0 ? proj.iaPresets.resolutionTranslations : baseIa.resolutionTranslations
+            resolutionTranslations: Array.isArray(proj.iaPresets.resolutionTranslations) && proj.iaPresets.resolutionTranslations.length > 0 ? proj.iaPresets.resolutionTranslations : (baseIa.resolutionTranslations || canonFallback.resolutionTranslations),
+            modelKeywords: Array.isArray(proj.iaPresets.modelKeywords) && proj.iaPresets.modelKeywords.length > 0 ? proj.iaPresets.modelKeywords : (Array.isArray(baseIa.modelKeywords) && baseIa.modelKeywords.length > 0 ? baseIa.modelKeywords : canonFallback.modelKeywords)
         };
     }
 
@@ -151,8 +175,32 @@ function getEffectiveIaPresets() {
         tagsA: baseIa.tagsA || ["start1001", "end1100", "f1001", "ref", "ref1050"],
         tagsB: baseIa.tagsB || ["inp", "ups", "mask", "clean", "elem"],
         tagsC: baseIa.tagsC || ["i2v", "t2i", "i2i", "t2v", "v2v", "m2v"],
-        resolutionTranslations: baseIa.resolutionTranslations || canonFallback.resolutionTranslations
+        resolutionTranslations: baseIa.resolutionTranslations || canonFallback.resolutionTranslations,
+        modelKeywords: Array.isArray(baseIa.modelKeywords) && baseIa.modelKeywords.length > 0 ? baseIa.modelKeywords : canonFallback.modelKeywords
     };
+}
+
+function detectIaModelFromFilename(filename, originalPath = '') {
+    const effective = getEffectiveIaPresets();
+    const rules = effective.modelKeywords || [];
+    const targetText = ((filename || '') + ' ' + (originalPath || '')).toLowerCase();
+    const normalizedText = targetText.replace(/[-_.]/g, ' ');
+    const strippedText = normalizedText.replace(/\s+/g, '');
+
+    for (const rule of rules) {
+        if (!rule.keyword || !rule.model) continue;
+        const kw = rule.keyword.trim().toLowerCase();
+        if (!kw) continue;
+        const normKw = kw.replace(/[-_.]/g, ' ');
+        if (targetText.includes(kw) || normalizedText.includes(normKw)) {
+            return rule.model.trim();
+        }
+        const strippedKw = normKw.replace(/\s+/g, '');
+        if (strippedKw.length >= 3 && strippedText.includes(strippedKw)) {
+            return rule.model.trim();
+        }
+    }
+    return null;
 }
 
 function populateIaTokenSelectsFromProject(forceDefaults = true) {
@@ -174,10 +222,10 @@ function populateIaTokenSelectsFromProject(forceDefaults = true) {
         }
         html += `<option disabled>──────────</option>`;
         if (vList.length > 0) {
-            html += `<optgroup label="Motores de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+            html += `<optgroup label="Modelos de Video">` + vList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
         }
         if (iList.length > 0) {
-            html += `<optgroup label="Motores de Imagen">` + iList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
+            html += `<optgroup label="Modelos de Imagen">` + iList.map(m => `<option value="${m}">${m}</option>`).join('') + `</optgroup>`;
         }
         if (!isSimple) {
             html += `<option disabled>──────────</option>`;
@@ -324,9 +372,13 @@ function getIaTokenValues(item = null, versionOverride = null) {
         if (choice === 'auto_hf') {
             motor = item.higgsfieldData?.motorCanonical || item.motor || 'SD25';
         } else if (choice === 'auto') {
-            const ext = (item.ext || '').toLowerCase();
-            const isImg = ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext);
-            motor = isImg ? defaultImgMotor : defaultVidMotor;
+            if (item.detectedModel) {
+                motor = item.detectedModel;
+            } else {
+                const ext = (item.ext || '').toLowerCase();
+                const isImg = getIaMediaType(ext) === 'image';
+                motor = isImg ? defaultImgMotor : defaultVidMotor;
+            }
         } else if (choice === 'custom') {
             motor = item.customMotor || '';
         } else {
@@ -1377,3 +1429,4 @@ window.getIaVersionOptions = getIaVersionOptions;
 window.getIaMediaType = getIaMediaType;
 window.initIaVersionOptionsUI = initIaVersionOptionsUI;
 window.toggleIaWorkMode = toggleIaWorkMode;
+window.detectIaModelFromFilename = detectIaModelFromFilename;
