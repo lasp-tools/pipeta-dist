@@ -246,9 +246,10 @@ const headerToolsTemplates = {
                 </div>
 
                 <button class="tool-btn" 
+                        id="btnRefreshView"
                         style="height:32px; min-width:32px; padding:2px 6px;"
-                        onclick="refreshCurrentView()" 
-                        title="Reload folders">
+                        onclick="triggerSmartViewRefresh()" 
+                        title="Refrescar carpetas locales (0ms) y sincronización de catálogo">
                     <img src="icons/refresh.svg" class="btn-icon-svg" style="width:20px; height:20px;">
                 </button>
             </div>
@@ -285,13 +286,6 @@ const headerToolsTemplates = {
                         title="Deep Compare: Compara peso exacto en bytes y fecha además de nombres (Clic: ON/OFF)">
                     <img src="icons/deep_compare.svg" style="width:20px; height:20px; vertical-align:middle;">
                 </button>
-                ${(window.syncComparisonMode && window.syncComparisonMode !== 'off') ? `
-                <button class="tool-btn" 
-                        style="height: 32px; min-width: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px;" 
-                        onclick="refreshSyncCatalogManual()" title="Reload cache">
-                    <img src="icons/cache_reload.svg" style="width:20px; height:20px; vertical-align:middle;">
-                </button>
-                ` : ''}
             </div>
         </div>
 

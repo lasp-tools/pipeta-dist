@@ -674,8 +674,54 @@ window.CatalogRefreshStepper = {
                 `).join('')}
             </div>
         `;
-        document.body.appendChild(card);
+                document.body.appendChild(card);
         this.card = card;
+
+        // Soporte arrastrable (Draggable Toast) desde el header
+        const header = card.querySelector('.catalog-stepper-header');
+        if (header) {
+            header.style.cursor = 'grab';
+            header.title = 'Clic sostenido y arrastrar para mover';
+            let isDragging = false;
+            let startX = 0, startY = 0;
+            let initialLeft = 0, initialTop = 0;
+
+            const onMouseDown = (e) => {
+                isDragging = true;
+                header.style.cursor = 'grabbing';
+                const rect = card.getBoundingClientRect();
+                card.style.right = 'auto';
+                card.style.bottom = 'auto';
+                card.style.left = rect.left + 'px';
+                card.style.top = rect.top + 'px';
+                startX = e.clientX;
+                startY = e.clientY;
+                initialLeft = rect.left;
+                initialTop = rect.top;
+                e.preventDefault();
+            };
+
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const maxLeft = window.innerWidth - card.offsetWidth - 10;
+                const maxTop = window.innerHeight - card.offsetHeight - 10;
+                card.style.left = Math.max(10, Math.min(maxLeft, initialLeft + dx)) + 'px';
+                card.style.top = Math.max(10, Math.min(maxTop, initialTop + dy)) + 'px';
+            };
+
+            const onMouseUp = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    header.style.cursor = 'grab';
+                }
+            };
+
+            header.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        }
     },
     setStep(stepId) {
         if (!this.card) return;
@@ -742,71 +788,138 @@ window.CatalogRefreshStepper = {
     }
 };
 
-async function refreshSyncCatalogManual() {
-    const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name) 
-        ? settings.currentProject.name 
-        : 'surf_love';
 
-    const viewMode = window.viewLocationMode || 'local';
-    const compMode = window.syncComparisonMode || 'drive';
-    const canServer = (typeof canUseServerMode === 'function') ? canUseServerMode() : false;
-    const isServerTarget = canServer && ((viewMode === 'server') || (compMode === 'server'));
-    const targetType = isServerTarget ? 'server' : 'drive';
-    const targetLabel = isServerTarget ? 'Servidor' : 'Drive';
+let _isSmartCatalogRefreshInFlight = false;
 
-    // Identificar carpeta seleccionada o raíz activa
-    let currentFolder = '';
-    const selectedEl = document.querySelector('.tree-node.selected, .tree-node.active');
-    if (selectedEl && selectedEl.getAttribute('data-path')) {
-        currentFolder = selectedEl.getAttribute('data-path');
-    } else if (typeof activePath !== 'undefined' && activePath) {
-        currentFolder = activePath;
-    } else {
-        const roots = getCurrentRoots();
-        currentFolder = roots.work || `Z:/atresmedia/${projName}`;
+async function triggerSmartViewRefresh() {
+    // Animación de rotación del botón de refresco
+    const btn = document.getElementById('btnRefreshView') || document.querySelector('.tool-btn[title*="Refrescar"]') || document.querySelector('.tool-btn[title*="Reload folders"]');
+    if (btn) {
+        btn.style.transform = "rotate(360deg)";
+        btn.style.transition = "transform 0.5s ease-out";
+        setTimeout(() => { if (btn) btn.style.transform = "none"; }, 500);
     }
 
-    const folderName = currentFolder.split(/[\\/]/).pop() || currentFolder;
+    // FASE 1: Instantánea (Local)
+    // Refresco visual de inmediato (0ms a 30ms). Nunca bloquea el hilo ni la interfaz.
+    await refreshCurrentView(false);
 
-    if (typeof PipetaConsole !== 'undefined') {
-        PipetaConsole.log('sync', `Solicitando refresco de catálogo (${targetType.toUpperCase()}) para '${folderName}' al Worker...`, 'pending');
+    const compMode = window.syncComparisonMode || 'off';
+    if (compMode === 'off') {
+        return; // Comparación desactivada: nada remoto que sincronizar, velocidad pura
     }
 
-    // Iniciar Stepper flotante continuo
-    CatalogRefreshStepper.show(folderName, targetLabel);
+    if (_isSmartCatalogRefreshInFlight) {
+        return; // Anti-spam: ya hay una comprobación de catálogo remota en curso
+    }
+    _isSmartCatalogRefreshInFlight = true;
 
-    try {
-        CatalogRefreshStepper.setStep('scan');
-        const res = await fetch('/api/sync/catalog/refresh-folder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                project: projName,
-                path: currentFolder,
-                type: targetType
-            })
-        }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+    // FASE 2: Asíncrona en segundo plano (Catálogo Remoto)
+    (async () => {
+        let stepperTimer = null;
+        try {
+            const isExternal = (typeof isExternalMachine === 'function') ? isExternalMachine() : false;
+            const ttl = isExternal
+                ? (Number(window.settings?.catalogTtlFreeloSeconds) || Number(localStorage.getItem('pipeta_catalog_ttl_freelo')) || 30)
+                : (Number(window.settings?.catalogTtlMunroSeconds) || Number(localStorage.getItem('pipeta_catalog_ttl_munro')) || 20);
 
-        if (res && res.success) {
-            CatalogRefreshStepper.setStep('sync');
-            if (typeof PipetaConsole !== 'undefined') {
-                PipetaConsole.log('sync', `✓ Catálogo (${targetType.toUpperCase()}) actualizado (${res.itemsCount || 0} items)`, 'ok');
+            const projName = (typeof settings !== 'undefined' && settings.currentProject && settings.currentProject.name)
+                ? settings.currentProject.name
+                : 'surf_love';
+
+            const targetType = (compMode === 'server') ? 'server' : 'drive';
+            const targetLabel = (targetType === 'server') ? 'Servidor' : 'Drive';
+
+            // Comprobar frescura del catálogo sin crear órdenes pesadas en disco
+            const freshCheck = await fetch('/api/sync/catalog/check-freshness', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project: projName,
+                    type: targetType,
+                    ttlSeconds: ttl
+                })
+            }).then(r => r.json()).catch(() => null);
+
+            // Si está fresco (< TTL) y no necesita refresco remoto
+            if (freshCheck && freshCheck.isFresh && !freshCheck.needRefresh) {
+                if (freshCheck.syncedFromNetwork || freshCheck.syncedFromCentralServer) {
+                    if (typeof loadActiveProjectSyncCatalog === 'function') {
+                        await loadActiveProjectSyncCatalog(true);
+                    }
+                    await refreshCurrentView(false);
+                }
+                return;
             }
-            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
-            if (typeof loadActiveProjectSyncCatalog === 'function') {
-                await loadActiveProjectSyncCatalog(true);
+
+            // Si requiere refresco remoto: solo si demora más de 350ms mostramos la barrita emergente arrastrable
+            stepperTimer = setTimeout(() => {
+                if (window.CatalogRefreshStepper) {
+                    window.CatalogRefreshStepper.show(projName, targetLabel);
+                    window.CatalogRefreshStepper.setStep('scan');
+                }
+            }, 350);
+
+            // Resolver carpeta actual o raíz del proyecto
+            let currentFolder = '';
+            const selectedEl = document.querySelector('.tree-node.selected, .tree-node.active');
+            if (selectedEl && selectedEl.getAttribute('data-path')) {
+                currentFolder = selectedEl.getAttribute('data-path');
+            } else if (typeof activePath !== 'undefined' && activePath) {
+                currentFolder = activePath;
+            } else {
+                const roots = getCurrentRoots();
+                currentFolder = roots.work || ('Z:/atresmedia/' + projName);
             }
 
-            CatalogRefreshStepper.setStep('refresh');
-            await refreshCurrentView(true);
-            CatalogRefreshStepper.finish(`✅ "${folderName}" al día (${res.itemsCount || 0} items)`);
-        } else {
-            CatalogRefreshStepper.fail(res?.error || 'No se pudo actualizar el catálogo');
+            const refreshRes = await fetch('/api/sync/catalog/refresh-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project: projName,
+                    path: currentFolder,
+                    type: targetType
+                })
+            }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
+
+            if (stepperTimer) {
+                clearTimeout(stepperTimer);
+                stepperTimer = null;
+            }
+
+            if (refreshRes && refreshRes.success) {
+                if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
+                    window.CatalogRefreshStepper.setStep('sync');
+                }
+                if (typeof loadActiveProjectSyncCatalog === 'function') {
+                    await loadActiveProjectSyncCatalog(true);
+                }
+                if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
+                    window.CatalogRefreshStepper.setStep('refresh');
+                }
+                // Reconstruir la vista con los nuevos datos (incorporando nuevos elementos de bajada y flechas)
+                await refreshCurrentView(false);
+                if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
+                    window.CatalogRefreshStepper.finish('✅ Catálogo ' + targetLabel + ' al día (' + (refreshRes.itemsCount || 0) + ' items)');
+                }
+            } else if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
+                window.CatalogRefreshStepper.fail(refreshRes?.error || 'No se pudo sincronizar');
+            }
+        } catch (err) {
+            console.warn('[SMART REFRESH] Error en background sync:', err);
+            if (stepperTimer) clearTimeout(stepperTimer);
+            if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
+                window.CatalogRefreshStepper.fail(err.message);
+            }
+        } finally {
+            _isSmartCatalogRefreshInFlight = false;
         }
-    } catch (e) {
-        console.warn('[REFRESH CATALOG] Error:', e);
-        CatalogRefreshStepper.fail(e.message);
-    }
+    })();
+}
+window.triggerSmartViewRefresh = triggerSmartViewRefresh;
+
+async function refreshSyncCatalogManual() {
+    return triggerSmartViewRefresh();
 }
 
 async function switchViewLocation(mode) {

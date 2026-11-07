@@ -984,6 +984,148 @@ router.post('/api/sync/catalog/generate', async (req, res) => {
     }
 });
 
+router.post('/api/sync/catalog/check-freshness', async (req, res) => {
+    try {
+        const { project, type = 'drive', ttlSeconds = 20 } = req.body;
+        if (!project) {
+            return res.status(400).json({ success: false, error: 'Parámetro project requerido' });
+        }
+
+        const cachedEnvState = getCachedEnvState();
+        const isExternal = !!(global.isExternalMachine || cachedEnvState?.isExternalMachine);
+        const canon = (typeof catalogGenerator.resolveCanonicalProjectName === 'function')
+            ? catalogGenerator.resolveCanonicalProjectName(project)
+            : project;
+
+        const effectiveTtl = Math.max(1, Number(ttlSeconds) || (isExternal ? 30 : 20));
+
+        // 1. Verificar manifest local en SSD
+        const localCacheDir = getLocalSyncCacheDir();
+        const localManifest = path.join(localCacheDir, 'projects', canon, type, 'manifest.json');
+        let localMtime = 0;
+        let localExists = false;
+
+        if (fs.existsSync(localManifest)) {
+            try {
+                localMtime = fs.statSync(localManifest).mtimeMs;
+                localExists = true;
+            } catch (e) {}
+        }
+
+        const now = Date.now();
+        const localAgeSec = localExists ? Math.round((now - localMtime) / 1000) : 999999;
+
+        // 2. En red de estudio (Munro): verificar si en el almacenamiento central hay un manifest más nuevo
+        let hasNewerOnNetwork = false;
+        let networkAgeSec = null;
+
+        if (!isExternal) {
+            const netCandidates = [
+                path.join('S:/_SYNC_CACHE/projects', canon, type, 'manifest.json'),
+                path.join('Z:/_SYNC_CACHE/projects', canon, type, 'manifest.json'),
+                path.join(UNC_CACHE, 'projects', canon, type, 'manifest.json')
+            ];
+
+            for (const nc of netCandidates) {
+                if (fs.existsSync(nc) && path.resolve(nc).toLowerCase() !== path.resolve(localManifest).toLowerCase()) {
+                    try {
+                        const netMtime = fs.statSync(nc).mtimeMs;
+                        networkAgeSec = Math.round((now - netMtime) / 1000);
+                        if (netMtime > localMtime + 500) {
+                            hasNewerOnNetwork = true;
+                        }
+                        break;
+                    } catch (e) {}
+                }
+            }
+
+            // Si hay uno nuevo en red de estudio, sincronizarlo al SSD local inmediatamente
+            if (hasNewerOnNetwork) {
+                try {
+                    if (typeof catalogGenerator.syncLocalCacheFromNetwork === 'function') {
+                        catalogGenerator.syncLocalCacheFromNetwork(canon);
+                    }
+                } catch (e) {}
+                return res.json({
+                    success: true,
+                    isFresh: true,
+                    needRefresh: false,
+                    syncedFromNetwork: true,
+                    localAgeSec: 0,
+                    networkAgeSec
+                });
+            }
+
+            // También verificar con Pipeta Server si estamos en VM sin acceso directo
+            const hasDirectServer = !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO'));
+            if (!hasDirectServer && !hasNewerOnNetwork) {
+                try {
+                    const serverUrls = (typeof catalogGenerator.getCentralServerUrls === 'function')
+                        ? catalogGenerator.getCentralServerUrls()
+                        : ['http://192.168.206.121:3005'];
+                    for (const baseUrl of serverUrls) {
+                        try {
+                            const modUrl = `${baseUrl.replace(/\/+$/, '')}/api/sync/catalog/${encodeURIComponent(canon)}/modular?type=${type}`;
+                            const srvResp = await fetch(modUrl, {
+                                headers: { 'x-pipeta-token': PIPETA_SERVER_TOKEN },
+                                signal: AbortSignal.timeout(1500)
+                            });
+                            if (srvResp.ok) {
+                                const srvData = await srvResp.json();
+                                if (srvData && srvData.generatedAt) {
+                                    const srvTime = new Date(srvData.generatedAt).getTime();
+                                    const srvAgeSec = Math.round((now - srvTime) / 1000);
+                                    if (srvTime > localMtime + 1000) {
+                                        // Servidor central tiene un catálogo más nuevo, descargarlo
+                                        if (typeof catalogGenerator.fetchSubCatalogFromCentralServer === 'function') {
+                                            catalogGenerator.fetchSubCatalogFromCentralServer(canon, type, 'manifest.json');
+                                        }
+                                        return res.json({
+                                            success: true,
+                                            isFresh: true,
+                                            needRefresh: false,
+                                            syncedFromCentralServer: true,
+                                            srvAgeSec
+                                        });
+                                    }
+                                    networkAgeSec = srvAgeSec;
+                                }
+                            }
+                            break;
+                        } catch (e) {}
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // 3. Evaluar frescura según TTL
+        const effectiveAge = (networkAgeSec !== null) ? Math.min(localAgeSec, networkAgeSec) : localAgeSec;
+        if (localExists && effectiveAge < effectiveTtl) {
+            return res.json({
+                success: true,
+                isFresh: true,
+                needRefresh: false,
+                localAgeSec,
+                networkAgeSec,
+                effectiveTtl
+            });
+        }
+
+        // Si expiró o no existe: requiere refresco
+        return res.json({
+            success: true,
+            isFresh: false,
+            needRefresh: true,
+            localAgeSec,
+            networkAgeSec,
+            effectiveTtl,
+            isExternal
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.post('/api/sync/catalog/refresh-folder', async (req, res) => {
     try {
         const { project, path: folderPath, type: reqType } = req.body;

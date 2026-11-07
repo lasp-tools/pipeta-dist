@@ -125,6 +125,8 @@ const settings = {
     defaultViewMode: 'local', // 'local' | 'drive' | 'server'
     defaultBrowserMode: 'split', // 'split' (Vista Clásica) | 'pipeta' (Miller View)
     defaultSyncComparisonMode: 'drive', // 'drive' | 'server'
+    catalogTtlMunroSeconds: 20,
+    catalogTtlFreeloSeconds: 30,
     localAccordionOpen: false,
 
     // Persistence Logic
@@ -268,6 +270,8 @@ const settings = {
                     }
                     if (cfg.defaultBrowserMode) settings.defaultBrowserMode = cfg.defaultBrowserMode;
                     if (cfg.defaultSyncComparisonMode) settings.defaultSyncComparisonMode = cfg.defaultSyncComparisonMode;
+                    if (typeof cfg.catalogTtlMunroSeconds !== 'undefined') settings.catalogTtlMunroSeconds = Number(cfg.catalogTtlMunroSeconds) || 20;
+                    if (typeof cfg.catalogTtlFreeloSeconds !== 'undefined') settings.catalogTtlFreeloSeconds = Number(cfg.catalogTtlFreeloSeconds) || 30;
 
                     // Validation Presets
                     if (cfg.validationPresetAsset) settings.validationPresetAsset = cfg.validationPresetAsset;
@@ -298,6 +302,8 @@ const settings = {
             defaultViewMode: settings.defaultViewMode || 'local',
             defaultBrowserMode: settings.defaultBrowserMode || 'split',
             defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'drive',
+            catalogTtlMunroSeconds: Number(settings.catalogTtlMunroSeconds) || 20,
+            catalogTtlFreeloSeconds: Number(settings.catalogTtlFreeloSeconds) || 30,
             validationPresetAsset: settings.validationPresetAsset || null,
             validationPresetShot: settings.validationPresetShot || null,
             loggingEnabled: settings.loggingEnabled,
@@ -317,6 +323,8 @@ const settings = {
                 localStorage.setItem('pipeta_view_location_mode', cfg.defaultViewMode);
                 localStorage.setItem('pipeta_browser_mode', cfg.defaultBrowserMode);
                 localStorage.setItem('pipeta_sync_comparison_mode', cfg.defaultSyncComparisonMode);
+                localStorage.setItem('pipeta_catalog_ttl_munro', cfg.catalogTtlMunroSeconds);
+                localStorage.setItem('pipeta_catalog_ttl_freelo', cfg.catalogTtlFreeloSeconds);
             } catch(e){}
         } catch (e) {
             console.error("Error saving config:", e);
@@ -2859,6 +2867,34 @@ const settings = {
                                     onchange="settings.defaultSyncComparisonMode = 'off'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'off'); } catch(e){}">
                                 <span>Desactivada</span>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- 4. ANTIGÜEDAD Y TTL DE CACHÉ DE CATÁLOGO -->
+                    <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:6px; border:1px solid #333; margin-bottom:16px;">
+                        <h4 style="margin-top:0; margin-bottom:6px; color:#ccc; font-size:0.95rem;">Antigüedad Aceptable de Caché (TTL de Catálogo)</h4>
+                        <div style="font-size:0.82rem; color:#888; margin-bottom:12px; line-height:1.3;">
+                            Define cuántos segundos de antigüedad se consideran válidos en el catálogo antes de pedir una re-inspección al refrescar la vista.
+                        </div>
+                        <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:center;">
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <label style="font-size:0.82rem; color:#aaa; font-weight:600;">Estudio / Red Local (Munro):</label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <input type="number" min="1" max="3600" value="${Number(settings.catalogTtlMunroSeconds) || 20}" 
+                                           style="width:85px; background:#121820; border:1px solid #2a3a50; color:#fff; padding:5px 8px; border-radius:4px; font-size:0.88rem;"
+                                           onchange="settings.catalogTtlMunroSeconds = Math.max(1, Number(this.value) || 20); settings.saveConfig();">
+                                    <span style="font-size:0.82rem; color:#777;">segundos</span>
+                                </div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <label style="font-size:0.82rem; color:#aaa; font-weight:600;">Freelance / Remoto (Freelo):</label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <input type="number" min="1" max="3600" value="${Number(settings.catalogTtlFreeloSeconds) || 30}" 
+                                           style="width:85px; background:#121820; border:1px solid #2a3a50; color:#fff; padding:5px 8px; border-radius:4px; font-size:0.88rem;"
+                                           onchange="settings.catalogTtlFreeloSeconds = Math.max(1, Number(this.value) || 30); settings.saveConfig();">
+                                    <span style="font-size:0.82rem; color:#777;">segundos</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;

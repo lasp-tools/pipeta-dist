@@ -1,7 +1,7 @@
 {
   "name": "pipeta",
   "appName": "PIPETA",
-  "version": "v1.2.5",
+  "version": "v1.2.6",
   "channel": "main",
   "port": 3002,
   "localDir": "C:\\TOOLS\\APPS\\Pipeta",
