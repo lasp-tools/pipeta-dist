@@ -403,32 +403,32 @@ async function syncConfigsFromMasterNetwork(options = {}) {
                                     const existingUsers = Array.isArray(existingCfg.users) ? existingCfg.users : [];
                                     const serverUsers = Array.isArray(b['users_config.json'].users) ? b['users_config.json'].users : [];
                                     const merged = { ...b['users_config.json'] };
-                                    if (global.isExternalMachine) {
-                                        merged.activeUser = existingCfg.activeUser || '';
-                                        merged.users = existingUsers
-                                            .filter(u => !u.isSystem && u.username !== 'admin')
-                                            .map(localU => {
-                                                const loginKey = String(localU.laspUser || localU.username || '').toLowerCase();
-                                                const srvMatch = serverUsers.find(su =>
-                                                    !su.isSystem && (
-                                                        String(su.laspUser || '').toLowerCase() === loginKey ||
-                                                        String(su.username || '').toLowerCase() === loginKey
-                                                    )
-                                                );
-                                                if (srvMatch) {
-                                                    return {
-                                                        ...localU,
-                                                        role: srvMatch.role || localU.role,
-                                                        permissionOverrides: srvMatch.permissionOverrides || {},
-                                                        assignedProjects: srvMatch.assignedProjects || localU.assignedProjects || [],
-                                                        maxConcurrentDownloadsOverride: srvMatch.maxConcurrentDownloadsOverride !== undefined
-                                                            ? srvMatch.maxConcurrentDownloadsOverride
-                                                            : localU.maxConcurrentDownloadsOverride
-                                                    };
-                                                }
-                                                return localU;
-                                            });
+                                    
+                                    const mergedMap = new Map();
+                                    for (const su of serverUsers) {
+                                        const key = String(su.laspUser || su.username || su.id || '').toLowerCase();
+                                        if (key) mergedMap.set(key, { ...su });
                                     }
+                                    for (const lu of existingUsers) {
+                                        const key = String(lu.laspUser || lu.username || lu.id || '').toLowerCase();
+                                        if (mergedMap.has(key)) {
+                                            const su = mergedMap.get(key);
+                                            mergedMap.set(key, {
+                                                ...su,
+                                                ...lu,
+                                                role: su.role || lu.role,
+                                                assignedProjects: su.assignedProjects || lu.assignedProjects || [],
+                                                permissionOverrides: su.permissionOverrides || lu.permissionOverrides || {},
+                                                maxConcurrentDownloadsOverride: su.maxConcurrentDownloadsOverride !== undefined
+                                                    ? su.maxConcurrentDownloadsOverride
+                                                    : lu.maxConcurrentDownloadsOverride
+                                            });
+                                        } else {
+                                            mergedMap.set(key, { ...lu });
+                                        }
+                                    }
+                                    merged.users = Array.from(mergedMap.values());
+                                    merged.activeUser = existingCfg.activeUser || b['users_config.json'].activeUser || '';
                                     await fs.writeJson(targetUsersFile, merged, { spaces: 2 });
                                 }
                                 if (b['Projects']) {

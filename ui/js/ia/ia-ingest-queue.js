@@ -956,6 +956,7 @@ async function initIaIngest() {
     loadCustomTokens();
     updateHfForceWorkerUI();
     updateAllIaTokenModulesUI();
+    if (typeof initIaVersionOptionsUI === 'function') initIaVersionOptionsUI();
     switchIaWorkMode(window.iaWorkMode || 'simple');
     await checkIaDriveType();
     refreshIaHierarchy();
@@ -975,6 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCustomTokens();
     updateHfForceWorkerUI();
     updateAllIaTokenModulesUI();
+    if (typeof initIaVersionOptionsUI === 'function') initIaVersionOptionsUI();
     switchIaWorkMode(window.iaWorkMode || 'simple');
     setTimeout(async () => {
         await checkIaDriveType();

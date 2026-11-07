@@ -196,7 +196,8 @@ def do_login(username, password):
 
     try:
         stub, auth_host = make_stub(server, user=username, password=password)
-        stub.query("sthpw/login", filters=[("login", username)], limit=1)
+        if not getattr(stub, 'ticket', None):
+            raise Exception("No se recibio ticket de sesion de Ramon")
     except Exception as e:
         err = str(e)
         if any(k in err for k in ["nvalid", "ncorrect", "denied", "401"]):
@@ -208,7 +209,8 @@ def do_login(username, password):
             invalidate_cached_server()
             server = get_active_server(force_refresh=True)
             stub, auth_host = make_stub(server, user=username, password=password)
-            stub.query("sthpw/login", filters=[("login", username)], limit=1)
+            if not getattr(stub, 'ticket', None):
+                raise Exception("No se recibio ticket de sesion de Ramon")
         except Exception as retry_err:
             retry_str = str(retry_err)
             if any(k in retry_str for k in ["nvalid", "ncorrect", "denied", "401"]):

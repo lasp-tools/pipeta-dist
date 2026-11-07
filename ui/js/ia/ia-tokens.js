@@ -25,6 +25,57 @@ let iaLastSelectedIdx = -1;
 window.iaExistingFiles = window.iaExistingFiles || [];
 window.iaWorkMode = localStorage.getItem('pipeta_ia_work_mode') || 'simple';
 
+const IA_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.exr', '.tif', '.tiff', '.tga', '.bmp', '.dpx']);
+const IA_VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv']);
+
+function getIaMediaType(ext) {
+    const clean = (ext || '').toLowerCase();
+    if (IA_IMAGE_EXTS.has(clean)) return 'image';
+    if (IA_VIDEO_EXTS.has(clean)) return 'video';
+    return 'other';
+}
+
+function getIaVersionOptions() {
+    const isSimple = (window.iaWorkMode === 'simple');
+    if (isSimple) {
+        return { split: true, skipFormat: true };
+    }
+    const splitEl = document.getElementById('iaVerSplitCheck');
+    const skipEl = document.getElementById('iaVerSkipFormatCheck');
+    const split = splitEl ? splitEl.checked : (localStorage.getItem('pipeta_ia_ver_split') !== 'false');
+    const skipFormat = skipEl ? skipEl.checked : (localStorage.getItem('pipeta_ia_ver_skip_format') !== 'false');
+    return { split, skipFormat };
+}
+
+function handleIaVerOptionChange(key, checked) {
+    localStorage.setItem('pipeta_ia_ver_' + key, checked ? 'true' : 'false');
+    updateIaPreview();
+}
+
+function initIaVersionOptionsUI() {
+    const splitEl = document.getElementById('iaVerSplitCheck');
+    const skipEl = document.getElementById('iaVerSkipFormatCheck');
+    if (splitEl) splitEl.checked = (localStorage.getItem('pipeta_ia_ver_split') !== 'false');
+    if (skipEl) skipEl.checked = (localStorage.getItem('pipeta_ia_ver_skip_format') !== 'false');
+    const optsEl = document.getElementById('iaVerAdvancedOptions');
+    if (optsEl) {
+        optsEl.style.display = (window.iaWorkMode === 'simple') ? 'none' : 'flex';
+    }
+}
+
+function toggleIaWorkMode() {
+    const nextMode = (window.iaWorkMode === 'simple') ? 'advanced' : 'simple';
+    if (typeof switchIaWorkMode === 'function') {
+        switchIaWorkMode(nextMode);
+    } else {
+        window.iaWorkMode = nextMode;
+        localStorage.setItem('pipeta_ia_work_mode', nextMode);
+        if (typeof updateHeaderTools === 'function') updateHeaderTools('view-ia-ingest');
+        initIaVersionOptionsUI();
+        updateIaPreview();
+    }
+}
+
 window.IaIngest = window.IaIngest || {
     get batchQueue() { return iaBatchQueue; },
     set batchQueue(v) { iaBatchQueue = v; },
@@ -466,24 +517,65 @@ function updateIaPreview() {
     const matchVer = verInputVal.match(/v(\d+)/i);
     const startNum = matchVer ? parseInt(matchVer[1], 10) : (iaBaseVersionNum || 1);
 
-    // Conjunto de rutas ya asignadas en esta tanda
-    const assignedInBatch = new Set();
+    const { split: optSplit, skipFormat: optSkipFormat } = getIaVersionOptions();
 
-    // Helper de colisión contra disco (exclusivo para la carpeta seleccionada) y cola activa
-    const checkFileCollision = (targetFolder, subfolderKey, candidateFilename) => {
+    // Conjuntos de tracking para la tanda actual:
+    // 1. assignedExactPaths: rutas completas exactas (con extensión)
+    // 2. assignedGroupKeys: asignaciones lógicas para evitar colisiones entre formatos o agrupar por tipo
+    const assignedExactPaths = new Set();
+    const assignedGroupKeys = new Set();
+
+    // Helper de colisión contra disco y cola activa
+    const checkFileCollision = (targetFolder, subfolderKey, prefixBase, candidateVerNum, ext, mediaType) => {
+        const verStr = '_v' + String(candidateVerNum).padStart(3, '0');
+        const candidateFilename = prefixBase + verStr + ext;
         const lowerName = candidateFilename.toLowerCase();
         const fullBatchKey = (targetFolder + '/' + lowerName).replace(/\\/g, '/').toLowerCase();
-        if (assignedInBatch.has(fullBatchKey)) return true;
 
+        // 1. Colisión exacta contra la tanda
+        if (assignedExactPaths.has(fullBatchKey)) return true;
+
+        // 2. Colisión agrupada en la tanda (Skip Format y/o Split)
+        if (optSkipFormat) {
+            const groupTag = optSplit ? mediaType : 'any';
+            const groupKey = (targetFolder + '/' + prefixBase.toLowerCase() + verStr.toLowerCase() + '::' + groupTag).replace(/\\/g, '/');
+            if (assignedGroupKeys.has(groupKey)) return true;
+        }
+
+        // 3. Colisión contra archivos existentes en disco
         if (window.iaExistingFiles && window.iaExistingFiles.length > 0) {
+            const candBaseWithVer = (prefixBase + verStr).toLowerCase();
+            const candExt = ext.toLowerCase();
+
             const match = window.iaExistingFiles.some(f => {
-                if (!f.name || f.name.toLowerCase() !== lowerName) return false;
+                if (!f.name) return false;
                 const fSub = (f.subfolder || 'root').toLowerCase();
                 const itemSub = (subfolderKey || 'root').toLowerCase();
                 const normFSub = (fSub === 'wip' || fSub === 'root') ? 'root' : fSub;
                 const normItemSub = (itemSub === 'wip' || itemSub === 'root') ? 'root' : itemSub;
                 if (normFSub !== normItemSub) return false;
-                return true;
+
+                const lastDot = f.name.lastIndexOf('.');
+                const fExt = (lastDot !== -1 ? f.name.substring(lastDot) : '').toLowerCase();
+                const fBase = (lastDot !== -1 ? f.name.substring(0, lastDot) : f.name).toLowerCase();
+
+                if (fBase !== candBaseWithVer) return false;
+
+                // fBase coincide con prefixBase + _vXXX
+                const fMediaType = getIaMediaType(fExt);
+
+                if (optSplit) {
+                    // Si Split está encendido, solo colisiona si es del mismo grupo (imagen con imagen, video con video)
+                    if (fMediaType !== mediaType) return false;
+                }
+
+                if (optSkipFormat) {
+                    // Si Skip Format está encendido, colisiona sin importar la extensión
+                    return true;
+                } else {
+                    // Si Skip Format está apagado, solo colisiona si la extensión exacta coincide
+                    return fExt === candExt;
+                }
             });
             if (match) return true;
         }
@@ -494,6 +586,7 @@ function updateIaPreview() {
         if (!item.subfolder) item.subfolder = selectedSubfolder;
         item.targetFolder = getTargetFolderForItem(item.subfolder);
         const ext = item.ext || '.mp4';
+        const itemMediaType = getIaMediaType(ext);
 
         // Obtener tokens base sin versión
         const baseRes = getIaTokenValues(item, 'v000');
@@ -506,16 +599,13 @@ function updateIaPreview() {
             // Override manual de versión fijado en este ítem
             const match = item.version.match(/v?(\d+)/i);
             finalVerNum = match ? parseInt(match[1], 10) : startNum;
-            const testName = prefixBase + '_v' + String(finalVerNum).padStart(3, '0') + ext;
-            isCollision = checkFileCollision(item.targetFolder, item.subfolder, testName);
+            isCollision = checkFileCollision(item.targetFolder, item.subfolder, prefixBase, finalVerNum, ext, itemMediaType);
         } else {
             // Auto-resolución de versión: detectar si ya existe un archivo idéntico en disco y continuar a partir de ahí
             let candidateNum = startNum;
-            let candidateName = prefixBase + '_v' + String(candidateNum).padStart(3, '0') + ext;
 
-            while (checkFileCollision(item.targetFolder, item.subfolder, candidateName)) {
+            while (checkFileCollision(item.targetFolder, item.subfolder, prefixBase, candidateNum, ext, itemMediaType)) {
                 candidateNum++;
-                candidateName = prefixBase + '_v' + String(candidateNum).padStart(3, '0') + ext;
             }
 
             finalVerNum = candidateNum;
@@ -528,7 +618,12 @@ function updateIaPreview() {
         item.targetPath = (item.targetFolder + '/' + item.canonicalName).replace(/\\/g, '/');
         item.hasCollision = isCollision;
 
-        assignedInBatch.add(item.targetPath.toLowerCase());
+        // Registrar en los sets de la tanda
+        assignedExactPaths.add(item.targetPath.toLowerCase());
+        const groupTag = optSplit ? itemMediaType : 'any';
+        const verStr = '_v' + String(finalVerNum).padStart(3, '0');
+        const groupKey = (item.targetFolder + '/' + prefixBase.toLowerCase() + verStr.toLowerCase() + '::' + groupTag).replace(/\\/g, '/');
+        assignedGroupKeys.add(groupKey);
     });
 
     renderIaBatchTable();
@@ -551,10 +646,8 @@ function updateIaPreview() {
         let singleVerNum = iaBaseVersionNum || 1;
         const testBase = getIaTokenValues(null, 'v000').prefixBase;
         const defaultFolder = getTargetFolderForItem(selectedSubfolder);
-        let testName = testBase + '_v' + String(singleVerNum).padStart(3, '0') + '.mp4';
-        while (checkFileCollision(defaultFolder, selectedSubfolder, testName)) {
+        while (checkFileCollision(defaultFolder, selectedSubfolder, testBase, singleVerNum, '.mp4', 'video')) {
             singleVerNum++;
-            testName = testBase + '_v' + String(singleVerNum).padStart(3, '0') + '.mp4';
         }
         const singleVerStr = 'v' + String(singleVerNum).padStart(3, '0');
         const singleTokens = getIaTokenValues(null, singleVerStr);
@@ -1279,3 +1372,8 @@ window.handleIaTagCCustomChange = handleIaTagCCustomChange;
 window.stepIaVersion = stepIaVersion;
 window.handleIaVerInput = handleIaVerInput;
 window.handleIaVerInputChange = handleIaVerInputChange;
+window.handleIaVerOptionChange = handleIaVerOptionChange;
+window.getIaVersionOptions = getIaVersionOptions;
+window.getIaMediaType = getIaMediaType;
+window.initIaVersionOptionsUI = initIaVersionOptionsUI;
+window.toggleIaWorkMode = toggleIaWorkMode;

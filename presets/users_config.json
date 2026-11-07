@@ -40,7 +40,7 @@
     {
       "id": "user",
       "name": "Artista",
-      "description": "Operador estÃ¡ndar de trabajo",
+      "description": "Operador estándar de trabajo",
       "color": "#00bcd4",
       "isSystem": true,
       "permissions": {
@@ -77,7 +77,7 @@
     {
       "id": "lead",
       "name": "Cordinadora",
-      "description": "SupervisiÃ³n de planos y diseÃ±o de pipeline",
+      "description": "Supervisión de planos y diseño de pipeline",
       "color": "#9c27b0",
       "permissions": {
         "access_explorer": true,
@@ -123,7 +123,8 @@
       "notes": "Administrador por defecto",
       "avatarColor": "#ff9800",
       "isSystem": true,
-      "permissionOverrides": {}
+      "permissionOverrides": {},
+      "assignedProjects": []
     },
     {
       "id": "u_Mati_pastorino_5943",
@@ -137,7 +138,15 @@
       "notes": "",
       "isSystem": false,
       "authSource": "ramon",
-      "permissionOverrides": {}
+      "permissionOverrides": {},
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "aqee",
+        "compound_nine",
+        "estupidamente_tuyo",
+        "pride_and_prejudice",
+        "surf_love"
+      ]
     },
     {
       "id": "u_lasp_aavila_6106",
@@ -150,7 +159,16 @@
       "notes": "",
       "avatarColor": "#00bcd4",
       "isSystem": false,
-      "authSource": "ramon"
+      "authSource": "ramon",
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "aqee",
+        "compound_nine",
+        "estupidamente_tuyo",
+        "pride_and_prejudice",
+        "surf_love"
+      ],
+      "permissionOverrides": {}
     },
     {
       "id": "u_lasp_aestevez_9816",
@@ -166,7 +184,14 @@
       "authSource": "ramon",
       "autoRegistered": true,
       "permissionOverrides": {},
-      "maxConcurrentDownloadsOverride": null
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "aqee",
+        "compound_nine",
+        "estupidamente_tuyo",
+        "pride_and_prejudice",
+        "surf_love"
+      ]
     },
     {
       "id": "u_lasp_famato_6889",
@@ -181,7 +206,15 @@
       "isSystem": false,
       "authSource": "ramon",
       "autoRegistered": true,
-      "permissionOverrides": {}
+      "permissionOverrides": {},
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "aqee",
+        "compound_nine",
+        "estupidamente_tuyo",
+        "pride_and_prejudice",
+        "surf_love"
+      ]
     },
     {
       "id": "u_lasp_pkozow_8453",
@@ -196,7 +229,13 @@
       "isSystem": false,
       "authSource": "ramon",
       "autoRegistered": true,
-      "permissionOverrides": {}
+      "permissionOverrides": {},
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "compound_nine",
+        "estupidamente_tuyo",
+        "pride_and_prejudice"
+      ]
     },
     {
       "id": "u_lasp_daguero_1174",
@@ -229,6 +268,76 @@
       "isSystem": false,
       "authSource": "ramon",
       "autoRegistered": true,
+      "permissionOverrides": {},
+      "assignedProjects": []
+    },
+    {
+      "id": "u_ramon_lasp-lpedrouzo",
+      "username": "lasp-lpedrouzo",
+      "firstName": "Leandro",
+      "lastName": "Pedrouzo",
+      "laspUser": "lasp-lpedrouzo",
+      "role": "user",
+      "email": "",
+      "notes": "Configurado en Pipeta Server",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {},
+      "assignedProjects": [
+        "compound_nine"
+      ]
+    },
+    {
+      "id": "u_lasp_adrobertos_4921",
+      "username": "lasp-adrobertos",
+      "firstName": "",
+      "lastName": "",
+      "laspUser": "lasp-adrobertos",
+      "role": "user",
+      "email": "",
+      "notes": "Auto-registrado al iniciar Pipeta en M1110 (2026-11-05)",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "autoRegistered": true,
+      "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_arinaldi_4042",
+      "username": "Alan Rinaldi",
+      "firstName": "Alan",
+      "lastName": "Rinaldi",
+      "laspUser": "lasp-arinaldi",
+      "role": "user",
+      "email": "",
+      "notes": "",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "compound_nine"
+      ],
+      "permissionOverrides": {}
+    },
+    {
+      "id": "u_lasp_ijamilis_1526",
+      "username": "Ignacio Jamilis",
+      "firstName": "Ignacio",
+      "lastName": "Jamilis",
+      "laspUser": "lasp-ijamilis",
+      "role": "user",
+      "email": "",
+      "notes": "compo remoto",
+      "avatarColor": "#00bcd4",
+      "isSystem": false,
+      "authSource": "ramon",
+      "maxConcurrentDownloadsOverride": null,
+      "assignedProjects": [
+        "compound_nine"
+      ],
       "permissionOverrides": {}
     },
     {
@@ -245,22 +354,6 @@
       "authSource": "ramon",
       "autoRegistered": true,
       "permissionOverrides": {}
-    },
-    {
-      "id": "u_ramon_lasp-lpedrouzo",
-      "username": "lasp-lpedrouzo",
-      "firstName": "Leandro",
-      "lastName": "Pedrouzo",
-      "laspUser": "lasp-lpedrouzo",
-      "role": "user",
-      "email": "",
-      "notes": "Configurado en Pipeta Server",
-      "avatarColor": "#00bcd4",
-      "isSystem": false,
-      "authSource": "ramon",
-      "assignedProjects": [
-        "compound_nine"
-      ]
     }
   ],
   "activeUser": "admin",

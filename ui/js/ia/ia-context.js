@@ -616,6 +616,12 @@ function switchIaWorkMode(mode) {
     const tagACustom = document.getElementById('tokTagACustom');
     if (tagACustom) tagACustom.style.display = (document.getElementById('tokTagALevel')?.value === 'custom') ? 'block' : 'none';
 
+    // 5. Opciones avanzadas de Versionado (Split & Skip Format)
+    const verOpts = document.getElementById('iaVerAdvancedOptions');
+    if (verOpts) {
+        verOpts.style.display = isSimple ? 'none' : 'flex';
+    }
+
     if (isSimple) {
         // En Modo Simple, asegurar defaults de niveles B y C apagados (unchecked)
         const tagBToggle = document.getElementById('tokTagBToggle');
@@ -637,6 +643,11 @@ function switchIaWorkMode(mode) {
     updateIaPreview();
 }
 
+function toggleIaWorkMode() {
+    const nextMode = (window.iaWorkMode === 'simple') ? 'advanced' : 'simple';
+    switchIaWorkMode(nextMode);
+}
+
 window.openIaIngestSettings = async function () {
     if (typeof settings !== 'undefined') {
         await settings.open();
@@ -654,3 +665,4 @@ window.handleIaSeqChange = handleIaSeqChange;
 window.handleIaShotChange = handleIaShotChange;
 window.iaToggleSubfolder = iaToggleSubfolder;
 window.switchIaWorkMode = switchIaWorkMode;
+window.toggleIaWorkMode = toggleIaWorkMode;

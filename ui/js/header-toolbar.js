@@ -78,18 +78,16 @@ function getIaIngestToolbarSuiteHtml() {
 
     <div class="tool-space-small"></div>
 
-    <!-- IA MODE (ADVANCED / SIMPLE) -->
-    <div class="toolbar-section-group" title="Modo de Operación IA">
+    <!-- IA MODE (SINGLE TOGGLE SIMPLE <-> ADVANCED) -->
+    <div class="toolbar-section-group" title="Modo de Operación IA (Clic para alternar entre Simple y Advanced)">
         <span class="toolbar-section-label">IA Mode</span>
         <div class="toolbar-section-content">
-            <div style="display:flex; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40;">
-                <button class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
-                        style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
-                        onclick="switchIaWorkMode('advanced')" title="Modo Avanzado (Builder modular, tokens y cola por lotes)">ADVANCED</button>
-                <button class="tool-btn ${window.iaWorkMode === 'simple' ? 'active' : ''}" 
-                        style="padding: 0 8px; font-size: 0.72rem; height: 24px; display: inline-flex; align-items: center;"
-                        onclick="switchIaWorkMode('simple')" title="Modo Simple (Flujo rápido simplificado)">SIMPLE</button>
-            </div>
+            <button type="button" id="iaWorkModeToggleBtn" class="tool-btn ${window.iaWorkMode !== 'simple' ? 'active' : ''}" 
+                    style="height: 24px; min-width: 86px; padding: 0 10px; font-size: 0.72rem; font-weight: bold; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; ${window.iaWorkMode === 'simple' ? 'background:#1a2332; border:1px solid #2b3a4f; color:#80cbc4;' : 'background:rgba(0,188,212,0.22); border:1px solid #00bcd4; color:#00e5ff; box-shadow:0 0 8px rgba(0,188,212,0.3);'}"
+                    onclick="toggleIaWorkMode()" 
+                    title="Modo actual: ${window.iaWorkMode === 'simple' ? 'SIMPLE (Flujo rápido simplificado). Clic para pasar a Advanced.' : 'ADVANCED (Control total y tokens avanzados). Clic para volver a Simple.'}">
+                ${window.iaWorkMode === 'simple' ? '⚡ Simple' : '🛠️ Advanced'}
+            </button>
         </div>
     </div>
     `;

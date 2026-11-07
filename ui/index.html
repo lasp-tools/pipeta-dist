@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pipeta - Pipeline Manager</title>
     <!-- MODULAR CSS -->
-    <link rel="stylesheet" href="css/theme.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/components.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/layout.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/browser.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/asset-designer.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/shot-designer.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.2.3">
-    <link rel="stylesheet" href="css/console.css?v=v1.2.3">
+    <link rel="stylesheet" href="css/theme.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/components.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/layout.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/browser.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/asset-designer.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/shot-designer.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/sync-analyzer.css?v=v1.2.4">
+    <link rel="stylesheet" href="css/console.css?v=v1.2.4">
 </head>
 
 <body>
@@ -27,7 +27,7 @@
             <img src="logo.png" alt="Pipeta" class="logo">
             <div class="app-info">
                 <h1 class="app-title">PIPETA</h1>
-                <span class="app-version" id="appVersion">v1.2.3</span>
+                <span class="app-version" id="appVersion">v1.2.4</span>
             </div>
         </div>
 
@@ -568,6 +568,17 @@
                                     <input id="tokVerInput" class="prop-input" value="v001" style="flex:1; min-width:0; padding:3px; font-size:0.85rem; font-weight:bold; color:#4caf50; text-align:center;" oninput="handleIaVerInput(this.value)">
                                     <button type="button" class="btn-stepper" onclick="stepIaVersion(1)" title="Aumentar versión (+)">+</button>
                                 </div>
+                                <!-- Opciones avanzadas de versionado (Split & Skip Format) -->
+                                <div id="iaVerAdvancedOptions" style="display:none; flex-direction:column; gap:4px; margin-top:6px; padding-top:6px; border-top:1px solid #202d40; width:100%;">
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:0.7rem; color:#bbb; cursor:pointer; user-select:none;" title="Separa las secuencias de versiones de archivos de Imagen (png, jpg, exr...) de las de Video (mp4, mov...)">
+                                        <input type="checkbox" id="iaVerSplitCheck" checked onchange="handleIaVerOptionChange('split', this.checked)" style="cursor:pointer; accent-color:var(--accent);">
+                                        <span>Split (Img / Video)</span>
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:0.7rem; color:#bbb; cursor:pointer; user-select:none;" title="Calcula la versión sin importar la extensión/formato (ej: .png y .jpg reciben v001 y v002 consecutivas)">
+                                        <input type="checkbox" id="iaVerSkipFormatCheck" checked onchange="handleIaVerOptionChange('skipFormat', this.checked)" style="cursor:pointer; accent-color:var(--accent);">
+                                        <span>Skip Format</span>
+                                    </label>
+                                </div>
                             </div>
 
                         </div>
@@ -703,57 +714,57 @@
     </div>
 
     <!-- SCRIPT MODULES -->
-    <script src="js/config.js?v=v1.2.3"></script>
-    <script src="js/core/pipeta-store.js?v=v1.2.3"></script>
-    <script src="js/state.js?v=v1.2.3"></script>
-    <script src="js/api.js?v=v1.2.3"></script>
-    <script src="js/ramon.js?v=v1.2.3"></script>
-    <script src="js/console.js?v=v1.2.3"></script>
-    <script src="js/selection.js?v=v1.2.3"></script>
-    <script src="js/inspector.js?v=v1.2.3"></script>
-    <script src="js/validator.js?v=v1.2.3"></script>
-    <script src="js/context-menu.js?v=v1.2.3"></script>
+    <script src="js/config.js?v=v1.2.4"></script>
+    <script src="js/core/pipeta-store.js?v=v1.2.4"></script>
+    <script src="js/state.js?v=v1.2.4"></script>
+    <script src="js/api.js?v=v1.2.4"></script>
+    <script src="js/ramon.js?v=v1.2.4"></script>
+    <script src="js/console.js?v=v1.2.4"></script>
+    <script src="js/selection.js?v=v1.2.4"></script>
+    <script src="js/inspector.js?v=v1.2.4"></script>
+    <script src="js/validator.js?v=v1.2.4"></script>
+    <script src="js/context-menu.js?v=v1.2.4"></script>
     <!-- Static Data -->
-    <script src="js/data/patch-notes-data.js?v=v1.2.3"></script>
-    <script src="js/data/shortcuts-data.js?v=v1.2.3"></script>
+    <script src="js/data/patch-notes-data.js?v=v1.2.4"></script>
+    <script src="js/data/shortcuts-data.js?v=v1.2.4"></script>
     <!-- Settings Modular -->
-    <script src="js/settings/settings-core.js?v=v1.2.3"></script>
-    <script src="js/settings/settings-projects.js?v=v1.2.3"></script>
-    <script src="js/settings/settings-sync.js?v=v1.2.3"></script>
-    <script src="js/settings/settings-users.js?v=v1.2.3"></script>
-    <script src="js/settings/settings-export.js?v=v1.2.3"></script>
+    <script src="js/settings/settings-core.js?v=v1.2.4"></script>
+    <script src="js/settings/settings-projects.js?v=v1.2.4"></script>
+    <script src="js/settings/settings-sync.js?v=v1.2.4"></script>
+    <script src="js/settings/settings-users.js?v=v1.2.4"></script>
+    <script src="js/settings/settings-export.js?v=v1.2.4"></script>
     <!-- Sync Overlay (Decommissioned Miller view logic converted to sync overlay) -->
-    <script src="js/sync-overlay.js?v=v1.2.3"></script>
+    <script src="js/sync-overlay.js?v=v1.2.4"></script>
     <!-- Views -->
-    <script src="js/mirror.js?v=v1.2.3"></script>
-    <script src="js/split-view.js?v=v1.2.3"></script>
+    <script src="js/mirror.js?v=v1.2.4"></script>
+    <script src="js/split-view.js?v=v1.2.4"></script>
     <!-- Designers (Canvas Shared + Specific) -->
-    <script src="js/designers/designer-canvas-shared.js?v=v1.2.3"></script>
-    <script src="js/asset-designer.js?v=v1.2.3"></script>
-    <script src="js/shot-designer.js?v=v1.2.3"></script>
+    <script src="js/designers/designer-canvas-shared.js?v=v1.2.4"></script>
+    <script src="js/asset-designer.js?v=v1.2.4"></script>
+    <script src="js/shot-designer.js?v=v1.2.4"></script>
     <!-- Creators (Shared + Specific) -->
-    <script src="js/creators/creator-shared.js?v=v1.2.3"></script>
-    <script src="js/asset-creator.js?v=v1.2.3"></script>
-    <script src="js/shot-creator.js?v=v1.2.3"></script>
+    <script src="js/creators/creator-shared.js?v=v1.2.4"></script>
+    <script src="js/asset-creator.js?v=v1.2.4"></script>
+    <script src="js/shot-creator.js?v=v1.2.4"></script>
     <!-- Tutorials -->
-    <script src="js/tutorials.js?v=v1.2.3"></script>
+    <script src="js/tutorials.js?v=v1.2.4"></script>
     <!-- Sync -->
-    <script src="js/sync-analyzer.js?v=v1.2.3"></script>
-    <script src="js/sync-queue.js?v=v1.2.3"></script>
-    <script src="js/sync-conflict.js?v=v1.2.3"></script>
+    <script src="js/sync-analyzer.js?v=v1.2.4"></script>
+    <script src="js/sync-queue.js?v=v1.2.4"></script>
+    <script src="js/sync-conflict.js?v=v1.2.4"></script>
     <!-- IA Ingest Modular -->
-    <script src="js/ia/ia-tokens.js?v=v1.2.3"></script>
-    <script src="js/ia/ia-context.js?v=v1.2.3"></script>
-    <script src="js/ia/ia-higgsfield.js?v=v1.2.3"></script>
-    <script src="js/ia/ia-ingest-queue.js?v=v1.2.3"></script>
+    <script src="js/ia/ia-tokens.js?v=v1.2.4"></script>
+    <script src="js/ia/ia-context.js?v=v1.2.4"></script>
+    <script src="js/ia/ia-higgsfield.js?v=v1.2.4"></script>
+    <script src="js/ia/ia-ingest-queue.js?v=v1.2.4"></script>
     <!-- Auditors & Trackers -->
-    <script src="js/file-auditor.js?v=v1.2.3"></script>
-    <script src="js/shot-navigator.js?v=v1.2.3"></script>
+    <script src="js/file-auditor.js?v=v1.2.4"></script>
+    <script src="js/shot-navigator.js?v=v1.2.4"></script>
     <!-- Dock Manager & Header Toolbar -->
-    <script src="js/dock-manager.js?v=v1.2.3"></script>
-    <script src="js/header-toolbar.js?v=v1.2.3"></script>
+    <script src="js/dock-manager.js?v=v1.2.4"></script>
+    <script src="js/header-toolbar.js?v=v1.2.4"></script>
     <!-- Main Entry -->
-    <script src="js/main.js?v=v1.2.3"></script>
+    <script src="js/main.js?v=v1.2.4"></script>
 
     <!-- SNAP GHOST (DROP TO DOCK PREVIEW) -->
     <div id="app-dock-ghost" class="app-dock-ghost">

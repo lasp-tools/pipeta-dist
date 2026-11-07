@@ -3139,7 +3139,17 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
-                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.1.93 (Actual)</div>
+                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.2.4 (Actual)</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>IA Ingest en Modo Simple y Botón Toggle Único:</b> La herramienta arranca por defecto en <code>⚡ Simple</code> y la barra superior cuenta con un botón único que alterna directamente entre <code>⚡ Simple</code> y <code>🛠️ Advanced</code> en el mismo lugar sin saltos.</li>
+                                    <li><b>Control de Versiones Inteligente (Split & Skip Format):</b> Nuevas opciones avanzadas de versionado en IA Ingest. <code>Split (Img / Video)</code> separa las secuencias de versión entre imágenes (ej: v001-v004) y videos (ej: v001-v002), y <code>Skip Format</code> auto-incrementa versiones entre distintos formatos (ej: .png y .jpg reciben v001 y v002 consecutivas). En Modo Simple ambas funciones operan activas por detrás.</li>
+                                    <li><b>Fix Autenticación Ramón (TACTIC):</b> Validación directa de sesión mediante tickets LDAP sin consultas bloqueantes al proyecto administrativo <code>sthpw</code>, permitiendo login sin errores a artistas sin permisos de administración.</li>
+                                    <li><b>Sincronización Automática de Presets y Proyectos Asignados:</b> Los puestos sin SMB sincronizan en tiempo real los proyectos asignados directamente desde Pipeta Server al iniciar sesión.</li>
+                                    <li><b>Protección de Navegador en Actualizador:</b> Se eliminó la reinicialización de shell de Windows en <code>Actualizar_Pipeta_desde_Red.bat</code>, impidiendo el cierre involuntario de navegadores abiertos al actualizar Pipeta.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.1.93</div>
                                 <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
                                     <li><b>Detección y Propagación Bidireccional de Pendientes de Subida:</b> Las carpetas locales con elementos nuevos para subir a Servidor o Drive ahora reflejan inmediatamente el estado de subida (⬆️* Subir) tanto cerradas como abiertas, propagándose automáticamente por toda la jerarquía de directorios.</li>
                                     <li><b>Eliminación de Tildes Falsos (✓):</b> Ninguna carpeta con archivos o secuencias pendientes de subir o descargar volverá a mostrar un tilde verde erróneo.</li>

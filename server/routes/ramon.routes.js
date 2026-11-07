@@ -13,7 +13,8 @@ const {
     PIPETA_SERVER_TOKEN,
     getPipetaServerCandidateUrls,
     getCachedEnvState,
-    sendClientTelemetryPing
+    sendClientTelemetryPing,
+    syncConfigsFromMasterNetwork
 } = require('../core/env-detector');
 const { getLocalSyncCacheDir } = require('../core/sync-paths');
 const { sanitizeUsersConfig } = require('./users-workflow.routes');
@@ -208,12 +209,19 @@ router.post('/api/ramon/login', async (req, res) => {
         }
 
         try {
+            // Sincronizar presets y asignaciones desde Pipeta Server al iniciar sesion
+            await syncConfigsFromMasterNetwork({ force: true }).catch(() => {});
+
             if (fs.existsSync(USERS_CONFIG_FILE)) {
                 const uData = await fs.readJson(USERS_CONFIG_FILE);
                 const shouldAutoRegister = typeof uData.autoRegisterRamonUsers !== 'undefined' ? !!uData.autoRegisterRamonUsers : true;
                 const defaultRole = uData.defaultRamonRole || 'user';
                 uData.users = uData.users || [];
-                let existing = uData.users.find(u => u.laspUser === username || u.username === username);
+                const normUser = String(username).toLowerCase().trim();
+                let existing = uData.users.find(u =>
+                    String(u.laspUser || '').toLowerCase() === normUser ||
+                    String(u.username || '').toLowerCase() === normUser
+                );
                 const isLocalSystemUser = username === 'admin' || (existing && (existing.id === 'u_admin' || existing.username === 'admin' || existing.isSystem));
                 if (!existing && shouldAutoRegister) {
                     if (!isLocalSystemUser) {
