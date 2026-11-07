@@ -378,9 +378,14 @@ async function initApp() {
     if (splitEl) splitEl.style.display = 'flex';
 
     // 2c. Set Default Sync Comparison Mode (Drive vs Server)
-    let initialCompMode = (settings && settings.defaultSyncComparisonMode)
+    const canServer = (typeof canUseServerMode === 'function') ? canUseServerMode() : false;
+    const defaultMunroNoSmb = canServer ? 'server' : 'drive';
+    let initialCompMode = (settings && settings.defaultSyncComparisonMode && localStorage.getItem('pipeta_sync_comparison_mode'))
         ? settings.defaultSyncComparisonMode
-        : (localStorage.getItem('pipeta_sync_comparison_mode') || 'drive');
+        : (localStorage.getItem('pipeta_sync_comparison_mode') || defaultMunroNoSmb);
+    if (!localStorage.getItem('pipeta_sync_comparison_mode') && canServer) {
+        initialCompMode = 'server';
+    }
     if (window.pipetaSystemEnv?.isExternalMachine && initialCompMode === 'server') {
         initialCompMode = 'drive';
     }

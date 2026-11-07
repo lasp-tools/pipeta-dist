@@ -541,7 +541,9 @@ window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || '
 if (!canUseServerMode() && window.viewLocationMode === 'server') {
     window.viewLocationMode = 'local';
 }
-window.syncComparisonMode = localStorage.getItem('pipeta_sync_comparison_mode') || 'drive';
+const _hasExplicitCompPref = !!localStorage.getItem('pipeta_sync_comparison_mode');
+const _defaultCompMode = (typeof canUseServerMode === 'function' && canUseServerMode()) ? 'server' : 'drive';
+window.syncComparisonMode = _hasExplicitCompPref ? localStorage.getItem('pipeta_sync_comparison_mode') : _defaultCompMode;
 if (!canUseServerMode() && window.syncComparisonMode === 'server') {
     window.syncComparisonMode = 'drive';
 }
@@ -565,6 +567,9 @@ async function detectSystemEnvironment(force = false) {
                     window.syncComparisonMode = 'drive';
                     try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}
                 }
+            } else if (!localStorage.getItem('pipeta_sync_comparison_mode')) {
+                // En puestos de Munro sin Z SMB real, comparar por defecto contra Server (Z(SMB server))
+                window.syncComparisonMode = 'server';
             }
 
             if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');

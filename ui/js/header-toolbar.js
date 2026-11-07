@@ -275,8 +275,8 @@ const headerToolsTemplates = {
                 ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                 <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
                         style="padding: 0 9px; font-size: 0.72rem; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-left:2px; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
-                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central (Clic para activar/desactivar)">
-                    <span style="margin-right:4px;">🗄️</span><span>SERVER</span>
+                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central Z: (SMB StorNext) (Clic para activar/desactivar)">
+                    <span style="margin-right:4px;">🗄️</span><span>Z(SMB server)</span>
                 </button>
                 ` : ''}
                 <button class="tool-btn ${window.deepCompareMode ? 'active' : ''}" 

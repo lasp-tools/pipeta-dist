@@ -2858,7 +2858,7 @@ const settings = {
                                 <input type="radio" name="defaultSyncComparisonMode" value="server" 
                                     ${curCompMode === 'server' ? 'checked' : ''}
                                     onchange="settings.defaultSyncComparisonMode = 'server'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'server'); } catch(e){}">
-                                <span>Servidor Central</span>
+                                <span>Z(SMB server)</span>
                             </label>
                             ` : ''}
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">
