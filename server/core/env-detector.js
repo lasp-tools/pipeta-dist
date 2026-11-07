@@ -58,12 +58,17 @@ function detectStudioNetworkSync() {
     return { isStudioLAN, isExternalMachine: global.isExternalMachine, hasZ };
 }
 
-// Initial immediate detection of Z: (Real vs Virtual Subst)
+// Initial immediate detection of Z: (Real vs Virtual Subst / Vsubst)
 try {
     const substCheck = execSync('subst', { encoding: 'utf8', timeout: 1500 });
-    global.isZRealServer = !(/Z:\\: =>/i.test(substCheck));
+    if (/Z:\\: =>/i.test(substCheck)) {
+        global.isZRealServer = false;
+    } else {
+        const netOut = execSync('cmd.exe /c "net use z:"', { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
+        global.isZRealServer = /(?:Nombre remoto|Remote name)\s+\\\\/i.test(netOut);
+    }
 } catch (e) {
-    global.isZRealServer = true;
+    global.isZRealServer = false;
 }
 
 // Cached Environment & Persistent Internet Detection
@@ -132,27 +137,30 @@ async function runEnvironmentDetection() {
     const hasDriveG = fs.existsSync('G:/Unidades compartidas') || fs.existsSync('G:/');
     const hasSyncCache = fs.existsSync('Z:/_SYNC_CACHE') || getReadSyncCacheCandidateDirs().some(d => fs.existsSync(d));
 
-    let zInfo = { isRealServer: true, type: 'network', target: 'Servidor Central SMB' };
+    let zInfo = { isRealServer: false, type: 'vsubst', target: 'Disco Local / vsubst' };
 
+    let isSubst = false;
     try {
         const substOut = execSync('subst', { encoding: 'utf8', timeout: 1500 });
         const match = substOut.match(/Z:\\: => ([^\r\n]+)/i);
         if (match) {
+            isSubst = true;
             zInfo = { isRealServer: false, type: 'subst', target: match[1].trim() };
         }
     } catch (e) {}
 
-    if (zInfo.isRealServer) {
+    if (!isSubst) {
         try {
             const netOut = execSync('cmd.exe /c "net use z:"', { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] });
             const m = netOut.match(/(?:Nombre remoto|Remote name)\s+([^\r\n]+)/i);
-            if (m) {
+            if (m && m[1] && m[1].includes('\\')) {
                 zInfo = { isRealServer: true, type: 'network', target: m[1].trim() };
+            } else {
+                zInfo = { isRealServer: false, type: 'vsubst', target: 'Disco Local / vsubst' };
             }
         } catch (e) {
-            if (fs.existsSync('Z:/')) {
-                zInfo = { isRealServer: true, type: 'network', target: 'Servidor Central' };
-            }
+            // net use falló -> NO es conexión de red SMB real (es local, subst o vsubst)
+            zInfo = { isRealServer: false, type: 'vsubst', target: 'Disco Local / vsubst' };
         }
     }
 

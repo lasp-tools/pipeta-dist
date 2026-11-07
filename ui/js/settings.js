@@ -124,7 +124,7 @@ const settings = {
     // UI View Preferences
     defaultViewMode: 'local', // 'local' | 'drive' | 'server'
     defaultBrowserMode: 'split', // 'split' (Vista Clásica) | 'pipeta' (Miller View)
-    defaultSyncComparisonMode: 'drive', // 'drive' | 'server'
+    defaultSyncComparisonMode: 'server', // 'drive' | 'server'
     catalogTtlMunroSeconds: 20,
     catalogTtlFreeloSeconds: 30,
     localAccordionOpen: false,

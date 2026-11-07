@@ -1,5 +1,5 @@
 // Configuration
-window.APP_VERSION = "v1.2.7";
+window.APP_VERSION = "v1.2.8";
 window.IS_BETA_CHANNEL = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
 window.PIPETA_LOCAL_APP_DIR = window.IS_BETA_CHANNEL ? "C:\\TOOLS\\APPS\\Pipeta_Beta" : "C:\\TOOLS\\APPS\\Pipeta";
 

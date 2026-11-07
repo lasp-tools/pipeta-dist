@@ -1,7 +1,7 @@
 {
   "defaultViewMode": "local",
   "defaultBrowserMode": "split",
-  "defaultSyncComparisonMode": "drive",
+  "defaultSyncComparisonMode": "server",
   "validationPresetAsset": "master_asset",
   "validationPresetShot": "master_shot",
   "loggingEnabled": true,

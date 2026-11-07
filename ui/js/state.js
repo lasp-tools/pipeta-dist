@@ -508,9 +508,11 @@ function isZRealServer() {
     const override = window.zEnvOverride || 'auto';
     if (override === 'force_real') return true;
     if (override === 'force_fake') return false;
-    // Si aún no se completó la detección, en el estudio por defecto Z: es el Servidor Real
-    if (!window.pipetaSystemEnv || !window.pipetaSystemEnv.zInfo) return true;
-    return !!window.pipetaSystemEnv.zInfo.isRealServer;
+    if (window.pipetaSystemEnv && window.pipetaSystemEnv.zInfo) {
+        return !!window.pipetaSystemEnv.zInfo.isRealServer;
+    }
+    // Si aún no se completó la detección, NO asumir Servidor Real
+    return false;
 }
 
 function isExternalMachine() {
@@ -538,13 +540,13 @@ window.isExternalMachine = isExternalMachine;
 window.canUseServerMode = canUseServerMode;
 
 window.viewLocationMode = localStorage.getItem('pipeta_view_location_mode') || 'local';
-if (!canUseServerMode() && window.viewLocationMode === 'server') {
+if (isExternalMachine() && window.viewLocationMode === 'server') {
     window.viewLocationMode = 'local';
 }
-const _hasExplicitCompPref = !!localStorage.getItem('pipeta_sync_comparison_mode');
+const _savedCompPref = localStorage.getItem('pipeta_sync_comparison_mode');
 const _defaultCompMode = (typeof canUseServerMode === 'function' && canUseServerMode()) ? 'server' : 'drive';
-window.syncComparisonMode = _hasExplicitCompPref ? localStorage.getItem('pipeta_sync_comparison_mode') : _defaultCompMode;
-if (!canUseServerMode() && window.syncComparisonMode === 'server') {
+window.syncComparisonMode = _savedCompPref || _defaultCompMode;
+if (isExternalMachine() && window.syncComparisonMode === 'server') {
     window.syncComparisonMode = 'drive';
 }
 
@@ -557,8 +559,8 @@ async function detectSystemEnvironment(force = false) {
             try { localStorage.setItem('pipeta_system_env', JSON.stringify(res)); } catch(e){}
             console.log('[ENV DETECT] Estado:', res.hasInternet ? 'Online' : 'Offline', 'Externa:', res.isExternalMachine, 'Unidades:', res.zInfo, res.sInfo);
             
-            // Si la máquina es externa o Z es servidor real, apagar modos de servidor
-            if (!canUseServerMode()) {
+            // Si la máquina es externa, apagar modos de servidor
+            if (isExternalMachine()) {
                 if (window.viewLocationMode === 'server') {
                     window.viewLocationMode = 'local';
                     try { localStorage.setItem('pipeta_view_location_mode', 'local'); } catch(e){}
@@ -567,9 +569,12 @@ async function detectSystemEnvironment(force = false) {
                     window.syncComparisonMode = 'drive';
                     try { localStorage.setItem('pipeta_sync_comparison_mode', 'drive'); } catch(e){}
                 }
-            } else if (!localStorage.getItem('pipeta_sync_comparison_mode')) {
-                // En puestos de Munro sin Z SMB real, comparar por defecto contra Server (Z(SMB server))
-                window.syncComparisonMode = 'server';
+            } else if (!isZRealServer()) {
+                // En puestos de Munro sin Z SMB real (vsubst / copia local):
+                // Si el usuario no tenía una preferencia guardada explícita en localStorage, comparar contra Server (Z(SMB server))
+                if (!localStorage.getItem('pipeta_sync_comparison_mode')) {
+                    window.syncComparisonMode = 'server';
+                }
             }
 
             if (typeof updateHeaderTools === 'function') updateHeaderTools('view-browser');
