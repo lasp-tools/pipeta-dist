@@ -185,7 +185,11 @@ echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
 
-powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
+echo 1 > "%TEMP%\pipeta_updating.flag"
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do (
+    if not "%%p"=="0" taskkill /F /T /PID %%p >nul 2>&1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*Launch_Pipeta*') -or ($_.Name -eq 'node.exe' -and ($_.CommandLine -like '*Pipeta*' -or $_.ExecutablePath -like '*Pipeta*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
 ping 127.0.0.1 -n 3 >nul
 
@@ -330,7 +334,11 @@ echo.
 
 echo [1/3] Cerrando instancias previas de Pipeta en puerto 3002...
 
-powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Pipeta*' } | Stop-Process -Force" 2>nul
+echo 1 > "%TEMP%\pipeta_updating.flag"
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr /r /c:":3002 *LISTENING"') do (
+    if not "%%p"=="0" taskkill /F /T /PID %%p >nul 2>&1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*Launch_Pipeta*') -or ($_.Name -eq 'node.exe' -and ($_.CommandLine -like '*Pipeta*' -or $_.ExecutablePath -like '*Pipeta*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
 ping 127.0.0.1 -n 3 >nul
 
