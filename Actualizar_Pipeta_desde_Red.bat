@@ -501,7 +501,8 @@ echo.
 
 echo Actualizando acceso directo en Escritorio con icono oficial...
 
-powershell -NoProfile -Command "$dest = '%DEST%'; Get-ChildItem -Path $dest -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ico = Join-Path $dest 'Pipeta.ico'; if (Test-Path $ico) { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue }; $lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }; $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = Join-Path $dest 'Launch_Pipeta.bat'; $s.WorkingDirectory = $dest; if (Test-Path $ico) { $s.IconLocation = "$ico,0" }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$dest = '%DEST%'; Get-ChildItem -Path $dest -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ico = Join-Path $dest 'Pipeta.ico'; if (Test-Path $ico) { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue }; $lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = Join-Path $dest 'Launch_Pipeta.bat'; $s.WorkingDirectory = $dest; if (Test-Path $ico) { $s.IconLocation = ($ico + ',0') }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" >nul 2>&1
+ie4uinit.exe -show >nul 2>&1
 
 
 

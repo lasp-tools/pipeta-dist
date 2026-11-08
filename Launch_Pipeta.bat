@@ -22,6 +22,11 @@ for %%a in (%*) do (
 set "SCRIPT_DIR=%~dp0"
 set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 
+:: Auto-verificar y asegurar icono oficial en acceso directo del Escritorio
+if exist "%LOCAL_DIR%\Pipeta.ico" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $targetIco = '%LOCAL_DIR%\Pipeta.ico,0'; if ($s.IconLocation -ne $targetIco) { $s.IconLocation = $targetIco; $s.Save(); ie4uinit.exe -show } }" >nul 2>&1
+)
+
 set "SERVER_DIR=%SCRIPT_DIR%server"
 if not exist "%SERVER_DIR%\server.js" (
     if exist "%LOCAL_DIR%\server\server.js" (
