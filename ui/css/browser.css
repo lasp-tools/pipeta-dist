@@ -519,6 +519,57 @@ body.pipeta-fast-rendering *::after {
     animation: pipeta-loader-spin 0.65s linear infinite !important;
 }
 
+.catalog-stepper-card.minimized {
+    width: auto;
+    min-width: 210px;
+    max-width: 340px;
+    padding: 8px 12px;
+}
+
+.catalog-stepper-card.minimized .catalog-stepper-steps {
+    display: none;
+}
+
+.catalog-stepper-card.minimized .catalog-stepper-header {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.catalog-stepper-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.catalog-stepper-btn {
+    background: transparent;
+    border: none;
+    color: #8892b0;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.catalog-stepper-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.sync-loading-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    animation: pipeta-loader-spin 0.75s linear infinite !important;
+}
+
 /* --- PIPETA NETWORK UPDATE MODAL --- */
 .pipeta-update-modal-backdrop {
     position: fixed;

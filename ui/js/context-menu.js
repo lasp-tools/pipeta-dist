@@ -245,29 +245,74 @@ class ContextMenu {
         const compMode = window.syncComparisonMode || 'off';
         const projName = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
 
-        if (typeof PipetaConsole !== 'undefined') {
-            PipetaConsole.log('sync', `Refrescando carpeta: '${folderName}' (Modo: ${compMode.toUpperCase()})`, 'pending');
+        // Localizar nodo/fila en el DOM si está visible
+        const normTarget = folderPath.replace(/\\/g, '/').toLowerCase();
+        let targetRow = null;
+        let targetWrapper = null;
+        const allRows = document.querySelectorAll('.tree-node');
+        for (const r of allRows) {
+            if ((r.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase() === normTarget) {
+                targetRow = r;
+                targetWrapper = r.closest('.node-wrapper');
+                break;
+            }
         }
 
+        // FASE 1: Refresco local inmediato (0 a 30 ms) SIN bloqueos ni overlays
         try {
-            const viewMode = window.viewLocationMode || 'local';
-            const isServer = (viewMode === 'server') || (compMode === 'server');
-            const allowDrive = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('explorer_allow_drive') : true;
-            const isDrive = allowDrive && ((viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:'));
-            const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
-            const targetLabel = targetType === 'server' ? 'Servidor' : 'Drive';
-
-            if (targetType) {
-                if (window.CatalogRefreshStepper) {
-                    window.CatalogRefreshStepper.show(folderName, targetLabel);
-                    window.CatalogRefreshStepper.setStep('scan');
+            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+            if (targetWrapper && typeof refreshFolderChildrenInPlace === 'function') {
+                if (targetWrapper._childrenContainer && targetWrapper._childrenContainer.style.display !== 'none') {
+                    await refreshFolderChildrenInPlace(targetWrapper, targetWrapper._item || { path: folderPath, isDirectory: true });
                 }
+            } else if (typeof refreshCurrentView === 'function') {
+                // Refresco silencioso si no se encuentra el nodo en pantalla
+                refreshCurrentView(false, true).catch(() => {});
+            }
+        } catch(localErr) {
+            console.warn('[REFRESH FOLDER] Error en refresco local:', localErr);
+        }
 
-                // Escaneo y actualización scoped ultra-rápida del sub-catálogo en Servidor o Google Drive
+        const viewMode = window.viewLocationMode || 'local';
+        const isServer = (viewMode === 'server') || (compMode === 'server');
+        const allowDrive = (typeof window.checkUserPermission === 'function') ? window.checkUserPermission('explorer_allow_drive') : true;
+        const isDrive = allowDrive && ((viewMode === 'drive') || (compMode === 'drive') || folderPath.toLowerCase().startsWith('g:'));
+        const targetType = isServer ? 'server' : (isDrive ? 'drive' : null);
+        const targetLabel = targetType === 'server' ? 'Z(SMB server)' : 'Drive';
+
+        if (!targetType) {
+            if (typeof PipetaConsole !== 'undefined') {
+                PipetaConsole.log('sync', `✓ Carpeta '${folderName}' refrescada en disco local`, 'ok');
+            }
+            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                settings.showToast(`✅ "${folderName}" refrescada`, 'success', 2);
+            }
+            return;
+        }
+
+        // FASE 2: Proceso de inspección de catálogo en segundo plano (100% No bloqueante)
+        // 1. Mostrar spinner animado en la fila de la carpeta (al lado del nombre donde salen las flechas)
+        if (typeof setFolderSyncRefreshing === 'function') {
+            setFolderSyncRefreshing(folderPath, true);
+        }
+
+        // 2. Mostrar la notificación flotante emergente (se puede mover y minimizar)
+        if (window.CatalogRefreshStepper) {
+            window.CatalogRefreshStepper.show(folderName, targetLabel);
+            window.CatalogRefreshStepper.setStep('scan');
+        }
+
+        if (typeof PipetaConsole !== 'undefined') {
+            PipetaConsole.log('sync', `Inspeccionando '${folderName}' en segundo plano (${targetLabel})...`, 'pending');
+        }
+
+        // Ejecutar en segundo plano asíncrono desacoplado (el usuario sigue operando libremente)
+        (async () => {
+            try {
                 const res = await fetch('/api/sync/catalog/refresh-folder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project: projName, path: folderPath, type: targetType })
+                    body: JSON.stringify({ project: projName, path: folderPath, type: targetType === 'server' ? 'server' : 'drive' })
                 }).then(r => r.json()).catch(e => ({ success: false, error: e.message }));
 
                 if (res && res.success) {
@@ -275,54 +320,48 @@ class ContextMenu {
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
+                    if (window.CatalogRefreshStepper) window.CatalogRefreshStepper.setStep('refresh');
+
+                    // Refrescar hijos in-place con las nuevas flechas y elementos nuevos de bajada
+                    if (targetWrapper && typeof refreshFolderChildrenInPlace === 'function') {
+                        await refreshFolderChildrenInPlace(targetWrapper, targetWrapper._item || { path: folderPath, isDirectory: true });
+                    }
+                    if (targetRow && targetWrapper && targetWrapper._item && typeof renderRowSyncBadges === 'function') {
+                        renderRowSyncBadges(targetRow, targetWrapper._item);
+                    }
+
+                    // Actualizar insignias de los padres si corresponde
+                    let parentContainer = targetRow ? targetRow.closest('.node-children') : null;
+                    const parentWrapper = parentContainer ? parentContainer.closest('.node-wrapper') : null;
+                    if (parentWrapper && typeof bubbleUpdateFolderBadges === 'function') {
+                        bubbleUpdateFolderBadges(parentWrapper);
+                    }
+
                     if (typeof PipetaConsole !== 'undefined') {
-                        PipetaConsole.log('sync', `✓ Carpeta '${folderName}' actualizada (${res.itemsCount || 0} items en ${targetLabel})`, 'ok');
-                    }
-                    if (window.CatalogRefreshStepper) {
-                        window.CatalogRefreshStepper.setStep('refresh');
-                    }
-                    if (typeof refreshCurrentView === 'function') {
-                        await refreshCurrentView(true);
+                        PipetaConsole.log('sync', `✓ Carpeta '${folderName}' al día (${res.itemsCount || 0} items en ${targetLabel})`, 'ok');
                     }
                     if (window.CatalogRefreshStepper) {
                         window.CatalogRefreshStepper.finish(`✅ "${folderName}" al día (${res.itemsCount || 0} items en ${targetLabel})`);
                     }
                 } else {
-                    console.warn(`[REFRESH FOLDER] Fallback ${targetLabel}:`, res?.error);
+                    console.warn(`[REFRESH FOLDER] Error en ${targetLabel}:`, res?.error);
                     if (window.CatalogRefreshStepper) {
                         window.CatalogRefreshStepper.fail(res?.error || `No se pudo refrescar en ${targetLabel}`);
                     }
                     if (typeof PipetaConsole !== 'undefined') {
-                        PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en ${targetLabel}: ${res?.error || 'Error desconocido'}`, 'error');
-                    }
-                    if (typeof loadActiveProjectSyncCatalog === 'function') {
-                        await loadActiveProjectSyncCatalog(true);
-                    }
-                    if (typeof refreshCurrentView === 'function') {
-                        await refreshCurrentView(true);
+                        PipetaConsole.log('sync', `❌ No se pudo refrescar '${folderName}' en ${targetLabel}: ${res?.error || 'Error'}`, 'error');
                     }
                 }
-            } else {
-                if (typeof PipetaConsole !== 'undefined') {
-                    PipetaConsole.log('sync', `✓ Carpeta '${folderName}' refrescada en disco local`, 'ok');
-                }
-                if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                    settings.showToast(`✅ "${folderName}" refrescada`, 'success', 2);
-                }
-                if (typeof refreshCurrentView === 'function') {
-                    await refreshCurrentView();
+            } catch (err) {
+                console.error('[REFRESH FOLDER] Error:', err);
+                if (window.CatalogRefreshStepper) window.CatalogRefreshStepper.fail(err.message);
+            } finally {
+                // Quitar el spinner animado de la fila y restaurar insignias
+                if (typeof setFolderSyncRefreshing === 'function') {
+                    setFolderSyncRefreshing(folderPath, false);
                 }
             }
-        } catch(err) {
-            console.error("Error refreshing folder:", err);
-            if (window.CatalogRefreshStepper) window.CatalogRefreshStepper.fail(err.message);
-            if (typeof PipetaConsole !== 'undefined') {
-                PipetaConsole.log('sync', `❌ Error refrescando carpeta '${folderName}': ${err.message}`, 'error');
-            }
-            if (typeof refreshCurrentView === 'function') {
-                refreshCurrentView();
-            }
-        }
+        })();
     }
 
     async openInExplorer(path, multi) {

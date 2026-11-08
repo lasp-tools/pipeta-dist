@@ -105,18 +105,20 @@ function hideExplorerLoading(containerId = null) {
 }
 window.hideExplorerLoading = hideExplorerLoading;
 
-async function initBrowser() {
+async function initBrowser(silent = false) {
     window.activeBrowserRenderToken = (window.activeBrowserRenderToken || 0) + 1;
     const currentToken = window.activeBrowserRenderToken;
 
     document.body.classList.add('pipeta-fast-rendering');
-    showExplorerLoading(null, 'Actualizando vista...');
+    if (!silent) {
+        showExplorerLoading(null, 'Actualizando vista...');
+    }
 
     try {
         const roots = getCurrentRoots();
         const curProj = typeof settings !== 'undefined' ? settings.currentProject : null;
         if (curProj && typeof window.isProjectAllowedForUser === 'function' && !window.isProjectAllowedForUser(curProj)) {
-            hideExplorerLoading();
+            if (!silent) hideExplorerLoading();
             if (typeof settings.updateHeaderProjectSelector === 'function') settings.updateHeaderProjectSelector();
             return;
         }
@@ -138,7 +140,7 @@ async function initBrowser() {
         // Calculate folder sizes (async, non-blocking)
         if (typeof updateFolderSizes === 'function') updateFolderSizes();
     } finally {
-        hideExplorerLoading();
+        if (!silent) hideExplorerLoading();
         setTimeout(() => {
             document.body.classList.remove('pipeta-fast-rendering');
         }, 50);
@@ -929,10 +931,62 @@ window.initProjectCatalog = async function(projName) {
 
 const SVG_INLINE_UP = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4M5 11l7-7 7 7"/></svg>`;
 const SVG_INLINE_DOWN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M19 13l-7 7-7-7"/></svg>`;
+const SVG_INLINE_SPINNER = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" style="animation: pipeta-loader-spin 0.75s linear infinite; display: inline-block; vertical-align: middle;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
+
+window.syncRefreshingFolders = new Set();
+
+function isFolderSyncRefreshing(path) {
+    if (!path || !window.syncRefreshingFolders) return false;
+    const norm = path.replace(/\\/g, '/').toLowerCase();
+    return window.syncRefreshingFolders.has(norm);
+}
+window.isFolderSyncRefreshing = isFolderSyncRefreshing;
+
+function setFolderSyncRefreshing(folderPath, isRefreshing) {
+    if (!folderPath) return;
+    if (!window.syncRefreshingFolders) window.syncRefreshingFolders = new Set();
+    const norm = folderPath.replace(/\\/g, '/').toLowerCase();
+    if (isRefreshing) {
+        window.syncRefreshingFolders.add(norm);
+    } else {
+        window.syncRefreshingFolders.delete(norm);
+    }
+
+    const allRows = document.querySelectorAll('.tree-node');
+    for (const row of allRows) {
+        const p = (row.getAttribute('data-path') || '').replace(/\\/g, '/').toLowerCase();
+        if (p === norm) {
+            const inlineSlot = row.querySelector('.sync-badges-inline-slot');
+            const rightSlot = row.querySelector('.sync-badges-right-slot');
+            if (isRefreshing) {
+                if (inlineSlot) {
+                    inlineSlot.innerHTML = `<span class="sync-badge-inline sync-loading-spinner" title="Escaneando catálogo en segundo plano...">${SVG_INLINE_SPINNER}</span>`;
+                }
+                if (rightSlot) {
+                    rightSlot.innerHTML = `<span style="font-size:0.75rem; color:#00e5ff; font-style:italic;">Inspeccionando...</span>`;
+                }
+            } else {
+                const wrapper = row.closest('.node-wrapper');
+                if (wrapper && wrapper._item && typeof renderRowSyncBadges === 'function') {
+                    renderRowSyncBadges(row, wrapper._item);
+                }
+            }
+            break;
+        }
+    }
+}
+window.setFolderSyncRefreshing = setFolderSyncRefreshing;
 
 function buildRowSyncBadges(item) {
     let inlineHtml = '';
     let rightHtml = '';
+    const normP = (item?.path || '').replace(/\\/g, '/').toLowerCase();
+    if (window.syncRefreshingFolders && window.syncRefreshingFolders.has(normP)) {
+        inlineHtml = `<span class="sync-badge-inline sync-loading-spinner" title="Escaneando catálogo en segundo plano...">${SVG_INLINE_SPINNER}</span>`;
+        rightHtml = `<span style="font-size:0.75rem; color:#00e5ff; font-style:italic;">Inspeccionando...</span>`;
+        return { inlineHtml, rightHtml };
+    }
+
     const status = item ? item.syncStatus : null;
     if (!status) return { inlineHtml, rightHtml };
 

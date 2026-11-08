@@ -457,7 +457,7 @@ function selectBlock(el, name) {
 }
 
 let _isRefreshingView = false;
-async function refreshCurrentView(forceCatalog = false) {
+async function refreshCurrentView(forceCatalog = false, silent = false) {
     if (_isRefreshingView) {
         return;
     }
@@ -488,7 +488,7 @@ async function refreshCurrentView(forceCatalog = false) {
             } catch(e) {}
         }
 
-        if (typeof initBrowser === 'function') await initBrowser();
+        if (typeof initBrowser === 'function') await initBrowser(silent);
     } finally {
         _isRefreshingView = false;
     }
@@ -670,9 +670,13 @@ window.CatalogRefreshStepper = {
         card.className = 'catalog-stepper-card';
         card.innerHTML = `
             <div class="catalog-stepper-header">
-                <span style="font-size:1.1rem;">🔄</span>
-                <div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <span style="font-size:1.1rem;" class="catalog-stepper-head-icon">🔄</span>
+                <div class="catalog-stepper-title" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                     Refrescando: <span style="color:#00e5ff;">${folderName || 'Carpeta'}</span>
+                </div>
+                <div class="catalog-stepper-controls">
+                    <button class="catalog-stepper-btn btn-min" title="Minimizar">_</button>
+                    <button class="catalog-stepper-btn btn-close" title="Cerrar notificación">✕</button>
                 </div>
             </div>
             <div class="catalog-stepper-steps">
@@ -684,8 +688,26 @@ window.CatalogRefreshStepper = {
                 `).join('')}
             </div>
         `;
-                document.body.appendChild(card);
+        document.body.appendChild(card);
         this.card = card;
+
+        const btnMin = card.querySelector('.btn-min');
+        if (btnMin) {
+            btnMin.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isMin = card.classList.toggle('minimized');
+                btnMin.textContent = isMin ? '□' : '_';
+                btnMin.title = isMin ? 'Restaurar' : 'Minimizar';
+            });
+        }
+        const btnClose = card.querySelector('.btn-close');
+        if (btnClose) {
+            btnClose.addEventListener('click', (e) => {
+                e.stopPropagation();
+                card.remove();
+                this.card = null;
+            });
+        }
 
         // Soporte arrastrable (Draggable Toast) desde el header
         const header = card.querySelector('.catalog-stepper-header');
@@ -697,6 +719,7 @@ window.CatalogRefreshStepper = {
             let initialLeft = 0, initialTop = 0;
 
             const onMouseDown = (e) => {
+                if (e.target.closest('.catalog-stepper-controls')) return;
                 isDragging = true;
                 header.style.cursor = 'grabbing';
                 const rect = card.getBoundingClientRect();
@@ -763,9 +786,11 @@ window.CatalogRefreshStepper = {
             icon.className = 'catalog-stepper-icon';
             icon.textContent = '✓';
         });
-        const header = this.card.querySelector('.catalog-stepper-header');
-        if (header) {
-            header.innerHTML = `<span style="font-size:1.1rem;">✅</span><span style="color:#a3be8c; font-weight:bold;">${msg}</span>`;
+        const headIcon = this.card.querySelector('.catalog-stepper-head-icon');
+        const headTitle = this.card.querySelector('.catalog-stepper-title');
+        if (headIcon) headIcon.textContent = '✅';
+        if (headTitle) {
+            headTitle.innerHTML = `<span style="color:#a3be8c; font-weight:bold;">${msg}</span>`;
         }
         setTimeout(() => {
             if (this.card) {
@@ -781,9 +806,11 @@ window.CatalogRefreshStepper = {
     },
     fail(errorMsg = 'Error al actualizar') {
         if (!this.card) return;
-        const header = this.card.querySelector('.catalog-stepper-header');
-        if (header) {
-            header.innerHTML = `<span style="font-size:1.1rem;">❌</span><span style="color:#ff6b6b; font-weight:bold;">${errorMsg}</span>`;
+        const headIcon = this.card.querySelector('.catalog-stepper-head-icon');
+        const headTitle = this.card.querySelector('.catalog-stepper-title');
+        if (headIcon) headIcon.textContent = '❌';
+        if (headTitle) {
+            headTitle.innerHTML = `<span style="color:#ff6b6b; font-weight:bold;">${errorMsg}</span>`;
         }
         setTimeout(() => {
             if (this.card) {
@@ -812,7 +839,7 @@ async function triggerSmartViewRefresh() {
 
     // FASE 1: Instantánea (Local)
     // Refresco visual de inmediato (0ms a 30ms). Nunca bloquea el hilo ni la interfaz.
-    await refreshCurrentView(false);
+    await refreshCurrentView(false, true);
 
     const compMode = window.syncComparisonMode || 'off';
     if (compMode === 'off') {
@@ -907,8 +934,8 @@ async function triggerSmartViewRefresh() {
                 if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
                     window.CatalogRefreshStepper.setStep('refresh');
                 }
-                // Reconstruir la vista con los nuevos datos (incorporando nuevos elementos de bajada y flechas)
-                await refreshCurrentView(false);
+                // Reconstruir la vista con los nuevos datos silenciosamente (sin pantalla de loading bloqueante)
+                await refreshCurrentView(false, true);
                 if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
                     window.CatalogRefreshStepper.finish('✅ Catálogo ' + targetLabel + ' al día (' + (refreshRes.itemsCount || 0) + ' items)');
                 }
