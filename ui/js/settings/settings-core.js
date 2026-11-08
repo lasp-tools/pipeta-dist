@@ -101,7 +101,7 @@ const settings = {
     // UI Preferences
     defaultViewMode: 'local', // 'local' | 'drive' | 'server'
     defaultBrowserMode: 'split', // Read-only fallback (Split View is permanent)
-    defaultSyncComparisonMode: 'drive', // 'drive' | 'server'
+    defaultSyncComparisonMode: 'server', // 'server' | 'drive' | 'off'
     localAccordionOpen: false,
 
     // Persistence Logic
@@ -196,7 +196,7 @@ const settings = {
         const cfg = {
             defaultViewMode: settings.defaultViewMode || 'local',
             defaultBrowserMode: settings.defaultBrowserMode || 'split',
-            defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'drive',
+            defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'server',
             validationPresetAsset: settings.validationPresetAsset || null,
             validationPresetShot: settings.validationPresetShot || null,
             loggingEnabled: settings.loggingEnabled,

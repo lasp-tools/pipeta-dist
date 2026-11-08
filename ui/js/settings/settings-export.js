@@ -765,7 +765,7 @@ settings._categoryRenderers.ia_ingest = function () {
 settings._categoryRenderers.interfaz = function () {
                 const curViewMode = (settings.defaultViewMode === 'online') ? 'drive' : (settings.defaultViewMode || 'local');
 
-                const curCompMode = settings.defaultSyncComparisonMode || (typeof window !== 'undefined' && window.syncComparisonMode ? window.syncComparisonMode : 'drive');
+                const curCompMode = settings.defaultSyncComparisonMode || (typeof window !== 'undefined' && window.syncComparisonMode ? window.syncComparisonMode : ((typeof canUseServerMode === 'function' && canUseServerMode()) ? 'server' : 'drive'));
 
                 return `
                     <h3 style="margin-top:0; margin-bottom:15px; color:#fff;">Interfaz de Usuario</h3>
@@ -820,7 +820,7 @@ settings._categoryRenderers.interfaz = function () {
                                 <input type="radio" name="defaultSyncComparisonMode" value="server" 
                                     ${curCompMode === 'server' ? 'checked' : ''}
                                     onchange="settings.defaultSyncComparisonMode = 'server'; try { localStorage.setItem('pipeta_sync_comparison_mode', 'server'); } catch(e){}">
-                                <span>Servidor Central</span>
+                                <span>Z(SMB server)</span>
                             </label>
                             ` : ''}
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.88rem; color:#eee;">

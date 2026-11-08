@@ -544,8 +544,10 @@ if (isExternalMachine() && window.viewLocationMode === 'server') {
     window.viewLocationMode = 'local';
 }
 const _savedCompPref = localStorage.getItem('pipeta_sync_comparison_mode');
-const _defaultCompMode = (typeof canUseServerMode === 'function' && canUseServerMode()) ? 'server' : 'drive';
-window.syncComparisonMode = _savedCompPref || _defaultCompMode;
+const _canServerInitial = (typeof canUseServerMode === 'function' && canUseServerMode());
+const _defaultCompMode = _canServerInitial ? 'server' : 'drive';
+// En puestos de Munro sin Z SMB real (vsubst / copia local), el default canónico al abrir, actualizar o dar F5 es 'server'
+window.syncComparisonMode = _canServerInitial ? 'server' : (_savedCompPref || _defaultCompMode);
 if (isExternalMachine() && window.syncComparisonMode === 'server') {
     window.syncComparisonMode = 'drive';
 }
@@ -571,9 +573,15 @@ async function detectSystemEnvironment(force = false) {
                 }
             } else if (!isZRealServer()) {
                 // En puestos de Munro sin Z SMB real (vsubst / copia local):
-                // Si el usuario no tenía una preferencia guardada explícita en localStorage, comparar contra Server (Z(SMB server))
-                if (!localStorage.getItem('pipeta_sync_comparison_mode')) {
+                // Selecciona por default 'server' (Z(SMB server)) al abrir, actualizar o dar F5
+                const cfgPref = (typeof settings !== 'undefined') ? settings.defaultSyncComparisonMode : null;
+                if (cfgPref === 'drive') {
+                    window.syncComparisonMode = 'drive';
+                } else if (cfgPref === 'off') {
+                    window.syncComparisonMode = 'off';
+                } else {
                     window.syncComparisonMode = 'server';
+                    try { localStorage.setItem('pipeta_sync_comparison_mode', 'server'); } catch(e){}
                 }
             }
 

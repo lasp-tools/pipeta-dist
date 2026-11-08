@@ -379,23 +379,26 @@ async function initApp() {
 
     // 2c. Set Default Sync Comparison Mode (Drive vs Server)
     const canServer = (typeof canUseServerMode === 'function') ? canUseServerMode() : false;
-    const defaultMunroNoSmb = canServer ? 'server' : 'drive';
-    const savedComp = localStorage.getItem('pipeta_sync_comparison_mode');
-    
+    const configCompPref = (typeof settings !== 'undefined') ? settings.defaultSyncComparisonMode : null;
     let initialCompMode;
-    if (savedComp && ['drive', 'server', 'off'].includes(savedComp)) {
-        // Respetar SIEMPRE la selección manual guardada por el usuario
-        initialCompMode = savedComp;
+    if (canServer) {
+        // En puestos de Munro sin Z SMB real (vsubst / copia local):
+        // Por regla canónica de estudio, al abrir, actualizar o dar F5 el default es Z(SMB server)
+        if (configCompPref === 'drive' || configCompPref === 'off') {
+            initialCompMode = configCompPref;
+        } else {
+            initialCompMode = 'server';
+        }
     } else {
-        // Si no hay preferencia guardada por el usuario:
-        // En puestos de Munro sin Z SMB real -> 'server' (Z(SMB server)), si no -> 'drive'
-        initialCompMode = defaultMunroNoSmb;
+        const savedComp = localStorage.getItem('pipeta_sync_comparison_mode');
+        initialCompMode = (savedComp && ['drive', 'server', 'off'].includes(savedComp)) ? savedComp : 'drive';
     }
 
     if (window.pipetaSystemEnv?.isExternalMachine && initialCompMode === 'server') {
         initialCompMode = 'drive';
     }
     window.syncComparisonMode = initialCompMode;
+    try { localStorage.setItem('pipeta_sync_comparison_mode', initialCompMode); } catch(e){}
 
     // 3. Init Browser (will use window.viewLocationMode)
     if (typeof initBrowser === 'function') {

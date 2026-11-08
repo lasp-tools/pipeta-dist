@@ -301,7 +301,7 @@ const settings = {
         const cfg = {
             defaultViewMode: settings.defaultViewMode || 'local',
             defaultBrowserMode: settings.defaultBrowserMode || 'split',
-            defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'drive',
+            defaultSyncComparisonMode: settings.defaultSyncComparisonMode || 'server',
             catalogTtlMunroSeconds: Number(settings.catalogTtlMunroSeconds) || 20,
             catalogTtlFreeloSeconds: Number(settings.catalogTtlFreeloSeconds) || 30,
             validationPresetAsset: settings.validationPresetAsset || null,

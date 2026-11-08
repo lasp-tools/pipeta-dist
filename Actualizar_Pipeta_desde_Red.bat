@@ -6,7 +6,7 @@ title Sincronizar Pipeta (Local / Remoto)
 
 
 
-set "APP_VERSION=v1.2.9"
+set "APP_VERSION=v1.2.10"
 
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
