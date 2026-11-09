@@ -35,6 +35,17 @@ if not "%~2"=="" (
 
 
 :: 2. Deteccion de red del estudio (Z: local / SMB)
+set "IS_STUDIO_LAN=0"
+for /f "tokens=*" %%i in ('ipconfig ^| findstr /i "192.168.206. 192.168.106. 192.168.200."') do (
+    set "IS_STUDIO_LAN=1"
+)
+
+:: Si estamos en LAN del estudio, asegurar sesion SMB antes de verificar rutas
+if "!IS_STUDIO_LAN!"=="1" (
+    if not exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+        net use \\192.168.206.116\Z "Laspadmin.321" /user:"nonstop.tv\lasp-mpastorino" /persistent:no >nul 2>&1
+    )
+)
 
 set "SRC="
 
@@ -88,6 +99,12 @@ if /i "%~1"=="--from-temp-remote" (
 :: Si no se detecto red interna del estudio, pasar al actualizador Remoto (GitHub / Google Drive)
 
 if "%SRC%"=="" (
+
+    if "!IS_STUDIO_LAN!"=="1" (
+        echo [ERROR] No se pudo acceder al servidor de red del estudio (\\192.168.206.116\Z o S:).
+        echo [INFO] Cancelando actualizacion para proteger los archivos locales.
+        goto :ABORT_SAFE
+    )
 
     goto :REMOTE_UPDATE_PREP
 
@@ -150,6 +167,12 @@ if "%SRC%"=="" (
 
 
 if "%SRC%"=="" (
+
+    if "!IS_STUDIO_LAN!"=="1" (
+        echo [ERROR] No se pudo acceder al servidor de red del estudio (\\192.168.206.116\Z o S:).
+        echo [INFO] Cancelando actualizacion para proteger los archivos locales.
+        goto :ABORT_SAFE
+    )
 
     echo [WARN] No se detecto la red del estudio en Z: ni SMB. Saltando a modo remoto...
 
@@ -542,7 +565,9 @@ cd /d "%DEST%"
 
 if exist "%DEST%\Launch_Pipeta.bat" (
 
-    start "" "%DEST%\Launch_Pipeta.bat"
+    if /i not "%~1"=="--unattended" (
+        start "" "%DEST%\Launch_Pipeta.bat"
+    )
 
 ) else (
 
@@ -552,5 +577,16 @@ if exist "%DEST%\Launch_Pipeta.bat" (
 
 )
 
-exit
+exit /b 0
+
+:ABORT_SAFE
+if exist "%TEMP%\pipeta_updating.flag" del /f /q "%TEMP%\pipeta_updating.flag" >nul 2>&1
+echo [INFO] Operacion cancelada de forma segura.
+echo [INFO] Relanzando Pipeta con los archivos locales existentes...
+if /i not "%~1"=="--unattended" (
+    if exist "%DEST%\Launch_Pipeta.bat" (
+        start "" "%DEST%\Launch_Pipeta.bat"
+    )
+)
+exit /b 1
 

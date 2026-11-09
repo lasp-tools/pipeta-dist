@@ -291,9 +291,10 @@ router.post('/api/app/update-from-server', async (req, res) => {
         } catch (e) {}
 
         // 2. Build detached Handoff Runner in %TEMP%
-        const checkLines = uniqueUpdaterBats.map(cand =>
-            `if not defined FOUND_UPDATER if exist "${cand}" set "FOUND_UPDATER=${cand}"`
-        ).join('\r\n');
+        const checkLines = uniqueUpdaterBats.map(cand => {
+            const srcDir = path.dirname(cand);
+            return `if not defined FOUND_UPDATER if exist "${cand}" ( set "FOUND_UPDATER=${cand}" & set "FOUND_SRC=${srcDir}" )`;
+        }).join('\r\n');
 
         const isStudioLan = !global.isExternalMachine;
         const lanAuthBlock = isStudioLan ? [
@@ -311,16 +312,18 @@ router.post('/api/app/update-from-server', async (req, res) => {
             `for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":${PORT} *LISTENING"') do taskkill /F /PID %%a >nul 2>&1`,
             lanAuthBlock,
             'set "FOUND_UPDATER="',
+            'set "FOUND_SRC="',
             checkLines,
             'if defined FOUND_UPDATER (',
             `    copy /y "!FOUND_UPDATER!" "${stagedUpdaterPath}" >nul 2>&1`,
             `    if exist "${stagedUpdaterPath}" (`,
-            `        call "${stagedUpdaterPath}" --unattended "${LOCAL_APP_DIR}"`,
+            `        call "${stagedUpdaterPath}" --unattended "${LOCAL_APP_DIR}" "!FOUND_SRC!"`,
             '    ) else (',
-            `        call "!FOUND_UPDATER!" --unattended "${LOCAL_APP_DIR}"`,
+            `        call "!FOUND_UPDATER!" --unattended "${LOCAL_APP_DIR}" "!FOUND_SRC!"`,
             '    )',
             ')',
             `if exist "${UPDATING_FLAG_FILE}" del /f /q "${UPDATING_FLAG_FILE}" >nul 2>&1`,
+            'timeout /t 1 /nobreak >nul',
             'set "PORT_ACTIVE="',
             `for /f "tokens=5" %%a in ('netstat -aon ^| findstr /r /c:":${PORT} *LISTENING"') do set "PORT_ACTIVE=1"`,
             'if not defined PORT_ACTIVE (',
