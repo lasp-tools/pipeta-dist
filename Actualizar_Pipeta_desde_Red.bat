@@ -50,6 +50,10 @@ if "%SRC%"=="" (
 
         set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 
+    ) else if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+
+        set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+
     ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
 
         set "SRC=\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
@@ -130,6 +134,10 @@ if "%SRC%"=="" (
     if exist "Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
 
         set "SRC=Z:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
+
+    ) else if exist "S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+
+        set "SRC=S:\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta"
 
     ) else if exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
 
@@ -297,6 +305,8 @@ echo [INFO] Servidor local de estudio no detectado.
 echo [INFO] Conmutando a modo Remoto (GitHub / Google Drive)...
 
 
+
+if /i "%~1"=="--unattended" goto :REMOTE_UPDATE_EXEC
 
 if /i not "%~1"=="--from-temp-remote" (
 

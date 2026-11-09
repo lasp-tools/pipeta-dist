@@ -94,7 +94,7 @@ for /f "tokens=5" %%p in ('netstat -aon ^| findstr /r /c:":%APP_PORT% *LISTENING
         taskkill /F /T /PID %%p >nul 2>&1
     )
 )
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$myPid = $PID; Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*Launch_Pipeta*' -and $_.ProcessId -ne $myPid } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+
 
 
 :: Auto-hidratar presets de proyectos si faltan en la instalacion local
