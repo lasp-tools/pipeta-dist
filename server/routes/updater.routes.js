@@ -336,7 +336,7 @@ router.post('/api/app/update-from-server', async (req, res) => {
             `        start "" "${APP_ROOT}\\${LAUNCHER_BAT}"`,
             '    )',
             ')',
-            'exit /b 0'
+            'exit 0'
         ].join('\r\n');
 
         await fs.writeFile(handoffBatPath, handoffContent, 'ascii');

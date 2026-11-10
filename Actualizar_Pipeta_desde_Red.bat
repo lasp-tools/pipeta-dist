@@ -85,7 +85,7 @@ if /i "%~1"=="--from-temp" (
     goto :STUDIO_UPDATE_EXEC
 )
 
-if /i %~1==--unattended goto :STUDIO_UPDATE_EXEC
+if /i "%~1"=="--unattended" goto :STUDIO_UPDATE_EXEC
 
 
 
@@ -104,7 +104,7 @@ if /i "%~1"=="--from-temp-remote" (
 if "%SRC%"=="" (
 
     if "!IS_STUDIO_LAN!"=="1" (
-        echo [ERROR] No se pudo acceder al servidor de red del estudio (\\192.168.206.116\Z o S:).
+        echo [ERROR] No se pudo acceder al servidor de red del estudio: \\192.168.206.116\Z o S:
         echo [INFO] Cancelando actualizacion para proteger los archivos locales.
         goto :ABORT_SAFE
     )
@@ -172,7 +172,7 @@ if "%SRC%"=="" (
 if "%SRC%"=="" (
 
     if "!IS_STUDIO_LAN!"=="1" (
-        echo [ERROR] No se pudo acceder al servidor de red del estudio (\\192.168.206.116\Z o S:).
+        echo [ERROR] No se pudo acceder al servidor de red del estudio: \\192.168.206.116\Z o S:
         echo [INFO] Cancelando actualizacion para proteger los archivos locales.
         goto :ABORT_SAFE
     )
