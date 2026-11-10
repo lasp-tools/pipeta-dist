@@ -260,7 +260,7 @@ class ContextMenu {
 
         // FASE 1: Refresco local inmediato (0 a 30 ms) SIN bloqueos ni overlays
         try {
-            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
+            await fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
             if (targetWrapper && typeof refreshFolderChildrenInPlace === 'function') {
                 if (targetWrapper._childrenContainer && targetWrapper._childrenContainer.style.display !== 'none') {
                     await refreshFolderChildrenInPlace(targetWrapper, targetWrapper._item || { path: folderPath, isDirectory: true });

@@ -442,6 +442,27 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
             throw new Error('TRANSF_ABORTED');
         }
 
+        if (orderData.twoStage && errors.length === 0) {
+            console.log(`[TWO-STAGE UPLOAD] ✅ Etapa 1/2 (Local -> SMB) completada para ${orderId}. Transfiriendo a Etapa 2/2 (Worker Central -> Drive)...`);
+            orderData.currentStage = 2;
+            orderData.stageLabel = 'Etapa 2/2: En cola con Worker Central (Subiendo a Drive)...';
+            orderData.status = 'pending';
+            delete orderData.targetHost;
+            delete orderData.worker;
+            orderData.stage1CompletedAt = new Date().toISOString();
+            orderData.progress = {
+                percentage: 0,
+                speedFormatted: 'En cola central...',
+                transferredBytes: 0,
+                totalBytes: grandTotalBytes,
+                currentFile: 'Esperando turno de worker central'
+            };
+            activeLocalTransfers.delete(orderId);
+            persistOrder(true);
+            ensureSyncWorkerRunning();
+            return;
+        }
+
         orderData.status = errors.length === 0 ? 'completed' : (errors.length < itemsPlan.length ? 'completed_with_errors' : 'failed');
         orderData.completedAt = new Date().toISOString();
         orderData.durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
@@ -1423,6 +1444,10 @@ router.post('/api/sync/request-upload', async (req, res) => {
 
         const orderId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const priority = Math.min(100, Math.max(1, Number(req.body.priority) || 50));
+        const env = getCachedEnvState() || {};
+        const isNotRealServer = !env?.zInfo?.isRealServer || (typeof isZRealServer === 'function' && !isZRealServer());
+        const isExternal = !!env.isExternalMachine;
+
         const orderData = {
             id: orderId,
             type: isServer ? 'server_upload' : 'upload',
@@ -1434,19 +1459,48 @@ router.post('/api/sync/request-upload', async (req, res) => {
             items: sanitizedItems
         };
 
-        const filePath = saveOrderInCandidateDirs(orderId, orderData);
-
         if (isServer) {
+            const filePath = saveOrderInCandidateDirs(orderId, orderData);
             console.log(`[SYNC ORDER] Orden de subida a SERVIDOR iniciada localmente: ${orderId} (${items.length} items) [Prioridad: ${priority}]`);
             runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
                 console.error(`[LOCAL UPLOAD] Error en orden ${orderId}:`, err);
             });
-            res.json({ success: true, orderId, count: items.length, status: 'processing', priority });
-        } else {
-            console.log(`[SYNC ORDER] Orden de subida a DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project} [Prioridad: ${priority}]`);
-            ensureSyncWorkerRunning();
-            res.json({ success: true, orderId, count: items.length, status: 'pending', priority });
+            return res.json({ success: true, orderId, count: items.length, status: 'processing', priority });
         }
+
+        if (isNotRealServer && !isExternal) {
+            // MUNRO CON Z VIRTUAL: Subida a Drive en 2 etapas dentro de la misma tarea:
+            // Etapa 1: Copiar local Z vsub -> StorNext SMB (\\192.168.206.116\Z)
+            // Etapa 2: Worker central sube desde StorNext SMB a Google Drive
+            orderData.twoStage = true;
+            orderData.currentStage = 1;
+            orderData.stageLabel = 'Etapa 1/2: Copiando a Servidor SMB...';
+            orderData.status = 'processing';
+            orderData.worker = `local_${os.hostname()}`;
+            orderData.targetHost = os.hostname();
+
+            const filePath = saveOrderInCandidateDirs(orderId, orderData);
+            console.log(`[SYNC ORDER] 🚀 Subida a Drive en 2 ETAPAS iniciada: ${orderId} (${items.length} items) - Etapa 1: Local -> Z SMB`);
+            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+                console.error(`[TWO-STAGE UPLOAD] Error en Etapa 1 (${orderId}):`, err);
+            });
+            return res.json({ success: true, orderId, count: items.length, status: 'processing', priority, twoStage: true });
+        }
+
+        if (isNotRealServer && isExternal) {
+            // FREELANCE HOME: Sube derecho con Rclone local a Google Drive
+            orderData.targetHost = os.hostname();
+            const filePath = saveOrderInCandidateDirs(orderId, orderData);
+            console.log(`[SYNC ORDER] Orden de subida a DRIVE (Freelance Home): ${orderId} (${items.length} items) para ${project}`);
+            startLocalWorkerBackground();
+            return res.json({ success: true, orderId, count: items.length, status: 'pending', priority });
+        }
+
+        // Puesto con Z SMB Real
+        const filePath = saveOrderInCandidateDirs(orderId, orderData);
+        console.log(`[SYNC ORDER] Orden de subida a DRIVE creada para Worker Central: ${orderId} (${items.length} items) para ${project} [Prioridad: ${priority}]`);
+        ensureSyncWorkerRunning();
+        res.json({ success: true, orderId, count: items.length, status: 'pending', priority });
     } catch (err) {
         console.error('Sync request-upload error:', err);
         res.status(500).json({ success: false, error: err.message });

@@ -573,11 +573,9 @@ async function detectSystemEnvironment(force = false) {
                 }
             } else if (!isZRealServer()) {
                 // En puestos de Munro sin Z SMB real (vsubst / copia local):
-                // Selecciona por default 'server' (Z(SMB server)) al abrir, actualizar o dar F5
+                // Por regla canónica de estudio, al abrir, actualizar o dar F5 el default es SIEMPRE Z(SMB server)
                 const cfgPref = (typeof settings !== 'undefined') ? settings.defaultSyncComparisonMode : null;
-                if (cfgPref === 'drive') {
-                    window.syncComparisonMode = 'drive';
-                } else if (cfgPref === 'off') {
+                if (cfgPref === 'off') {
                     window.syncComparisonMode = 'off';
                 } else {
                     window.syncComparisonMode = 'server';
@@ -892,7 +890,7 @@ async function triggerSmartViewRefresh() {
                     if (typeof loadActiveProjectSyncCatalog === 'function') {
                         await loadActiveProjectSyncCatalog(true);
                     }
-                    await refreshCurrentView(false);
+                    await refreshCurrentView(false, true);
                 }
                 return;
             }

@@ -184,6 +184,9 @@ class SyncQueueUI {
                 const p = it.targetLocalPath || it.localPath || it.serverPath || it.path;
                 if (p) {
                     const norm = p.replace(/\\/g, '/');
+                    if (it.isDir || it.isDirectory) {
+                        parentFolders.add(norm);
+                    }
                     const folder = norm.substring(0, norm.lastIndexOf('/'));
                     if (folder) parentFolders.add(folder);
                 }
@@ -669,7 +672,7 @@ class SyncQueueUI {
                 typeIcon = '📥';
                 typeColor = '#00bcd4';
             } else if (order.type === 'upload') {
-                typeLabel = 'SUBIDA A DRIVE';
+                typeLabel = order.stageLabel ? ('SUBIDA A DRIVE (' + order.stageLabel + ')') : 'SUBIDA A DRIVE';
                 typeIcon = '📤';
                 typeColor = '#4caf50';
             } else if (order.type === 'server_download') {
@@ -853,7 +856,7 @@ class SyncQueueUI {
             
             let typeLabel = 'Descarga';
             if (order.type === 'download') typeLabel = 'Descarga Drive';
-            else if (order.type === 'upload') typeLabel = 'Subida Drive';
+            else if (order.type === 'upload') typeLabel = order.twoStage ? 'Subida Drive (2 Etapas)' : 'Subida Drive';
             else if (order.type === 'server_download') typeLabel = 'Descarga Server';
             else if (order.type === 'server_upload') typeLabel = 'Subida Server';
             else if (order.type === 'refresh_folder') typeLabel = 'Refresco Carpeta';

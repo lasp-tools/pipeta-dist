@@ -261,7 +261,13 @@ function resolveRemoteInfo(fullPath, projectName = null) {
  */
 function resolveLocalPathForWorker(p) {
     if (!p) return '';
-    return p.replace(/\\/g, '/');
+    const norm = p.replace(/\\/g, '/');
+    if (fs.existsSync(norm)) return norm;
+    if (norm.toLowerCase().startsWith('z:/')) {
+        const sPath = norm.replace(/^z:/i, 'S:/');
+        if (fs.existsSync(sPath)) return sPath;
+    }
+    return norm;
 }
 
 const WORKERS_DIR = path.join(CACHE_ROOT, 'workers');
@@ -732,6 +738,10 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
     orderData.status = 'processing';
     orderData.worker = WORKER_ID;
     orderData.startedAt = new Date().toISOString();
+    if (orderData.twoStage) {
+        orderData.currentStage = 2;
+        orderData.stageLabel = 'Etapa 2/2: Subiendo a Drive (Worker Central)...';
+    }
     saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
 
     updateHeartbeat('processing', {
@@ -1057,6 +1067,9 @@ async function processQueue() {
         try {
             const fresh = fs.readJsonSync(cand.fullPath);
             if (fresh && fresh.status === 'pending') {
+                if (fresh.targetHost && fresh.targetHost.toLowerCase() !== os.hostname().toLowerCase()) {
+                    continue; // Skip: Destinado exclusivamente al puesto específico donde residen los archivos locales
+                }
                 fresh.status = 'processing';
                 fresh.worker = WORKER_ID;
                 fresh.workerHostname = os.hostname();

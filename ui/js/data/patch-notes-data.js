@@ -1,9 +1,31 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.2",
+        "version": "v1.2.12",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Subida a Drive en 2 Etapas (Munro Z vsubs):</b> En puestos con Z virtualizado en Munro, la subida a Drive se ejecuta en una sola tarea unificada: Etapa 1 copia por LAN a StorNext SMB, y Etapa 2 es procesada por el worker central hacia Drive sin saturar el ancho de banda del equipo.",
+            "<b>Comparación Estricta Local vs Drive:</b> En puestos con Z vsub, la comparación contra Drive solo evalúa los archivos físicos existentes en el disco local sin consultar ni mezclar archivos del Z SMB.",
+            "<b>Soporte Intacto para Z(SMB server):</b> El modo de comparación contra el servidor central SMB sigue plenamente disponible para los puestos virtuales."
+        ]
+    },
+    {
+        "version": "v1.2.11",
+        "badge": "",
+        "accentColor": "#666",
+        "items": [
+            "<b>Comparar Z(SMB server) por Defecto:</b> En puestos con Z virtualizado (Munro), la comparación predeterminada al iniciar o refrescar es siempre contra el servidor SMB sin revertir a Google Drive.",
+            "<b>Subida Recursiva Completa a Drive:</b> Las subidas directas desde puestos locales a Google Drive procesan todas las subcarpetas y secuencias de forma íntegra mediante ejecución local desacoplada.",
+            "<b>Refresco de Carpeta No Bloqueante:</b> 'Refrescar Carpeta' actualiza el árbol en tiempo real sin congelar la ventana con modal de carga y con indicador visual de progreso.",
+            "<b>Limpieza de Consolas y Preservación de Icono:</b> Terminación definitiva de procesos de consola CMD tras actualizar y preservación estable del icono del escritorio.",
+            "<b>Actualizador de Red Blindado:</b> Verificación previa de conexión a StorNext SMB antes de reiniciar procesos, asegurando que Pipeta siempre vuelva a abrirse."
+        ]
+    },
+    {
+        "version": "v1.2.2",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Refresco Híbrido Instantáneo (&lt; 500 ms):</b> Clic derecho y refresco de carpeta resuelto en tiempo real directamente por Pipeta Server vía StorNext SMB sin demoras ni colas lentas.",
             "<b>Catálogos de Servidor en Puestos con Z Virtual (vsub):</b> Los puestos con Z virtualizado o carpetas locales aún no creadas consultan y visualizan de inmediato el catálogo del servidor central.",

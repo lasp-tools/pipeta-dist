@@ -299,7 +299,10 @@ router.post('/api/app/update-from-server', async (req, res) => {
         const isStudioLan = !global.isExternalMachine;
         const lanAuthBlock = isStudioLan ? [
             `if not exist "${uncAppDir}\\server\\server.js" (`,
-            `    net use \\\\192.168.206.116\\Z "Laspadmin.321" /user:"nonstop.tv\\lasp-mpastorino" /persistent:no >nul 2>&1`,
+            `    net use \\\\192.168.206.116\\Z /persistent:no >nul 2>&1`,
+            `    if not exist "${uncAppDir}\\server\\server.js" (`,
+            `        net use \\\\192.168.206.116\\Z "Laspadmin.321" /user:"nonstop.tv\\lasp-mpastorino" /persistent:no >nul 2>&1`,
+            `    )`,
             `)`
         ].join('\r\n') : 'rem External/remote mode';
 
@@ -443,11 +446,13 @@ $s = $ws.CreateShortcut($lnkPath)
 $s.TargetPath = $bat
 $s.WorkingDirectory = $dir
 if (Test-Path -LiteralPath $ico) {
-    $s.IconLocation = "$ico,0"
+    $s.IconLocation = "$ico"
 }
 $s.Description = '${psDesc}'
 $s.Save()
-Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue
+if (Test-Path -LiteralPath $lnkPath) {
+    (Get-Item -LiteralPath $lnkPath).LastWriteTime = (Get-Date)
+}
 Write-Output "SHORTCUT_CREATED"
 `;
 

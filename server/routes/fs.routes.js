@@ -55,7 +55,43 @@ router.get('/api/fs/list', (req, res) => {
 
             const isZPath = lowerSafeP.startsWith('z:/') || lowerSafeP.startsWith('s:/');
 
+            const isNotRealServer = !cachedEnvState?.zInfo?.isRealServer || (typeof isZRealServer === 'function' && !isZRealServer());
+
             if ((isNetworkZ || isZPath) && !lowerSafeP.startsWith('g:/') && localSource !== 'drive_catalog' && source !== 'drive' && localSource !== 'server_catalog' && source !== 'server') {
+                if (isNotRealServer) {
+                    // En puestos con Z virtual (vsubs), LOCAL solo debe reflejar el disco físico local real
+                    if (fs.existsSync(safeP)) {
+                        try {
+                            const diskEntries = fs.readdirSync(safeP, { withFileTypes: true });
+                            const localItems = diskEntries.map(entry => {
+                                const isDir = entry.isDirectory();
+                                const fullItemPath = path.join(safeP, entry.name).replace(/\\/g, '/');
+                                let size = 0;
+                                let mtime = null;
+                                try {
+                                    const st = fs.statSync(fullItemPath);
+                                    size = st.size || 0;
+                                    mtime = st.mtime ? st.mtime.toISOString() : null;
+                                } catch (e) {}
+                                return {
+                                    name: entry.name,
+                                    isDirectory: isDir,
+                                    path: fullItemPath,
+                                    size,
+                                    mtime,
+                                    modTime: mtime
+                                };
+                            });
+                            localItems.sort((a, b) => {
+                                if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+                                return a.isDirectory ? -1 : 1;
+                            });
+                            return res.json({ path: safeP, items: localItems, exists: true, fromCatalog: false, isServer: false });
+                        } catch (e) {}
+                    }
+                    return res.json({ path: safeP, items: [], exists: false, isServer: false });
+                }
+
                 const serverItems = (typeof catalogGenerator.listFromModularCatalog === 'function')
                     ? catalogGenerator.listFromModularCatalog(safeP, 'server')
                     : null;

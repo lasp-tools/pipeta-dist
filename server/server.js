@@ -1,4 +1,4 @@
-const VERSION = "v1.2.10";
+const VERSION = "v1.2.12";
 
 const express = require('express');
 const cors = require('cors');

@@ -167,6 +167,16 @@ function getAllOrdersCandidateDirs() {
     if (fs.existsSync(zDir) && !dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(zDir).toLowerCase())) {
         dirs.push(zDir);
     }
+    const sDir = 'S:/_SYNC_CACHE/requests';
+    if (fs.existsSync(sDir) && !dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(sDir).toLowerCase())) {
+        dirs.push(sDir);
+    }
+    const uncDir = path.join(UNC_CACHE, 'requests');
+    try {
+        if (fs.existsSync(uncDir) && !dirs.some(d => path.resolve(d).toLowerCase() === path.resolve(uncDir).toLowerCase())) {
+            dirs.push(uncDir);
+        }
+    } catch(e) {}
     return dirs;
 }
 

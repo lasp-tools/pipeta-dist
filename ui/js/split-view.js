@@ -715,7 +715,7 @@ async function toggleNode(wrapper, item, level, rowElement) {
             container.innerHTML = `<div style="padding-left:${(level + 1) * 20 + 10}px; color:#666;">Cargando...</div>`;
             wrapper._loadingPromise = (async () => {
                 try {
-                    const data = await fetchDir(item.path);
+                    const data = await fetchDir(item.path, { force: true });
                     container.innerHTML = "";
                     const allDiskItems = (data && data.items) ? data.items : [];
                     const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
@@ -1134,7 +1134,7 @@ async function refreshFolderChildrenInPlace(wrapper, item) {
     if (!container) return;
 
     try {
-        const data = await fetchDir(item.path);
+        const data = await fetchDir(item.path, { force: true });
         if (data.error) return;
 
         const allDiskItems = data.items || [];

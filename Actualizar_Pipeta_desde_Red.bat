@@ -6,7 +6,7 @@ title Sincronizar Pipeta (Local / Remoto)
 
 
 
-set "APP_VERSION=v1.2.10"
+set "APP_VERSION=v1.2.12"
 
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
@@ -43,7 +43,10 @@ for /f "tokens=*" %%i in ('ipconfig ^| findstr /i "192.168.206. 192.168.106. 192
 :: Si estamos en LAN del estudio, asegurar sesion SMB antes de verificar rutas
 if "!IS_STUDIO_LAN!"=="1" (
     if not exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
-        net use \\192.168.206.116\Z "Laspadmin.321" /user:"nonstop.tv\lasp-mpastorino" /persistent:no >nul 2>&1
+        net use \\192.168.206.116\Z /persistent:no >nul 2>&1
+        if not exist "\\192.168.206.116\Z\INTERNO\TOOLS\GITHUB\TOOLS\APPS\Pipeta\server\server.js" (
+            net use \\192.168.206.116\Z "Laspadmin.321" /user:"nonstop.tv\lasp-mpastorino" /persistent:no >nul 2>&1
+        )
     )
 )
 
@@ -542,8 +545,7 @@ echo.
 
 echo Actualizando acceso directo en Escritorio con icono oficial...
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$dest = '%DEST%'; Get-ChildItem -Path $dest -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ico = Join-Path $dest 'Pipeta.ico'; if (Test-Path $ico) { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue }; $lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = Join-Path $dest 'Launch_Pipeta.bat'; $s.WorkingDirectory = $dest; if (Test-Path $ico) { $s.IconLocation = ($ico + ',0') }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save()" >nul 2>&1
-ie4uinit.exe -show >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$dest = '%DEST%'; Get-ChildItem -Path $dest -Filter '*.bat' -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $ico = Join-Path $dest 'Pipeta.ico'; if (Test-Path $ico) { Unblock-File -LiteralPath $ico -ErrorAction SilentlyContinue }; $lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $s.TargetPath = Join-Path $dest 'Launch_Pipeta.bat'; $s.WorkingDirectory = $dest; if (Test-Path $ico) { $s.IconLocation = $ico }; $s.Description = 'Pipeta - VFX Pipeline Manager'; $s.Save(); if (Test-Path $lnk) { (Get-Item $lnk).LastWriteTime = (Get-Date) }" >nul 2>&1
 
 
 
@@ -583,10 +585,8 @@ exit /b 0
 if exist "%TEMP%\pipeta_updating.flag" del /f /q "%TEMP%\pipeta_updating.flag" >nul 2>&1
 echo [INFO] Operacion cancelada de forma segura.
 echo [INFO] Relanzando Pipeta con los archivos locales existentes...
-if /i not "%~1"=="--unattended" (
-    if exist "%DEST%\Launch_Pipeta.bat" (
-        start "" "%DEST%\Launch_Pipeta.bat"
-    )
+if exist "%DEST%\Launch_Pipeta.bat" (
+    start "" "%DEST%\Launch_Pipeta.bat"
 )
 exit /b 1
 

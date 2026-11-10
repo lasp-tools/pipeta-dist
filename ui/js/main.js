@@ -383,9 +383,10 @@ async function initApp() {
     let initialCompMode;
     if (canServer) {
         // En puestos de Munro sin Z SMB real (vsubst / copia local):
-        // Por regla canónica de estudio, al abrir, actualizar o dar F5 el default es Z(SMB server)
-        if (configCompPref === 'drive' || configCompPref === 'off') {
-            initialCompMode = configCompPref;
+        // Por regla canónica de estudio, al abrir, actualizar o dar F5 el default es SIEMPRE Z(SMB server)
+        const configCompPref = (typeof settings !== 'undefined') ? settings.defaultSyncComparisonMode : null;
+        if (configCompPref === 'off') {
+            initialCompMode = 'off';
         } else {
             initialCompMode = 'server';
         }

@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.2.10"
+set "APP_VERSION=v1.2.12"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 
@@ -24,7 +24,7 @@ set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 
 :: Auto-verificar y asegurar icono oficial en acceso directo del Escritorio
 if exist "%LOCAL_DIR%\Pipeta.ico" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $targetIco = '%LOCAL_DIR%\Pipeta.ico,0'; if ($s.IconLocation -ne $targetIco) { $s.IconLocation = $targetIco; $s.Save(); ie4uinit.exe -show } }" >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $targetIco = '%LOCAL_DIR%\Pipeta.ico'; if ($s.IconLocation -ne $targetIco) { $s.IconLocation = $targetIco; $s.Save(); (Get-Item $lnk).LastWriteTime = (Get-Date) } }" >nul 2>&1
 )
 
 set "SERVER_DIR=%SCRIPT_DIR%server"
@@ -119,7 +119,7 @@ set "EXIT_CODE=%errorlevel%"
 set "UPDATING_FLAG=%TEMP%\pipeta_updating.flag"
 if exist "%UPDATING_FLAG%" (
     echo [INFO] Actualizacion de Pipeta en curso. Cerrando launcher...
-    exit /b 0
+    exit 0
 )
 
 set "RESTART_FLAG=%TEMP%\pipeta_restarting.flag"
@@ -139,7 +139,7 @@ if %EXIT_CODE% equ 42 (
 
 if %EXIT_CODE% equ 0 (
     echo [INFO] Servidor cerrado correctamente.
-    exit /b 0
+    exit 0
 )
 
 echo.
