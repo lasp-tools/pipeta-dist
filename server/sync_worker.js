@@ -31,6 +31,20 @@ const ORDERS_DIR = path.join(CACHE_ROOT, 'requests');
 const STATUS_FILE = path.join(CACHE_ROOT, 'worker_status.json');
 const TRIGGER_FILE = path.join(CACHE_ROOT, 'catalog_refresh_trigger.json');
 
+let getCachedEnvState = null;
+try {
+    getCachedEnvState = require('./core/env-detector').getCachedEnvState;
+} catch (e) {}
+
+function isWorkerRealServer() {
+    if (global.isZRealServer !== undefined) return !!global.isZRealServer;
+    if (typeof getCachedEnvState === 'function') {
+        const env = getCachedEnvState();
+        if (env && env.zInfo) return !!env.zInfo.isRealServer;
+    }
+    return !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO'));
+}
+
 function findRcloneExe() {
     const candidates = [
         path.join(__dirname, '../tools/rclone/rclone.exe'),
@@ -261,11 +275,21 @@ function resolveRemoteInfo(fullPath, projectName = null) {
  */
 function resolveLocalPathForWorker(p) {
     if (!p) return '';
-    const norm = p.replace(/\\/g, '/');
+    let norm = p.replace(/\\/g, '/');
     if (fs.existsSync(norm)) return norm;
+    if (/^(\/\/|\\\\)[^\/\\]+[\/\\]Z[\/\\]/i.test(norm)) {
+        const asZ = norm.replace(/^(\/\/|\\\\)[^\/\\]+[\/\\]Z[\/\\]/i, 'Z:/');
+        if (fs.existsSync(asZ)) return asZ;
+        const asS = norm.replace(/^(\/\/|\\\\)[^\/\\]+[\/\\]Z[\/\\]/i, 'S:/');
+        if (fs.existsSync(asS)) return asS;
+    }
     if (norm.toLowerCase().startsWith('z:/')) {
         const sPath = norm.replace(/^z:/i, 'S:/');
         if (fs.existsSync(sPath)) return sPath;
+    }
+    if (norm.toLowerCase().startsWith('s:/')) {
+        const zPath = norm.replace(/^s:/i, 'Z:/');
+        if (fs.existsSync(zPath)) return zPath;
     }
     return norm;
 }
@@ -521,6 +545,11 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 targetLocal,
                 '--drive-team-drive', remote.teamDriveId,
                 '--create-empty-src-dirs',
+                '--exclude', 'Thumbs.db',
+                '--exclude', 'thumbs.db',
+                '--exclude', 'desktop.ini',
+                '--exclude', '.DS_Store',
+                '--exclude', '*.tmp',
                 '--transfers', '4',
                 '--checkers', '8'
             ];
@@ -549,13 +578,14 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                     sourceRemote,
                     targetDir,
                     '--drive-team-drive', remote.teamDriveId,
+                '--create-empty-src-dirs',
                     '--include', `${fileName}*`
                 ];
                 await runRcloneWithProgress(fallbackArgs, onProgress, orderId);
             }
         }
     } else if (type === 'upload') {
-        const rawSource = item.targetLocalPath || item.localPath || item.path;
+        const rawSource = (orderData && orderData.twoStage && (item.targetServerPath || item.serverPath)) ? (item.targetServerPath || item.serverPath) : (item.targetLocalPath || item.localPath || item.path);
         const localSource = resolveLocalPathForWorker(rawSource);
         let onlineTarget = item.onlinePath;
 
@@ -612,6 +642,12 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 localSource,
                 `lasp-drive:${remote.relPath}`,
                 '--drive-team-drive', remote.teamDriveId,
+                '--create-empty-src-dirs',
+                '--exclude', 'Thumbs.db',
+                '--exclude', 'thumbs.db',
+                '--exclude', 'desktop.ini',
+                '--exclude', '.DS_Store',
+                '--exclude', '*.tmp',
                 '--transfers', '4',
                 '--checkers', '8'
             ];
@@ -921,6 +957,26 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
             }
         }
 
+        if (failedCount === 0 && orderData.twoStage && orderData.twoStageType === 'download' && orderData.currentStage === 1) {
+            log(`[TWO-STAGE DOWNLOAD] ✅ Etapa 1/2 (Drive -> SMB) completada para ${orderData.id}. Transfiriendo a Etapa 2/2 (SMB -> Local ${orderData.requestHost})...`);
+            orderData.currentStage = 2;
+            orderData.stageLabel = 'Etapa 2/2: Copiando desde Servidor SMB a Disco Local...';
+            orderData.status = 'pending_local_pull';
+            orderData.targetHost = orderData.requestHost;
+            orderData.stage1CompletedAt = new Date().toISOString();
+            delete orderData.worker;
+            delete orderData.workerHostname;
+            orderData.progress = {
+                percentage: 0,
+                speedFormatted: 'Listo en Server Central, iniciando copia a disco local...',
+                transferredBytes: 0,
+                totalBytes: 0,
+                currentFile: 'Listo en Servidor Central'
+            };
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            return;
+        }
+
         orderData.completedAt = new Date().toISOString();
         orderData.durationSeconds = durationSeconds;
         orderData.processedBy = WORKER_ID;
@@ -1069,6 +1125,16 @@ async function processQueue() {
             if (fresh && fresh.status === 'pending') {
                 if (fresh.targetHost && fresh.targetHost.toLowerCase() !== os.hostname().toLowerCase()) {
                     continue; // Skip: Destinado exclusivamente al puesto específico donde residen los archivos locales
+                }
+                const isRealServer = isWorkerRealServer();
+                if ((fresh.targetRole === 'central_worker' || (fresh.twoStage && fresh.currentStage === 2 && fresh.twoStageType === 'upload')) && !isRealServer) {
+                    continue; // Skip: Solo workers centrales en StorNext deben subir de SMB a Drive
+                }
+                if (fresh.twoStage && fresh.currentStage === 1 && fresh.twoStageType === 'download' && !isRealServer) {
+                    continue; // Skip: Solo workers centrales deben descargar de Drive a StorNext SMB
+                }
+                if (fresh.twoStage && fresh.currentStage === 2 && fresh.twoStageType === 'download') {
+                    continue; // Skip: La etapa 2 de descarga es un pull LAN manejado por Pipeta local
                 }
                 fresh.status = 'processing';
                 fresh.worker = WORKER_ID;

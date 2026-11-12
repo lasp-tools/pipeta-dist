@@ -6,7 +6,7 @@ title Sincronizar Pipeta (Local / Remoto)
 
 
 
-set "APP_VERSION=v1.2.12"
+set "APP_VERSION=v1.2.15"
 
 set "DEST=C:\TOOLS\APPS\Pipeta"
 
@@ -189,9 +189,15 @@ if "%SRC%"=="" (
 
 if exist "%SRC%\Launch_Pipeta.bat" (
 
-    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "(Get-Content '%SRC%\Launch_Pipeta.bat' | Select-String 'APP_VERSION=(v[0-9\.]+)').Matches.Groups[1].Value" 2^>nul`) do (
+    for /f "tokens=2 delims==" %%v in ('findstr /i "APP_VERSION=" "%SRC%\Launch_Pipeta.bat"') do (
 
-        if not "%%v"=="" set "APP_VERSION=%%v"
+        set "RAW_VER=%%~v"
+
+        set "RAW_VER=!RAW_VER:"=!"
+
+        set "RAW_VER=!RAW_VER: =!"
+
+        if not "!RAW_VER!"=="" set "APP_VERSION=!RAW_VER!"
 
     )
 
@@ -235,7 +241,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 
 
 
-robocopy "%SRC%" "%DEST%" /MIR /R:1 /W:1 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp /NFL /NDL /NJH /NJS
+robocopy "%SRC%" "%DEST%" /MIR /R:1 /W:1 /MT:16 /XD .git .gemini logs presets _SYNC_CACHE credentials bin tools node_modules _old /XF *.zip *.log *.tmp Thumbs.db desktop.ini /NFL /NDL /NJH /NJS
 
 
 

@@ -183,6 +183,28 @@ async function autoPullCompletedDownloadToVSub(order) {
     });
 }
 
+function triggerStage2LocalPull(orderData) {
+    if (!orderData || !orderData.id || activeLocalTransfers.has(orderData.id)) return;
+    console.log(`[TWO-STAGE DOWNLOAD] 📥 Iniciando Etapa 2/2 (SMB -> Local) para orden ${orderData.id}...`);
+    orderData.status = 'processing';
+    orderData.currentStage = 2;
+    orderData.stageLabel = 'Etapa 2/2: Copiando desde Servidor SMB a Disco Local...';
+    orderData.worker = `local_${os.hostname()}`;
+    const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+    if (Array.isArray(orderData.items)) {
+        orderData.items.forEach(it => {
+            const targetLocal = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+            it.serverPath = targetLocal.replace(/^[a-zA-Z]:/i, uncRoot);
+        });
+    }
+    const ordersDir = getOrdersDir();
+    const filePath = path.join(ordersDir, `${orderData.id}.json`);
+    saveOrderInCandidateDirs(orderData.id, orderData);
+    runLocalTransferOrder(orderData.id, orderData, filePath).catch(err => {
+        console.error(`[TWO-STAGE DOWNLOAD] Error en Etapa 2/2 (${orderData.id}):`, err);
+    });
+}
+
 async function runLocalTransferOrder(orderId, orderData, filePath) {
     const startTime = Date.now();
     const abortController = new AbortController();
@@ -201,7 +223,7 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
     orderData.startedAt = new Date().toISOString();
     orderData.worker = `local_${os.hostname()}`;
 
-    let isWritingProgress = false;
+    let inFlightWrite = null;
     const persistOrder = (isTerminal = false) => {
         const jsonStr = JSON.stringify(orderData, null, 2);
         for (const dir of candidateDirs) {
@@ -221,19 +243,32 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
             fs.writeFileSync(path.join(localReqDir, `${orderId}.json`), jsonStr, 'utf8');
         } catch (e) {}
 
-        for (const dir of candidateDirs) {
+        const targetDirs = candidateDirs.filter(dir => {
             const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
-            if (path.resolve(dir).toLowerCase() === path.resolve(localReqDir).toLowerCase()) continue;
-            try {
-                if (isTerminal) {
-                    fs.writeFileSync(path.join(dir, `${orderId}.json`), jsonStr, 'utf8');
-                } else if (!isWritingProgress) {
-                    isWritingProgress = true;
-                    fs.writeFile(path.join(dir, `${orderId}.json`), jsonStr, 'utf8')
-                        .catch(() => {})
-                        .finally(() => { isWritingProgress = false; });
-                }
-            } catch (e) {}
+            return path.resolve(dir).toLowerCase() !== path.resolve(localReqDir).toLowerCase();
+        });
+
+        if (isTerminal) {
+            inFlightWrite = null;
+            for (const dir of targetDirs) {
+                try {
+                    const finalPath = path.join(dir, `${orderId}.json`);
+                    const tmpPath = path.join(dir, `${orderId}.tmp.${Date.now()}`);
+                    fs.writeFileSync(tmpPath, jsonStr, 'utf8');
+                    try {
+                        fs.renameSync(tmpPath, finalPath);
+                    } catch (renErr) {
+                        fs.writeFileSync(finalPath, jsonStr, 'utf8');
+                        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {}
+                    }
+                } catch (e) {}
+            }
+        } else if (!inFlightWrite) {
+            inFlightWrite = Promise.all(targetDirs.map(async (dir) => {
+                try {
+                    await fs.writeFile(path.join(dir, `${orderId}.json`), jsonStr, 'utf8');
+                } catch (e) {}
+            })).finally(() => { inFlightWrite = null; });
         }
     };
 
@@ -246,31 +281,45 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
         ensureServerUncAccess(uncRoot);
     }
 
-    const isDownload = orderData.type === 'server_download';
+    const isDownload = orderData.type === 'server_download' || (orderData.twoStage && orderData.twoStageType === 'download' && orderData.currentStage === 2);
     const itemsPlan = [];
     let grandTotalBytes = 0;
 
     for (const it of orderData.items) {
-        let src = isDownload
-            ? (it.serverPath || it.onlinePath || it.path)
-            : (it.localPath || it.path);
-        let dest = isDownload
-            ? (it.targetLocalPath || it.path)
-            : (it.targetServerPath || it.serverPath || it.path);
+        let src = '';
+        let dest = '';
+
+        if (isDownload) {
+            src = (it.serverPath || '').replace(/\\/g, '/');
+            if (!src || src.toLowerCase().startsWith('g:/') || src.toLowerCase().includes('unidades compartidas')) {
+                const cand = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+                src = (isNotRealServer && uncRoot) ? cand.replace(/^[a-zA-Z]:/i, uncRoot) : cand;
+            }
+            if (isNotRealServer && uncRoot && src.toLowerCase().startsWith('z:/')) {
+                src = src.replace(/^z:/i, uncRoot);
+            }
+            dest = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+            if (dest.toLowerCase().startsWith('z:/') && !fs.existsSync('Z:/') && fs.existsSync('D:/Z')) {
+                dest = dest.replace(/^z:/i, 'D:/Z');
+            }
+        } else {
+            src = (it.localPath || it.path || '').replace(/\\/g, '/');
+            if (src.toLowerCase().startsWith('z:/') && !fs.existsSync('Z:/') && fs.existsSync('D:/Z')) {
+                src = src.replace(/^z:/i, 'D:/Z');
+            }
+            dest = (it.targetServerPath || it.serverPath || '').replace(/\\/g, '/');
+            if (!dest) {
+                const cand = (it.localPath || it.path || '').replace(/\\/g, '/');
+                dest = (isNotRealServer && uncRoot) ? cand.replace(/^[a-zA-Z]:/i, uncRoot) : cand;
+            }
+            if (isNotRealServer && uncRoot && dest.toLowerCase().startsWith('z:/')) {
+                dest = dest.replace(/^z:/i, uncRoot);
+            }
+        }
 
         if (!src || !dest) continue;
         src = src.replace(/\\/g, '/');
         dest = dest.replace(/\\/g, '/');
-
-        if (isNotRealServer && uncRoot) {
-            if (isDownload) {
-                if (src.toLowerCase().startsWith('z:/') || !fs.existsSync(src)) {
-                    src = src.replace(/^z:/i, uncRoot);
-                }
-            } else if (dest.toLowerCase().startsWith('z:/')) {
-                dest = dest.replace(/^z:/i, uncRoot);
-            }
-        }
 
         let isDir = !!it.isDir || !!it.isDirectory;
         let filesList = [];
@@ -406,6 +455,11 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
                     const file = plan.filesList[currentIndex];
                     if (!file) break;
 
+                    const lowerName = path.basename(file.relPath).toLowerCase();
+                    if (lowerName === 'thumbs.db' || lowerName === 'desktop.ini' || lowerName === '.ds_store' || lowerName.endsWith('.tmp')) {
+                        continue;
+                    }
+
                     const targetFilePath = plan.isDir
                         ? path.join(plan.dest, file.relPath).replace(/\\/g, '/')
                         : plan.dest;
@@ -422,8 +476,12 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
                         if (copyErr.message === 'TRANSF_ABORTED' || activeTransfer.isCancelled) {
                             throw copyErr;
                         }
-                        errors.push({ file: file.relPath, error: copyErr.message });
-                        console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
+                        if (lowerName === 'thumbs.db' || lowerName === 'desktop.ini' || lowerName === '.ds_store') {
+                            console.warn(`[LOCAL TRANSFER] Omitiendo archivo de sistema bloqueado: ${file.relPath}`);
+                        } else {
+                            errors.push({ file: file.relPath, error: copyErr.message });
+                            console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
+                        }
                     } finally {
                         activeTransfer.currentDestFile = null;
                     }
@@ -443,24 +501,30 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
         }
 
         if (orderData.twoStage && errors.length === 0) {
-            console.log(`[TWO-STAGE UPLOAD] ✅ Etapa 1/2 (Local -> SMB) completada para ${orderId}. Transfiriendo a Etapa 2/2 (Worker Central -> Drive)...`);
-            orderData.currentStage = 2;
-            orderData.stageLabel = 'Etapa 2/2: En cola con Worker Central (Subiendo a Drive)...';
-            orderData.status = 'pending';
-            delete orderData.targetHost;
-            delete orderData.worker;
-            orderData.stage1CompletedAt = new Date().toISOString();
-            orderData.progress = {
-                percentage: 0,
-                speedFormatted: 'En cola central...',
-                transferredBytes: 0,
-                totalBytes: grandTotalBytes,
-                currentFile: 'Esperando turno de worker central'
-            };
-            activeLocalTransfers.delete(orderId);
-            persistOrder(true);
-            ensureSyncWorkerRunning();
-            return;
+            if (orderData.twoStageType === 'upload' || !orderData.twoStageType) {
+                console.log(`[TWO-STAGE UPLOAD] ✅ Etapa 1/2 (Local -> SMB) completada para ${orderId}. Transfiriendo a Etapa 2/2 (Worker Central -> Drive)...`);
+                orderData.currentStage = 2;
+                orderData.stageLabel = 'Etapa 2/2: En cola con Worker Central (Subiendo a Drive)...';
+                orderData.status = 'pending';
+                orderData.targetRole = 'central_worker';
+                delete orderData.targetHost;
+                delete orderData.worker;
+                orderData.stage1CompletedAt = new Date().toISOString();
+                orderData.progress = {
+                    percentage: 0,
+                    speedFormatted: 'En cola central...',
+                    transferredBytes: 0,
+                    totalBytes: grandTotalBytes,
+                    currentFile: 'Esperando turno de worker central'
+                };
+                activeLocalTransfers.delete(orderId);
+                persistOrder(true);
+                ensureSyncWorkerRunning();
+                return;
+            } else if (orderData.twoStageType === 'download') {
+                console.log(`[TWO-STAGE DOWNLOAD] ✅ Etapa 2/2 (SMB -> Local) completada para ${orderId}. Archivos ya disponibles en Z: local.`);
+                orderData.stageLabel = 'Descarga completada en disco local';
+            }
         }
 
         orderData.status = errors.length === 0 ? 'completed' : (errors.length < itemsPlan.length ? 'completed_with_errors' : 'failed');
@@ -782,7 +846,32 @@ function readOrderJsonCached(filePath) {
         if (raw.includes('} },')) {
             raw = raw.replace('} },', '},');
         }
-        const content = JSON.parse(raw);
+        if (raw.includes('} "completedAt"') || raw.includes('}\r\n "completedAt"') || raw.includes('}\n "completedAt"') || raw.includes('}completedAt"')) {
+            raw = raw.replace(/\}\s*"?completedAt"?/g, ',\n  "status": "completed",\n  "completedAt"');
+        }
+        let content = null;
+        try {
+            content = JSON.parse(raw);
+        } catch (parseErr) {
+            let depth = 0;
+            let endIdx = -1;
+            for (let i = 0; i < raw.length; i++) {
+                if (raw[i] === '{') depth++;
+                else if (raw[i] === '}') {
+                    depth--;
+                    if (depth === 0) { endIdx = i; break; }
+                }
+            }
+            if (endIdx > 0) {
+                try {
+                    content = JSON.parse(raw.substring(0, endIdx + 1));
+                    if (raw.includes('completedAt') || raw.includes('"status": "completed"')) {
+                        content.status = 'completed';
+                    }
+                } catch (e2) {}
+            }
+        }
+        if (!content || !content.id) return null;
         const isTerminal = ['completed', 'completed_with_errors', 'failed', 'cancelled', 'interrupted'].includes(content?.status);
         ordersFileMemoryCache.set(filePath, {
             mtimeMs: st.mtimeMs,
@@ -1381,7 +1470,14 @@ router.post('/api/sync/request-download', async (req, res) => {
         if (allExistOnCentral) {
             console.log(`[SYNC ORDER] 🚀 Optimización LAN: Todos los ítems solicitados ya residen en StorNext. Copiando directamente al disco local: ${orderId}`);
             orderData.type = 'server_download';
+            orderData.stageLabel = 'Descargando desde Servidor Central (LAN Fast-Lane)...';
             orderData.status = 'processing';
+            orderData.targetHost = os.hostname();
+            const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+            items.forEach(it => {
+                const targetLocal = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+                it.serverPath = targetLocal.replace(/^[a-zA-Z]:/i, uncRoot);
+            });
             saveOrderInCandidateDirs(orderId, orderData);
             runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
                 console.error(`[LOCAL DOWNLOAD] Error en orden optimizada ${orderId}:`, err);
@@ -1395,6 +1491,27 @@ router.post('/api/sync/request-download', async (req, res) => {
                 console.error(`[LOCAL DOWNLOAD] Error en orden ${orderId}:`, err);
             });
             res.json({ success: true, orderId, count: items.length, status: 'processing', priority });
+        } else if (!isExternal && isNotRealServer) {
+            // MUNRO CON Z VIRTUAL: Descarga desde Google Drive en 2 etapas:
+            // Etapa 1: Worker central descarga desde Drive a StorNext SMB
+            // Etapa 2: Copia LAN automática desde StorNext SMB a disco local Z:
+            orderData.twoStage = true;
+            orderData.twoStageType = 'download';
+            orderData.type = 'download';
+            orderData.currentStage = 1;
+            orderData.stageLabel = 'Etapa 1/2: Worker Central descargando de Drive a Servidor SMB...';
+            orderData.status = 'pending';
+            orderData.requestHost = os.hostname();
+            orderData.targetRole = 'central_worker';
+            const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+            items.forEach(it => {
+                const targetLocal = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
+                it.serverPath = targetLocal.replace(/^[a-zA-Z]:/i, uncRoot);
+            });
+            saveOrderInCandidateDirs(orderId, orderData);
+            console.log(`[SYNC ORDER] 🚀 Descarga desde Drive en 2 ETAPAS iniciada: ${orderId} (${items.length} items) - Etapa 1: Drive -> Z SMB`);
+            ensureSyncWorkerRunning();
+            return res.json({ success: true, orderId, count: items.length, status: 'pending', priority, twoStage: true });
         } else {
             console.log(`[SYNC ORDER] Orden de descarga de DRIVE creada para Worker: ${orderId} (${items.length} items) para ${project} [Prioridad: ${priority}]`);
             ensureSyncWorkerRunning();
@@ -1473,11 +1590,18 @@ router.post('/api/sync/request-upload', async (req, res) => {
             // Etapa 1: Copiar local Z vsub -> StorNext SMB (\\192.168.206.116\Z)
             // Etapa 2: Worker central sube desde StorNext SMB a Google Drive
             orderData.twoStage = true;
+            orderData.twoStageType = 'upload';
             orderData.currentStage = 1;
             orderData.stageLabel = 'Etapa 1/2: Copiando a Servidor SMB...';
             orderData.status = 'processing';
             orderData.worker = `local_${os.hostname()}`;
             orderData.targetHost = os.hostname();
+
+            const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+            sanitizedItems.forEach(it => {
+                const srcPath = (it.localPath || it.path || '').replace(/\\/g, '/');
+                it.targetServerPath = srcPath.replace(/^[a-zA-Z]:/i, uncRoot);
+            });
 
             const filePath = saveOrderInCandidateDirs(orderId, orderData);
             console.log(`[SYNC ORDER] 🚀 Subida a Drive en 2 ETAPAS iniciada: ${orderId} (${items.length} items) - Etapa 1: Local -> Z SMB`);
@@ -1569,6 +1693,12 @@ router.get('/api/sync/orders', (req, res) => {
                         orders.push(content);
                         if (content.status === 'completed' && content.type === 'download') {
                             autoPullCompletedDownloadToVSub(content);
+                        }
+                        if (content.twoStage && content.twoStageType === 'download' && content.status === 'pending_local_pull') {
+                            const isTarget = content.targetHost && content.targetHost.toLowerCase() === os.hostname().toLowerCase();
+                            if (isTarget && !activeLocalTransfers.has(content.id)) {
+                                triggerStage2LocalPull(content);
+                            }
                         }
                     }
                 }

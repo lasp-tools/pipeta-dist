@@ -1375,16 +1375,26 @@ function updateAllIaTokenModulesUI() {
 let iaActiveSubfolders = new Set(['wip']);
 
 function iaToggleSubfolder(key) {
-    if (iaActiveSubfolders.has(key)) {
-        if (iaActiveSubfolders.size > 1) {
-            iaActiveSubfolders.delete(key);
-        }
-    } else {
-        iaActiveSubfolders.add(key);
-    }
+    iaActiveSubfolders = new Set([key]);
     updateIaSubfolderButtonsUI();
-    // Re-escanear unicamente la subcarpeta seleccionada
+
+    // Sincronizar destino de todos los ítems de la cola a la subcarpeta seleccionada
+    const targetSub = (key === 'wip' ? 'root' : key);
+    if (Array.isArray(window.iaBatchQueue)) {
+        window.iaBatchQueue.forEach(item => {
+            item.subfolder = targetSub;
+            item.targetFolder = getTargetFolderForItem(targetSub);
+        });
+    }
+
+    // Re-escanear para actualizar versiones y archivos existentes
     updateIaResolution();
+    if (typeof updateIaPreview === 'function') {
+        updateIaPreview();
+    }
+    if (typeof renderIaBatchTable === 'function') {
+        renderIaBatchTable();
+    }
 }
 
 function updateIaSubfolderButtonsUI() {
@@ -2798,11 +2808,11 @@ async function executeIaIngestBatch() {
 
     showIaAlert(`⏳ Ingestando ${checkedItems.length} archivo(s)...`, "#ff9800");
 
-    // Recolectar todas las carpetas de destino activas
+    // Recolectar la carpeta de destino activa (excluyente: Export > Ref > WIP)
     const activeTargets = [];
-    if (iaActiveSubfolders.has('wip') || iaActiveSubfolders.size === 0) activeTargets.push(baseIaPath);
-    if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
     if (iaActiveSubfolders.has('export')) activeTargets.push(baseIaPath + '/export');
+    else if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
+    else activeTargets.push(baseIaPath);
 
     if (typeof PipetaConsole !== 'undefined') {
         PipetaConsole.log('ingest', `[IA INGEST] 🚀 Iniciando ingesta por lote de ${checkedItems.length} archivo(s) hacia [${activeTargets.map(t => t.split('/').slice(-2).join('/')).join(', ')}]`, 'info');

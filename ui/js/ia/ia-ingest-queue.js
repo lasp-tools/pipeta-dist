@@ -626,11 +626,11 @@ async function executeIaIngestBatch() {
 
     showIaAlert(`⏳ Ingestando ${checkedItems.length} archivo(s)...`, "#ff9800");
 
-    // Recolectar todas las carpetas de destino activas
+    // Recolectar la carpeta de destino activa (excluyente: Export > Ref > WIP)
     const activeTargets = [];
-    if (iaActiveSubfolders.has('wip') || iaActiveSubfolders.size === 0) activeTargets.push(baseIaPath);
-    if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
     if (iaActiveSubfolders.has('export')) activeTargets.push(baseIaPath + '/export');
+    else if (iaActiveSubfolders.has('ref')) activeTargets.push(baseIaPath + '/ref');
+    else activeTargets.push(baseIaPath);
 
     if (typeof PipetaConsole !== 'undefined') {
         PipetaConsole.log('ingest', `[IA INGEST] 🚀 Iniciando ingesta por lote de ${checkedItems.length} archivo(s) hacia [${activeTargets.map(t => t.split('/').slice(-2).join('/')).join(', ')}]`, 'info');

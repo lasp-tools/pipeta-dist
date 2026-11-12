@@ -222,13 +222,69 @@ router.get('/api/ia/resolve-shot', (req, res) => {
     const candidate3 = path.normalize(path.join(rootPath, 'episodios', ep, 'secuencias', seq, 'shots', shotId)).replace(/\\/g, '/');
     const candidate4 = path.normalize(path.join(rootPath, ep, seq, shotId)).replace(/\\/g, '/');
 
-    let resolvedIaPath = candidate1;
-    if (fs.existsSync(candidate1)) resolvedIaPath = candidate1;
-    else if (fs.existsSync(candidate2)) resolvedIaPath = candidate2;
-    else if (fs.existsSync(candidate3)) resolvedIaPath = candidate1;
-    else if (fs.existsSync(candidate4)) resolvedIaPath = candidate2;
-    else if (fs.existsSync(path.join(rootPath, ep))) resolvedIaPath = candidate2;
-    else resolvedIaPath = candidate1;
+    function getCandidatePhysicalPaths(p) {
+        if (!p || typeof p !== 'string') return [];
+        const norm = p.replace(/\\/g, '/');
+        const list = [norm];
+        if (/^[a-zA-Z]:\//i.test(norm)) {
+            const afterDrive = norm.substring(3);
+            list.push(`D:/Z/${afterDrive}`);
+            list.push(`C:/STORAGE/Z/${afterDrive}`);
+            list.push(`S:/${afterDrive}`);
+            list.push(`\\\\192.168.206.116\\Z\\${afterDrive}`);
+        }
+        return [...new Set(list)];
+    }
+
+    function resolvePhysicalLocalPath(p, forWrite = false) {
+        if (!p || typeof p !== 'string') return p;
+        const norm = p.replace(/\\/g, '/');
+        if (fs.existsSync(norm)) return norm;
+        if (/^[a-zA-Z]:\//i.test(norm)) {
+            const afterDrive = norm.substring(3);
+            const candidates = [
+                `D:/Z/${afterDrive}`,
+                `C:/STORAGE/Z/${afterDrive}`,
+                `S:/${afterDrive}`
+            ];
+            for (const cand of candidates) {
+                if (fs.existsSync(cand)) return cand;
+            }
+            if (forWrite && /^z:/i.test(norm)) {
+                if (fs.existsSync('D:/Z')) return `D:/Z/${afterDrive}`;
+                if (fs.existsSync('C:/STORAGE/Z')) return `C:/STORAGE/Z/${afterDrive}`;
+            }
+        }
+        return norm;
+    }
+
+    function testPathExistsAnywhere(p) {
+        if (!p) return false;
+        const norm = p.replace(/\\/g, '/');
+        const physList = getCandidatePhysicalPaths(norm);
+        for (const cand of physList) {
+            if (fs.existsSync(cand)) return true;
+        }
+        // Solo consultar los catálogos locales ya en memoria/disco (probando tanto IA como ia)
+        if (typeof catalogGenerator.listFromModularCatalog === 'function') {
+            const queries = [norm, norm.replace(/\/ia(\/|$)/i, '/ia$1'), norm.replace(/\/ia(\/|$)/i, '/IA$1')];
+            for (const q of queries) {
+                const srvItems = catalogGenerator.listFromModularCatalog(q, 'server');
+                if (srvItems !== null && srvItems.length > 0) return true;
+                const drvItems = catalogGenerator.listFromModularCatalog(q, 'drive');
+                if (drvItems !== null && drvItems.length > 0) return true;
+            }
+        }
+        return false;
+    }
+
+    let resolvedIaPath = candidate2;
+    if (testPathExistsAnywhere(candidate2)) resolvedIaPath = candidate2;
+    else if (testPathExistsAnywhere(candidate1)) resolvedIaPath = candidate1;
+    else if (testPathExistsAnywhere(candidate4)) resolvedIaPath = candidate2;
+    else if (testPathExistsAnywhere(candidate3)) resolvedIaPath = candidate1;
+    else if (testPathExistsAnywhere(path.join(rootPath, ep))) resolvedIaPath = candidate2;
+    else resolvedIaPath = candidate2;
 
     const subfoldersParam = (req.query.subfolders || req.query.subfolder || '').trim();
     let requestedSubs = subfoldersParam ? subfoldersParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : ['wip'];
@@ -237,42 +293,96 @@ router.get('/api/ia/resolve-shot', (req, res) => {
     let nextVersion = 'v001';
     let maxVer = 0;
     const existingFiles = [];
+    const seenFiles = new Set();
 
-    if (fs.existsSync(resolvedIaPath)) {
-        try {
-            requestedSubs.forEach(sub => {
-                let targetDir = resolvedIaPath;
-                if (sub === 'export') targetDir = path.join(resolvedIaPath, 'export');
-                else if (sub === 'ref') targetDir = path.join(resolvedIaPath, 'ref');
-                else if (sub === 'enc') targetDir = path.join(resolvedIaPath, 'enc');
-                else if (sub === 'wip' || sub === 'root') targetDir = resolvedIaPath;
-                else targetDir = path.join(resolvedIaPath, sub);
+    // Siempre escanear todas las subcarpetas del pipeline de IA para no perder versiones si están en export/ref/enc/root
+    const subsToScan = Array.from(new Set([...requestedSubs, 'wip', 'root', 'export', 'ref', 'enc']));
 
-                if (fs.existsSync(targetDir)) {
-                    const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-                    for (const entry of entries) {
-                        if (entry.isFile()) {
-                            const filename = entry.name;
-                            const match = filename.match(/_v(\d{3,4})\./i);
-                            let verNum = 0;
-                            if (match) {
-                                verNum = parseInt(match[1], 10);
-                                if (verNum > maxVer) maxVer = verNum;
-                            }
-                            existingFiles.push({
-                                name: filename,
-                                subfolder: sub,
-                                fullPath: path.join(targetDir, filename).replace(/\\/g, '/'),
-                                version: verNum
-                            });
+    try {
+        subsToScan.forEach(sub => {
+            let targetLogicalDir = resolvedIaPath;
+            if (sub === 'export') targetLogicalDir = path.join(resolvedIaPath, 'export').replace(/\\/g, '/');
+            else if (sub === 'ref') targetLogicalDir = path.join(resolvedIaPath, 'ref').replace(/\\/g, '/');
+            else if (sub === 'enc') targetLogicalDir = path.join(resolvedIaPath, 'enc').replace(/\\/g, '/');
+            else if (sub === 'wip' || sub === 'root') targetLogicalDir = resolvedIaPath;
+            else targetLogicalDir = path.join(resolvedIaPath, sub).replace(/\\/g, '/');
+
+            const addFileEntry = (filename, sourceOrigin) => {
+                if (!filename || filename.startsWith('.')) return;
+                const lower = filename.toLowerCase();
+                const key = `${sub}:${lower}`;
+                if (seenFiles.has(key)) return;
+                seenFiles.add(key);
+
+                const match = filename.match(/(?:_|^)v(\d{2,4})(?:[_\.]|$)/i);
+                let verNum = 0;
+                if (match) {
+                    verNum = parseInt(match[1], 10);
+                    if (verNum > maxVer) maxVer = verNum;
+                }
+                existingFiles.push({
+                    name: filename,
+                    subfolder: sub,
+                    fullPath: path.join(targetLogicalDir, filename).replace(/\\/g, '/'),
+                    version: verNum,
+                    source: sourceOrigin
+                });
+            };
+
+            // 1. Escaneo en disco físico local y red (revisando Z:, D:/Z, C:/STORAGE/Z, S:)
+            const candidatePaths = getCandidatePhysicalPaths(targetLogicalDir);
+            for (const cPath of candidatePaths) {
+                if (fs.existsSync(cPath)) {
+                    try {
+                        const entries = fs.readdirSync(cPath, { withFileTypes: true });
+                        for (const entry of entries) {
+                            if (entry.isFile()) addFileEntry(entry.name, cPath.startsWith('S:') || cPath.startsWith('\\\\') ? 'server_smb' : 'local');
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            // 2. Escaneo en Catálogo Modular de Servidor (probando targetLogicalDir con IA e ia)
+            if (typeof catalogGenerator.listFromModularCatalog === 'function') {
+                try {
+                    const catQueries = [
+                        targetLogicalDir,
+                        targetLogicalDir.replace(/\/ia(\/|$)/i, '/ia$1'),
+                        targetLogicalDir.replace(/\/ia(\/|$)/i, '/IA$1')
+                    ];
+                    for (const q of catQueries) {
+                        const srvItems = catalogGenerator.listFromModularCatalog(q, 'server') || [];
+                        for (const it of srvItems) {
+                            if (!it.isDirectory) addFileEntry(it.name, 'server_catalog');
                         }
                     }
-                }
-            });
-            nextVersion = 'v' + String(maxVer + 1).padStart(3, '0');
-        } catch (e) {
-            console.error('[IA RESOLVE-SHOT] Error scanning selected IA folder:', e);
-        }
+                } catch (e) {}
+            }
+
+            // 3. Fallback Catálogo plano de Servidor
+            if (typeof catalogGenerator.listFromServerCatalog === 'function') {
+                try {
+                    const srvFlat = catalogGenerator.listFromServerCatalog(targetLogicalDir) || [];
+                    for (const it of srvFlat) {
+                        if (!it.isDirectory) addFileEntry(it.name, 'server_catalog_flat');
+                    }
+                } catch (e) {}
+            }
+
+            // 4. Escaneo en Catálogo de Google Drive (en caché local)
+            if (typeof catalogGenerator.listFromModularCatalog === 'function') {
+                try {
+                    const drvItems = catalogGenerator.listFromModularCatalog(targetLogicalDir, 'drive') || [];
+                    for (const it of drvItems) {
+                        if (!it.isDirectory) addFileEntry(it.name, 'drive_catalog');
+                    }
+                } catch (e) {}
+            }
+        });
+
+        nextVersion = 'v' + String(maxVer + 1).padStart(3, '0');
+    } catch (e) {
+        console.error('[IA RESOLVE-SHOT] Error scanning IA folders and catalogs:', e);
     }
 
     res.json({
@@ -282,7 +392,7 @@ router.get('/api/ia/resolve-shot', (req, res) => {
         seq,
         shotNum,
         iaPath: resolvedIaPath,
-        exists: fs.existsSync(resolvedIaPath),
+        exists: testPathExistsAnywhere(resolvedIaPath),
         selectedSubfolders: requestedSubs,
         maxVersion: maxVer,
         suggestedVersion: nextVersion,
@@ -297,13 +407,16 @@ router.post('/api/ia/check-collision', (req, res) => {
             return res.status(400).json({ error: 'targets array required' });
         }
         const results = targets.map(t => {
-            const fullPath = path.join(t.targetFolder || '', t.filename || '');
+            const logicalFull = path.join(t.targetFolder || '', t.filename || '').replace(/\\/g, '/');
+            const physFolder = resolvePhysicalLocalPath(t.targetFolder || '');
+            const physFull = path.join(physFolder, t.filename || '').replace(/\\/g, '/');
+            const exists = fs.existsSync(logicalFull) || fs.existsSync(physFull);
             return {
                 id: t.id,
                 filename: t.filename,
                 targetFolder: t.targetFolder,
-                fullPath: fullPath.replace(/\\/g, '/'),
-                exists: fs.existsSync(fullPath)
+                fullPath: logicalFull,
+                exists
             };
         });
         res.json({ results });
@@ -319,11 +432,12 @@ router.post('/api/ia/ingest', (req, res) => {
             return res.status(400).json({ error: 'targetFolder and filename are required' });
         }
 
-        if (!fs.existsSync(targetFolder)) {
-            fs.mkdirSync(targetFolder, { recursive: true });
+        const effectiveTarget = resolvePhysicalLocalPath(targetFolder, true);
+        if (!fs.existsSync(effectiveTarget)) {
+            fs.mkdirSync(effectiveTarget, { recursive: true });
         }
 
-        const destFilePath = path.join(targetFolder, filename);
+        const destFilePath = path.join(effectiveTarget, filename);
 
         if (sourcePath && fs.existsSync(sourcePath)) {
             fs.copyFileSync(sourcePath, destFilePath);

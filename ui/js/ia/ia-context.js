@@ -500,16 +500,26 @@ async function updateIaResolution() {
 }
 
 function iaToggleSubfolder(key) {
-    if (iaActiveSubfolders.has(key)) {
-        if (iaActiveSubfolders.size > 1) {
-            iaActiveSubfolders.delete(key);
-        }
-    } else {
-        iaActiveSubfolders.add(key);
-    }
+    iaActiveSubfolders = new Set([key]);
     updateIaSubfolderButtonsUI();
-    // Re-escanear unicamente la subcarpeta seleccionada
+
+    // Sincronizar destino de todos los ítems de la cola a la subcarpeta seleccionada
+    const targetSub = (key === 'wip' ? 'root' : key);
+    if (Array.isArray(window.iaBatchQueue)) {
+        window.iaBatchQueue.forEach(item => {
+            item.subfolder = targetSub;
+            item.targetFolder = getTargetFolderForItem(targetSub);
+        });
+    }
+
+    // Re-escanear para actualizar versiones y archivos existentes
     updateIaResolution();
+    if (typeof updateIaPreview === 'function') {
+        updateIaPreview();
+    }
+    if (typeof renderIaBatchTable === 'function') {
+        renderIaBatchTable();
+    }
 }
 
 function updateIaSubfolderButtonsUI() {

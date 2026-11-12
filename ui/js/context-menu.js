@@ -222,7 +222,9 @@ class ContextMenu {
 
         if (typeof window.enqueuePathsToIaBatch === 'function') {
             await window.enqueuePathsToIaBatch(paths, { isDirMap });
-            if (typeof switchView === 'function') {
+            if (window.DockManager && typeof window.DockManager.dock === 'function') {
+                window.DockManager.dock('ia-ingest');
+            } else if (typeof switchView === 'function') {
                 switchView('view-ia-ingest');
             }
         }

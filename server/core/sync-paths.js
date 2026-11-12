@@ -255,6 +255,10 @@ function getDirectoryFilesAndSize(dirPath) {
         try {
             const entries = fs.readdirSync(currentDir, { withFileTypes: true });
             for (const entry of entries) {
+                const lowerName = entry.name.toLowerCase();
+                if (lowerName === 'thumbs.db' || lowerName === 'desktop.ini' || lowerName === '.ds_store' || lowerName.endsWith('.tmp')) {
+                    continue;
+                }
                 const fullEntryPath = path.join(currentDir, entry.name).replace(/\\/g, '/');
                 const relEntryPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
                 if (entry.isDirectory()) {

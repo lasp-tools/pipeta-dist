@@ -133,10 +133,8 @@ class SyncQueueUI {
 
                 if (isFinished && isTransfer && !this.processedCompletedOrderIds.has(order.id)) {
                     this.processedCompletedOrderIds.add(order.id);
-                    // Solo activar actualización de árbol si fue una transición en vivo observada en esta sesión
-                    if (prev === 'pending' || prev === 'processing') {
-                        this.triggerOrderCompletionRefresh(order, false);
-                    }
+                    // Activar actualización de árbol para cualquier orden terminada observada en esta sesión
+                    this.triggerOrderCompletionRefresh(order, false);
                 } else if (isFinished && !this.processedCompletedOrderIds.has(order.id)) {
                     this.processedCompletedOrderIds.add(order.id);
                 }
@@ -668,7 +666,7 @@ class SyncQueueUI {
             let isServerTransfer = false;
 
             if (order.type === 'download') {
-                typeLabel = 'DESCARGA DE DRIVE';
+                typeLabel = order.stageLabel ? ('DESCARGA DE DRIVE (' + order.stageLabel + ')') : 'DESCARGA DE DRIVE';
                 typeIcon = '📥';
                 typeColor = '#00bcd4';
             } else if (order.type === 'upload') {
@@ -676,7 +674,7 @@ class SyncQueueUI {
                 typeIcon = '📤';
                 typeColor = '#4caf50';
             } else if (order.type === 'server_download') {
-                typeLabel = 'DESCARGA DE SERVER';
+                typeLabel = order.stageLabel ? ('DESCARGA DE SERVER (' + order.stageLabel + ')') : 'DESCARGA DE SERVER';
                 typeIcon = '📥';
                 typeColor = '#ab47bc';
                 isServerTransfer = true;

@@ -1,9 +1,40 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.12",
+        "version": "v1.2.15",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Carpeta de Salida IA Ingest Excluyente (WIP / Ref / Export):</b> Los botones de selección de carpeta de destino funcionan de manera exclusiva actualizando inmediatamente todos los ítems de la cola hacia la carpeta elegida (e.g. Export -> /IA/export/), garantizando que las entregas no se vuelquen accidentalmente en WIP.",
+            "<b>Resolución de Versiones en Discos Virtuales y Munro:</b> Detección física en puestos con unidades Z virtualizadas (D:/Z y C:/STORAGE/Z) y servidor central S:, reconociendo todas las versiones previas en disco y sugiriendo la versión siguiente correcta.",
+            "<b>Blindaje Sintáctico en Actualizador desde Red:</b> Corrección en la lectura de versión en Actualizar_Pipeta_desde_Red.bat mediante sintaxis batch pura nativa, eliminando el fallo de 'No se esperaba . en este momento' durante la actualización."
+        ]
+    },
+    {
+        "version": "v1.2.14",
+        "badge": "",
+        "accentColor": "#666",
+        "items": [
+            "<b>Detección Instantánea de Versiones IA en Catálogo Local:</b> Al abrir IA Ingest o resolver un plano, se consulta el catálogo de servidor y Drive ya cargado en memoria/disco local (sin I/O de red SMB lento), detectando todas las versiones existentes en subcarpetas de IA (wip, export, ref, enc) e incrementando la versión sugerida correctamente sin reiniciar en v001.",
+            "<b>Send2 IA Ingest Dockeado en Barra Lateral:</b> Al enviar elementos desde el Explorer mediante 'Send2 IA Ingest', la herramienta se acopla automáticamente en el panel lateral derecho (side-by-side) manteniendo el Explorer activo y visible.",
+            "<b>Refresco Automático de Insignias en Árbol:</b> Las descargas rápidas o en dos etapas actualizan inmediatamente las insignias del explorador eliminando badges de espera colgados."
+        ]
+    },
+    {
+        "version": "v1.2.13",
+        "badge": "",
+        "accentColor": "#666",
+        "items": [
+            "<b>Descarga desde Google Drive en 2 Etapas (Munro Z vsubs):</b> En puestos de Munro con Z virtual, las descargas desde Drive se coordinan en 2 etapas visibles: Etapa 1 descarga de Drive a StorNext SMB vía Worker Central, y Etapa 2 copia automáticamente por LAN a disco local Z: con actualización inmediata de árbol.",
+            "<b>Fast-Lane LAN para Descargas:</b> Si el archivo solicitado ya existe en StorNext SMB, se transfiere inmediatamente por red local a máxima velocidad sin descargas redundantes a internet.",
+            "<b>Subida Recursiva de Carpetas y Subcarpetas:</b> Corrección en la transferencia de carpetas completas en 2 etapas preservando recursivamente toda la estructura de subdirectorios.",
+            "<b>Inmunidad a Corrupciones en Órdenes:</b> Escritura secuencial atómica y auto-recuperación de archivos JSON de órdenes de sincronización."
+        ]
+    },
+    {
+        "version": "v1.2.12",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Subida a Drive en 2 Etapas (Munro Z vsubs):</b> En puestos con Z virtualizado en Munro, la subida a Drive se ejecuta en una sola tarea unificada: Etapa 1 copia por LAN a StorNext SMB, y Etapa 2 es procesada por el worker central hacia Drive sin saturar el ancho de banda del equipo.",
             "<b>Comparación Estricta Local vs Drive:</b> En puestos con Z vsub, la comparación contra Drive solo evalúa los archivos físicos existentes en el disco local sin consultar ni mezclar archivos del Z SMB.",

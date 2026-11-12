@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 set "APP_NAME=PIPETA"
-set "APP_VERSION=v1.2.12"
+set "APP_VERSION=v1.2.15"
 set "APP_PORT=3002"
 set "PIPETA_SUPERVISED=1"
 
@@ -25,6 +25,15 @@ set "LOCAL_DIR=C:\TOOLS\APPS\Pipeta"
 :: Auto-verificar y asegurar icono oficial en acceso directo del Escritorio
 if exist "%LOCAL_DIR%\Pipeta.ico" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "$lnk = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'Pipeta.lnk'); if (Test-Path $lnk) { $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($lnk); $targetIco = '%LOCAL_DIR%\Pipeta.ico'; if ($s.IconLocation -ne $targetIco) { $s.IconLocation = $targetIco; $s.Save(); (Get-Item $lnk).LastWriteTime = (Get-Date) } }" >nul 2>&1
+)
+
+:: Auto-montar unidad Z: virtual si no existe pero existe D:\Z o C:\STORAGE\Z
+if not exist "Z:\" (
+    if exist "D:\Z" (
+        subst Z: D:\Z >nul 2>&1
+    ) else if exist "C:\STORAGE\Z" (
+        subst Z: C:\STORAGE\Z >nul 2>&1
+    )
 )
 
 set "SERVER_DIR=%SCRIPT_DIR%server"

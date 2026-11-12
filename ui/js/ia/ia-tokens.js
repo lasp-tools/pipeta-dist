@@ -635,7 +635,7 @@ function updateIaPreview() {
     };
 
     iaBatchQueue.forEach((item) => {
-        if (!item.subfolder) item.subfolder = selectedSubfolder;
+        item.subfolder = selectedSubfolder;
         item.targetFolder = getTargetFolderForItem(item.subfolder);
         const ext = item.ext || '.mp4';
         const itemMediaType = getIaMediaType(ext);
