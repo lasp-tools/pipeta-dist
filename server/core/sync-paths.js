@@ -266,10 +266,10 @@ function getDirectoryFilesAndSize(dirPath) {
                 } else if (entry.isFile()) {
                     try {
                         const st = fs.statSync(fullEntryPath);
-                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: st.size });
+                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: st.size, mtimeMs: st.mtimeMs });
                         totalBytes += st.size;
                     } catch (e) {
-                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: 0 });
+                        files.push({ fullPath: fullEntryPath, relPath: relEntryPath, size: 0, mtimeMs: 0 });
                     }
                 }
             }

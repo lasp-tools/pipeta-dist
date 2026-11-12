@@ -466,6 +466,21 @@ async function runLocalTransferOrder(orderId, orderData, filePath) {
 
                     activeTransfer.currentDestFile = targetFilePath;
 
+                    // Omitir copia física si el archivo de destino en el servidor SMB ya existe con idéntico tamaño y fecha
+                    if (orderData.conflictResolution !== 'overwrite') {
+                        try {
+                            if (fs.existsSync(targetFilePath)) {
+                                const stDest = fs.statSync(targetFilePath);
+                                if (stDest.size === file.size && (file.mtimeMs ? Math.abs(stDest.mtimeMs - file.mtimeMs) < 3000 : true)) {
+                                    overallTransferredBytes += file.size;
+                                    windowBytesTransferred += file.size;
+                                    updateProgress(false, path.basename(file.relPath), i + 1);
+                                    continue;
+                                }
+                            }
+                        } catch (stErr) {}
+                    }
+
                     try {
                         await streamCopyFile(file.fullPath, targetFilePath, (chunkBytes) => {
                             overallTransferredBytes += chunkBytes;
@@ -1589,6 +1604,66 @@ router.post('/api/sync/request-upload', async (req, res) => {
             // MUNRO CON Z VIRTUAL: Subida a Drive en 2 etapas dentro de la misma tarea:
             // Etapa 1: Copiar local Z vsub -> StorNext SMB (\\192.168.206.116\Z)
             // Etapa 2: Worker central sube desde StorNext SMB a Google Drive
+            const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+            if (uncRoot) ensureServerUncAccess(uncRoot);
+
+            sanitizedItems.forEach(it => {
+                const srcPath = (it.localPath || it.path || '').replace(/\\/g, '/');
+                it.targetServerPath = srcPath.replace(/^[a-zA-Z]:/i, uncRoot);
+            });
+
+            // Fast-Lane: Si TODOS los archivos ya existen con idéntico tamaño en StorNext SMB y no se forzó overwrite:
+            let allExistOnSmbAndIdentical = false;
+            if (req.body.conflictResolution !== 'overwrite') {
+                try {
+                    let totalChecked = 0;
+                    let identicalChecked = 0;
+                    for (const it of sanitizedItems) {
+                        const localP = (it.localPath || it.path || '').replace(/\\/g, '/');
+                        if (!localP || !fs.existsSync(localP)) continue;
+                        const isDir = it.isDir || fs.statSync(localP).isDirectory();
+                        if (!isDir) {
+                            totalChecked++;
+                            const sCand = it.targetServerPath;
+                            if (fs.existsSync(sCand) && fs.statSync(sCand).size === fs.statSync(localP).size) {
+                                identicalChecked++;
+                            }
+                        } else {
+                            const scan = getDirectoryFilesAndSize(localP);
+                            for (const f of scan.files) {
+                                totalChecked++;
+                                const smbFile = f.fullPath.replace(/^[a-zA-Z]:/i, uncRoot);
+                                if (fs.existsSync(smbFile) && fs.statSync(smbFile).size === f.size) {
+                                    identicalChecked++;
+                                }
+                            }
+                        }
+                    }
+                    if (totalChecked > 0 && identicalChecked === totalChecked) {
+                        allExistOnSmbAndIdentical = true;
+                    }
+                } catch (e) {
+                    allExistOnSmbAndIdentical = false;
+                }
+            }
+
+            if (allExistOnSmbAndIdentical) {
+                // FAST-LANE DIRECTO A ETAPA 2 (Worker Central -> Drive)
+                orderData.twoStage = true;
+                orderData.twoStageType = 'upload';
+                orderData.currentStage = 2;
+                orderData.stageLabel = 'Etapa 2/2: En cola con Worker Central (Subiendo a Drive)...';
+                orderData.status = 'pending';
+                orderData.targetRole = 'central_worker';
+                orderData.fastLaneSmbSkipped = true;
+                orderData.conflictResolution = req.body.conflictResolution || 'default';
+
+                const filePath = saveOrderInCandidateDirs(orderId, orderData);
+                console.log(`[SYNC ORDER] ⚡ FAST-LANE: Archivos ya idénticos en StorNext SMB. Saltando Etapa 1 directamente a Worker Central: ${orderId} (${items.length} items)`);
+                ensureSyncWorkerRunning();
+                return res.json({ success: true, orderId, count: items.length, status: 'pending', priority, twoStage: true, fastLane: true });
+            }
+
             orderData.twoStage = true;
             orderData.twoStageType = 'upload';
             orderData.currentStage = 1;
@@ -1596,12 +1671,7 @@ router.post('/api/sync/request-upload', async (req, res) => {
             orderData.status = 'processing';
             orderData.worker = `local_${os.hostname()}`;
             orderData.targetHost = os.hostname();
-
-            const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
-            sanitizedItems.forEach(it => {
-                const srcPath = (it.localPath || it.path || '').replace(/\\/g, '/');
-                it.targetServerPath = srcPath.replace(/^[a-zA-Z]:/i, uncRoot);
-            });
+            orderData.conflictResolution = req.body.conflictResolution || 'default';
 
             const filePath = saveOrderInCandidateDirs(orderId, orderData);
             console.log(`[SYNC ORDER] 🚀 Subida a Drive en 2 ETAPAS iniciada: ${orderId} (${items.length} items) - Etapa 1: Local -> Z SMB`);
@@ -1628,6 +1698,208 @@ router.post('/api/sync/request-upload', async (req, res) => {
     } catch (err) {
         console.error('Sync request-upload error:', err);
         res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.post('/api/sync/check-upload-conflicts', async (req, res) => {
+    try {
+        const { project, items = [], targetType = 'drive' } = req.body;
+        const env = getCachedEnvState() || {};
+        const isNotRealServer = !env?.zInfo?.isRealServer || (typeof isZRealServer === 'function' && !isZRealServer());
+        const isExternal = !!env.isExternalMachine;
+
+        // Solo aplica en máquinas con Z virtual y acceso a SMB
+        if (!isNotRealServer || isExternal) {
+            return res.json({ success: true, hasConflicts: false, allIdentical: false, conflicts: [], summary: { totalFiles: 0, identical: 0, conflicts: 0, missing: 0 } });
+        }
+
+        const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+        if (uncRoot) ensureServerUncAccess(uncRoot);
+
+        function resolveSmbPath(localP) {
+            const clean = (localP || '').replace(/\\/g, '/');
+            const sCand = clean.replace(/^[a-zA-Z]:/i, 'S:');
+            const uncCand = clean.replace(/^[a-zA-Z]:/i, uncRoot);
+            if (fs.existsSync(sCand)) return sCand;
+            if (fs.existsSync(uncCand)) return uncCand;
+            if (fs.existsSync('S:/INTERNO')) return sCand;
+            return uncCand;
+        }
+
+        const conflicts = [];
+        let totalFiles = 0;
+        let identicalCount = 0;
+        let missingCount = 0;
+
+        for (const it of items) {
+            const localP = (it.localPath || it.path || '').replace(/\\/g, '/');
+            if (!localP || !fs.existsSync(localP)) continue;
+
+            const isDir = it.isDir || fs.statSync(localP).isDirectory();
+
+            if (!isDir) {
+                totalFiles++;
+                const smbP = resolveSmbPath(localP);
+                if (!fs.existsSync(smbP)) {
+                    missingCount++;
+                    continue;
+                }
+
+                try {
+                    const stLocal = fs.statSync(localP);
+                    const stSmb = fs.statSync(smbP);
+                    const mtimeDiff = stLocal.mtimeMs - stSmb.mtimeMs;
+
+                    if (stLocal.size === stSmb.size && Math.abs(mtimeDiff) < 3000) {
+                        identicalCount++;
+                    } else {
+                        let conflictType = 'size_mismatch';
+                        if (mtimeDiff > 3000) conflictType = 'local_newer';
+                        else if (mtimeDiff < -3000) conflictType = 'smb_newer';
+
+                        conflicts.push({
+                            name: it.name || path.basename(localP),
+                            relativePath: path.basename(localP),
+                            localPath: localP,
+                            smbPath: smbP,
+                            type: conflictType,
+                            localSize: stLocal.size,
+                            smbSize: stSmb.size,
+                            localMtime: new Date(stLocal.mtimeMs).toISOString(),
+                            smbMtime: new Date(stSmb.mtimeMs).toISOString()
+                        });
+                    }
+                } catch (e) {
+                    missingCount++;
+                }
+            } else {
+                const dirScan = getDirectoryFilesAndSize(localP);
+                for (const f of dirScan.files) {
+                    totalFiles++;
+                    const smbFilePath = resolveSmbPath(f.fullPath);
+                    if (!fs.existsSync(smbFilePath)) {
+                        missingCount++;
+                        continue;
+                    }
+
+                    try {
+                        const stLocal = fs.statSync(f.fullPath);
+                        const stSmb = fs.statSync(smbFilePath);
+                        const mtimeDiff = stLocal.mtimeMs - stSmb.mtimeMs;
+
+                        if (stLocal.size === stSmb.size && Math.abs(mtimeDiff) < 3000) {
+                            identicalCount++;
+                        } else {
+                            let conflictType = 'size_mismatch';
+                            if (mtimeDiff > 3000) conflictType = 'local_newer';
+                            else if (mtimeDiff < -3000) conflictType = 'smb_newer';
+
+                            conflicts.push({
+                                name: path.basename(f.relPath),
+                                relativePath: f.relPath,
+                                localPath: f.fullPath,
+                                smbPath: smbFilePath,
+                                type: conflictType,
+                                localSize: stLocal.size,
+                                smbSize: stSmb.size,
+                                localMtime: new Date(stLocal.mtimeMs).toISOString(),
+                                smbMtime: new Date(stSmb.mtimeMs).toISOString()
+                            });
+                        }
+                    } catch (e) {
+                        missingCount++;
+                    }
+                }
+            }
+        }
+
+        const allIdentical = totalFiles > 0 && identicalCount === totalFiles;
+        const hasConflicts = conflicts.length > 0;
+
+        return res.json({
+            success: true,
+            hasConflicts,
+            allIdentical,
+            conflicts,
+            summary: {
+                totalFiles,
+                identical: identicalCount,
+                conflicts: conflicts.length,
+                missing: missingCount
+            }
+        });
+    } catch (err) {
+        console.error('Error in check-upload-conflicts:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.post('/api/sync/resolve-upload-conflict', async (req, res) => {
+    try {
+        const { project, items = [], conflicts = [], action = 'rename_01' } = req.body;
+        if (action !== 'rename_01') {
+            return res.json({ success: true, action, items });
+        }
+
+        const renamedMap = new Map();
+
+        function getNextAvailablePath(filePath) {
+            const dir = path.dirname(filePath);
+            const ext = path.extname(filePath);
+            const baseName = path.basename(filePath, ext);
+
+            const match = baseName.match(/^(.*)_([0-9]{2,})$/);
+            let prefix = baseName;
+            let num = 1;
+            if (match) {
+                prefix = match[1];
+                num = parseInt(match[2], 10) + 1;
+            }
+
+            let candidateName = '';
+            let candidateLocalPath = '';
+            do {
+                const numStr = String(num).padStart(2, '0');
+                candidateName = `${prefix}_${numStr}${ext}`;
+                candidateLocalPath = path.join(dir, candidateName).replace(/\\/g, '/');
+                num++;
+            } while (fs.existsSync(candidateLocalPath));
+
+            return { newName: candidateName, newPath: candidateLocalPath };
+        }
+
+        for (const c of conflicts) {
+            const targetPath = (c.localPath || '').replace(/\\/g, '/');
+            if (targetPath && fs.existsSync(targetPath)) {
+                try {
+                    const { newName, newPath } = getNextAvailablePath(targetPath);
+                    fs.renameSync(targetPath, newPath);
+                    renamedMap.set(targetPath, { oldPath: targetPath, newPath, newName });
+                    console.log(`[CONFLICT RESOLVE] Renombrado local de protección: ${path.basename(targetPath)} -> ${newName}`);
+                } catch (renErr) {
+                    console.error(`[CONFLICT RESOLVE] Error renombrando ${targetPath}:`, renErr.message);
+                }
+            }
+        }
+
+        const updatedItems = items.map(it => {
+            const normP = (it.localPath || it.path || '').replace(/\\/g, '/');
+            if (renamedMap.has(normP)) {
+                const info = renamedMap.get(normP);
+                const updated = { ...it, path: info.newPath, localPath: info.newPath, name: info.newName };
+                if (typeof catalogGenerator.resolveLocalToOnlinePath === 'function') {
+                    const resOnline = catalogGenerator.resolveLocalToOnlinePath(info.newPath, project);
+                    if (resOnline) updated.onlinePath = resOnline;
+                }
+                return updated;
+            }
+            return it;
+        });
+
+        return res.json({ success: true, action: 'rename_01', items: updatedItems, renamed: Array.from(renamedMap.values()) });
+    } catch (err) {
+        console.error('Error in resolve-upload-conflict:', err);
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 

@@ -395,6 +395,143 @@ function showSyncConfirmDialog({
     });
 }
 
+function showSyncUploadConflictDialog(conflicts = []) {
+    return new Promise((resolve) => {
+        const existing = document.getElementById('sync-upload-conflict-overlay');
+        if (existing) existing.remove();
+
+        function formatBytes(bytes) {
+            if (!bytes || bytes <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
+        }
+
+        const overlay = document.createElement('div');
+        overlay.id = 'sync-upload-conflict-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 10600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const win = document.createElement('div');
+        win.id = 'sync-upload-conflict-window';
+        win.className = 'validator-window';
+        win.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 620px;
+            max-width: 94vw;
+            background: #0f1217;
+            border: 1px solid #ff9800;
+            border-radius: 8px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 15px rgba(255,152,0,0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            color: #eceff4;
+            font-family: inherit;
+        `;
+
+        const itemsListHtml = conflicts.map(c => {
+            let badgeHtml = '';
+            if (c.type === 'smb_newer') {
+                badgeHtml = '<span style="background:rgba(244,67,54,0.18); color:#ff5252; border:1px solid #f44336; border-radius:3px; padding:2px 6px; font-size:0.7rem; font-weight:bold;">🔴 Servidor más nuevo</span>';
+            } else if (c.type === 'local_newer') {
+                badgeHtml = '<span style="background:rgba(255,152,0,0.18); color:#ffb74d; border:1px solid #ff9800; border-radius:3px; padding:2px 6px; font-size:0.7rem; font-weight:bold;">🟡 Local más nuevo</span>';
+            } else {
+                badgeHtml = '<span style="background:rgba(255,193,7,0.18); color:#ffe082; border:1px solid #ffc107; border-radius:3px; padding:2px 6px; font-size:0.7rem; font-weight:bold;">🟠 Tamaño diferente</span>';
+            }
+
+            const localDate = c.localMtime ? new Date(c.localMtime).toLocaleString() : '—';
+            const smbDate = c.smbMtime ? new Date(c.smbMtime).toLocaleString() : '—';
+
+            return `
+                <div style="background:#131720; border:1px solid #232b38; border-radius:5px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:bold; color:#fff; font-size:0.8rem; word-break:break-all;">📄 ${c.name}</span>
+                        ${badgeHtml}
+                    </div>
+                    <div style="font-size:0.72rem; color:#888; display:flex; gap:16px;">
+                        <span><b style="color:#4caf50;">Local:</b> ${formatBytes(c.localSize)} • <span style="color:#aaa;">${localDate}</span></span>
+                        <span><b style="color:#ce93d8;">Servidor SMB:</b> ${formatBytes(c.smbSize)} • <span style="color:#aaa;">${smbDate}</span></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        win.innerHTML = `
+            <!-- HEADER -->
+            <div id="sync-conflict-header" style="background:#1a1f29; border-bottom:1px solid #2a3444; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; cursor:move; user-select:none;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.15rem;">⚠️</span>
+                    <b style="font-size:0.92rem; color:#fff; font-weight:600;">Conflicto de Versión en Servidor Central (SMB)</b>
+                </div>
+                <button id="sync-conflict-close-btn" class="icon-btn-mini" style="color:#f44336; background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:2px 6px;" title="Cerrar (Esc)">✕</button>
+            </div>
+
+            <!-- SUB-BAR -->
+            <div style="background:#11151c; border-bottom:1px solid #232b38; padding:8px 14px; font-size:0.76rem; color:#d8dee9; line-height:1.4;">
+                Se detectó que <b>${conflicts.length} archivo(s)</b> ya existen en el Servidor Central con diferencias de versión o tamaño respecto a tu copia local.<br>
+                <span style="color:#8892b0;">¿Cómo deseas proceder para la subida a Drive?</span>
+            </div>
+
+            <!-- CONFLICTS LIST -->
+            <div style="padding:12px 14px; max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; background:#0b0d11;">
+                ${itemsListHtml}
+            </div>
+
+            <!-- ACTIONS FOOTER -->
+            <div style="background:#131822; border-top:1px solid #232b38; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                <button id="sync-conflict-cancel-btn" style="background:#222733; color:#d8dee9; border:1px solid #333d4e; border-radius:4px; padding:6px 14px; font-size:0.78rem; font-weight:600; cursor:pointer;">
+                    ✕ Cancelar
+                </button>
+                <div style="display:flex; gap:8px;">
+                    <button id="sync-conflict-rename-btn" style="background:#2e7d32; color:#fff; border:1px solid #4caf50; border-radius:4px; padding:6px 14px; font-size:0.78rem; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Guarda una nueva copia correlativa _01 para no pisar el archivo">
+                        📄 Guardar como _01
+                    </button>
+                    <button id="sync-conflict-overwrite-btn" style="background:#d32f2f; color:#fff; border:1px solid #f44336; border-radius:4px; padding:6px 14px; font-size:0.78rem; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Sobrescribe el archivo en el Servidor Central y luego sube a Drive">
+                        ⚠️ Pisar en Servidor y Subir
+                    </button>
+                </div>
+            </div>
+        `;
+
+        overlay.appendChild(win);
+        document.body.appendChild(overlay);
+
+        function cleanup(choice) {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+            resolve(choice);
+        }
+
+        function onKeyDown(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup('cancel');
+            }
+        }
+        document.addEventListener('keydown', onKeyDown);
+
+        win.querySelector('#sync-conflict-close-btn').onclick = () => cleanup('cancel');
+        win.querySelector('#sync-conflict-cancel-btn').onclick = () => cleanup('cancel');
+        win.querySelector('#sync-conflict-rename-btn').onclick = () => cleanup('rename_01');
+        win.querySelector('#sync-conflict-overwrite-btn').onclick = () => cleanup('overwrite');
+        overlay.onclick = (e) => {
+            if (e.target === overlay) cleanup('cancel');
+        };
+    });
+}
+
 function buildItemsForSyncOrder(item, operationType, targetType) {
     const isDir = !!item.isDirectory || !!item.isDir;
     if (item.isSequence && Array.isArray(item.missingFrames) && item.missingFrames.length > 0 && operationType === 'download') {
@@ -724,16 +861,59 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
         dest = `Google Drive (${proj})`;
     }
 
+    // Pre-chequeo de conflictos y fast-lane contra StorNext SMB
+    let conflictResolution = 'default';
+    let finalTransferItems = transferItems;
+
+    try {
+        const chkRes = await fetch('/api/sync/check-upload-conflicts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project: proj, items: transferItems, targetType: 'drive' })
+        }).then(r => r.json());
+
+        if (chkRes.success && chkRes.hasConflicts && chkRes.conflicts && chkRes.conflicts.length > 0) {
+            const userChoice = await showSyncUploadConflictDialog(chkRes.conflicts);
+            if (userChoice === 'cancel' || !userChoice) {
+                return; // Aborta subida
+            } else if (userChoice === 'overwrite') {
+                conflictResolution = 'overwrite';
+            } else if (userChoice === 'rename_01') {
+                const renRes = await fetch('/api/sync/resolve-upload-conflict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project: proj, items: transferItems, conflicts: chkRes.conflicts, action: 'rename_01' })
+                }).then(r => r.json());
+
+                if (renRes.success && renRes.items) {
+                    finalTransferItems = renRes.items;
+                    if (renRes.renamed && renRes.renamed.length > 0) {
+                        const renNames = renRes.renamed.map(r => r.newName).join(', ');
+                        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                            settings.showToast(`Archivos protegidos como copia: ${renNames}`, 'info', 4);
+                        }
+                    }
+                }
+            }
+        } else if (chkRes.success && chkRes.allIdentical) {
+            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                settings.showToast('⚡ Archivos ya idénticos en Servidor SMB. Subiendo directamente a Drive vía Worker Central.', 'info', 4);
+            }
+        }
+    } catch (chkErr) {
+        console.warn('Pre-check conflict check skipped:', chkErr);
+    }
+
     const confirmed = await showSyncConfirmDialog({
         title: 'Subir a Google Drive',
         icon: '☁️',
         actionType: 'upload',
         targetType: 'drive',
-        name: item.name,
+        name: (finalTransferItems[0] && finalTransferItems[0].name) || item.name,
         isDir: isDir,
         isSequence: !!item.isSequence,
         size: totalBytes,
-        src: src,
+        src: (finalTransferItems[0] && finalTransferItems[0].localPath) || src,
         dest: dest,
         srcLabel: 'Disco Local Z:',
         destLabel: 'Google Drive',
@@ -749,7 +929,8 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
             body: JSON.stringify({
                 project: proj,
                 user: (typeof getPipetaCurrentUser === 'function' ? getPipetaCurrentUser() : 'artista'),
-                items: transferItems
+                items: finalTransferItems,
+                conflictResolution
             })
         });
         const data = await res.json();
@@ -828,6 +1009,7 @@ window.indexSyncCatalog = indexSyncCatalog;
 window.indexServerCatalog = indexServerCatalog;
 window.toggleSyncLayer = toggleSyncLayer;
 window.showSyncConfirmDialog = showSyncConfirmDialog;
+window.showSyncUploadConflictDialog = showSyncUploadConflictDialog;
 window.buildItemsForSyncOrder = buildItemsForSyncOrder;
 window.requestDownloadGhostItem = requestDownloadGhostItem;
 window.requestUploadLocalItem = requestUploadLocalItem;

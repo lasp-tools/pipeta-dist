@@ -629,6 +629,9 @@ async function requestDownloadGhostItem(item, e, forcedTargetType) {
 }
 
 async function requestUploadLocalItem(item, e, forcedTargetType) {
+    if (window.requestUploadLocalItem && window.requestUploadLocalItem !== requestUploadLocalItem) {
+        return window.requestUploadLocalItem(item, e, forcedTargetType);
+    }
     if (e) e.stopPropagation();
     const resolvedTarget = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
     if (resolvedTarget === 'drive' && typeof window.checkUserPermission === 'function' && !window.checkUserPermission('explorer_allow_drive')) {

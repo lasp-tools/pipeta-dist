@@ -709,11 +709,14 @@ class SyncQueueUI {
             const currentFile = (progress && progress.currentFile) ? progress.currentFile : '';
 
             const isLocalExecution = order.worker && order.worker.includes('local_');
+            const isTwoStageUploadStage1 = order.twoStage && order.twoStageType === 'upload' && order.currentStage === 1;
+            const isTwoStageUploadStage2 = order.twoStage && order.twoStageType === 'upload' && order.currentStage === 2;
+
             const engineBadge = isProcessing
-                ? (isServerTransfer
+                ? (isTwoStageUploadStage1 || isServerTransfer
                     ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(171,71,188,0.15); border:1px solid #ab47bc; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ce93d8; font-weight:bold;">
                         <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                        <span>Copia en red LAN...</span>
+                        <span>${isTwoStageUploadStage1 ? 'Copia LAN a Servidor (Etapa 1/2)...' : 'Copia en red LAN...'}</span>
                        </div>`
                     : (isLocalExecution
                         ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#00e5ff; font-weight:bold;">
@@ -722,7 +725,7 @@ class SyncQueueUI {
                            </div>`
                         : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
                             <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                            <span>${order.workerHostname ? ('En ' + order.workerHostname) : 'Worker Central'}...</span>
+                            <span>${order.workerHostname ? ('En ' + order.workerHostname) : 'Worker Central'} (Subiendo a Drive)...</span>
                            </div>`))
                 : `<span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>`;
 
@@ -762,7 +765,13 @@ class SyncQueueUI {
                             if (order.type === 'download') {
                                 pathInfoHtml = `<span style="color:#00bcd4;">Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
                             } else if (order.type === 'upload') {
-                                pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                if (isTwoStageUploadStage1) {
+                                    pathInfoHtml = `<span style="color:#4caf50;">Origen (Local Z:):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#ce93d8;">Destino Intermedio (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4; opacity:0.8;">Destino Final (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                } else if (isTwoStageUploadStage2) {
+                                    pathInfoHtml = `<span style="color:#ce93d8;">Origen (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4;">Destino (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                } else {
+                                    pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                }
                             } else if (order.type === 'server_download') {
                                 pathInfoHtml = `<span style="color:#ab47bc;">Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
                             } else if (order.type === 'server_upload') {

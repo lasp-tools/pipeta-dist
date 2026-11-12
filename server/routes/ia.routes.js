@@ -17,6 +17,44 @@ const {
 } = require('../core/sync-paths');
 const { ensureSyncWorkerRunning } = require('./sync.routes');
 
+function getCandidatePhysicalPaths(p) {
+    if (!p || typeof p !== 'string') return [];
+    const norm = p.replace(/\\/g, '/');
+    const list = [norm];
+    if (/^[a-zA-Z]:\//i.test(norm)) {
+        const afterDrive = norm.substring(3);
+        list.push(`D:/Z/${afterDrive}`);
+        list.push(`C:/STORAGE/Z/${afterDrive}`);
+        list.push(`S:/${afterDrive}`);
+        list.push(`\\\\192.168.206.116\\Z\\${afterDrive}`);
+    }
+    return [...new Set(list)];
+}
+
+function resolvePhysicalLocalPath(p, forWrite = false) {
+    if (!p || typeof p !== 'string') return p;
+    const norm = p.replace(/\\/g, '/');
+    if (fs.existsSync(norm)) return norm;
+    if (/^[a-zA-Z]:\//i.test(norm)) {
+        const afterDrive = norm.substring(3);
+        const candidates = [
+            `D:/Z/${afterDrive}`,
+            `C:/STORAGE/Z/${afterDrive}`,
+            `S:/${afterDrive}`
+        ];
+        for (const cand of candidates) {
+            if (fs.existsSync(cand)) return cand;
+        }
+        if (forWrite && /^z:/i.test(norm)) {
+            if (fs.existsSync('D:/Z')) return `D:/Z/${afterDrive}`;
+            if (fs.existsSync('C:/STORAGE/Z')) return `C:/STORAGE/Z/${afterDrive}`;
+            if (fs.existsSync('S:/')) return `S:/${afterDrive}`;
+            if (fs.existsSync('\\\\192.168.206.116\\Z')) return `\\\\192.168.206.116\\Z\\${afterDrive}`;
+        }
+    }
+    return norm;
+}
+
 const router = express.Router();
 
 // --- IA PIPELINE ENDPOINTS ---
@@ -222,42 +260,6 @@ router.get('/api/ia/resolve-shot', (req, res) => {
     const candidate3 = path.normalize(path.join(rootPath, 'episodios', ep, 'secuencias', seq, 'shots', shotId)).replace(/\\/g, '/');
     const candidate4 = path.normalize(path.join(rootPath, ep, seq, shotId)).replace(/\\/g, '/');
 
-    function getCandidatePhysicalPaths(p) {
-        if (!p || typeof p !== 'string') return [];
-        const norm = p.replace(/\\/g, '/');
-        const list = [norm];
-        if (/^[a-zA-Z]:\//i.test(norm)) {
-            const afterDrive = norm.substring(3);
-            list.push(`D:/Z/${afterDrive}`);
-            list.push(`C:/STORAGE/Z/${afterDrive}`);
-            list.push(`S:/${afterDrive}`);
-            list.push(`\\\\192.168.206.116\\Z\\${afterDrive}`);
-        }
-        return [...new Set(list)];
-    }
-
-    function resolvePhysicalLocalPath(p, forWrite = false) {
-        if (!p || typeof p !== 'string') return p;
-        const norm = p.replace(/\\/g, '/');
-        if (fs.existsSync(norm)) return norm;
-        if (/^[a-zA-Z]:\//i.test(norm)) {
-            const afterDrive = norm.substring(3);
-            const candidates = [
-                `D:/Z/${afterDrive}`,
-                `C:/STORAGE/Z/${afterDrive}`,
-                `S:/${afterDrive}`
-            ];
-            for (const cand of candidates) {
-                if (fs.existsSync(cand)) return cand;
-            }
-            if (forWrite && /^z:/i.test(norm)) {
-                if (fs.existsSync('D:/Z')) return `D:/Z/${afterDrive}`;
-                if (fs.existsSync('C:/STORAGE/Z')) return `C:/STORAGE/Z/${afterDrive}`;
-            }
-        }
-        return norm;
-    }
-
     function testPathExistsAnywhere(p) {
         if (!p) return false;
         const norm = p.replace(/\\/g, '/');
@@ -433,14 +435,13 @@ router.post('/api/ia/ingest', (req, res) => {
         }
 
         const effectiveTarget = resolvePhysicalLocalPath(targetFolder, true);
-        if (!fs.existsSync(effectiveTarget)) {
-            fs.mkdirSync(effectiveTarget, { recursive: true });
-        }
+        fs.ensureDirSync(effectiveTarget);
 
         const destFilePath = path.join(effectiveTarget, filename);
 
-        if (sourcePath && fs.existsSync(sourcePath)) {
-            fs.copyFileSync(sourcePath, destFilePath);
+        const effectiveSource = sourcePath ? resolvePhysicalLocalPath(sourcePath, false) : null;
+        if (effectiveSource && fs.existsSync(effectiveSource)) {
+            fs.copyFileSync(effectiveSource, destFilePath);
         } else if (fileData) {
             const buffer = Buffer.from(fileData, 'base64');
             if (buffer.length === 0) {

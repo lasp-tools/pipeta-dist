@@ -1,9 +1,20 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.15",
+        "version": "v1.2.16",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Claridad Total en Subidas a Drive en 2 Etapas:</b> La tarjeta de transferencia distingue con exactitud cada fase. En Etapa 1 se indica 'Copia LAN a Servidor (Etapa 1/2)...' con indicación precisa de Origen (Local Z:), Destino Intermedio (Servidor SMB) y Destino Final (Google Drive). En Etapa 2 se muestra el Worker Central activo subiendo a Google Drive.",
+            "<b>Detección de Conflictos y Fast-Lane (Local vs Servidor SMB):</b> Antes de subir a Google Drive, si los archivos ya existen en StorNext SMB con idéntico tamaño y fecha, se omite automáticamente la copia LAN y se inicia de inmediato la subida a Drive sin esperas.",
+            "<b>Panel de Resolución ante Discrepancias de Versión:</b> Si el Servidor SMB contiene una versión más vieja, más nueva o de diferente tamaño, se presenta un diálogo claro con los detalles de fecha y peso ofreciendo tres opciones directas: Pisar en Servidor y Subir, Guardar como _01 (generando una copia protegida) o Cancelar.",
+            "<b>Omisión Inteligente de Archivos Idénticos en Carpetas:</b> En transferencias de carpetas completas, los archivos que ya coincidan exactamente en el servidor son omitidos de la copia física en red, transfiriendo únicamente los archivos nuevos o actualizados."
+        ]
+    },
+    {
+        "version": "v1.2.15",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Carpeta de Salida IA Ingest Excluyente (WIP / Ref / Export):</b> Los botones de selección de carpeta de destino funcionan de manera exclusiva actualizando inmediatamente todos los ítems de la cola hacia la carpeta elegida (e.g. Export -> /IA/export/), garantizando que las entregas no se vuelquen accidentalmente en WIP.",
             "<b>Resolución de Versiones en Discos Virtuales y Munro:</b> Detección física en puestos con unidades Z virtualizadas (D:/Z y C:/STORAGE/Z) y servidor central S:, reconociendo todas las versiones previas en disco y sugiriendo la versión siguiente correcta.",
