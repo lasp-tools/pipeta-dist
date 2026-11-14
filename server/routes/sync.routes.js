@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const os = require('os');
 const fs = require('fs-extra');
+const { writeJsonAtomicSync } = require('../core/json-atomic');
 const { spawn, exec, execSync } = require('child_process');
 const catalogGenerator = require('../sync_catalog_generator');
 const {
@@ -21,7 +22,8 @@ const {
     getCachedEnvState,
     setLocationMode,
     PIPETA_SERVER_TOKEN,
-    getPipetaServerCandidateUrls
+    getPipetaServerCandidateUrls,
+    isFreelanceLocked
 } = require('../core/env-detector');
 const {
     getLocalSyncCacheDir,
@@ -41,78 +43,14 @@ const {
     ordersFileMemoryCache,
     ordersResponseCache
 } = require('../core/sync-paths');
+const { activeLocalTransfers, runLocalTransferOrder } = require('../core/local-transfer');
+const { resolveSmbCandidate, classifyFileComparison, getNextAvailableSuffixPath } = require('../core/catalog-paths');
 
 const router = express.Router();
 
-const activeLocalTransfers = new Map();
-const ensuredDirsCache = new Set();
 const pulledOrdersToLocal = new Set();
-
-function ensureDirCached(dir) {
-    if (!dir) return;
-    try {
-        if (!ensuredDirsCache.has(dir) || !fs.existsSync(dir)) {
-            fs.ensureDirSync(dir);
-            ensuredDirsCache.add(dir);
-        }
-    } catch (e) {
-        try {
-            fs.mkdirSync(dir, { recursive: true });
-            ensuredDirsCache.add(dir);
-        } catch (err2) {
-            console.error('[FS] Error creando directorio ' + dir + ':', err2.message);
-        }
-    }
-}
-
-function streamCopyFile(srcFile, destFile, onChunk, abortSignal = null) {
-    return new Promise((resolve, reject) => {
-        if (abortSignal && abortSignal.aborted) {
-            return reject(new Error('TRANSF_ABORTED'));
-        }
-        try {
-            ensureDirCached(path.dirname(destFile));
-            const readStream = fs.createReadStream(srcFile, { highWaterMark: 1024 * 1024 * 2 });
-            const writeStream = fs.createWriteStream(destFile, { highWaterMark: 1024 * 1024 * 2 });
-
-            const onAbort = () => {
-                try { readStream.destroy(); } catch (e) {}
-                try { writeStream.destroy(); } catch (e) {}
-                try { if (fs.existsSync(destFile)) fs.removeSync(destFile); } catch (e) {}
-                reject(new Error('TRANSF_ABORTED'));
-            };
-
-            if (abortSignal) {
-                abortSignal.addEventListener('abort', onAbort, { once: true });
-            }
-
-            readStream.on('data', (chunk) => {
-                if (onChunk) onChunk(chunk.length);
-            });
-
-            readStream.on('error', (err) => {
-                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
-                try { writeStream.destroy(); } catch (e) {}
-                reject(err);
-            });
-
-            writeStream.on('error', (err) => {
-                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
-                try { readStream.destroy(); } catch (e) {}
-                reject(err);
-            });
-
-            writeStream.on('finish', () => {
-                if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
-                resolve();
-            });
-
-            readStream.pipe(writeStream);
-        } catch (err) {
-            reject(err);
-        }
-    });
-}
+const runLocalTransfer = (orderId, orderData, filePath) =>
+    runLocalTransferOrder(orderId, orderData, filePath, { ensureSyncWorkerRunning, catalogGenerator });
 
 async function autoPullCompletedDownloadToVSub(order) {
     if (!order || order.status !== 'completed' || order.type !== 'download') return;
@@ -200,400 +138,9 @@ function triggerStage2LocalPull(orderData) {
     const ordersDir = getOrdersDir();
     const filePath = path.join(ordersDir, `${orderData.id}.json`);
     saveOrderInCandidateDirs(orderData.id, orderData);
-    runLocalTransferOrder(orderData.id, orderData, filePath).catch(err => {
+    runLocalTransfer(orderData.id, orderData, filePath).catch(err => {
         console.error(`[TWO-STAGE DOWNLOAD] Error en Etapa 2/2 (${orderData.id}):`, err);
     });
-}
-
-async function runLocalTransferOrder(orderId, orderData, filePath) {
-    const startTime = Date.now();
-    const abortController = new AbortController();
-    const candidateDirs = getAllOrdersCandidateDirs();
-    const activeTransfer = {
-        abortController,
-        isCancelled: false,
-        currentDestFile: null,
-        orderData,
-        filePath,
-        candidateDirs
-    };
-    activeLocalTransfers.set(orderId, activeTransfer);
-
-    orderData.status = 'processing';
-    orderData.startedAt = new Date().toISOString();
-    orderData.worker = `local_${os.hostname()}`;
-
-    let inFlightWrite = null;
-    const persistOrder = (isTerminal = false) => {
-        const jsonStr = JSON.stringify(orderData, null, 2);
-        for (const dir of candidateDirs) {
-            const p = path.join(dir, `${orderId}.json`);
-            ordersFileMemoryCache.set(p, {
-                mtimeMs: Date.now(),
-                checkedAt: Date.now(),
-                isTerminal,
-                data: JSON.parse(jsonStr)
-            });
-        }
-        ordersResponseCache.time = 0;
-
-        try {
-            const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
-            fs.ensureDirSync(localReqDir);
-            fs.writeFileSync(path.join(localReqDir, `${orderId}.json`), jsonStr, 'utf8');
-        } catch (e) {}
-
-        const targetDirs = candidateDirs.filter(dir => {
-            const localReqDir = path.join(getLocalSyncCacheDir(), 'requests');
-            return path.resolve(dir).toLowerCase() !== path.resolve(localReqDir).toLowerCase();
-        });
-
-        if (isTerminal) {
-            inFlightWrite = null;
-            for (const dir of targetDirs) {
-                try {
-                    const finalPath = path.join(dir, `${orderId}.json`);
-                    const tmpPath = path.join(dir, `${orderId}.tmp.${Date.now()}`);
-                    fs.writeFileSync(tmpPath, jsonStr, 'utf8');
-                    try {
-                        fs.renameSync(tmpPath, finalPath);
-                    } catch (renErr) {
-                        fs.writeFileSync(finalPath, jsonStr, 'utf8');
-                        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {}
-                    }
-                } catch (e) {}
-            }
-        } else if (!inFlightWrite) {
-            inFlightWrite = Promise.all(targetDirs.map(async (dir) => {
-                try {
-                    await fs.writeFile(path.join(dir, `${orderId}.json`), jsonStr, 'utf8');
-                } catch (e) {}
-            })).finally(() => { inFlightWrite = null; });
-        }
-    };
-
-    persistOrder(false);
-
-    const env = getCachedEnvState() || {};
-    const isNotRealServer = !env?.zInfo?.isRealServer;
-    const uncRoot = isNotRealServer ? getServerUncRoot() : null;
-    if (isNotRealServer && uncRoot) {
-        ensureServerUncAccess(uncRoot);
-    }
-
-    const isDownload = orderData.type === 'server_download' || (orderData.twoStage && orderData.twoStageType === 'download' && orderData.currentStage === 2);
-    const itemsPlan = [];
-    let grandTotalBytes = 0;
-
-    for (const it of orderData.items) {
-        let src = '';
-        let dest = '';
-
-        if (isDownload) {
-            src = (it.serverPath || '').replace(/\\/g, '/');
-            if (!src || src.toLowerCase().startsWith('g:/') || src.toLowerCase().includes('unidades compartidas')) {
-                const cand = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
-                src = (isNotRealServer && uncRoot) ? cand.replace(/^[a-zA-Z]:/i, uncRoot) : cand;
-            }
-            if (isNotRealServer && uncRoot && src.toLowerCase().startsWith('z:/')) {
-                src = src.replace(/^z:/i, uncRoot);
-            }
-            dest = (it.targetLocalPath || it.localPath || it.path || '').replace(/\\/g, '/');
-            if (dest.toLowerCase().startsWith('z:/') && !fs.existsSync('Z:/') && fs.existsSync('D:/Z')) {
-                dest = dest.replace(/^z:/i, 'D:/Z');
-            }
-        } else {
-            src = (it.localPath || it.path || '').replace(/\\/g, '/');
-            if (src.toLowerCase().startsWith('z:/') && !fs.existsSync('Z:/') && fs.existsSync('D:/Z')) {
-                src = src.replace(/^z:/i, 'D:/Z');
-            }
-            dest = (it.targetServerPath || it.serverPath || '').replace(/\\/g, '/');
-            if (!dest) {
-                const cand = (it.localPath || it.path || '').replace(/\\/g, '/');
-                dest = (isNotRealServer && uncRoot) ? cand.replace(/^[a-zA-Z]:/i, uncRoot) : cand;
-            }
-            if (isNotRealServer && uncRoot && dest.toLowerCase().startsWith('z:/')) {
-                dest = dest.replace(/^z:/i, uncRoot);
-            }
-        }
-
-        if (!src || !dest) continue;
-        src = src.replace(/\\/g, '/');
-        dest = dest.replace(/\\/g, '/');
-
-        let isDir = !!it.isDir || !!it.isDirectory;
-        let filesList = [];
-        let itemBytes = 0;
-
-        try {
-            if (fs.existsSync(src)) {
-                const st = fs.statSync(src);
-                isDir = st.isDirectory();
-                if (isDir) {
-                    const dirData = getDirectoryFilesAndSize(src);
-                    filesList = dirData.files;
-                    itemBytes = dirData.totalBytes;
-                } else {
-                    itemBytes = st.size;
-                    filesList = [{ fullPath: src, relPath: path.basename(src), size: itemBytes }];
-                }
-            }
-        } catch (e) {
-            console.warn(`[LOCAL TRANSFER] Error al analizar ${src}:`, e.message);
-        }
-
-        grandTotalBytes += itemBytes;
-        itemsPlan.push({ src, dest, isDir, filesList, itemBytes, it });
-    }
-
-    let overallTransferredBytes = 0;
-    let lastProgressWrite = 0;
-    let windowStartTime = Date.now();
-    let windowBytesTransferred = 0;
-    let lastSpeed = 0;
-
-    const updateProgress = (force = false, currentFileName = '', itemIndex = 1) => {
-        if (activeTransfer.isCancelled || abortController.signal.aborted) return;
-        const now = Date.now();
-        if (!force && (now - lastProgressWrite < 800)) return;
-
-        const timeDiffSec = (now - windowStartTime) / 1000;
-        if (timeDiffSec >= 0.8) {
-            lastSpeed = Math.round(windowBytesTransferred / timeDiffSec);
-            windowBytesTransferred = 0;
-            windowStartTime = now;
-        }
-
-        const avgSpeed = (now - startTime > 200)
-            ? Math.round(overallTransferredBytes / Math.max(0.2, (now - startTime) / 1000))
-            : lastSpeed;
-        const currentSpeed = lastSpeed > 0 ? lastSpeed : avgSpeed;
-
-        const remainingBytes = Math.max(0, grandTotalBytes - overallTransferredBytes);
-        const etaSeconds = (currentSpeed > 0 && remainingBytes > 0) ? Math.round(remainingBytes / currentSpeed) : 0;
-        const pct = grandTotalBytes > 0
-            ? Math.min(100, Math.round((overallTransferredBytes / grandTotalBytes) * 1000) / 10)
-            : 0;
-
-        orderData.progress = {
-            percentage: pct,
-            transferredBytes: overallTransferredBytes,
-            totalBytes: grandTotalBytes,
-            speedBytesPerSec: currentSpeed,
-            speedFormatted: formatSpeed(currentSpeed),
-            etaSeconds,
-            currentFile: currentFileName,
-            itemIndex,
-            itemsTotal: itemsPlan.length
-        };
-
-        lastProgressWrite = now;
-        persistOrder(false);
-    };
-
-    const errors = [];
-    try {
-        for (let i = 0; i < itemsPlan.length; i++) {
-            if (activeTransfer.isCancelled || abortController.signal.aborted) {
-                throw new Error('TRANSF_ABORTED');
-            }
-
-            const plan = itemsPlan[i];
-            const normSrc = path.resolve(plan.src.replace(/\//g, '\\')).toLowerCase();
-            const normDest = path.resolve(plan.dest.replace(/\//g, '\\')).toLowerCase();
-
-            if (normSrc === normDest) {
-                console.log(`[LOCAL TRANSFER] Origen y destino idénticos, omitiendo copia física: ${plan.src}`);
-                overallTransferredBytes += plan.itemBytes;
-                updateProgress(true, path.basename(plan.src), i + 1);
-                continue;
-            }
-
-            if (plan.isDir) {
-                ensureDirCached(plan.dest);
-            }
-
-            let lastRemoteCancelCheck = 0;
-            const checkRemoteCancel = async () => {
-                if (activeTransfer.isCancelled || abortController.signal.aborted) {
-                    throw new Error('TRANSF_ABORTED');
-                }
-                const now = Date.now();
-                if (now - lastRemoteCancelCheck > 2500) {
-                    lastRemoteCancelCheck = now;
-                    try {
-                        for (const dir of candidateDirs) {
-                            const p = path.join(dir, `${orderId}.json`);
-                            if (fs.existsSync(p)) {
-                                const fresh = fs.readJsonSync(p);
-                                if (fresh && fresh.status === 'cancelled') {
-                                    activeTransfer.isCancelled = true;
-                                    abortController.abort();
-                                    throw new Error('TRANSF_ABORTED');
-                                }
-                            }
-                        }
-                    } catch (chkErr) {
-                        if (chkErr.message === 'TRANSF_ABORTED') throw chkErr;
-                    }
-                }
-            };
-
-            const CONCURRENCY = Math.min(8, Math.max(1, plan.filesList.length));
-            let fileIndex = 0;
-
-            const runWorker = async () => {
-                while (fileIndex < plan.filesList.length) {
-                    if (activeTransfer.isCancelled || abortController.signal.aborted) {
-                        throw new Error('TRANSF_ABORTED');
-                    }
-
-                    await checkRemoteCancel();
-
-                    const currentIndex = fileIndex++;
-                    if (currentIndex >= plan.filesList.length) break;
-                    const file = plan.filesList[currentIndex];
-                    if (!file) break;
-
-                    const lowerName = path.basename(file.relPath).toLowerCase();
-                    if (lowerName === 'thumbs.db' || lowerName === 'desktop.ini' || lowerName === '.ds_store' || lowerName.endsWith('.tmp')) {
-                        continue;
-                    }
-
-                    const targetFilePath = plan.isDir
-                        ? path.join(plan.dest, file.relPath).replace(/\\/g, '/')
-                        : plan.dest;
-
-                    activeTransfer.currentDestFile = targetFilePath;
-
-                    // Omitir copia física si el archivo de destino en el servidor SMB ya existe con idéntico tamaño y fecha
-                    if (orderData.conflictResolution !== 'overwrite') {
-                        try {
-                            if (fs.existsSync(targetFilePath)) {
-                                const stDest = fs.statSync(targetFilePath);
-                                if (stDest.size === file.size && (file.mtimeMs ? Math.abs(stDest.mtimeMs - file.mtimeMs) < 3000 : true)) {
-                                    overallTransferredBytes += file.size;
-                                    windowBytesTransferred += file.size;
-                                    updateProgress(false, path.basename(file.relPath), i + 1);
-                                    continue;
-                                }
-                            }
-                        } catch (stErr) {}
-                    }
-
-                    try {
-                        await streamCopyFile(file.fullPath, targetFilePath, (chunkBytes) => {
-                            overallTransferredBytes += chunkBytes;
-                            windowBytesTransferred += chunkBytes;
-                            updateProgress(false, path.basename(file.relPath), i + 1);
-                        }, abortController.signal);
-                    } catch (copyErr) {
-                        if (copyErr.message === 'TRANSF_ABORTED' || activeTransfer.isCancelled) {
-                            throw copyErr;
-                        }
-                        if (lowerName === 'thumbs.db' || lowerName === 'desktop.ini' || lowerName === '.ds_store') {
-                            console.warn(`[LOCAL TRANSFER] Omitiendo archivo de sistema bloqueado: ${file.relPath}`);
-                        } else {
-                            errors.push({ file: file.relPath, error: copyErr.message });
-                            console.error(`[LOCAL TRANSFER] Error copiando ${file.fullPath}:`, copyErr.message);
-                        }
-                    } finally {
-                        activeTransfer.currentDestFile = null;
-                    }
-                }
-            };
-
-            const workers = [];
-            for (let w = 0; w < CONCURRENCY; w++) {
-                workers.push(runWorker());
-            }
-
-            await Promise.all(workers);
-        }
-
-        if (activeTransfer.isCancelled || abortController.signal.aborted) {
-            throw new Error('TRANSF_ABORTED');
-        }
-
-        if (orderData.twoStage && errors.length === 0) {
-            if (orderData.twoStageType === 'upload' || !orderData.twoStageType) {
-                console.log(`[TWO-STAGE UPLOAD] ✅ Etapa 1/2 (Local -> SMB) completada para ${orderId}. Transfiriendo a Etapa 2/2 (Worker Central -> Drive)...`);
-                orderData.currentStage = 2;
-                orderData.stageLabel = 'Etapa 2/2: En cola con Worker Central (Subiendo a Drive)...';
-                orderData.status = 'pending';
-                orderData.targetRole = 'central_worker';
-                delete orderData.targetHost;
-                delete orderData.worker;
-                orderData.stage1CompletedAt = new Date().toISOString();
-                orderData.progress = {
-                    percentage: 0,
-                    speedFormatted: 'En cola central...',
-                    transferredBytes: 0,
-                    totalBytes: grandTotalBytes,
-                    currentFile: 'Esperando turno de worker central'
-                };
-                activeLocalTransfers.delete(orderId);
-                persistOrder(true);
-                ensureSyncWorkerRunning();
-                return;
-            } else if (orderData.twoStageType === 'download') {
-                console.log(`[TWO-STAGE DOWNLOAD] ✅ Etapa 2/2 (SMB -> Local) completada para ${orderId}. Archivos ya disponibles en Z: local.`);
-                orderData.stageLabel = 'Descarga completada en disco local';
-            }
-        }
-
-        orderData.status = errors.length === 0 ? 'completed' : (errors.length < itemsPlan.length ? 'completed_with_errors' : 'failed');
-        orderData.completedAt = new Date().toISOString();
-        orderData.durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-        if (orderData.progress) {
-            orderData.progress.percentage = 100;
-            orderData.progress.transferredBytes = grandTotalBytes;
-            orderData.progress.speedFormatted = 'Completado';
-            orderData.progress.etaSeconds = 0;
-        }
-        if (errors.length > 0) orderData.errors = errors;
-
-        persistOrder(true);
-
-        serverDirCache.clear();
-        rcloneDirCache.clear();
-        if (typeof catalogGenerator.clearMemoryCaches === 'function') {
-            catalogGenerator.clearMemoryCaches();
-        }
-
-        if (orderData.type === 'server_upload' && typeof catalogGenerator.refreshSubCatalog === 'function') {
-            for (const plan of itemsPlan) {
-                try {
-                    const folder = path.dirname(plan.dest).replace(/\\/g, '/');
-                    catalogGenerator.refreshSubCatalog(orderData.project, folder, 'server').catch(() => {});
-                } catch (e) {}
-            }
-        }
-    } catch (err) {
-        if (err.message === 'TRANSF_ABORTED' || activeTransfer.isCancelled) {
-            console.log(`[LOCAL TRANSFER] Orden ${orderId} CANCELADA con éxito. Deteniendo streams y limpiando.`);
-            orderData.status = 'cancelled';
-            orderData.cancelledAt = new Date().toISOString();
-            if (orderData.progress) {
-                orderData.progress.speedFormatted = 'Cancelado';
-                orderData.progress.etaSeconds = 0;
-            }
-            if (activeTransfer.currentDestFile) {
-                try { if (fs.existsSync(activeTransfer.currentDestFile)) fs.removeSync(activeTransfer.currentDestFile); } catch (e) {}
-            }
-            persistOrder(true);
-            return;
-        }
-
-        console.error(`[LOCAL TRANSFER ORDER] Error en ${orderId}:`, err);
-        orderData.status = 'failed';
-        orderData.error = err.message;
-        orderData.completedAt = new Date().toISOString();
-        orderData.durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-        persistOrder(true);
-    } finally {
-        activeLocalTransfers.delete(orderId);
-    }
 }
 
 function checkLocalWorkerRunning() {
@@ -711,7 +258,7 @@ function sanitizeZombieOrders(force = false) {
                             content.currentSpeed = 'Interrumpido';
                             content.updatedAt = new Date().toISOString();
                             try {
-                                fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf8');
+                                writeJsonAtomicSync(filePath, content, 2);
                                 console.log(`[ZOMBIE CLEANUP] Orden huérfana local ${content.id} saneada -> 'interrupted'`);
                             } catch (writeErr) {
                                 console.warn(`[ZOMBIE CLEANUP] No se pudo actualizar orden ${content.id}:`, writeErr.message);
@@ -732,7 +279,7 @@ function sanitizeZombieOrders(force = false) {
                             content.error = 'Orden pendiente residual expirada (más de 3 horas sin worker)';
                             content.updatedAt = new Date().toISOString();
                             try {
-                                fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf8');
+                                writeJsonAtomicSync(filePath, content, 2);
                                 console.log(`[ZOMBIE CLEANUP] Orden pendiente residual ${content.id} expirada -> 'cancelled'`);
                             } catch (writeErr) {
                                 console.warn(`[ZOMBIE CLEANUP] No se pudo actualizar orden ${content.id}:`, writeErr.message);
@@ -817,7 +364,7 @@ async function syncOrdersWithCentralMaster() {
                                         localOrder.status = cOrder.status;
                                         if (cOrder.progress) localOrder.progress = cOrder.progress;
                                         localOrder.updatedAt = new Date().toISOString();
-                                        fs.writeJsonSync(p, localOrder, { spaces: 2 });
+                                        writeJsonAtomicSync(p, localOrder, 2);
                                         ordersFileMemoryCache.delete(p);
                                     }
                                 } else if (localOrder.status === 'pending') {
@@ -829,7 +376,7 @@ async function syncOrdersWithCentralMaster() {
                                         localOrder.cancelledAt = new Date().toISOString();
                                         localOrder.cancelledBy = 'server_sync_cleanup';
                                         localOrder.error = 'No encontrada en servidor central (finalizada o eliminada)';
-                                        fs.writeJsonSync(p, localOrder, { spaces: 2 });
+                                        writeJsonAtomicSync(p, localOrder, 2);
                                         ordersFileMemoryCache.delete(p);
                                         console.log(`[CENTRAL SYNC] Orden local huérfana ${localOrder.id} saneada -> 'cancelled'`);
                                     }
@@ -949,6 +496,9 @@ router.post('/api/sync/set-location-mode', async (req, res) => {
         const { mode } = req.body;
         if (!['auto', 'studio', 'home'].includes(mode)) {
             return res.status(400).json({ success: false, error: 'Modo inválido. Valores permitidos: auto, studio, home' });
+        }
+        if (isFreelanceLocked() && mode !== 'home') {
+            return res.status(403).json({ success: false, freelanceLocked: true, error: 'Instalación bloqueada en Modo Freelance (requiere usuario Admin para desbloquear)' });
         }
         setLocationMode(mode);
         if (mode === 'studio') {
@@ -1494,7 +1044,7 @@ router.post('/api/sync/request-download', async (req, res) => {
                 it.serverPath = targetLocal.replace(/^[a-zA-Z]:/i, uncRoot);
             });
             saveOrderInCandidateDirs(orderId, orderData);
-            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+            runLocalTransfer(orderId, orderData, filePath).catch(err => {
                 console.error(`[LOCAL DOWNLOAD] Error en orden optimizada ${orderId}:`, err);
             });
             return res.json({ success: true, orderId, count: items.length, status: 'processing', priority, source: 'stornext_fast_lane' });
@@ -1502,7 +1052,7 @@ router.post('/api/sync/request-download', async (req, res) => {
 
         if (isServer) {
             console.log(`[SYNC ORDER] Orden de descarga de SERVIDOR iniciada localmente: ${orderId} (${items.length} items) [Prioridad: ${priority}]`);
-            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+            runLocalTransfer(orderId, orderData, filePath).catch(err => {
                 console.error(`[LOCAL DOWNLOAD] Error en orden ${orderId}:`, err);
             });
             res.json({ success: true, orderId, count: items.length, status: 'processing', priority });
@@ -1594,7 +1144,7 @@ router.post('/api/sync/request-upload', async (req, res) => {
         if (isServer) {
             const filePath = saveOrderInCandidateDirs(orderId, orderData);
             console.log(`[SYNC ORDER] Orden de subida a SERVIDOR iniciada localmente: ${orderId} (${items.length} items) [Prioridad: ${priority}]`);
-            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+            runLocalTransfer(orderId, orderData, filePath).catch(err => {
                 console.error(`[LOCAL UPLOAD] Error en orden ${orderId}:`, err);
             });
             return res.json({ success: true, orderId, count: items.length, status: 'processing', priority });
@@ -1616,30 +1166,46 @@ router.post('/api/sync/request-upload', async (req, res) => {
             let allExistOnSmbAndIdentical = false;
             if (req.body.conflictResolution !== 'overwrite') {
                 try {
-                    let totalChecked = 0;
-                    let identicalChecked = 0;
+                    const pairsToCheck = [];
                     for (const it of sanitizedItems) {
                         const localP = (it.localPath || it.path || '').replace(/\\/g, '/');
                         if (!localP || !fs.existsSync(localP)) continue;
                         const isDir = it.isDir || fs.statSync(localP).isDirectory();
                         if (!isDir) {
-                            totalChecked++;
-                            const sCand = it.targetServerPath;
-                            if (fs.existsSync(sCand) && fs.statSync(sCand).size === fs.statSync(localP).size) {
-                                identicalChecked++;
-                            }
+                            pairsToCheck.push({ localFile: localP, smbFile: it.targetServerPath, knownSize: null });
                         } else {
                             const scan = getDirectoryFilesAndSize(localP);
                             for (const f of scan.files) {
-                                totalChecked++;
-                                const smbFile = f.fullPath.replace(/^[a-zA-Z]:/i, uncRoot);
-                                if (fs.existsSync(smbFile) && fs.statSync(smbFile).size === f.size) {
-                                    identicalChecked++;
-                                }
+                                pairsToCheck.push({
+                                    localFile: f.fullPath,
+                                    smbFile: f.fullPath.replace(/^[a-zA-Z]:/i, uncRoot),
+                                    knownSize: f.size
+                                });
                             }
                         }
                     }
-                    if (totalChecked > 0 && identicalChecked === totalChecked) {
+
+                    let identicalChecked = 0;
+                    let failedAny = false;
+                    const FL_BATCH = 32;
+                    for (let i = 0; i < pairsToCheck.length && !failedAny; i += FL_BATCH) {
+                        const batch = pairsToCheck.slice(i, i + FL_BATCH);
+                        await Promise.all(batch.map(async ({ localFile, smbFile, knownSize }) => {
+                            if (failedAny) return;
+                            try {
+                                const smbStat = await fs.promises.stat(smbFile);
+                                const locSize = knownSize !== null ? knownSize : (await fs.promises.stat(localFile)).size;
+                                if (smbStat.size === locSize) {
+                                    identicalChecked++;
+                                } else {
+                                    failedAny = true;
+                                }
+                            } catch (e) {
+                                failedAny = true;
+                            }
+                        }));
+                    }
+                    if (pairsToCheck.length > 0 && !failedAny && identicalChecked === pairsToCheck.length) {
                         allExistOnSmbAndIdentical = true;
                     }
                 } catch (e) {
@@ -1675,7 +1241,7 @@ router.post('/api/sync/request-upload', async (req, res) => {
 
             const filePath = saveOrderInCandidateDirs(orderId, orderData);
             console.log(`[SYNC ORDER] 🚀 Subida a Drive en 2 ETAPAS iniciada: ${orderId} (${items.length} items) - Etapa 1: Local -> Z SMB`);
-            runLocalTransferOrder(orderId, orderData, filePath).catch(err => {
+            runLocalTransfer(orderId, orderData, filePath).catch(err => {
                 console.error(`[TWO-STAGE UPLOAD] Error en Etapa 1 (${orderId}):`, err);
             });
             return res.json({ success: true, orderId, count: items.length, status: 'processing', priority, twoStage: true });
@@ -1716,53 +1282,61 @@ router.post('/api/sync/check-upload-conflicts', async (req, res) => {
         const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
         if (uncRoot) ensureServerUncAccess(uncRoot);
 
-        function resolveSmbPath(localP) {
-            const clean = (localP || '').replace(/\\/g, '/');
-            const sCand = clean.replace(/^[a-zA-Z]:/i, 'S:');
-            const uncCand = clean.replace(/^[a-zA-Z]:/i, uncRoot);
-            if (fs.existsSync(sCand)) return sCand;
-            if (fs.existsSync(uncCand)) return uncCand;
-            if (fs.existsSync('S:/INTERNO')) return sCand;
-            return uncCand;
-        }
-
         const conflicts = [];
         let totalFiles = 0;
         let identicalCount = 0;
         let missingCount = 0;
+        const filesToCheck = [];
 
         for (const it of items) {
             const localP = (it.localPath || it.path || '').replace(/\\/g, '/');
             if (!localP || !fs.existsSync(localP)) continue;
 
             const isDir = it.isDir || fs.statSync(localP).isDirectory();
-
             if (!isDir) {
-                totalFiles++;
-                const smbP = resolveSmbPath(localP);
-                if (!fs.existsSync(smbP)) {
-                    missingCount++;
-                    continue;
+                filesToCheck.push({
+                    localFilePath: localP,
+                    displayRelPath: path.basename(localP),
+                    displayName: it.name || path.basename(localP)
+                });
+            } else {
+                const dirScan = getDirectoryFilesAndSize(localP);
+                for (const f of dirScan.files) {
+                    filesToCheck.push({
+                        localFilePath: f.fullPath,
+                        displayRelPath: f.relPath,
+                        displayName: path.basename(f.relPath)
+                    });
                 }
+            }
+        }
 
+        const BATCH_SIZE = 32;
+        for (let i = 0; i < filesToCheck.length; i += BATCH_SIZE) {
+            const batch = filesToCheck.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(async ({ localFilePath, displayRelPath, displayName }) => {
+                totalFiles++;
+                const smbP = resolveSmbCandidate(localFilePath, uncRoot);
                 try {
-                    const stLocal = fs.statSync(localP);
-                    const stSmb = fs.statSync(smbP);
-                    const mtimeDiff = stLocal.mtimeMs - stSmb.mtimeMs;
-
-                    if (stLocal.size === stSmb.size && Math.abs(mtimeDiff) < 3000) {
+                    const [stLocal, stSmb] = await Promise.all([
+                        fs.promises.stat(localFilePath),
+                        fs.promises.stat(smbP)
+                    ]);
+                    // Si tienen exactamente el mismo tamaño (>0), es el mismo archivo aunque la copia SMB tenga otro mtime
+                    if (stLocal.size === stSmb.size && stLocal.size > 0) {
+                        identicalCount++;
+                        return;
+                    }
+                    const status = classifyFileComparison(stLocal, stSmb);
+                    if (status === 'identical') {
                         identicalCount++;
                     } else {
-                        let conflictType = 'size_mismatch';
-                        if (mtimeDiff > 3000) conflictType = 'local_newer';
-                        else if (mtimeDiff < -3000) conflictType = 'smb_newer';
-
                         conflicts.push({
-                            name: it.name || path.basename(localP),
-                            relativePath: path.basename(localP),
-                            localPath: localP,
+                            name: displayName || path.basename(localFilePath),
+                            relativePath: displayRelPath || path.basename(localFilePath),
+                            localPath: localFilePath,
                             smbPath: smbP,
-                            type: conflictType,
+                            type: status,
                             localSize: stLocal.size,
                             smbSize: stSmb.size,
                             localMtime: new Date(stLocal.mtimeMs).toISOString(),
@@ -1772,45 +1346,7 @@ router.post('/api/sync/check-upload-conflicts', async (req, res) => {
                 } catch (e) {
                     missingCount++;
                 }
-            } else {
-                const dirScan = getDirectoryFilesAndSize(localP);
-                for (const f of dirScan.files) {
-                    totalFiles++;
-                    const smbFilePath = resolveSmbPath(f.fullPath);
-                    if (!fs.existsSync(smbFilePath)) {
-                        missingCount++;
-                        continue;
-                    }
-
-                    try {
-                        const stLocal = fs.statSync(f.fullPath);
-                        const stSmb = fs.statSync(smbFilePath);
-                        const mtimeDiff = stLocal.mtimeMs - stSmb.mtimeMs;
-
-                        if (stLocal.size === stSmb.size && Math.abs(mtimeDiff) < 3000) {
-                            identicalCount++;
-                        } else {
-                            let conflictType = 'size_mismatch';
-                            if (mtimeDiff > 3000) conflictType = 'local_newer';
-                            else if (mtimeDiff < -3000) conflictType = 'smb_newer';
-
-                            conflicts.push({
-                                name: path.basename(f.relPath),
-                                relativePath: f.relPath,
-                                localPath: f.fullPath,
-                                smbPath: smbFilePath,
-                                type: conflictType,
-                                localSize: stLocal.size,
-                                smbSize: stSmb.size,
-                                localMtime: new Date(stLocal.mtimeMs).toISOString(),
-                                smbMtime: new Date(stSmb.mtimeMs).toISOString()
-                            });
-                        }
-                    } catch (e) {
-                        missingCount++;
-                    }
-                }
-            }
+            }));
         }
 
         const allIdentical = totalFiles > 0 && identicalCount === totalFiles;
@@ -1834,6 +1370,297 @@ router.post('/api/sync/check-upload-conflicts', async (req, res) => {
     }
 });
 
+/**
+ * Cache en memoria para sets de rutas de Drive por subcatálogo (evita re-parsear JSONs de 20+ MB en cada clic).
+ */
+const modularDriveSetCache = new Map();
+const modularDriveSetInFlight = new Map();
+
+function normDriveLookupPath(p) {
+    return (p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * Obtiene o pre-calienta en memoria el Set de rutas locales presentes en Drive para una carpeta/proyecto.
+ * @param {string} project
+ * @param {string} cleanFolder
+ * @returns {Promise<Set<string>|null>}
+ */
+async function getOrWarmDriveSet(project, cleanFolder) {
+    if (!project) return null;
+    const canonProj = (typeof catalogGenerator.resolveCanonicalProjectName === 'function')
+        ? catalogGenerator.resolveCanonicalProjectName(project)
+        : project;
+    const modDir = canonProj ? path.join(getLocalSyncCacheDir(), 'projects', canonProj, 'drive') : null;
+    const normClean = normDriveLookupPath(cleanFolder);
+
+    if (modDir && fs.existsSync(modDir)) {
+        const manifestPath = path.join(modDir, 'manifest.json');
+        let subFiles = [];
+        if (fs.existsSync(manifestPath)) {
+            try {
+                const man = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+                const subs = man && man.subCatalogs ? Object.values(man.subCatalogs) : [];
+                const matched = subs.filter(s => {
+                    const pref = (s.prefix || '').toLowerCase();
+                    return pref && (normClean.includes('/' + pref + '/') || normClean.endsWith('/' + pref));
+                });
+                subFiles = (matched.length > 0 ? matched : subs).map(s => s.file).filter(Boolean);
+            } catch (e) {}
+        }
+        if (subFiles.length === 0) {
+            const collectJson = (dir, base = '') => {
+                for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+                    const rel = base ? `${base}/${ent.name}` : ent.name;
+                    if (ent.isDirectory()) collectJson(path.join(dir, ent.name), rel);
+                    else if (ent.name.endsWith('.json') && ent.name !== 'manifest.json') subFiles.push(rel);
+                }
+            };
+            try { collectJson(modDir); } catch (e) {}
+        }
+
+        const cacheKey = `${canonProj}::${subFiles.slice().sort().join(',')}`;
+        const mtimeSig = subFiles.map(sf => {
+            try { return fs.statSync(path.join(modDir, sf)).mtimeMs; } catch (e) { return 0; }
+        }).join('|');
+
+        const cachedEntry = modularDriveSetCache.get(cacheKey);
+        if (cachedEntry && cachedEntry.mtimeSig === mtimeSig) {
+            return cachedEntry.set;
+        }
+        if (modularDriveSetInFlight.has(cacheKey)) {
+            return modularDriveSetInFlight.get(cacheKey);
+        }
+
+        const loadPromise = (async () => {
+            const drvSet = new Set();
+            for (const sf of subFiles) {
+                const fp = path.join(modDir, sf);
+                if (!fs.existsSync(fp)) continue;
+                try {
+                    const raw = await fs.promises.readFile(fp, 'utf8');
+                    const data = JSON.parse(raw);
+                    const arr = data.items || data.flatList || data;
+                    if (Array.isArray(arr)) {
+                        for (const it of arr) {
+                            if (it && it.targetLocalPath) drvSet.add(normDriveLookupPath(it.targetLocalPath));
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (drvSet.size > 0) {
+                modularDriveSetCache.set(cacheKey, { ts: Date.now(), mtimeSig, set: drvSet });
+                return drvSet;
+            }
+            return null;
+        })();
+
+        modularDriveSetInFlight.set(cacheKey, loadPromise);
+        try {
+            const resSet = await loadPromise;
+            if (resSet) return resSet;
+        } finally {
+            modularDriveSetInFlight.delete(cacheKey);
+        }
+    }
+
+    const drvCatalog = await catalogGenerator.loadProjectCatalog(project);
+    if (drvCatalog && Array.isArray(drvCatalog.flatList)) {
+        const drvSet = new Set();
+        for (const it of drvCatalog.flatList) {
+            if (it && it.targetLocalPath) drvSet.add(normDriveLookupPath(it.targetLocalPath));
+        }
+        if (drvSet.size > 0) return drvSet;
+    }
+    return null;
+}
+
+router.warmDriveSetForPath = (project, folderPath) => {
+    if (!project || !folderPath) return;
+    setImmediate(() => {
+        getOrWarmDriveSet(project, folderPath).catch(() => {});
+    });
+};
+
+/**
+ * Resuelve únicamente los archivos o subcarpetas dentro de una carpeta local
+ * que aún no existen en el destino (Drive o Servidor Central).
+ */
+router.post('/api/sync/resolve-pending-folder-upload', async (req, res) => {
+    try {
+        const { project, folderPath, targetType = 'drive' } = req.body || {};
+        const cleanFolder = (folderPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        if (!cleanFolder || !fs.existsSync(cleanFolder) || !fs.statSync(cleanFolder).isDirectory()) {
+            return res.status(400).json({ success: false, error: 'Carpeta local inválida o inexistente' });
+        }
+
+        const normPath = (p) => (p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+        const env = getCachedEnvState() || {};
+        const isNotRealServer = !env?.zInfo?.isRealServer || (typeof isZRealServer === 'function' && !isZRealServer());
+        const isExternal = !!env.isExternalMachine;
+        const uncRoot = getServerUncRoot() || '//192.168.206.116/Z';
+
+        let existsOnTarget = () => false;
+        let useSmbDirListing = false;
+
+        if (targetType === 'server') {
+            if (isNotRealServer && !isExternal) {
+                if (uncRoot) ensureServerUncAccess(uncRoot);
+                useSmbDirListing = true;
+            } else if (project && typeof catalogGenerator.loadServerCatalog === 'function') {
+                const srvCatalog = await catalogGenerator.loadServerCatalog(project);
+                const srvSet = new Set();
+                if (srvCatalog && Array.isArray(srvCatalog.flatList)) {
+                    for (const it of srvCatalog.flatList) {
+                        if (it.targetLocalPath) srvSet.add(normPath(it.targetLocalPath));
+                    }
+                }
+                existsOnTarget = (localP) => srvSet.has(normPath(localP));
+            }
+        } else {
+            const drvSet = await getOrWarmDriveSet(project, cleanFolder);
+            if (!drvSet || drvSet.size === 0) {
+                return res.json({ success: false, fallbackFullFolder: true, error: 'Catálogo de Drive no disponible' });
+            }
+            existsOnTarget = (localP) => drvSet.has(normPath(localP));
+        }
+
+        const IGNORED_NAMES = new Set(['_gsdata_', '.git', 'node_modules', 'thumbs.db', 'desktop.ini', '.ds_store']);
+        const pendingItems = [];
+        let totalBytes = 0;
+
+        const walkPending = (dirPath, relPrefix = '') => {
+            let entries = [];
+            try {
+                entries = fs.readdirSync(dirPath, { withFileTypes: true });
+            } catch (e) {
+                return;
+            }
+            let smbDirNames = null;
+            if (useSmbDirListing) {
+                smbDirNames = new Set();
+                try {
+                    const smbDir = resolveSmbCandidate(dirPath, uncRoot);
+                    for (const name of fs.readdirSync(smbDir)) {
+                        smbDirNames.add(name.toLowerCase());
+                    }
+                } catch (e) {}
+            }
+            const entryExistsOnTarget = (entryName, fullP) => {
+                if (smbDirNames !== null) return smbDirNames.has(entryName.toLowerCase());
+                return existsOnTarget(fullP);
+            };
+            const dirPendingFiles = [];
+            const dirPendingDirs = [];
+
+            for (const entry of entries) {
+                const lower = entry.name.toLowerCase();
+                if (IGNORED_NAMES.has(lower) || lower.endsWith('.tmp')) continue;
+
+                const fullP = `${dirPath}/${entry.name}`;
+                const relP = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+
+                if (entry.isDirectory()) {
+                    if (!entryExistsOnTarget(entry.name, fullP)) {
+                        pendingItems.push({
+                            name: entry.name,
+                            isDir: true,
+                            localPath: fullP,
+                            relativePath: relP,
+                            size: 0
+                        });
+                    } else {
+                        dirPendingDirs.push({ fullP, relP });
+                    }
+                } else {
+                    if (!entryExistsOnTarget(entry.name, fullP)) {
+                        dirPendingFiles.push({ entry, fullP, relP });
+                    }
+                }
+            }
+
+            // Si hay > 5 archivos sueltos faltantes dentro de una subcarpeta, colapsar la subcarpeta a isDir:true
+            // para que rclone copy use --transfers 8 en paralelo en lugar de N procesos copyto secuenciales.
+            if (dirPath !== cleanFolder && dirPendingFiles.length > 5 && dirPendingDirs.length === 0) {
+                pendingItems.push({
+                    name: path.posix.basename(dirPath),
+                    isDir: true,
+                    localPath: dirPath,
+                    relativePath: relPrefix || path.posix.basename(dirPath),
+                    size: 0
+                });
+                return;
+            }
+
+            for (const { entry, fullP, relP } of dirPendingFiles) {
+                pendingItems.push({
+                    name: entry.name,
+                    isDir: false,
+                    localPath: fullP,
+                    relativePath: relP,
+                    size: 0
+                });
+            }
+
+            for (const sub of dirPendingDirs) {
+                walkPending(sub.fullP, sub.relP);
+            }
+        };
+
+        walkPending(cleanFolder);
+
+        // Calcular tamaño real de TODOS los pendingItems en paralelo (con límite de tiempo de 2.5s)
+        const sizeDeadline = Date.now() + 2500;
+        const calcDirSizeAsync = async (dPath) => {
+            if (Date.now() > sizeDeadline) return 0;
+            let sum = 0;
+            let ents;
+            try {
+                ents = await fs.promises.readdir(dPath, { withFileTypes: true });
+            } catch (e) {
+                return 0;
+            }
+            const fileStats = [];
+            const subDirs = [];
+            for (const ent of ents) {
+                const l = ent.name.toLowerCase();
+                if (IGNORED_NAMES.has(l) || l.endsWith('.tmp')) continue;
+                const p = `${dPath}/${ent.name}`;
+                if (ent.isDirectory()) subDirs.push(p);
+                else fileStats.push(fs.promises.stat(p).then(st => st.size || 0).catch(() => 0));
+            }
+            if (fileStats.length > 0) {
+                const sizes = await Promise.all(fileStats);
+                for (const s of sizes) sum += s;
+            }
+            for (const sd of subDirs) {
+                if (Date.now() > sizeDeadline) break;
+                sum += await calcDirSizeAsync(sd);
+            }
+            return sum;
+        };
+
+        const BATCH = 64;
+        for (let idx = 0; idx < pendingItems.length; idx += BATCH) {
+            if (Date.now() > sizeDeadline) break;
+            const slice = pendingItems.slice(idx, idx + BATCH);
+            await Promise.all(slice.map(async (it) => {
+                try {
+                    it.size = it.isDir
+                        ? await calcDirSizeAsync(it.localPath)
+                        : ((await fs.promises.stat(it.localPath)).size || 0);
+                    totalBytes += it.size;
+                } catch (e) {}
+            }));
+        }
+
+        return res.json({ success: true, items: pendingItems, count: pendingItems.length, totalBytes });
+    } catch (err) {
+        console.error('Error in resolve-pending-folder-upload:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.post('/api/sync/resolve-upload-conflict', async (req, res) => {
     try {
         const { project, items = [], conflicts = [], action = 'rename_01' } = req.body;
@@ -1843,36 +1670,11 @@ router.post('/api/sync/resolve-upload-conflict', async (req, res) => {
 
         const renamedMap = new Map();
 
-        function getNextAvailablePath(filePath) {
-            const dir = path.dirname(filePath);
-            const ext = path.extname(filePath);
-            const baseName = path.basename(filePath, ext);
-
-            const match = baseName.match(/^(.*)_([0-9]{2,})$/);
-            let prefix = baseName;
-            let num = 1;
-            if (match) {
-                prefix = match[1];
-                num = parseInt(match[2], 10) + 1;
-            }
-
-            let candidateName = '';
-            let candidateLocalPath = '';
-            do {
-                const numStr = String(num).padStart(2, '0');
-                candidateName = `${prefix}_${numStr}${ext}`;
-                candidateLocalPath = path.join(dir, candidateName).replace(/\\/g, '/');
-                num++;
-            } while (fs.existsSync(candidateLocalPath));
-
-            return { newName: candidateName, newPath: candidateLocalPath };
-        }
-
         for (const c of conflicts) {
             const targetPath = (c.localPath || '').replace(/\\/g, '/');
             if (targetPath && fs.existsSync(targetPath)) {
                 try {
-                    const { newName, newPath } = getNextAvailablePath(targetPath);
+                    const { newName, newPath } = getNextAvailableSuffixPath(targetPath);
                     fs.renameSync(targetPath, newPath);
                     renamedMap.set(targetPath, { oldPath: targetPath, newPath, newName });
                     console.log(`[CONFLICT RESOLVE] Renombrado local de protección: ${path.basename(targetPath)} -> ${newName}`);
@@ -2025,11 +1827,20 @@ router.post('/api/sync/orders/priority', (req, res) => {
                     const orderData = fs.readJsonSync(filePath);
                     orderData.priority = prioNum;
                     orderData.priorityUpdatedAt = new Date().toISOString();
-                    fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    writeJsonAtomicSync(filePath, orderData, 2);
                     ordersFileMemoryCache.delete(filePath);
                     ordersResponseCache.time = 0;
                     found = true;
-                } catch (e) {}
+                } catch (e) {
+                    // Si el JSON quedó corrupto por escritura concurrente, eliminarlo para destrabar la cola
+                    try {
+                        fs.unlinkSync(filePath);
+                        ordersFileMemoryCache.delete(filePath);
+                        ordersResponseCache.time = 0;
+                        found = true;
+                        console.warn(`[SYNC ORDER] JSON corrupto eliminado al cancelar: ${filePath}`);
+                    } catch (_) {}
+                }
             }
         }
         if (!found) {
@@ -2074,11 +1885,20 @@ router.post('/api/sync/orders/cancel', (req, res) => {
                         orderData.progress.speedFormatted = 'Cancelado';
                         orderData.progress.etaSeconds = 0;
                     }
-                    fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    writeJsonAtomicSync(filePath, orderData, 2);
                     ordersFileMemoryCache.delete(filePath);
                     ordersResponseCache.time = 0;
                     found = true;
-                } catch (e) {}
+                } catch (e) {
+                    // Si el JSON quedó corrupto por escritura concurrente, eliminarlo para destrabar la cola
+                    try {
+                        fs.unlinkSync(filePath);
+                        ordersFileMemoryCache.delete(filePath);
+                        ordersResponseCache.time = 0;
+                        found = true;
+                        console.warn(`[SYNC ORDER] JSON corrupto eliminado al cancelar: ${filePath}`);
+                    } catch (_) {}
+                }
             }
         }
         if (!found) {
@@ -2137,13 +1957,21 @@ router.post('/api/sync/orders/cancel-all', async (req, res) => {
                         orderData.progress.speedFormatted = 'Cancelado';
                         orderData.progress.etaSeconds = 0;
                     }
-                    fs.writeJsonSync(filePath, orderData, { spaces: 2 });
+                    writeJsonAtomicSync(filePath, orderData, 2);
                     ordersFileMemoryCache.delete(filePath);
                     cancelledCount++;
                     if (!cancelledIds.includes(orderData.id)) {
                         cancelledIds.push(orderData.id);
                     }
-                } catch (e) {}
+                } catch (e) {
+                    // Limpiar JSONs corruptos durante cancelación masiva
+                    try {
+                        fs.unlinkSync(filePath);
+                        ordersFileMemoryCache.delete(filePath);
+                        cancelledCount++;
+                        console.warn(`[SYNC ORDERS] JSON corrupto eliminado en cancel-all: ${filePath}`);
+                    } catch (_) {}
+                }
             }
         }
 

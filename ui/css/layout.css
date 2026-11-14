@@ -81,23 +81,25 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.25);
-    padding: 4px 10px;
-    border-radius: 4px;
-    border: 1px solid #333;
-    min-width: 175px;
+    gap: 3px;
+    background: transparent;
+    padding: 2px 0;
+    border: none;
+    min-width: 155px;
 }
 
 .project-selector {
     display: flex;
     align-items: center;
+    background: #172030;
+    border: 1px solid #2a3950;
+    border-radius: 5px;
+    padding: 2px 8px;
+    height: 24px;
 }
 
 .header-config-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.12);
-    margin: 3px 0 2px 0;
-    width: 100%;
+    display: none;
 }
 
 #headerProjectSelect {
@@ -660,6 +662,107 @@
 
 .toolbar-section-group .tool-btn:hover {
     background: #22344e;
+}
+
+/* Propuesta v3: View Options VS + File/Folder Strip */
+.toolbar-vs-pill {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #7f95b8;
+    background: #141d2d;
+    border: 1px solid #24334a;
+    border-radius: 999px;
+    padding: 2px 7px;
+    line-height: 1.1;
+    text-transform: lowercase;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.toolbar-subsep {
+    width: 1px;
+    height: 18px;
+    background: #25334a;
+    margin: 0 2px;
+    flex-shrink: 0;
+}
+
+.toolbar-mirror-btn {
+    height: 30px;
+    padding: 0 8px;
+    gap: 5px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #c2cfe0;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toolbar-mirror-btn.active {
+    background: rgba(0, 188, 212, 0.16);
+    border-color: rgba(0, 188, 212, 0.55);
+    color: #70e8f7;
+}
+
+.toolbar-files-strip {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: #0e141f;
+    border: 1px solid #1f2b3e;
+    border-radius: 7px;
+    padding: 4px 6px;
+    height: 46px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar-files-strip .tool-btn {
+    height: 30px;
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #b8c7dc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.toolbar-files-strip .tool-btn:hover {
+    background: #1a2436;
+    color: #ffffff;
+    border-color: #2d3e58;
+}
+
+.toolbar-files-strip .tool-btn.folder-accent:hover {
+    color: #ffd54f;
+}
+
+.toolbar-files-strip .tool-btn.danger:hover {
+    background: rgba(239, 83, 80, 0.16);
+    border-color: rgba(239, 83, 80, 0.5);
+    color: #ff6e68;
+}
+
+.toolbar-files-strip .ico-toolbar {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    display: block;
+    pointer-events: none;
 }
 
 .toolbar-select {

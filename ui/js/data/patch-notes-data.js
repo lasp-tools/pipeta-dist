@@ -1,9 +1,20 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.16",
+        "version": "v1.2.19",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Modo Freelance Bloqueado para Externos:</b> Nueva opción al empaquetar .ZIP portable para incluir <code>presets/freelance_lock.json</code>, forzando operación local + Drive sin telemetría SMB, persistiendo tras actualizaciones por GitHub y con desbloqueo exclusivo para Admin.",
+            "<b>Ocultamiento Automático de Módulos Restringidos:</b> En Modo Freelance los módulos no habilitados (Shot Navigator, IA Ingest, Send2 IA Ingest, Creator y Designers) se ocultan por completo tanto de la interfaz como del índice de guías.",
+            "<b>Guías de Inicio Renovadas:</b> Documentación práctica y paso a paso de todos los módulos (incluyendo File Auditor: Folder Status, Scene Status y Render Status, Naming Validator, Explorer y Sync Queue).",
+            "<b>Mejoras Visuales y de Sync Queue / Explorer:</b> Claridad en rutas completas de confirmación, etiqueta Worker Local para externos y refinamientos visuales en el árbol del Explorer y paneles de Sync Queue."
+        ]
+    },
+    {
+        "version": "v1.2.16",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Claridad Total en Subidas a Drive en 2 Etapas:</b> La tarjeta de transferencia distingue con exactitud cada fase. En Etapa 1 se indica 'Copia LAN a Servidor (Etapa 1/2)...' con indicación precisa de Origen (Local Z:), Destino Intermedio (Servidor SMB) y Destino Final (Google Drive). En Etapa 2 se muestra el Worker Central activo subiendo a Google Drive.",
             "<b>Detección de Conflictos y Fast-Lane (Local vs Servidor SMB):</b> Antes de subir a Google Drive, si los archivos ya existen en StorNext SMB con idéntico tamaño y fecha, se omite automáticamente la copia LAN y se inicia de inmediato la subida a Drive sin esperas.",

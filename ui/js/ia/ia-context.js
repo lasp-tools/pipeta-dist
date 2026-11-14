@@ -633,11 +633,15 @@ function switchIaWorkMode(mode) {
     }
 
     if (isSimple) {
-        // En Modo Simple, asegurar defaults de niveles B y C apagados (unchecked)
+        // En Modo Simple, asegurar defaults de niveles B y C apagados y ocultos
         const tagBToggle = document.getElementById('tokTagBToggle');
         if (tagBToggle) { tagBToggle.checked = false; updateIaTokenModuleUI('tagB'); }
         const tagCToggle = document.getElementById('tokTagCToggle');
         if (tagCToggle) { tagCToggle.checked = false; updateIaTokenModuleUI('tagC'); }
+        const cardB = document.getElementById('tokCard_tagB');
+        if (cardB) cardB.style.display = 'none';
+        const cardC = document.getElementById('tokCard_tagC');
+        if (cardC) cardC.style.display = 'none';
 
         const isRefSubfolder = typeof iaActiveSubfolders !== 'undefined' && iaActiveSubfolders.has('ref');
         const tagA = document.getElementById('tokTagALevel');
@@ -647,6 +651,10 @@ function switchIaWorkMode(mode) {
 
         showIaAlert("⚡ Modo Simple activo (Flujo directo y simplificado)", "#03A9F4");
     } else {
+        const cardB = document.getElementById('tokCard_tagB');
+        if (cardB) cardB.style.display = 'flex';
+        const cardC = document.getElementById('tokCard_tagC');
+        if (cardC) cardC.style.display = 'flex';
         showIaAlert("🛠️ Modo Avanzado activo (Control total de tokens y lotes)", "#4caf50");
     }
 

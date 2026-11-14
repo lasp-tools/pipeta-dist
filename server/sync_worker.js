@@ -1,4 +1,5 @@
 const fs = require('fs-extra');
+const { writeJsonAtomicSync } = require('./core/json-atomic');
 const path = require('path');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
@@ -101,12 +102,12 @@ function saveOrderDataAcrossCandidates(orderData, primaryFilePath = null) {
         try {
             if (!fs.existsSync(d)) fs.ensureDirSync(d);
             const p = path.join(d, fname);
-            fs.writeJsonSync(p, orderData, { spaces: 2 });
+            writeJsonAtomicSync(p, orderData, 2);
         } catch (e) {}
     }
     if (primaryFilePath) {
         try {
-            fs.writeJsonSync(primaryFilePath, orderData, { spaces: 2 });
+            writeJsonAtomicSync(primaryFilePath, orderData, 2);
         } catch (e) {}
     }
 }
@@ -415,7 +416,7 @@ function runRcloneWithProgress(args, onProgress, orderId = null) {
         const rcloneExe = findRcloneExe();
         const fullArgs = [
             ...args,
-            '--stats', '1s',
+            '--stats', '0.5s',
             '--use-json-log',
             '-v'
         ];
@@ -550,8 +551,8 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 '--exclude', 'desktop.ini',
                 '--exclude', '.DS_Store',
                 '--exclude', '*.tmp',
-                '--transfers', '4',
-                '--checkers', '8'
+                '--transfers', '8',
+                '--checkers', '16'
             ];
             await runRcloneWithProgress(args, onProgress, orderId);
         } else {
@@ -648,8 +649,8 @@ async function executeRcloneTransfer(type, item, orderData = null, onProgress = 
                 '--exclude', 'desktop.ini',
                 '--exclude', '.DS_Store',
                 '--exclude', '*.tmp',
-                '--transfers', '4',
-                '--checkers', '8'
+                '--transfers', '8',
+                '--checkers', '16'
             ];
             await runRcloneWithProgress(args, onProgress, orderId);
         } else {
@@ -795,6 +796,18 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
     try {
         let lastProgressWrite = 0;
         let wasCancelled = false;
+        let completedBytes = 0;
+        let lastNonZeroSpeedBps = 0;
+        let lastNonZeroSpeedFmt = '0 B/s';
+        const batchStartTime = Date.now();
+        let batchTotalBytes = (orderData.items || []).reduce((acc, it) => acc + (Number(it.size) || 0), 0);
+
+        const formatSpeedBps = (bps) => {
+            if (!bps || bps <= 0) return '0 B/s';
+            if (bps >= 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+            if (bps >= 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+            return `${Math.round(bps)} B/s`;
+        };
 
         for (let i = 0; i < orderData.items.length; i++) {
             // Comprobar si la orden fue cancelada o si cambió su prioridad antes de iniciar el siguiente item
@@ -815,19 +828,46 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
             } catch (e) {}
 
             const item = orderData.items[i];
+            const itemKnownSize = Number(item.size) || 0;
+            let lastItemTotalBytes = itemKnownSize;
             log(`  [${orderData.id}] [${i + 1}/${orderData.items.length}] Procesando ${item.name || item.relPath || item.path}...`);
 
             const itemProgressCallback = (p) => {
+                const pTrans = Number(p.transferredBytes) || 0;
+                const pTotal = Number(p.totalBytes) || itemKnownSize;
+                if (pTotal > lastItemTotalBytes) {
+                    batchTotalBytes += (pTotal - lastItemTotalBytes);
+                    lastItemTotalBytes = pTotal;
+                }
+
+                const cumTransferred = completedBytes + pTrans;
+                const cumTotal = Math.max(batchTotalBytes, cumTransferred);
                 const baseItemWeight = 100 / orderData.items.length;
-                const overallPct = (i * baseItemWeight) + ((p.percentage || 0) * baseItemWeight / 100);
+                const overallPct = cumTotal > 0
+                    ? (cumTransferred / cumTotal) * 100
+                    : (i * baseItemWeight) + ((p.percentage || 0) * baseItemWeight / 100);
+
+                const pSpeedBps = Number(p.speedBytesPerSec) || 0;
+                if (pSpeedBps > 0) {
+                    lastNonZeroSpeedBps = pSpeedBps;
+                    lastNonZeroSpeedFmt = p.speedFormatted || formatSpeedBps(pSpeedBps);
+                }
+
+                let effectiveSpeedBps = pSpeedBps > 0 ? pSpeedBps : lastNonZeroSpeedBps;
+                let effectiveSpeedFmt = pSpeedBps > 0 ? (p.speedFormatted || formatSpeedBps(pSpeedBps)) : lastNonZeroSpeedFmt;
+                if (effectiveSpeedBps === 0 && cumTransferred > 0) {
+                    const elapsedSec = Math.max(0.5, (Date.now() - batchStartTime) / 1000);
+                    effectiveSpeedBps = Math.round(cumTransferred / elapsedSec);
+                    effectiveSpeedFmt = formatSpeedBps(effectiveSpeedBps);
+                }
 
                 orderData.progress = {
                     percentage: Math.min(100, Math.max(0, Math.round(overallPct * 10) / 10)),
                     itemPercentage: p.percentage || 0,
-                    transferredBytes: p.transferredBytes || 0,
-                    totalBytes: p.totalBytes || 0,
-                    speedBytesPerSec: p.speedBytesPerSec || 0,
-                    speedFormatted: p.speedFormatted || '0 B/s',
+                    transferredBytes: cumTransferred,
+                    totalBytes: cumTotal,
+                    speedBytesPerSec: effectiveSpeedBps,
+                    speedFormatted: effectiveSpeedFmt,
                     etaSeconds: p.etaSeconds,
                     currentFile: item.name || item.relativePath || path.basename(item.path || ''),
                     itemIndex: i + 1,
@@ -835,7 +875,7 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
                 };
 
                 const now = Date.now();
-                if (now - lastProgressWrite >= 800) {
+                if (now - lastProgressWrite >= 400) {
                     lastProgressWrite = now;
 
                     // Chequear si se solicitó cancelación o cambio de prioridad durante la transferencia
@@ -873,6 +913,7 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
 
             try {
                 await executeRcloneTransfer(orderData.type, item, orderData, itemProgressCallback);
+                completedBytes += lastItemTotalBytes;
                 successCount++;
             } catch (err) {
                 if (wasCancelled) {

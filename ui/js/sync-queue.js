@@ -52,6 +52,11 @@ class SyncQueueUI {
             role = 'admin';
             isAdmin = true;
         }
+        const simOrLocked = !!(window.pipetaSystemEnv?.freelanceLocked) || (() => { try { return !!localStorage.getItem('pipeta_sim_non_admin_role'); } catch(e) { return false; } })();
+        if (simOrLocked && isAdmin) {
+            role = 'user';
+            isAdmin = false;
+        }
         return { username, role, isAdmin };
     }
 
@@ -91,9 +96,9 @@ class SyncQueueUI {
                 this.orders = resOrders.orders || [];
             }
 
-            // Polling adaptativo: 1.2s durante transferencias activas, 3s en reposo
+            // Polling adaptativo: 600ms durante transferencias activas, 3s en reposo
             const hasProcessing = this.orders.some(o => o.status === 'processing');
-            const desiredInterval = hasProcessing ? 1200 : 3000;
+            const desiredInterval = hasProcessing ? 600 : 3000;
             if (this.currentIntervalMs !== desiredInterval) {
                 this.startPolling(desiredInterval);
             }
@@ -582,7 +587,8 @@ class SyncQueueUI {
         const workerInfo = document.getElementById('sync-queue-worker-info');
         const summary = document.getElementById('sync-queue-summary');
         const isAlive = this.workerStatus && this.workerStatus.isAlive;
-        const isLocal = !!(this.workerStatus && this.workerStatus.isLocal);
+        const isExternal = (typeof isExternalMachine === 'function' && isExternalMachine());
+        const isLocal = isExternal || !!(this.workerStatus && this.workerStatus.isLocal);
 
         if (workerInfo) {
             if (isAlive) {
@@ -612,15 +618,15 @@ class SyncQueueUI {
         const userInfo = this.getCurrentUser();
         if (summary) {
             summary.innerHTML = `
-                <div style="display:flex; align-items:center; gap:8px;">
+                <div class="sq-summary-wrap">
                     ${userInfo.isAdmin ? `
-                        <button onclick="window.syncQueueUI.toggleAdminFilter()" title="Alternar entre ver solo tus tareas o las de todos" style="background:#1a222d; border:1px solid #324156; color:#4fc3f7; border-radius:3px; padding:2px 6px; font-size:0.7rem; cursor:pointer;">
-                            ${this.onlyMyTasks ? '👤 Mis Tareas' : '👥 Todas las Tareas'}
+                        <button class="sq-admin-toggle-btn" onclick="window.syncQueueUI.toggleAdminFilter()" title="Alternar entre ver solo tus tareas o las de todos">
+                            ${this.onlyMyTasks ? '👤 Mis Tareas' : '👥 Todas'}
                         </button>
                     ` : `
-                        <span style="color:#81d4fa; font-size:0.72rem; background:rgba(0,229,255,0.08); padding:2px 6px; border-radius:3px; border:1px solid rgba(0,229,255,0.2);">👤 <b>${userInfo.username}</b></span>
+                        <span class="sq-user-badge">👤 <b>${userInfo.username}</b></span>
                     `}
-                    <span style="color:#888; font-size:0.75rem;"><b>${activeOrders.length}</b> activas • <b>${historyOrders.length}</b> en historial</span>
+                    <span class="sq-counts-text"><b>${activeOrders.length}</b> activas • <b>${historyOrders.length}</b> en historial</span>
                 </div>
             `;
         }
@@ -650,9 +656,9 @@ class SyncQueueUI {
         }
 
         const actionBarHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:6px 10px; background:#161c24; border:1px solid #232b38; border-radius:6px;">
+            <div class="sq-action-bar">
                 <span style="font-size:0.75rem; color:#aaa;">Mostrando <b>${activeOrders.length}</b> orden(es) en curso o pendientes</span>
-                <button class="tool-btn danger" onclick="window.syncQueueUI.cancelAllOrders()" style="padding:4px 10px; font-size:0.73rem; font-weight:bold; display:inline-flex; align-items:center; gap:5px; background:rgba(244,67,54,0.18); border:1px solid #f44336; color:#ff8a80; border-radius:4px; cursor:pointer;" title="Cancelar y limpiar todas las órdenes activas en servidor y local">
+                <button class="tool-btn danger sq-cancel-all-btn" onclick="window.syncQueueUI.cancelAllOrders()" title="Cancelar y limpiar todas las órdenes activas en servidor y local">
                     🛑 Cancelar Todo
                 </button>
             </div>
@@ -662,39 +668,39 @@ class SyncQueueUI {
             const isProcessing = order.status === 'processing';
             let typeColor = '#00bcd4';
             let typeIcon = '📥';
-            let typeLabel = 'DESCARGA DE DRIVE';
-            let isServerTransfer = false;
+            let typeLabel = '⬇️ Descarga de Drive';
+            let statusHint = 'Descargando...';
 
             if (order.type === 'download') {
-                typeLabel = order.stageLabel ? ('DESCARGA DE DRIVE (' + order.stageLabel + ')') : 'DESCARGA DE DRIVE';
-                typeIcon = '📥';
+                typeLabel = '⬇️ Descarga de Drive';
                 typeColor = '#00bcd4';
+                statusHint = isProcessing ? 'Descargando...' : 'En espera...';
             } else if (order.type === 'upload') {
-                typeLabel = order.stageLabel ? ('SUBIDA A DRIVE (' + order.stageLabel + ')') : 'SUBIDA A DRIVE';
-                typeIcon = '📤';
+                typeLabel = '⬆️ Subida a Drive';
                 typeColor = '#4caf50';
+                statusHint = isProcessing ? (order.stageLabel || 'Subiendo a Drive...') : 'En espera...';
             } else if (order.type === 'server_download') {
-                typeLabel = order.stageLabel ? ('DESCARGA DE SERVER (' + order.stageLabel + ')') : 'DESCARGA DE SERVER';
-                typeIcon = '📥';
+                typeLabel = '⬇️ Descarga de Server';
                 typeColor = '#ab47bc';
                 isServerTransfer = true;
+                statusHint = isProcessing ? 'Descargando...' : 'En espera...';
             } else if (order.type === 'server_upload') {
-                typeLabel = 'SUBIDA A SERVER';
-                typeIcon = '📤';
+                typeLabel = '⬆️ Subida a Server';
                 typeColor = '#ff9800';
                 isServerTransfer = true;
+                statusHint = isProcessing ? 'Subiendo...' : 'En espera...';
             } else if (order.type === 'higgsfield_ingest') {
-                typeLabel = 'INGESTA HIGGSFIELD';
-                typeIcon = '⚡';
+                typeLabel = '⚡ Ingesta Higgsfield';
                 typeColor = '#c6ff00';
+                statusHint = isProcessing ? 'Procesando...' : 'En espera...';
             } else if (order.type === 'refresh_folder') {
-                typeLabel = 'REFRESCO DE CARPETA';
-                typeIcon = '🔄';
+                typeLabel = '🔄 Refresco de Carpeta';
                 typeColor = '#ffb74d';
+                statusHint = isProcessing ? 'Actualizando...' : 'En espera...';
             } else if (order.type === 'query_higgsfield_job') {
-                typeLabel = 'CONSULTA HIGGSFIELD';
-                typeIcon = '⚡';
+                typeLabel = '⚡ Consulta Higgsfield';
                 typeColor = '#c6ff00';
+                statusHint = isProcessing ? 'Consultando...' : 'En espera...';
             }
 
             const progress = order.progress;
@@ -708,43 +714,25 @@ class SyncQueueUI {
             const etaStr = (progress && progress.etaSeconds > 0) ? formatQueueEta(progress.etaSeconds) : '';
             const currentFile = (progress && progress.currentFile) ? progress.currentFile : '';
 
-            const isLocalExecution = order.worker && order.worker.includes('local_');
             const isTwoStageUploadStage1 = order.twoStage && order.twoStageType === 'upload' && order.currentStage === 1;
             const isTwoStageUploadStage2 = order.twoStage && order.twoStageType === 'upload' && order.currentStage === 2;
 
-            const engineBadge = isProcessing
-                ? (isTwoStageUploadStage1 || isServerTransfer
-                    ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(171,71,188,0.15); border:1px solid #ab47bc; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ce93d8; font-weight:bold;">
-                        <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                        <span>${isTwoStageUploadStage1 ? 'Copia LAN a Servidor (Etapa 1/2)...' : 'Copia en red LAN...'}</span>
-                       </div>`
-                    : (isLocalExecution
-                        ? `<div style="display:flex; align-items:center; gap:6px; background:rgba(0,229,255,0.15); border:1px solid #00e5ff; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#00e5ff; font-weight:bold;">
-                            <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                            <span>Worker Local (Rclone)...</span>
-                           </div>`
-                        : `<div style="display:flex; align-items:center; gap:6px; background:rgba(255,152,0,0.15); border:1px solid #ff9800; padding:2px 8px; border-radius:4px; font-size:0.72rem; color:#ff9800; font-weight:bold;">
-                            <span class="spinner-mini" style="width:8px; height:8px;"></span>
-                            <span>${order.workerHostname ? ('En ' + order.workerHostname) : 'Worker Central'} (Subiendo a Drive)...</span>
-                           </div>`))
-                : `<span style="background:#222; color:#aaa; font-size:0.72rem; padding:2px 8px; border-radius:4px;">🕒 En espera...</span>`;
-
             return `
-                <div style="background:#14171d; border:1px solid ${isProcessing ? typeColor : '#28303d'}; border-radius:6px; padding:12px; box-shadow:0 3px 10px rgba(0,0,0,0.3);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="background:${typeColor}22; color:${typeColor}; border:1px solid ${typeColor}44; font-size:0.72rem; font-weight:bold; padding:2px 8px; border-radius:4px;">
+                <div class="sq-job-card" style="border-left:3px solid ${isProcessing ? typeColor : '#475569'};">
+                    <div class="sq-job-head">
+                        <div class="sq-job-head-left">
+                            <span class="sq-type-chip" style="background:${typeColor}22; color:${typeColor}; border:1px solid ${typeColor}44;">
                                 ${typeLabel}
                             </span>
-                            <span style="color:#aaa; font-size:0.75rem; font-family:monospace;">${order.id}</span>
-                            <span style="color:#666; font-size:0.75rem;">• ${order.project || ''}</span>
+                            ${order.project ? `<span class="sq-proj-chip">${order.project}</span>` : ''}
+                            <span class="sq-status-hint" title="ID: ${order.id}">
+                                ${isProcessing ? '<span class="spinner-mini" style="width:8px; height:8px;"></span>' : '🕒'}
+                                <span>• ${statusHint}</span>
+                            </span>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            ${engineBadge}
-                            <button onclick="window.syncQueueUI.cancelOrder('${order.id}')" title="Cancelar esta tarea" style="background:rgba(244,67,54,0.15); border:1px solid rgba(244,67,54,0.4); color:#ff8a80; border-radius:4px; padding:2px 8px; font-size:0.72rem; cursor:pointer; font-weight:bold; transition:all 0.2s;" onmouseover="this.style.background='#f44336'; this.style.color='#fff';" onmouseout="this.style.background='rgba(244,67,54,0.15)'; this.style.color='#ff8a80';">
-                                ✕ Cancelar
-                            </button>
-                        </div>
+                        <button class="sq-cancel-btn" onclick="window.syncQueueUI.cancelOrder('${order.id}')" title="Cancelar esta tarea">
+                            ✕ Cancelar
+                        </button>
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:6px;">
@@ -759,39 +747,65 @@ class SyncQueueUI {
                                 </div>
                             </div>
                         ` : ''}
-                        ${(order.items || []).map(it => {
-                            const sizeStr = it.size ? ` (${formatQueueBytes(it.size)})` : '';
-                            let pathInfoHtml = '';
-                            if (order.type === 'download') {
-                                pathInfoHtml = `<span style="color:#00bcd4;">Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
-                            } else if (order.type === 'upload') {
-                                if (isTwoStageUploadStage1) {
-                                    pathInfoHtml = `<span style="color:#4caf50;">Origen (Local Z:):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#ce93d8;">Destino Intermedio (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4; opacity:0.8;">Destino Final (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
-                                } else if (isTwoStageUploadStage2) {
-                                    pathInfoHtml = `<span style="color:#ce93d8;">Origen (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4;">Destino (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
-                                } else {
-                                    pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
-                                }
-                            } else if (order.type === 'server_download') {
-                                pathInfoHtml = `<span style="color:#ab47bc;">Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
-                            } else if (order.type === 'server_upload') {
-                                pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
-                            } else if (order.type === 'higgsfield_ingest') {
-                                pathInfoHtml = `<span style="color:#c6ff00;">Origen (Higgsfield):</span> ${it.sourceUrl || it.jobId || 'CloudFront'}<br><span style="color:#4caf50;">Destino (Shot):</span> ${it.targetShotFolder || it.canonicalName || it.path}`;
-                            }
+                        ${(() => {
+                            const allItems = order.items || [];
+                            const expandedSet = window._expandedSyncOrders || (window._expandedSyncOrders = new Set());
+                            const isExpanded = expandedSet.has(order.id);
+                            const MAX_COLLAPSED = 2;
+                            const MAX_EXPANDED = 50;
+                            const visibleItems = isExpanded
+                                ? allItems.slice(0, MAX_EXPANDED)
+                                : allItems.slice(0, MAX_COLLAPSED);
 
-                            return `
-                                <div style="background:#0c0e12; border:1px solid #1a202c; border-radius:4px; padding:8px 10px; font-size:0.78rem;">
-                                    <div style="font-weight:bold; color:#fff; display:flex; justify-content:space-between;">
-                                        <span>${it.isDir ? '📁' : '📄'} ${it.name || it.relativePath || it.path}</span>
-                                        <span style="color:#888;">${sizeStr}</span>
+                            const renderQueueItem = (it) => {
+                                const sizeStr = it.size ? ` (${formatQueueBytes(it.size)})` : '';
+                                let pathInfoHtml = '';
+                                if (order.type === 'download') {
+                                    pathInfoHtml = `<span style="color:#00bcd4;">Origen (Drive):</span> ${it.onlinePath || 'Auto-Drive'}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                                } else if (order.type === 'upload') {
+                                    if (isTwoStageUploadStage1) {
+                                        pathInfoHtml = `<span style="color:#4caf50;">Origen (Local Z:):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#ce93d8;">Destino Intermedio (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4; opacity:0.8;">Destino Final (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                    } else if (isTwoStageUploadStage2) {
+                                        pathInfoHtml = `<span style="color:#ce93d8;">Origen (Servidor SMB):</span> ${it.targetServerPath || it.serverPath || 'StorNext SMB'}<br><span style="color:#00bcd4;">Destino (Google Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                    } else {
+                                        pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.targetLocalPath || it.path}<br><span style="color:#00bcd4;">Destino (Drive):</span> ${it.onlinePath || 'Auto-Drive'}`;
+                                    }
+                                } else if (order.type === 'server_download') {
+                                    pathInfoHtml = `<span style="color:#ab47bc;">Origen (Server):</span> ${it.serverPath || it.path}<br><span style="color:#4caf50;">Destino (Local):</span> ${it.targetLocalPath || it.path}`;
+                                } else if (order.type === 'server_upload') {
+                                    pathInfoHtml = `<span style="color:#4caf50;">Origen (Local):</span> ${it.localPath || it.path}<br><span style="color:#ab47bc;">Destino (Server):</span> ${it.targetServerPath || it.serverPath || it.path}`;
+                                } else if (order.type === 'higgsfield_ingest') {
+                                    pathInfoHtml = `<span style="color:#c6ff00;">Origen (Higgsfield):</span> ${it.sourceUrl || it.jobId || 'CloudFront'}<br><span style="color:#4caf50;">Destino (Shot):</span> ${it.targetShotFolder || it.canonicalName || it.path}`;
+                                }
+
+                                return `
+                                    <div style="background:#0c0e12; border:1px solid #1a202c; border-radius:4px; padding:8px 10px; font-size:0.78rem;">
+                                        <div style="font-weight:bold; color:#fff; display:flex; justify-content:space-between;">
+                                            <span>${it.isDir ? '📁' : '📄'} ${it.name || it.relativePath || it.path}</span>
+                                            <span style="color:#888;">${sizeStr}</span>
+                                        </div>
+                                        <div style="font-size:0.7rem; color:#888; margin-top:4px; word-break:break-all; line-height:1.4;">
+                                            ${pathInfoHtml}
+                                        </div>
                                     </div>
-                                    <div style="font-size:0.7rem; color:#888; margin-top:4px; word-break:break-all; line-height:1.4;">
-                                        ${pathInfoHtml}
+                                `;
+                            };
+
+                            let html = visibleItems.map(renderQueueItem).join('');
+                            if (allItems.length > MAX_COLLAPSED) {
+                                const remaining = allItems.length - visibleItems.length;
+                                const toggleAction = `const s = window._expandedSyncOrders || (window._expandedSyncOrders = new Set()); if (s.has('${order.id}')) s.delete('${order.id}'); else s.add('${order.id}'); if (window.syncQueueUI) window.syncQueueUI.render();`;
+                                html += `
+                                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0c0e12; border:1px dashed #2d3748; border-radius:4px; padding:6px 10px; font-size:0.74rem; color:#94a3b8;">
+                                        <span>${isExpanded ? (remaining > 0 ? `Mostrando ${visibleItems.length} de ${allItems.length} ítems (y ${remaining} más)` : `Mostrando todos los ${allItems.length} ítems`) : `📦 ... y ${remaining} ítem(s) más en este lote`}</span>
+                                        <button onclick="${toggleAction}" style="background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; border-radius:4px; padding:2px 8px; font-size:0.72rem; cursor:pointer;">
+                                            ${isExpanded ? '▲ Contraer' : `▼ Ver lista (${Math.min(allItems.length, MAX_EXPANDED)})`}
+                                        </button>
                                     </div>
-                                </div>
-                            `;
-                        }).join('')}
+                                `;
+                            }
+                            return html;
+                        })()}
                     </div>
 
                     ${isProcessing ? `
@@ -839,7 +853,7 @@ class SyncQueueUI {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding:0 2px;">
                 <span style="font-size:0.75rem; color:#888;">Historial de transferencias finalizadas</span>
                 ${historyOrders.length > 0 ? `
-                    <button onclick="window.syncQueueUI.clearHistory()" style="background:#1a202c; border:1px solid #2d3748; color:#aaa; border-radius:4px; padding:3px 8px; font-size:0.72rem; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" onmouseover="this.style.color='#fff'; this.style.borderColor='#4fc3f7';" onmouseout="this.style.color='#aaa'; this.style.borderColor='#2d3748';">
+                    <button class="sq-hist-clear-btn" onclick="window.syncQueueUI.clearHistory()">
                         🗑️ Limpiar Historial
                     </button>
                 ` : ''}
@@ -856,35 +870,58 @@ class SyncQueueUI {
             return;
         }
 
+        const expandedHistSet = window._expandedHistOrders || (window._expandedHistOrders = new Set());
         const itemsHtml = historyOrders.map(order => {
             const isCancelled = order.status === 'cancelled';
             const isOk = order.status === 'completed';
             const isPartial = order.status === 'completed_with_errors';
             
-            let typeLabel = 'Descarga';
-            if (order.type === 'download') typeLabel = 'Descarga Drive';
-            else if (order.type === 'upload') typeLabel = order.twoStage ? 'Subida Drive (2 Etapas)' : 'Subida Drive';
-            else if (order.type === 'server_download') typeLabel = 'Descarga Server';
-            else if (order.type === 'server_upload') typeLabel = 'Subida Server';
-            else if (order.type === 'refresh_folder') typeLabel = 'Refresco Carpeta';
-            else if (order.type === 'higgsfield_ingest') typeLabel = 'Ingesta Higgsfield';
-            else if (order.type === 'query_higgsfield_job') typeLabel = 'Consulta Higgsfield';
+            let typeLabel = '⬇️ Descarga';
+            let chipColor = '#00bcd4';
+            if (order.type === 'download') { typeLabel = '⬇️ Descarga Drive'; chipColor = '#00bcd4'; }
+            else if (order.type === 'upload') { typeLabel = '⬆️ Subida Drive'; chipColor = '#4caf50'; }
+            else if (order.type === 'server_download') { typeLabel = '⬇️ Descarga Server'; chipColor = '#ab47bc'; }
+            else if (order.type === 'server_upload') { typeLabel = '⬆️ Subida Server'; chipColor = '#ff9800'; }
+            else if (order.type === 'refresh_folder') { typeLabel = '🔄 Refresco Carpeta'; chipColor = '#ffb74d'; }
+            else if (order.type === 'higgsfield_ingest') { typeLabel = '⚡ Ingesta Higgsfield'; chipColor = '#c6ff00'; }
+            else if (order.type === 'query_higgsfield_job') { typeLabel = '⚡ Consulta Higgsfield'; chipColor = '#c6ff00'; }
 
-            const statusColor = isOk ? '#4caf50' : (isCancelled ? '#9e9e9e' : (isPartial ? '#ff9800' : '#f44336'));
-            const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isCancelled ? `🛑 Cancelada (${order.cancelledBy || 'usuario'})` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló'));
+            const statusColor = isOk ? '#4caf50' : (isCancelled ? '#f87171' : (isPartial ? '#ff9800' : '#f44336'));
+            const statusLabel = isOk ? `✅ Completada (${order.durationSeconds || 0}s)` : (isCancelled ? `● Cancelada` : (isPartial ? '⚠️ Parcial con errores' : '❌ Falló'));
+
+            const orderItems = order.items || [];
+            const firstItem = orderItems[0] || {};
+            const samplePath = String(firstItem.targetLocalPath || firstItem.serverPath || firstItem.onlinePath || firstItem.localPath || order.path || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            const pathParts = samplePath.split('/').filter(Boolean);
+            const shotContext = pathParts.length >= 3 ? pathParts.slice(-3).join(' / ') : (firstItem.name || order.id);
+            const isMulti = orderItems.length > 2;
+            const isHistExpanded = expandedHistSet.has(order.id);
 
             return `
-                <div style="background:#12151b; border:1px solid #202732; border-radius:6px; padding:10px; font-size:0.8rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <b style="color:#fff;">${typeLabel}:</b>
-                            <span style="color:#aaa;">${(order.items || []).map(i => i.name).join(', ') || order.path || order.id}</span>
+                <div class="sq-hist-card">
+                    <div class="sq-hist-top">
+                        <div class="sq-hist-left">
+                            <span style="background:${chipColor}1f; color:${chipColor}; border:1px solid ${chipColor}44; font-size:0.68rem; font-weight:700; padding:1px 7px; border-radius:99px; white-space:nowrap;">${typeLabel}</span>
+                            <b style="color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${samplePath}">${isMulti ? (pathParts.length >= 3 ? pathParts.slice(-3, -1).join(' / ') : (firstItem.name || 'Lote')) : (firstItem.name || order.path || order.id)}</b>
+                            ${isMulti
+                                ? `<span style="color:#94a3b8; font-size:0.72rem; white-space:nowrap;">(${orderItems.length} ítems)</span>`
+                                : (pathParts.length >= 3 ? `<span style="color:#64748b; font-family:Consolas,monospace; font-size:0.7rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">.../${shotContext}</span>` : '')}
                         </div>
-                        <span style="font-size:0.75rem; font-weight:bold; color:${statusColor};">${statusLabel}</span>
+                        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                            ${isMulti ? `<button class="sq-hist-expand-btn" onclick="window._expandedHistOrders.has('${order.id}') ? window._expandedHistOrders.delete('${order.id}') : window._expandedHistOrders.add('${order.id}'); window.syncQueueUI.render();">${isHistExpanded ? '▲ Ocultar' : `▼ Ver (${orderItems.length})`}</button>` : ''}
+                            <span style="font-size:0.75rem; font-weight:bold; color:${statusColor}; white-space:nowrap;">${statusLabel}</span>
+                        </div>
                     </div>
 
-                    <div style="display:flex; justify-content:space-between; color:#666; font-size:0.72rem;">
-                        <span>Proyecto: <b>${order.project || '—'}</b> | Usuario: <b>${order.user || '—'}</b></span>
+                    ${isMulti && isHistExpanded ? `
+                        <div class="sq-hist-expand-list">
+                            ${orderItems.slice(0, 50).map(i => `<div>• ${i.name || i.relativePath || i.path}</div>`).join('')}
+                            ${orderItems.length > 50 ? `<div style="color:#64748b;">... y ${orderItems.length - 50} más</div>` : ''}
+                        </div>
+                    ` : ''}
+
+                    <div class="sq-hist-meta">
+                        <span>${order.project || '—'} • ${order.user || '—'}</span>
                         <span>${new Date(order.createdAt).toLocaleString()}</span>
                     </div>
 

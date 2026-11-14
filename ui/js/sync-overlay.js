@@ -228,16 +228,7 @@ function showSyncConfirmDialog({
 
         const overlay = document.createElement('div');
         overlay.id = 'sync-confirm-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(4px);
-            z-index: 10500;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        `;
+        overlay.className = 'sq-confirm-overlay';
 
         const win = document.createElement('div');
         win.id = 'sync-confirm-window';
@@ -260,9 +251,16 @@ function showSyncConfirmDialog({
             font-family: inherit;
         `;
 
+        const shortPathHint = (() => {
+            const p = String(dest || src || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            const parts = p.split('/').filter(Boolean);
+            if (parts.length >= 3) return parts.slice(-3, -1).join(' / ') + ' / ';
+            return '';
+        })();
+
         win.innerHTML = `
             <!-- HEADER (DRAGGABLE) -->
-            <div id="sync-confirm-header" style="background:#161c24; border-bottom:1px solid #232b38; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; cursor:move; user-select:none;">
+            <div id="sync-confirm-header" class="sq-confirm-header">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span style="font-size:1.15rem;">${icon}</span>
                     <b style="font-size:0.92rem; color:#fff; font-weight:600;">${title}</b>
@@ -270,47 +268,30 @@ function showSyncConfirmDialog({
                 <button id="sync-confirm-close-btn" class="icon-btn-mini" style="color:#f44336; background:transparent; border:none; cursor:pointer; font-size:1.1rem; line-height:1; padding:2px 6px;" title="Cerrar (Esc)">✕</button>
             </div>
 
-            <!-- SUB-BAR -->
-            <div style="background:#11151c; border-bottom:1px solid #232b38; padding:6px 14px; display:flex; justify-content:space-between; align-items:center; font-size:0.76rem; color:#8892b0;">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:${accentColor};"></span>
-                    <span style="color:#d8dee9; font-weight:600;">${targetBadge}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <span>⚙️</span>
-                    <span>${method}</span>
-                </div>
-            </div>
-
             <!-- BODY -->
-            <div style="padding:16px; background:#0f1217; display:flex; flex-direction:column; gap:12px;">
+            <div class="sq-confirm-body">
                 <!-- ITEM CARD -->
-                <div style="background:rgba(255,255,255,0.03); border:1px solid #232b38; border-radius:6px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div class="sq-confirm-item-card">
                     <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                         <span style="font-size:1.4rem; flex-shrink:0;">${itemIcon}</span>
                         <div style="min-width:0; flex:1;">
-                            <div style="font-weight:600; color:#fff; font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${name}">${name}</div>
+                            <div style="font-weight:600; color:#fff; font-size:0.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${shortPathHint}${name}">
+                                ${shortPathHint ? `<span style="color:#8892b0; font-weight:400;">${shortPathHint}</span>` : ''}<span style="color:${accentColor};">${name}</span>
+                            </div>
                             <div style="font-size:0.75rem; color:#8892b0; margin-top:2px;">
-                                ${typeLabel}${sizeStr ? ` • <span style="color:#d8dee9; font-weight:500;">${sizeStr}</span>` : ''}
+                                ${isDir ? 'Carpeta completa (incluye subcarpetas)' : typeLabel}${sizeStr ? ` • <span style="color:#d8dee9; font-weight:500;">${sizeStr}</span>` : ''}
                             </div>
                         </div>
                     </div>
                     ${sizeStr ? `<span style="background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.25); color:#00e5ff; border-radius:4px; padding:2px 8px; font-size:0.75rem; font-weight:bold; flex-shrink:0;">${sizeStr}</span>` : ''}
                 </div>
 
-                ${isDir ? `
-                <div style="background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.25); border-radius:5px; padding:8px 12px; font-size:0.75rem; color:#ffb74d; display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:1rem;">📂</span>
-                    <span><b>Transferencia de Carpeta Completa:</b> Se procesarán todos los archivos y subcarpetas contenidos en este nivel.</span>
-                </div>
-                ` : ''}
-
                 <!-- ORIGEN -->
                 <div>
                     <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:${srcColor}; margin-bottom:4px; display:flex; align-items:center; gap:5px;">
                         <span>${srcIcon}</span> <span>Origen (${srcLabel})</span>
                     </div>
-                    <div style="background:#141a22; border:1px solid #232b38; border-radius:5px; padding:7px 10px; font-family:Consolas, Monaco, monospace; font-size:0.77rem; color:#d8dee9; word-break:break-all; user-select:all; line-height:1.4; max-height:65px; overflow-y:auto;" title="Clic para seleccionar">${src}</div>
+                    <div class="sq-confirm-path-box" title="Clic para seleccionar">${src}</div>
                 </div>
 
                 <!-- DESTINO -->
@@ -318,13 +299,13 @@ function showSyncConfirmDialog({
                     <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:${destColor}; margin-bottom:4px; display:flex; align-items:center; gap:5px;">
                         <span>${destIcon}</span> <span>Destino (${destLabel})</span>
                     </div>
-                    <div style="background:#141a22; border:1px solid #232b38; border-radius:5px; padding:7px 10px; font-family:Consolas, Monaco, monospace; font-size:0.77rem; color:#d8dee9; word-break:break-all; user-select:all; line-height:1.4; max-height:65px; overflow-y:auto;" title="Clic para seleccionar">${dest}</div>
+                    <div class="sq-confirm-path-box" title="Clic para seleccionar">${dest}</div>
                 </div>
             </div>
 
             <!-- FOOTER -->
-            <div style="background:#11151c; border-top:1px solid #232b38; padding:12px 16px; display:flex; justify-content:flex-end; align-items:center; gap:10px;">
-                <button id="sync-confirm-cancel-btn" style="background:#1a202c; border:1px solid #2d3748; color:#aaa; border-radius:5px; padding:7px 16px; font-size:0.82rem; cursor:pointer; font-weight:500; transition:all 0.15s;" onmouseover="this.style.color='#fff'; this.style.borderColor='#4a5568'" onmouseout="this.style.color='#aaa'; this.style.borderColor='#2d3748'">
+            <div class="sq-confirm-footer">
+                <button id="sync-confirm-cancel-btn" class="sq-confirm-cancel-btn">
                     ${cancelText}
                 </button>
                 <button id="sync-confirm-ok-btn" style="background:${confirmBtnBg}; color:#fff; border:none; border-radius:5px; padding:7px 20px; font-size:0.82rem; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 10px ${confirmBtnShadow}; transition:all 0.15s;">
@@ -400,12 +381,7 @@ function showSyncUploadConflictDialog(conflicts = []) {
         const existing = document.getElementById('sync-upload-conflict-overlay');
         if (existing) existing.remove();
 
-        function formatBytes(bytes) {
-            if (!bytes || bytes <= 0) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(1024));
-            return (bytes / Math.pow(1024, i)).toFixed(i >= 2 ? 1 : 0) + ' ' + units[i];
-        }
+        const formatBytes = (window.PipetaUtils && window.PipetaUtils.formatBytes) || ((b) => `${b || 0} B`);
 
         const overlay = document.createElement('div');
         overlay.id = 'sync-upload-conflict-overlay';
@@ -770,8 +746,77 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
     const targetType = forcedTargetType || (window.syncComparisonMode === 'server' || window.viewLocationMode === 'server' ? 'server' : 'drive');
     const proj = (typeof settings !== 'undefined' && settings?.currentProject?.name) ? settings.currentProject.name : 'surf_love';
 
-    const transferItems = buildItemsForSyncOrder(item, 'upload', targetType);
-    const totalBytes = transferItems.reduce((acc, it) => acc + (it.size || 0), 0) || item.size || 0;
+    const triggerEl = e?.currentTarget || e?.target?.closest?.('.sync-badge-inline, .sync-badge-action');
+    const prevTriggerHtml = triggerEl ? triggerEl.innerHTML : null;
+    const prevTriggerPointer = triggerEl ? triggerEl.style.pointerEvents : null;
+    const prevBodyCursor = document.body.style.cursor;
+    const setBusyState = (busy) => {
+        document.body.style.cursor = busy ? 'wait' : prevBodyCursor;
+        if (!triggerEl) return;
+        if (busy) {
+            triggerEl.innerHTML = triggerEl.classList.contains('sync-badge-inline') ? '⏳' : '⏳ Escaneando...';
+            triggerEl.style.pointerEvents = 'none';
+        } else {
+            triggerEl.innerHTML = prevTriggerHtml;
+            triggerEl.style.pointerEvents = prevTriggerPointer;
+        }
+    };
+
+    let transferItems = buildItemsForSyncOrder(item, 'upload', targetType);
+    let totalBytes = transferItems.reduce((acc, it) => acc + (it.size || 0), 0) || item.size || 0;
+    let isFilteredFolderPending = false;
+
+    const isPartialFolder = isDir && (
+        item.syncStatus === 'matched_drive' ||
+        item.syncStatus === 'matched_server' ||
+        (item.pendingUploadCount && item.pendingUploadCount > 0)
+    );
+
+    if (isPartialFolder) {
+        setBusyState(true);
+        try {
+            const pendRes = await fetch('/api/sync/resolve-pending-folder-upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project: proj, folderPath: item.path, targetType })
+            }).then(r => r.json());
+
+            if (pendRes && pendRes.success && Array.isArray(pendRes.items)) {
+                if (pendRes.items.length === 0) {
+                    setBusyState(false);
+                    if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                        settings.showToast(`✓ No hay archivos nuevos pendientes para subir en ${item.name}.`, 'info', 3);
+                    }
+                    return;
+                }
+                isFilteredFolderPending = true;
+                transferItems = pendRes.items.map(it => {
+                    const online = (typeof window.resolveLocalToOnlinePath === 'function')
+                        ? window.resolveLocalToOnlinePath(it.localPath, proj)
+                        : it.localPath;
+                    return {
+                        name: it.name,
+                        isDir: !!it.isDir,
+                        relativePath: it.relativePath || it.name,
+                        serverPath: targetType === 'server' ? it.localPath : undefined,
+                        onlinePath: targetType === 'drive' ? online : undefined,
+                        localPath: it.localPath,
+                        targetServerPath: targetType === 'server' ? it.localPath : undefined,
+                        size: it.size || 0
+                    };
+                });
+                totalBytes = pendRes.totalBytes || transferItems.reduce((acc, it) => acc + (it.size || 0), 0);
+            }
+        } catch (pendErr) {
+            console.warn('No se pudo filtrar pendientes de carpeta, usando carpeta completa:', pendErr);
+        } finally {
+            setBusyState(false);
+        }
+    }
+
+    const displayDialogName = isFilteredFolderPending
+        ? `${item.name} (${transferItems.length} pendiente${transferItems.length === 1 ? '' : 's'})`
+        : item.name;
 
     // 1. SUBIDA A SERVER CENTRAL
     if (targetType === 'server') {
@@ -783,8 +828,8 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
             icon: '⬆️',
             actionType: 'upload',
             targetType: 'server',
-            name: item.name,
-            isDir: isDir,
+            name: displayDialogName,
+            isDir: isFilteredFolderPending ? false : isDir,
             isSequence: !!item.isSequence,
             size: totalBytes,
             src: src,
@@ -861,47 +906,62 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
         dest = `Google Drive (${proj})`;
     }
 
-    // Pre-chequeo de conflictos y fast-lane contra StorNext SMB
+    // Pre-chequeo de conflictos y fast-lane contra StorNext SMB (solo para archivos sueltos <= 50; carpetas usan Fast-Lane al encolar)
     let conflictResolution = 'default';
     let finalTransferItems = transferItems;
+    let chkRes = null;
+
+    if (!isDir && !isFilteredFolderPending && transferItems.length <= 50) {
+        setBusyState(true);
+        try {
+            chkRes = await fetch('/api/sync/check-upload-conflicts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project: proj, items: transferItems, targetType: 'drive' })
+            }).then(r => r.json());
+        } catch (chkErr) {
+            console.warn('Pre-check conflict check skipped:', chkErr);
+        } finally {
+            setBusyState(false);
+        }
+    }
 
     try {
-        const chkRes = await fetch('/api/sync/check-upload-conflicts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: proj, items: transferItems, targetType: 'drive' })
-        }).then(r => r.json());
-
-        if (chkRes.success && chkRes.hasConflicts && chkRes.conflicts && chkRes.conflicts.length > 0) {
+        if (chkRes && chkRes.success && chkRes.hasConflicts && chkRes.conflicts && chkRes.conflicts.length > 0) {
             const userChoice = await showSyncUploadConflictDialog(chkRes.conflicts);
             if (userChoice === 'cancel' || !userChoice) {
                 return; // Aborta subida
             } else if (userChoice === 'overwrite') {
                 conflictResolution = 'overwrite';
             } else if (userChoice === 'rename_01') {
-                const renRes = await fetch('/api/sync/resolve-upload-conflict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ project: proj, items: transferItems, conflicts: chkRes.conflicts, action: 'rename_01' })
-                }).then(r => r.json());
+                setBusyState(true);
+                try {
+                    const renRes = await fetch('/api/sync/resolve-upload-conflict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ project: proj, items: transferItems, conflicts: chkRes.conflicts, action: 'rename_01' })
+                    }).then(r => r.json());
 
-                if (renRes.success && renRes.items) {
-                    finalTransferItems = renRes.items;
-                    if (renRes.renamed && renRes.renamed.length > 0) {
-                        const renNames = renRes.renamed.map(r => r.newName).join(', ');
-                        if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
-                            settings.showToast(`Archivos protegidos como copia: ${renNames}`, 'info', 4);
+                    if (renRes.success && renRes.items) {
+                        finalTransferItems = renRes.items;
+                        if (renRes.renamed && renRes.renamed.length > 0) {
+                            const renNames = renRes.renamed.map(r => r.newName).join(', ');
+                            if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
+                                settings.showToast(`Archivos protegidos como copia: ${renNames}`, 'info', 4);
+                            }
                         }
                     }
+                } finally {
+                    setBusyState(false);
                 }
             }
-        } else if (chkRes.success && chkRes.allIdentical) {
+        } else if (chkRes && chkRes.success && chkRes.allIdentical) {
             if (typeof settings !== 'undefined' && typeof settings.showToast === 'function') {
                 settings.showToast('⚡ Archivos ya idénticos en Servidor SMB. Subiendo directamente a Drive vía Worker Central.', 'info', 4);
             }
         }
     } catch (chkErr) {
-        console.warn('Pre-check conflict check skipped:', chkErr);
+        console.warn('Pre-check conflict resolution skipped:', chkErr);
     }
 
     const confirmed = await showSyncConfirmDialog({
@@ -909,11 +969,11 @@ async function requestUploadLocalItem(item, e, forcedTargetType) {
         icon: '☁️',
         actionType: 'upload',
         targetType: 'drive',
-        name: (finalTransferItems[0] && finalTransferItems[0].name) || item.name,
-        isDir: isDir,
+        name: isFilteredFolderPending ? displayDialogName : ((finalTransferItems[0] && finalTransferItems[0].name) || item.name),
+        isDir: isFilteredFolderPending ? false : isDir,
         isSequence: !!item.isSequence,
         size: totalBytes,
-        src: (finalTransferItems[0] && finalTransferItems[0].localPath) || src,
+        src: isFilteredFolderPending ? src : ((finalTransferItems[0] && finalTransferItems[0].localPath) || src),
         dest: dest,
         srcLabel: 'Disco Local Z:',
         destLabel: 'Google Drive',

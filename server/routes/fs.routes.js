@@ -221,6 +221,12 @@ router.get('/api/fs/list', (req, res) => {
                         targetLocalPath: (item.targetLocalPath || item.path || '').replace(/^S:/i, 'Z:')
                     }));
                     console.log(`[API /api/fs/list server_catalog] ${safeP} -> ${cleanItems.length} items (${Date.now() - t0}ms)`);
+                    try {
+                        const syncRoutes = require('./sync.routes');
+                        if (req.query.project && typeof syncRoutes.warmDriveSetForPath === 'function') {
+                            syncRoutes.warmDriveSetForPath(req.query.project, safeP);
+                        }
+                    } catch (e) {}
                     return res.json({ path: safeP, items: cleanItems, exists: true, fromCatalog: true, isServer: true });
                 }
                 console.log(`[API /api/fs/list server_catalog NULL] ${safeP} (${Date.now() - t0}ms)`);

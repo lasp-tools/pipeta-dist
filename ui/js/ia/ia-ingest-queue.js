@@ -501,7 +501,7 @@ function renderIaBatchTable() {
     if (iaBatchQueue.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" style="padding:20px; text-align:center; color:#666;">
+                <td colspan="6" style="padding:18px; text-align:center; color:#666;">
                     No hay archivos en la cola. Arrastra archivos arriba para comenzar.
                 </td>
             </tr>
@@ -527,10 +527,28 @@ function renderIaBatchTable() {
                 </div>
             `;
         } else {
-            newNameColHtml = `<span style="font-family:monospace; color:var(--accent); font-weight:bold;">${escapeHtml(item.canonicalName || '-')}</span>`;
-            if (item.hasCollision) {
-                newNameColHtml += ` <span style="background:rgba(244,67,54,0.2); color:#f44336; border:1px solid #f44336; border-radius:3px; padding:1px 4px; font-size:0.68rem; margin-left:4px;" title="Atención: Ya existe un archivo idéntico en disco. Se sobrescribirá al ingestar.">⚠️ Sobrescribe</span>`;
-            }
+            const collisionHtml = (item.hasCollision && item.checked)
+                ? ` <span style="background:rgba(244,67,54,0.2); color:#f44336; border:1px solid #f44336; border-radius:3px; padding:1px 4px; font-size:0.66rem; margin-left:4px;" title="Atención: Ya existe un archivo idéntico en disco. Se sobrescribirá al ingestar.">⚠️ Sobrescribe</span>`
+                : '';
+            newNameColHtml = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                    <div style="min-width:0;">
+                        <div style="font-family:monospace; color:var(--accent); font-weight:bold; word-break:break-all;">${escapeHtml(item.canonicalName || '-')}${collisionHtml}</div>
+                        <div style="font-family:monospace; font-size:0.68rem; color:#4caf50;" title="${escapeHtml(item.targetFolder || '')}">${escapeHtml(truncatePath(item.targetFolder || '-', 55))}</div>
+                    </div>
+                    <div style="display:inline-flex; align-items:center; gap:4px; flex-shrink:0;" onclick="event.stopPropagation();">
+                        <button type="button" class="tool-btn" style="width:24px; height:24px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#131b29; border:1px solid #26344a; border-radius:4px;" onclick="iaCopyItemName('${item.id}')" title="Copiar Nombre">
+                            <img src="icons/copy.svg" class="btn-icon-svg" style="width:13px; height:13px;">
+                        </button>
+                        <button type="button" class="tool-btn" style="width:24px; height:24px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#131b29; border:1px solid #26344a; border-radius:4px;" onclick="iaCopyItemPath('${item.id}')" title="Copiar Ruta">
+                            <img src="icons/copy_path.svg" class="btn-icon-svg" style="width:13px; height:13px;">
+                        </button>
+                        <button type="button" class="tool-btn" style="width:24px; height:24px; padding:0; display:inline-flex; align-items:center; justify-content:center; background:#131b29; border:1px solid #26344a; border-radius:4px;" onclick="iaOpenItemFolder('${item.id}')" title="Abrir Carpeta Destino">
+                            <img src="icons/open_explorer.svg" class="btn-icon-svg" style="width:13px; height:13px;">
+                        </button>
+                    </div>
+                </div>
+            `;
         }
 
         const originFolder = getOriginFolderOnly(item);
@@ -540,17 +558,18 @@ function renderIaBatchTable() {
 
         return `
             <tr style="border-bottom:1px solid #222; background:${isSelected ? 'rgba(76,175,80,0.22)' : 'transparent'}; border-left:${isSelected ? '4px solid #4caf50' : '4px solid transparent'}; cursor:pointer; user-select:none;" onclick="iaSelectRowItem('${item.id}', ${idx}, event)">
-                <td style="padding:8px; text-align:center;" onclick="event.stopPropagation();">
+                <td style="padding:7px 8px; text-align:center;" onclick="event.stopPropagation();">
                     <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="iaToggleBatchItemCheck('${item.id}', this.checked)">
                 </td>
-                <td style="padding:8px; color:#888;">${idx + 1}</td>
-                <td style="padding:8px; font-weight:bold; color:#eee;">${hfBadge}${escapeHtml(item.originalName)}</td>
-                <td style="padding:8px; font-family:monospace; color:#aaa;" title="${escapeHtml(originFolder)}">${escapeHtml(truncatePath(originFolder, 30))}</td>
-                <td style="padding:8px; font-family:monospace;">${newNameColHtml}</td>
-                <td style="padding:8px; font-family:monospace; color:#4caf50;" title="${escapeHtml(item.targetFolder)}">${truncatePath(item.targetFolder, 35)}</td>
-                <td style="padding:8px;">${statusBadge}</td>
-                <td style="padding:8px; text-align:center;" onclick="event.stopPropagation();">
-                    <button class="tool-btn danger" style="padding:2px 6px; font-size:0.7rem;" onclick="iaRemoveBatchItem('${item.id}')">✕</button>
+                <td style="padding:7px 8px; color:#888;">${idx + 1}</td>
+                <td style="padding:7px 8px;">
+                    <div style="font-weight:bold; color:#eee;">${hfBadge}${escapeHtml(item.originalName)}</div>
+                    <div style="font-family:monospace; font-size:0.68rem; color:#888;" title="${escapeHtml(originFolder)}">${escapeHtml(truncatePath(originFolder, 45))}</div>
+                </td>
+                <td style="padding:7px 8px;">${newNameColHtml}</td>
+                <td style="padding:7px 8px;">${statusBadge}</td>
+                <td style="padding:7px 8px; text-align:center;" onclick="event.stopPropagation();">
+                    <button class="tool-btn danger" style="padding:2px 6px; font-size:0.7rem;" onclick="iaRemoveBatchItem('${item.id}')" title="Quitar de la cola">✕</button>
                 </td>
             </tr>
         `;
@@ -607,6 +626,51 @@ function iaClearCompletedBatch() {
     iaSelectedIds.clear();
     updateIaPreview();
 }
+
+function iaClearAllBatch() {
+    iaBatchQueue = [];
+    iaSelectedIds.clear();
+    iaLastSelectedIdx = -1;
+    updateIaPreview();
+}
+window.iaClearAllBatch = iaClearAllBatch;
+
+function iaCopyItemName(id) {
+    const item = iaBatchQueue.find(i => i.id === id);
+    if (item && item.canonicalName) {
+        navigator.clipboard.writeText(item.canonicalName);
+        if (typeof showIaAlert === 'function') showIaAlert('✓ Nombre copiado al portapapeles', '#4caf50');
+    }
+}
+window.iaCopyItemName = iaCopyItemName;
+
+function iaCopyItemPath(id) {
+    const item = iaBatchQueue.find(i => i.id === id);
+    const pathText = item?.targetPath || (item?.targetFolder && item?.canonicalName ? `${item.targetFolder}/${item.canonicalName}` : item?.targetFolder);
+    if (pathText) {
+        navigator.clipboard.writeText(pathText);
+        if (typeof showIaAlert === 'function') showIaAlert('✓ Ruta copiada al portapapeles', '#4caf50');
+    }
+}
+window.iaCopyItemPath = iaCopyItemPath;
+
+async function iaOpenItemFolder(id) {
+    const item = iaBatchQueue.find(i => i.id === id);
+    const folder = item?.targetFolder || document.getElementById('iaResolvedPath')?.innerText;
+    if (!folder) return;
+    try {
+        const res = await fetch(`/api/ia/open-folder?folderPath=${encodeURIComponent(folder)}`);
+        const data = await res.json();
+        if (data.success && typeof showIaAlert === 'function') {
+            showIaAlert(`📂 Carpeta abierta en Explorer: ${data.opened}`, '#4caf50');
+        } else if (!data.success && typeof showIaAlert === 'function') {
+            showIaAlert(`❌ Error al abrir carpeta: ${data.error}`, '#f44336');
+        }
+    } catch (e) {
+        if (typeof showIaAlert === 'function') showIaAlert(`❌ Error de conexión: ${e.message}`, '#f44336');
+    }
+}
+window.iaOpenItemFolder = iaOpenItemFolder;
 
 function iaRemoveBatchItem(id) {
     iaBatchQueue = iaBatchQueue.filter(i => i.id !== id);
@@ -715,6 +779,7 @@ async function executeIaIngestBatch() {
                 const data = await res.json();
                 if (data && data.success) {
                     item.status = isWorker ? '⚡ Encolado en Worker' : '✓ Ingestado';
+                    item.checked = false;
                     if (data.targetFile) {
                         item.destination = data.targetFile;
                         item.targetPath = data.targetFile.replace(/\\/g, '/');
@@ -759,6 +824,7 @@ async function executeIaIngestBatch() {
 
                 if (allSuccess) {
                     item.status = '✓ Ingestado';
+                    item.checked = false;
                     item.destination = (activeTargets[0] + '/' + item.canonicalName).replace(/\\/g, '/');
                     item.targetPath = item.destination;
                     if (typeof PipetaConsole !== 'undefined') {

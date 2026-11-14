@@ -488,11 +488,13 @@ Object.assign(settings, {
         const includeRamon = document.getElementById('pkgIncludeRamon')?.checked || false;
         const includeDriveCache = document.getElementById('pkgIncludeSyncCacheDrive')?.checked || document.getElementById('pkgIncludeDriveCache')?.checked || false;
         const includeServerCache = document.getElementById('pkgIncludeSyncCacheServer')?.checked || document.getElementById('pkgIncludeServerCache')?.checked || false;
+        const forceFreelance = document.getElementById('pkgForceFreelance')?.checked || false;
 
         const btn = document.getElementById('btnRunPackageZip') || document.getElementById('pkgGenerateBtn');
+        const freelanceSuffix = forceFreelance ? '_Freelance' : '';
         const zipName = includeRamon 
-            ? `Pipeta_${window.APP_VERSION || 'v1.1.93'}_Ramon.zip` 
-            : `Pipeta_${window.APP_VERSION || 'v1.1.93'}.zip`;
+            ? `Pipeta_${window.APP_VERSION || 'v1.1.93'}${freelanceSuffix}_Ramon.zip` 
+            : `Pipeta_${window.APP_VERSION || 'v1.1.93'}${freelanceSuffix}.zip`;
 
         if (btn) {
             btn.disabled = true;
@@ -516,7 +518,8 @@ Object.assign(settings, {
                     targetDir: targetDir, 
                     includeRamon: includeRamon,
                     includeDriveCache: includeDriveCache,
-                    includeServerCache: includeServerCache
+                    includeServerCache: includeServerCache,
+                    forceFreelance: forceFreelance
                 })
             });
 
@@ -1214,6 +1217,19 @@ settings._categoryRenderers.exportar = function () {
                             </div>
                         </div>
 
+                        <!-- CHECKBOX FORZAR MODO FREELANCE -->
+                        <div style="background:rgba(255,152,0,0.06); border:1px solid rgba(255,152,0,0.35); border-radius:6px; padding:10px 14px; margin-bottom:14px;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:#ffe0b2;">
+                                <input type="checkbox" id="pkgForceFreelance" style="width:16px; height:16px; cursor:pointer;">
+                                <span>
+                                    <b>🔒 Forzar Modo Freelance (bloqueado para externos)</b>
+                                </span>
+                            </label>
+                            <div style="font-size:0.75rem; color:#b0bec5; margin-left:26px; margin-top:4px; line-height:1.4;">
+                                Genera <code>presets/freelance_lock.json</code> dentro del .ZIP. Fuerza operación 100% local + Drive (sin SMB ni Pipeta Server), persiste tras actualizar por GitHub y solo un usuario <b>Admin</b> puede desbloquearlo.
+                            </div>
+                        </div>
+
                         <!-- BOTÓN ACCIÓN -->
                         <div style="display:flex; justify-content:flex-end;">
                             <button class="action-btn-primary" id="btnRunPackageZip" onclick="settings.runZipPackaging()" style="display:flex; align-items:center; gap:8px; padding:8px 18px;">
@@ -1222,7 +1238,65 @@ settings._categoryRenderers.exportar = function () {
                         </div>
                     </div>
                     ` : '<div style="padding:12px 16px; background:rgba(255,255,255,0.02); border:1px solid #282828; border-radius:6px; color:#888; font-size:0.8rem; margin-bottom:18px;">🔒 Empaquetado portable (.zip) restringido por política de usuario.</div>'}
+
+                    <!-- TEST / DESBLOQUEO DE MODO FREELANCE EN ESTA INSTALACIÓN (siempre visible para poder salir de la simulación) -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid #2b3444; border-radius:6px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <div style="font-size:0.78rem; color:#cbd5e1;">
+                            <b>Estado local:</b> ${window.pipetaSystemEnv?.freelanceLocked ? '<span style="color:#ffb74d;">🔒 Bloqueado en Modo Freelance</span>' : '<span style="color:#4ade80;">🔓 Modo Normal / Estudio</span>'}
+                            ${(() => { try { return (window.pipetaSystemEnv?.freelanceLocked || localStorage.getItem('pipeta_sim_non_admin_role')) ? '<span style="color:#38bdf8; margin-left:8px;">• Rol activo: Artista (no-admin)</span>' : ''; } catch(e) { return ''; } })()}
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            ${window.pipetaSystemEnv?.freelanceLocked ? `
+                                <button class="btn" onclick="settings.toggleFreelanceLockTest('remove_lock')" style="background:#1b2838; color:#4fc3f7; border:1px solid #4fc3f7; border-radius:4px; padding:5px 10px; font-size:0.75rem; cursor:pointer;">🔓 Desbloquear (Admin)</button>
+                            ` : `
+                                <button class="btn" onclick="settings.toggleFreelanceLockTest('enable_lock')" style="background:#2b2112; color:#ffb74d; border:1px solid #ffb74d; border-radius:4px; padding:5px 10px; font-size:0.75rem; cursor:pointer;">🧪 Simular Bloqueo Freelance aquí</button>
+                            `}
+                        </div>
+                    </div>
                 `;
+};
+
+settings.toggleFreelanceLockTest = async function (action) {
+    let adminPassword = '';
+    if (action === 'remove_lock' || action === 'unlock_session') {
+        adminPassword = prompt('Ingresá la contraseña de Administrador de Pipeta para desbloquear:');
+        if (adminPassword === null) return;
+    }
+    try {
+        const res = await fetch('/api/system/freelance-lock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, adminPassword })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            alert(data.error || 'No se pudo cambiar el bloqueo Freelance');
+            return;
+        }
+        try {
+            if (action === 'enable_lock') {
+                localStorage.setItem('pipeta_sim_non_admin_role', 'user');
+            } else {
+                localStorage.removeItem('pipeta_sim_non_admin_role');
+            }
+        } catch (e) {}
+        if (data.env) window.pipetaSystemEnv = data.env;
+        if (typeof window.applyRolePermissionsToUI === 'function') await window.applyRolePermissionsToUI();
+        if (typeof renderHeaderToolbar === 'function') renderHeaderToolbar();
+        if (typeof settings.renderSidebar === 'function') settings.renderSidebar();
+        if (typeof settings.renderContent === 'function') settings.renderContent();
+        if (typeof settings.showToast === 'function') {
+            settings.showToast(
+                data.locked
+                    ? '🔒 Modo Freelance activado + rol simulado Artista (no-admin)'
+                    : '🔓 Modo Freelance desbloqueado y rol restaurado',
+                'success',
+                4
+            );
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
 };
 
 settings._categoryRenderers.shortcuts = function () {

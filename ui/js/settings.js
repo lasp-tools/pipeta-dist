@@ -3292,7 +3292,7 @@ const settings = {
                     <h3 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                         <span>🚀 Versión / Patch Notes</span>
                         <span style="font-size:0.8rem; background:var(--accent); color:black; font-weight:bold; padding:2px 10px; border-radius:4px;">
-                            ${window.APP_VERSION || 'v1.2.16'}
+                            ${window.APP_VERSION || 'v1.2.18'}
                         </span>
                     </h3>
 
@@ -3304,7 +3304,22 @@ const settings = {
 
                         <div style="max-height:480px; overflow-y:auto; padding-right:8px; font-size:0.8rem; line-height:1.6;">
                             <div style="margin-bottom:16px; border-left:3px solid #00e5ff; padding-left:12px;">
-                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.2.5 (Actual)</div>
+                                <div style="font-weight:bold; color:#00e5ff; font-size:0.88rem;">v1.2.18 (Actual)</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>Escritura Atómica de Órdenes JSON:</b> Nuevo módulo <code>json-atomic.js</code> (escritura a temporal + rename) y limpieza automática de JSONs corruptos al cancelar, evitando órdenes trabadas en la cola.</li>
+                                    <li><b>Sync Queue &amp; Confirmación Más Limpios:</b> Tarjetas activas e historial compacto con desplegable <code>Ver (N)</code> para lotes grandes y modal de confirmación simplificado.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.2.17</div>
+                                <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
+                                    <li><b>Subida de Carpetas Instantánea y Pre-calentamiento de Catálogos:</b> Nuevo endpoint <code>/api/sync/resolve-pending-folder-upload</code> con cache en RAM de subcatálogos de Drive y listado único por directorio SMB, reduciendo de ~10s a milisegundos la apertura de confirmación de subida.</li>
+                                    <li><b>Velocidad Máxima en Workers y Progreso en Tiempo Real:</b> Subida paralela con <code>--transfers 8 --checkers 16</code>, cálculo paralelo del peso total real del lote desde el inicio, velocidad promedio de respaldo en archivos pequeños y polling de cola cada <code>600ms</code>.</li>
+                                    <li><b>Cola de Sincronización Compacta:</b> Las tarjetas con más de 2 ítems se colapsan con selector desplegable (<code>Ver lista</code>) y preservan timestamps al copiar localmente.</li>
+                                </ul>
+                            </div>
+                            <div style="margin-bottom:16px; border-left:3px solid #666; padding-left:12px;">
+                                <div style="font-weight:bold; color:#aaa; font-size:0.88rem;">v1.2.5</div>
                                 <ul style="margin:4px 0 0 16px; padding:0; font-size:0.8rem; color:#ccc; line-height:1.4;">
                                     <li><b>Transición Canónica: De "Motor" a "Modelo":</b> El token y los selectores en la interfaz ahora se denominan oficialmente <code>MODELO</code>.</li>
                                     <li><b>Autodetección Inteligente por Palabras Clave:</b> Al arrastrar o encolar archivos de Runway, Higgsfield u otras plataformas, Pipeta analiza el nombre de archivo y ruta para mapear automáticamente el modelo canónico (ej: <code>GPT Image 2_5 Sunburst</code> a <code>GPT25S</code>, <code>Seedance 2_0</code> a <code>SD2</code>, <code>Seedance 2_5</code> a <code>SD25</code>, <code>Ruby</code> a <code>RUBY</code>, <code>Aleph 2</code> a <code>ALPH2</code>, <code>Gen 4.5</code> a <code>GEN45</code>, <code>Gen 4</code> a <code>GEN4</code>, <code>Nano Banana 2.1</code> a <code>NBN21</code>, <code>Flare</code> a <code>GPT25F</code>, <code>Topaz</code> a <code>TPZ</code>).</li>

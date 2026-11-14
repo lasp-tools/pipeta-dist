@@ -844,11 +844,9 @@ function syncBuilderControlsWithSelection() {
 
     if (activeItem) {
         if (iaSelectedIds.size > 1) {
-            if (noticeEl) noticeEl.innerText = `Editando ${iaSelectedIds.size} ítems en lote (activo: ${activeItem.originalName})`;
-        } else if (iaSelectedIds.size === 1) {
-            if (noticeEl) noticeEl.innerText = `Editando: ${activeItem.originalName}`;
+            if (noticeEl) noticeEl.innerText = `(${iaSelectedIds.size} ítems · ${activeItem.originalName})`;
         } else {
-            if (noticeEl) noticeEl.innerText = `Mostrando: ${activeItem.originalName}`;
+            if (noticeEl) noticeEl.innerText = `(${activeItem.originalName})`;
         }
 
         // Subcarpeta

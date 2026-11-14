@@ -601,8 +601,9 @@ function createTreeNode(item, level, containerId = '') {
     wrapper._item = item;
     wrapper._containerId = containerId;
 
+    const isSystemFolder = (item.name || '').toLowerCase() === '_gsdata_';
     const row = document.createElement('div');
-    row.className = 'tree-node' + (item.isGhost ? ' sync-ghost' : '');
+    row.className = 'tree-node' + (item.isGhost ? ' sync-ghost' : '') + (isSystemFolder ? ' tree-node-system' : '');
     row.setAttribute('data-path', item.path);
     row.setAttribute('data-isdir', item.isDirectory);
     row.style.paddingLeft = `${level * 20 + 10}px`;
@@ -989,6 +990,11 @@ function buildRowSyncBadges(item) {
 
     const status = item ? item.syncStatus : null;
     if (!status) return { inlineHtml, rightHtml };
+    if ((item?.name || '').toLowerCase() === '_gsdata_') {
+        rightHtml = `<span style="font-size:0.68rem; color:#6c7a8e; font-style:italic;">Sistema</span>`;
+        return { inlineHtml, rightHtml };
+    }
+    const fmtCount = (n) => Number(n || 0).toLocaleString('es-AR');
 
     if (status === 'matched_drive' || status === 'matched_server') {
         const targetType = status === 'matched_server' ? 'server' : 'drive';
@@ -1003,12 +1009,12 @@ function buildRowSyncBadges(item) {
             const inlineBadges = [];
             const rightBadges = [];
             if (upC > 0) {
-                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Subir a ${labelTarget} (${upC} pendientes)">${SVG_INLINE_UP}</span>`);
-                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Esta carpeta contiene ${upC} elemento(s) nuevos en Z: pendientes de subir a ${labelTarget}">⬆️* Subir (${upC})</span>`);
+                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Subir a ${labelTarget} (${fmtCount(upC)} pendientes)">${SVG_INLINE_UP}</span>`);
+                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Esta carpeta contiene ${fmtCount(upC)} elemento(s) nuevos en Z: pendientes de subir a ${labelTarget}">⬆️ Subir ${fmtCount(upC)}</span>`);
             }
             if (downC > 0) {
-                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Bajar desde ${labelTarget} (${downC} pendientes)">${SVG_INLINE_DOWN}</span>`);
-                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="* Esta carpeta contiene ${downC} elemento(s) en ${labelTarget} pendientes de bajar a Z:">⬇️* Bajar (${downC})</span>`);
+                inlineBadges.push(`<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Bajar desde ${labelTarget} (${fmtCount(downC)} pendientes)">${SVG_INLINE_DOWN}</span>`);
+                rightBadges.push(`<span class="sync-badge-action sync-badge-pending-folder-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Esta carpeta contiene ${fmtCount(downC)} elemento(s) en ${labelTarget} pendientes de bajar a Z:">⬇️ Faltan ${fmtCount(downC)}</span>`);
             }
             inlineHtml = inlineBadges.join('');
             rightHtml = rightBadges.join('');
@@ -1018,23 +1024,23 @@ function buildRowSyncBadges(item) {
     } else if (status === 'upload_drive') {
         const dest = item.onlinePath || 'Google Drive';
         inlineHtml = `<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">${SVG_INLINE_UP}</span>`;
-        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Subir a Drive</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Subir a Google Drive (${dest})">⬆️ Solo Local</span>`;
     } else if (status === 'upload_server') {
         const dest = item.serverPath || 'Servidor Central';
         inlineHtml = `<span class="sync-badge-inline sync-arrow-up" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">${SVG_INLINE_UP}</span>`;
-        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">⬆️ Subir a Server</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-upload" data-badge-dir="upload" onclick="event.stopPropagation(); requestUploadLocalItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar a Servidor Central (${dest})">⬆️ Solo Local</span>`;
     } else if (status === 'ghost_drive') {
         inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">${SVG_INLINE_DOWN}</span>`;
-        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Bajar de Drive</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'drive')" title="Descargar desde Google Drive hacia tu disco local Z:">⬇️ Solo en Drive</span>`;
     } else if (status === 'ghost_server') {
         inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">${SVG_INLINE_DOWN}</span>`;
-        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">⬇️ Bajar de Server</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, 'server')" title="Copiar desde Servidor Central hacia tu disco local Z:">⬇️ Solo en Server</span>`;
     } else if (status === 'partial_drive' || status === 'partial_server') {
         const targetType = status === 'partial_server' ? 'server' : 'drive';
         const labelTarget = targetType === 'server' ? 'Server' : 'Drive';
         const missingCount = item.missingFramesCount || (item.missingFrames ? item.missingFrames.length : 1);
-        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar desde ${labelTarget}">${SVG_INLINE_DOWN}</span>`;
-        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" style="background:rgba(0,229,255,0.15); border-color:#00e5ff; color:#00e5ff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${missingCount} frames en disco local. Clic para bajar los frames faltantes desde ${labelTarget}">⬇️* Bajar (${missingCount} faltantes)</span>`;
+        inlineHtml = `<span class="sync-badge-inline sync-arrow-down" data-badge-dir="download" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${fmtCount(missingCount)} frames en disco local. Clic para bajar desde ${labelTarget}">${SVG_INLINE_DOWN}</span>`;
+        rightHtml = `<span class="sync-badge-action sync-badge-download" data-badge-dir="download" style="background:rgba(0,229,255,0.15); border-color:#00e5ff; color:#00e5ff;" onclick="event.stopPropagation(); requestDownloadGhostItem(this.closest('.node-wrapper')._item, event, '${targetType}')" title="Secuencia incompleta: faltan ${fmtCount(missingCount)} frames en disco local. Clic para bajar los frames faltantes desde ${labelTarget}">⬇️ Faltan ${fmtCount(missingCount)}</span>`;
     } else if (status === 'mismatch_drive' || status === 'mismatch_server') {
         const targetType = status === 'mismatch_server' ? 'server' : 'drive';
         const labelTarget = targetType === 'server' ? 'Server' : 'Drive';

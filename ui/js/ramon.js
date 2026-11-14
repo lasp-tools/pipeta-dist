@@ -165,9 +165,9 @@ const Ramon = {
                 avatar.title = `Sesión activa: ${activeLogin}${fullName ? ` (${fullName})` : ''} [Ramón]`;
             }
             if (label) {
-                label.textContent = `${activeLogin} [Ramón]`;
+                label.textContent = activeLogin;
                 label.style.color = '#00bcd4';
-                label.title = `Sesión activa: ${activeLogin} (${fullName})`;
+                label.title = `Sesión activa: ${activeLogin}${fullName ? ` (${fullName})` : ''} [Ramón]`;
             }
         } else {
             if (avatar) {

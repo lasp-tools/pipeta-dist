@@ -15,10 +15,71 @@ const {
     SHORTCUT_NAME,
     LAUNCHER_BAT,
     UPDATER_BAT,
-    UPDATING_FLAG_FILE
+    UPDATING_FLAG_FILE,
+    runtimeState
 } = require('../core/app-context');
+const {
+    isFreelanceLocked,
+    isFreelanceLockFileActive,
+    FREELANCE_LOCK_FILE,
+    runEnvironmentDetection,
+    setLocationMode
+} = require('../core/env-detector');
 
 const router = express.Router();
+
+// --- FREELANCE LOCK STATUS & ADMIN UNLOCK ---
+router.get('/api/system/freelance-lock', (req, res) => {
+    res.json({
+        success: true,
+        fileExists: isFreelanceLockFileActive(),
+        locked: isFreelanceLocked(),
+        adminUnlocked: !!runtimeState.freelanceAdminUnlocked
+    });
+});
+
+router.post('/api/system/freelance-lock', async (req, res) => {
+    try {
+        const { action = 'unlock_session', adminPassword = '' } = req.body || {};
+        const usersCfgPath = path.join(APP_ROOT, 'presets', 'users_config.json');
+        let expectedAdminPass = 'LASP.Pipeta#2026.Admin!';
+        try {
+            if (fs.existsSync(usersCfgPath)) {
+                const cfg = fs.readJsonSync(usersCfgPath);
+                if (cfg && cfg.adminPassword) expectedAdminPass = String(cfg.adminPassword);
+            }
+        } catch (e) {}
+
+        if (action === 'unlock_session' || action === 'remove_lock') {
+            if (String(adminPassword) !== expectedAdminPass) {
+                return res.status(403).json({ success: false, error: 'Contraseña de Administrador incorrecta' });
+            }
+            runtimeState.freelanceAdminUnlocked = true;
+            if (action === 'remove_lock' && fs.existsSync(FREELANCE_LOCK_FILE)) {
+                await fs.remove(FREELANCE_LOCK_FILE);
+            }
+            const env = await runEnvironmentDetection();
+            return res.json({ success: true, locked: false, adminUnlocked: true, fileExists: isFreelanceLockFileActive(), env });
+        }
+
+        if (action === 'enable_lock') {
+            await fs.ensureDir(path.dirname(FREELANCE_LOCK_FILE));
+            await fs.writeJson(FREELANCE_LOCK_FILE, {
+                locked: true,
+                mode: 'freelance',
+                createdAt: new Date().toISOString()
+            }, { spaces: 2 });
+            runtimeState.freelanceAdminUnlocked = false;
+            try { setLocationMode('home'); } catch (e) {}
+            const env = await runEnvironmentDetection();
+            return res.json({ success: true, locked: true, adminUnlocked: false, fileExists: true, env });
+        }
+
+        return res.status(400).json({ success: false, error: 'Acción inválida' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // --- PORTABLE PACKAGE EXPORTER (.ZIP + .BAT EXTRACTOR) ---
 router.post('/api/system/package-dist', async (req, res) => {
@@ -27,11 +88,13 @@ router.post('/api/system/package-dist', async (req, res) => {
     const includeRamon = req.body?.includeRamon === true || req.body?.includeRamon === 'true';
     const includeDriveCache = req.body?.includeDriveCache === true || req.body?.includeDriveCache === 'true';
     const includeServerCache = req.body?.includeServerCache === true || req.body?.includeServerCache === 'true';
+    const forceFreelance = req.body?.forceFreelance === true || req.body?.forceFreelance === 'true';
 
     const pipetaRoot = APP_ROOT;
     const appFolderName = path.basename(LOCAL_APP_DIR); // 'Pipeta_Beta' or 'Pipeta'
     const zipPrefix = IS_BETA ? 'Pipeta_Beta' : 'Pipeta';
-    const zipName = includeRamon ? `${zipPrefix}_${VERSION}_Ramon.zip` : `${zipPrefix}_${VERSION}.zip`;
+    const freelanceSuffix = forceFreelance ? '_Freelance' : '';
+    const zipName = includeRamon ? `${zipPrefix}_${VERSION}${freelanceSuffix}_Ramon.zip` : `${zipPrefix}_${VERSION}${freelanceSuffix}.zip`;
     const batFileName = IS_BETA
         ? 'Instalar_o_Actualizar_Pipeta_Beta_Local.bat'
         : 'Instalar_o_Actualizar_Pipeta_Local.bat';
@@ -47,6 +110,7 @@ $destBat = "${destBat.replace(/\\/g, '\\\\')}"
 $includeRamon = ${includeRamon ? '$true' : '$false'}
 $includeDriveCache = ${includeDriveCache ? '$true' : '$false'}
 $includeServerCache = ${includeServerCache ? '$true' : '$false'}
+$forceFreelance = ${forceFreelance ? '$true' : '$false'}
 $tempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "Pipeta_Pkg_" + [System.Guid]::NewGuid().ToString())
 $pkgRoot = [System.IO.Path]::Combine($tempDir, "${appFolderName}")
 
@@ -124,6 +188,18 @@ try {
             $cfg.adminPassword = "LASP.Pipeta#2026.Admin!"
             $cfg | ConvertTo-Json -Depth 10 | Set-Content $distUsersCfg -Encoding UTF8
         } catch {}
+    }
+
+    $distFreelanceLock = Join-Path $pkgRoot "presets\\freelance_lock.json"
+    if ($forceFreelance) {
+        $lockObj = @{
+            locked = $true
+            mode = "freelance"
+            createdAt = (Get-Date).ToString("o")
+        }
+        $lockObj | ConvertTo-Json | Set-Content $distFreelanceLock -Encoding UTF8
+    } else {
+        if (Test-Path $distFreelanceLock) { Remove-Item $distFreelanceLock -Force -ErrorAction SilentlyContinue }
     }
 
     $tempZip = Join-Path $tempDir "package.zip"

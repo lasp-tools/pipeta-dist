@@ -180,14 +180,48 @@ function getAllOrdersCandidateDirs() {
     return dirs;
 }
 
+function writeOrderFileAtomic(finalPath, jsonStr) {
+    const dir = path.dirname(finalPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const base = path.basename(finalPath, '.json');
+    const tmpPath = path.join(dir, `${base}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`);
+    fs.writeFileSync(tmpPath, jsonStr, 'utf8');
+    try {
+        fs.renameSync(tmpPath, finalPath);
+    } catch (renErr) {
+        fs.writeFileSync(finalPath, jsonStr, 'utf8');
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {}
+    }
+}
+
+function safeParseOrderJson(rawContent) {
+    if (!rawContent || typeof rawContent !== 'string') return null;
+    try {
+        return JSON.parse(rawContent);
+    } catch (e) {
+        // Auto-reparación tolerante ante cola truncada/corrupta por SMB (e.g. '}completedAt":...')
+        const candidates = [
+            rawContent.indexOf('}\n'),
+            rawContent.indexOf('}\r\n'),
+            rawContent.lastIndexOf('}')
+        ].filter(i => i > 0);
+        for (const cut of candidates) {
+            try {
+                return JSON.parse(rawContent.slice(0, cut + 1));
+            } catch (e2) {}
+        }
+        return null;
+    }
+}
+
 function saveOrderInCandidateDirs(orderId, orderData) {
     const candidateDirs = getAllOrdersCandidateDirs();
+    const jsonStr = JSON.stringify(orderData, null, 2);
     let primaryFile = null;
     for (const dir of candidateDirs) {
         try {
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             const p = path.join(dir, `${orderId}.json`);
-            fs.writeFileSync(p, JSON.stringify(orderData, null, 2), 'utf8');
+            writeOrderFileAtomic(p, jsonStr);
             ordersFileMemoryCache.delete(p);
             if (!primaryFile) primaryFile = p;
         } catch (e) {}
@@ -287,6 +321,8 @@ module.exports = {
     getCentralCacheDir,
     getOrdersDir,
     getAllOrdersCandidateDirs,
+    writeOrderFileAtomic,
+    safeParseOrderJson,
     saveOrderInCandidateDirs,
     getServerUncRoot,
     ensureServerUncAccess,

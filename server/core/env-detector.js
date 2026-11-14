@@ -19,6 +19,22 @@ const { rcloneAvailable, rcloneVersion } = require('./rclone');
 const { getLocalSyncCacheDir, getReadSyncCacheCandidateDirs } = require('./sync-paths');
 
 const PIPETA_SERVER_TOKEN = 'lasp-pipeta-sec-token-2026';
+const FREELANCE_LOCK_FILE = path.join(APP_ROOT, 'presets', 'freelance_lock.json');
+
+function isFreelanceLockFileActive() {
+    try {
+        if (!fs.existsSync(FREELANCE_LOCK_FILE)) return false;
+        const data = fs.readJsonSync(FREELANCE_LOCK_FILE);
+        return !!(data && data.locked === true);
+    } catch (e) {
+        return false;
+    }
+}
+
+function isFreelanceLocked() {
+    if (runtimeState.freelanceAdminUnlocked === true) return false;
+    return isFreelanceLockFileActive();
+}
 
 // Seed activeRamonUser from last_ramon_user.json on startup
 try {
@@ -52,6 +68,13 @@ function detectStudioNetworkSync() {
         }
     } catch (e) {}
     const hasZ = fs.existsSync('Z:\\');
+    if (isFreelanceLocked()) {
+        global.isExternalMachine = true;
+        global.isStudioNetworkDetected = false;
+        global.hasZDrive = hasZ;
+        console.log(`[ENV FAST-DETECT] 🔒 MODO FREELANCE BLOQUEADO (presets/freelance_lock.json) | Externo = SI | Disco Z = ${hasZ ? 'MONTAJE OK' : 'NO DISPONIBLE'}`);
+        return { isStudioLAN: false, isExternalMachine: true, hasZ, freelanceLocked: true };
+    }
     global.isExternalMachine = !isStudioLAN;
     global.hasZDrive = hasZ;
     console.log(`[ENV FAST-DETECT] Red de Estudio = ${isStudioLAN ? 'SI (LAN Munro)' : 'NO (Freelance/Casa)'} | Externo = ${global.isExternalMachine ? 'SI' : 'NO'} | Disco Z = ${hasZ ? 'MONTAJE OK' : 'NO DISPONIBLE'}`);
@@ -105,10 +128,14 @@ function getCachedEnvState() {
 }
 
 function getLocationMode() {
+    if (isFreelanceLocked()) return 'home';
     return global.locationMode || locationMode || 'auto';
 }
 
 function setLocationMode(mode) {
+    if (isFreelanceLocked() && mode !== 'home') {
+        throw new Error('Instalación bloqueada en Modo Freelance (requiere usuario Admin para desbloquear)');
+    }
     locationMode = mode;
     global.locationMode = mode;
 }
@@ -198,9 +225,14 @@ async function runEnvironmentDetection() {
 
     const isRemoteRamon = !!(ramonHost && (ramonHost.includes('8075') || ramonHost.includes('https://')));
 
-    const activeLocationMode = global.locationMode || locationMode || 'auto';
+    let activeLocationMode = global.locationMode || locationMode || 'auto';
     let isExternalMachine = !isStudioNetwork || isRemoteRamon;
-    if (activeLocationMode === 'studio') {
+    const freelanceLocked = isFreelanceLocked();
+    if (freelanceLocked) {
+        activeLocationMode = 'home';
+        isExternalMachine = true;
+        isStudioNetwork = false;
+    } else if (activeLocationMode === 'studio') {
         isExternalMachine = false;
         isStudioNetwork = true;
     } else if (activeLocationMode === 'home') {
@@ -226,6 +258,9 @@ async function runEnvironmentDetection() {
         hasSyncCache,
         isStudioNetwork,
         isExternalMachine,
+        freelanceLocked,
+        freelanceLockFileExists: isFreelanceLockFileActive(),
+        freelanceAdminUnlocked: !!runtimeState.freelanceAdminUnlocked,
         locationMode: activeLocationMode,
         ramonHost,
         recommendedMode,
@@ -519,6 +554,7 @@ async function syncConfigsFromMasterNetwork(options = {}) {
 }
 
 async function sendClientTelemetryPing() {
+    if (global.isExternalMachine || isFreelanceLocked()) return;
     try {
         const hostname = os.hostname() || process.env.COMPUTERNAME || 'unknown';
         const ip = getPrimaryLocalIp();
@@ -628,5 +664,8 @@ module.exports = {
     getPipetaServerCandidateUrls,
     syncConfigsFromMasterNetwork,
     sendClientTelemetryPing,
-    executeRemoteUpdate
+    executeRemoteUpdate,
+    isFreelanceLocked,
+    isFreelanceLockFileActive,
+    FREELANCE_LOCK_FILE
 };

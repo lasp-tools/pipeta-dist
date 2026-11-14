@@ -173,9 +173,9 @@ const headerToolsTemplates = {
                 <button class="tool-btn ${window.explorerOnlyMyTasks ? 'active' : ''}" 
                         id="btnExplorerMyTasksFilter"
                         onclick="toggleExplorerOnlyMyTasks()" 
-                        style="height:32px; min-width:32px; padding:2px 6px; ${window.explorerOnlyMyTasks ? 'background:rgba(0,188,212,0.25); border:1px solid #00bcd4;' : ''}"
+                        style="height:30px; min-width:30px; padding:2px 6px; ${window.explorerOnlyMyTasks ? 'background:rgba(0,188,212,0.25); border:1px solid #00bcd4;' : ''}"
                         title="Mis Tareas en Ramón (Filtrar elementos asignados a mi usuario)">
-                    <img src="icons/ramon.png" style="width:22px; height:22px; object-fit:contain; vertical-align:middle; ${!window.explorerOnlyMyTasks ? 'opacity:0.4; filter:grayscale(100%);' : ''}">
+                    <img src="icons/ramon.png" style="width:20px; height:20px; object-fit:contain; vertical-align:middle; ${!window.explorerOnlyMyTasks ? 'opacity:0.4; filter:grayscale(100%);' : ''}">
                 </button>
 
                 <!-- 2. Project Filter (Embudo) -->
@@ -183,9 +183,9 @@ const headerToolsTemplates = {
                         id="btnPipetaFilter"
                         onclick="togglePipetaFilter()" 
                         oncontextmenu="handleFilterContextMenu(event)"
-                        style="height:32px; min-width:32px; padding:2px 6px;"
+                        style="height:30px; min-width:30px; padding:2px 6px;"
                         title="Project Filter (Mostrar solo carpetas principales del proyecto | Clic: ON/OFF | Clic-Der: Ajustar)">
-                    <img src="icons/filter.svg" class="btn-icon-svg" style="width:20px; height:20px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
+                    <img src="icons/filter.svg" class="btn-icon-svg" style="width:18px; height:18px; ${!window.pipetaUseFilter ? 'opacity:0.4' : ''}">
                 </button>
 
                 <div class="tool-space-small"></div>
@@ -198,7 +198,7 @@ const headerToolsTemplates = {
                            value="${window.pipetaSearchFilter || ''}"
                            oninput="handleSearchFilterInput(this.value)"
                            title="Búsqueda rápida de carpetas y archivos en la vista actual"
-                           style="background:#0e141f; border:1px solid #1e2c40; color:#eee; font-size:0.80rem; border-radius:4px; padding:2px 22px 2px 8px; width:95px; height:32px; box-sizing:border-box; outline:none; transition: width 0.2s;"
+                           style="background:#0e141f; border:1px solid #1e2c40; color:#eee; font-size:0.80rem; border-radius:4px; padding:2px 22px 2px 8px; width:95px; height:30px; box-sizing:border-box; outline:none; transition: width 0.2s;"
                            onfocus="this.style.width='130px'; this.style.borderColor='var(--accent)';"
                            onblur="if(!this.value) { this.style.width='95px'; this.style.borderColor='#1e2c40'; }">
                     ${window.pipetaSearchFilter ? `
@@ -212,115 +212,113 @@ const headerToolsTemplates = {
 
         <div class="tool-space-small"></div>
 
-        <!-- Block 2: Opciones de Visualización (View Options) -->
-        <div class="toolbar-section-group" title="Opciones de Visualización">
+        <!-- Block 2: View Options Unificado (Mirror + Ubicación + VS + Reload + Deep) -->
+        <div class="toolbar-section-group" title="Opciones de Visualización y Comparación">
             <span class="toolbar-section-label">View Options</span>
             <div class="toolbar-section-content">
-                <button class="tool-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" 
+                <button class="tool-btn toolbar-mirror-btn ${typeof isMirrorMode !== 'undefined' && isMirrorMode ? 'active' : ''}" 
                         onclick="toggleMirrorMode()" 
-                        style="height:32px; min-width:32px; padding:2px 6px;"
                         title="Mirror View (Vista Espejo: Proyecto | Media)" 
                         id="btnMirrorModeTool">
-                    <img src="icons/mirror.svg" class="btn-icon-svg" style="width:20px; height:20px;">
+                    <img src="icons/mirror.svg" class="btn-icon-svg" style="width:17px; height:17px;">
+                    <span>Mirror</span>
                 </button>
                 
-                <div style="width:2px"></div>
-                
                 <!-- Location Switcher: LOCAL | DRIVE | SERVER -->
-                <div style="display:flex; align-items:center; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40; height:32px; box-sizing:border-box;" title="Ubicación de Exploración">
+                <div style="display:flex; align-items:center; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40; height:30px; box-sizing:border-box;" title="Ubicación de Exploración">
                     <button class="tool-btn ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? 'active' : ''}" 
-                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1;"
+                            style="padding: 0 8px; font-size: 0.72rem; font-weight: 700; height: 24px; line-height:1;"
                             onclick="switchViewLocation('local')" title="${(typeof isExternalMachine === 'function' && isExternalMachine()) ? 'Disco Z Local' : ((typeof isZRealServer === 'function' && isZRealServer()) ? 'Disco Z (Servidor Central SMB)' : 'Disco Z Local (Copia de Trabajo / vsubst)')}">LOCAL</button>
                     
                     ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
                     <button class="tool-btn ${window.viewLocationMode === 'drive' ? 'active' : ''}" 
-                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1; ${window.viewLocationMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
+                            style="padding: 0 8px; font-size: 0.72rem; font-weight: 700; height: 24px; line-height:1; ${window.viewLocationMode === 'drive' ? 'background:#5e81ac; color:#fff;' : ''}"
                             onclick="switchViewLocation('drive')" title="Google Drive (Catálogo en la nube)">DRIVE</button>
                     ` : ''}
 
                     ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
                     <button class="tool-btn ${window.viewLocationMode === 'server' ? 'active' : ''}" 
-                            style="padding: 0 8px; font-size: 0.74rem; font-weight: 700; height: 26px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
+                            style="padding: 0 8px; font-size: 0.72rem; font-weight: 700; height: 24px; line-height:1; ${window.viewLocationMode === 'server' ? 'background:#388e3c; color:#fff;' : ''}"
                             onclick="switchViewLocation('server')" title="Servidor Central del Estudio (Catálogo Central / Worker)">SERVER</button>
                     ` : ''}
                 </div>
 
+                ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
+                <span class="toolbar-vs-pill" title="Comparar vista local contra...">vs</span>
+
+                <div style="display:flex; align-items:center; background:#0e141f; border-radius:4px; padding:2px; border:1px solid #1e2c40; height:30px; box-sizing:border-box; gap:2px;" title="Destino de comparación">
+                    ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
+                    <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
+                            style="padding: 0 8px; font-size: 0.71rem; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
+                            onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">
+                        <img src="icons/google_drive.svg" style="width:15px; height:15px; margin-right:4px; vertical-align:middle;">
+                        <span>Drive</span>
+                    </button>
+                    ` : ''}
+
+                    ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
+                    <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
+                            style="padding: 0 8px; font-size: 0.71rem; height: 24px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
+                            onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central Z: (SMB StorNext) (Clic para activar/desactivar)">
+                        <span style="margin-right:4px;">🗄️</span><span>Z: Server</span>
+                    </button>
+                    ` : ''}
+                </div>
+                ` : ''}
+
+                <div class="toolbar-subsep"></div>
+
                 <button class="tool-btn" 
                         id="btnRefreshView"
-                        style="height:32px; min-width:32px; padding:2px 6px;"
+                        style="height:30px; min-width:30px; padding:2px 6px;"
                         onclick="triggerSmartViewRefresh()" 
                         title="Refrescar carpetas locales (0ms) y sincronización de catálogo">
-                    <img src="icons/refresh.svg" class="btn-icon-svg" style="width:20px; height:20px;">
+                    <img src="icons/refresh.svg" class="btn-icon-svg" style="width:18px; height:18px;">
                 </button>
-            </div>
-        </div>
 
-        <div class="tool-space-small"></div>
-
-        <!-- Block 3: Comparación y Auditoría Cloud / Server (Comparar) -->
-        ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
-        <div class="toolbar-section-group" title="Comparar archivos locales contra catálogo Drive o Servidor central">
-            <span class="toolbar-section-label">Comparar</span>
-            <div class="toolbar-section-content">
-                
-                ${(typeof window.checkUserPermission === 'function' ? window.checkUserPermission('explorer_allow_drive') : true) ? `
-                <button class="tool-btn ${window.syncComparisonMode === 'drive' ? 'active' : ''}" 
-                        style="padding: 0 9px; font-size: 0.72rem; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; ${window.syncComparisonMode === 'drive' ? 'background:#5e81ac; color:#fff; border: 1px solid #81a1c1;' : ''}"
-                        onclick="toggleSyncComparisonMode('drive')" title="Comparar contra Google Drive (Ver qué falta subir o bajar)">
-                    <img src="icons/google_drive.svg" style="width:17px; height:17px; margin-right:5px; vertical-align:middle;">
-                    <span>DRIVE</span>
-                </button>
-                ` : ''}
-
-                ${(typeof canUseServerMode === 'function' ? canUseServerMode() : (typeof isZRealServer === 'function' && !isZRealServer())) ? `
-                <button class="tool-btn ${window.syncComparisonMode === 'server' ? 'active' : ''}" 
-                        style="padding: 0 9px; font-size: 0.72rem; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-left:2px; ${window.syncComparisonMode === 'server' ? 'background:#388e3c; color:#fff; border: 1px solid #4caf50;' : ''}"
-                        onclick="toggleSyncComparisonMode('server')" title="Comparar contra Servidor Central Z: (SMB StorNext) (Clic para activar/desactivar)">
-                    <span style="margin-right:4px;">🗄️</span><span>Z(SMB server)</span>
-                </button>
-                ` : ''}
+                ${(!window.viewLocationMode || window.viewLocationMode === 'local') ? `
                 <button class="tool-btn ${window.deepCompareMode ? 'active' : ''}" 
                         id="btn-deep-compare"
-                        style="height: 32px; min-width: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; margin-left:2px; ${window.deepCompareMode ? 'background:#d08770; color:#fff; font-weight:bold; border: 1px solid #ebcb8b; box-shadow:0 0 6px rgba(208,135,112,0.4);' : ''}"
+                        style="height: 30px; padding: 0 7px; gap: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.71rem; font-weight: 700; ${window.deepCompareMode ? 'background:#d08770; color:#fff; border: 1px solid #ebcb8b; box-shadow:0 0 6px rgba(208,135,112,0.4);' : ''}"
                         onclick="toggleDeepCompareMode()" 
                         title="Deep Compare: Compara peso exacto en bytes y fecha además de nombres (Clic: ON/OFF)">
-                    <img src="icons/deep_compare.svg" style="width:20px; height:20px; vertical-align:middle;">
+                    <img src="icons/deep_compare.svg" style="width:17px; height:17px; vertical-align:middle;">
+                    <span>Deep</span>
                 </button>
+                ` : ''}
             </div>
         </div>
 
         <div class="tool-space-small"></div>
-        ` : ''}
 
-        <!-- Block 4: Acciones de Archivos y Carpetas (File / Folder) -->
-        <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
-            <span class="toolbar-section-label">File / Folder</span>
-            <div class="toolbar-section-content">
-                <button id="btn-tb-copy" class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
-                    <img src="icons/copy.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-paste" class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
-                    <img src="icons/paste.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-duplicate" class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
-                    <img src="icons/duplicate.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-rename" class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
-                    <img src="icons/rename.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-newfolder" class="tool-btn" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
-                    <img src="icons/new_folder.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-delete" class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
-                    <img src="icons/delete.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-copypath" class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
-                    <img src="icons/copy_path.svg" class="btn-icon-svg">
-                </button>
-                <button id="btn-tb-openexplorer" class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
-                    <img src="icons/open_explorer.svg" class="btn-icon-svg">
-                </button>
-            </div>
+        <!-- Block 3: Acciones de Archivos y Carpetas (sin título, íconos unificados) -->
+        <div class="toolbar-files-strip" title="Acciones de Archivo y Carpeta">
+            <button id="btn-tb-copy" class="tool-btn" onclick="contextMenu.copyToClipboard(false)" title="Copiar">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button id="btn-tb-paste" class="tool-btn" onclick="contextMenu.pasteFromClipboard(selectedContextPath)" title="Pegar">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+            </button>
+            <button id="btn-tb-duplicate" class="tool-btn" onclick="contextMenu.duplicateItems()" title="Duplicar">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><rect x="7" y="7" width="12" height="12" rx="2"/><path d="M3 13V5a2 2 0 0 1 2-2h8"/></svg>
+            </button>
+            <button id="btn-tb-rename" class="tool-btn" onclick="contextMenu.renameItem(selectedContextPath)" title="Renombrar">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <div class="toolbar-subsep"></div>
+            <button id="btn-tb-newfolder" class="tool-btn folder-accent" onclick="contextMenu.createFolder(selectedContextPath, window.selectedContextIsDir)" title="Nueva Carpeta">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+            </button>
+            <button id="btn-tb-copypath" class="tool-btn" onclick="contextMenu.copyPath(selectedContextPath)" title="Copiar Ruta">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </button>
+            <button id="btn-tb-openexplorer" class="tool-btn" onclick="contextMenu.openInExplorer(selectedContextPath)" title="Abrir en Explorer">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </button>
+            <div class="toolbar-subsep"></div>
+            <button id="btn-tb-delete" class="tool-btn danger" onclick="contextMenu.deleteItems()" title="Borrar">
+                <svg class="ico-toolbar" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            </button>
         </div>
 
         ${(window.isIaIngestWindowOpen || (typeof DockManager !== 'undefined' && DockManager.isDocked('ia-ingest'))) ? getIaIngestToolbarSuiteHtml() : ''}
@@ -503,22 +501,11 @@ const headerToolsTemplates = {
         return `
         ${getIaIngestToolbarSuiteHtml()}
 
-        <div class="tool-space-small"></div>
-
-        <div class="toolbar-section-group" title="Acciones de Archivo y Carpeta">
-            <span class="toolbar-section-label">File / Folder</span>
-            <div class="toolbar-section-content">
-                <button class="tool-btn" onclick="copyCanonicalName()" title="Copiar Nombre Canónico">
-                    <img src="icons/copy.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn" onclick="copyCanonicalPath()" title="Copiar Ruta de Destino">
-                    <img src="icons/copy_path.svg" class="btn-icon-svg">
-                </button>
-                <button class="tool-btn" onclick="openTargetFolder()" title="Abrir Carpeta de Destino en Explorer">
-                    <img src="icons/open_explorer.svg" class="btn-icon-svg">
-                </button>
-            </div>
-        </div>
+        <button type="button" class="tool-btn" onclick="DockManager.popoutIaIngest()" 
+                style="margin-left:auto; height:30px; padding:0 12px; font-size:0.74rem; font-weight:700; background:#142233; border:1px solid rgba(0,188,212,0.55); color:#4dd0e1; border-radius:5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; white-space:nowrap;" 
+                title="Abrir IA Ingest como ventana flotante y trabajar en paralelo con el Explorer">
+            <span>⧉</span><span>Abrir como Ventana</span>
+        </button>
         `;
     },
     'default': () => `<span style="color:#444;">...</span>`

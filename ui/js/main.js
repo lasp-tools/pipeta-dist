@@ -205,6 +205,33 @@ window.checkUserPermission = (permKey) => {
     const uData = window.cachedUsersData || settings?.usersData;
     if (!uData) return true;
 
+    if (permKey === 'access_tool_creator') {
+        return window.checkUserPermission('access_tool_asset_creator') || window.checkUserPermission('access_tool_shot_creator');
+    }
+
+    // Simulación local de rol no-admin (para probar vista Freelance/Artista desde cuenta Admin)
+    let simRoleId = null;
+    try {
+        simRoleId = localStorage.getItem('pipeta_sim_non_admin_role');
+    } catch (e) {}
+    const isFreelanceMode = !!(window.pipetaSystemEnv?.freelanceLocked);
+    if (isFreelanceMode || simRoleId) {
+        const freelanceHiddenPerms = new Set([
+            'access_shot_navigator',
+            'access_ia_ingest',
+            'access_tool_creator',
+            'access_tool_asset_creator',
+            'access_tool_shot_creator'
+        ]);
+        if (freelanceHiddenPerms.has(permKey)) return false;
+    }
+    if (simRoleId) {
+        const simRole = (uData.roles || []).find(r => r.id === simRoleId);
+        if (simRole && simRole.permissions) {
+            return simRole.permissions[permKey] !== false;
+        }
+    }
+
     // Resolve active user identity (Prioridad 1: Ramon session activa)
     let active = null;
     if (window.Ramon?.session?.user) {
@@ -226,7 +253,17 @@ window.checkUserPermission = (permKey) => {
         return uName === activeLower || lUser === activeLower || lUser.replace(/^lasp-/i, '') === activeLower || uId === activeLower;
     });
     if (!user) return true;
-    if (user.role === 'admin' || user.username === 'admin') return true; // Full admin access
+    if (user.role === 'admin' || user.username === 'admin') {
+        // Si el modo Freelance está bloqueado, nunca otorgar privilegios admin en UI
+        if (window.pipetaSystemEnv?.freelanceLocked) {
+            const fallbackRole = (uData.roles || []).find(r => r.id === 'user');
+            if (fallbackRole && fallbackRole.permissions) {
+                return fallbackRole.permissions[permKey] !== false;
+            }
+            return false;
+        }
+        return true; // Full admin access
+    }
 
     // 1. Explicit user-level override takes highest priority
     if (user.permissionOverrides && typeof user.permissionOverrides[permKey] === 'boolean') {
@@ -241,6 +278,13 @@ window.checkUserPermission = (permKey) => {
 
 window.applyRolePermissionsToUI = async () => {
     try {
+        if (!window.pipetaSystemEnv) {
+            try {
+                const envRes = await fetch('/api/system/freelance-lock');
+                const envData = await envRes.json();
+                if (envData && envData.env) window.pipetaSystemEnv = envData.env;
+            } catch (e) {}
+        }
         const uData = await API.users.get();
         window.cachedUsersData = uData;
 
@@ -257,6 +301,8 @@ window.applyRolePermissionsToUI = async () => {
             'Creator': 'access_tool_creator'
         };
 
+        const hideRestricted = !!(window.pipetaSystemEnv?.freelanceLocked);
+
         document.querySelectorAll('.mode-sidebar .mode-btn').forEach(btn => {
             const title = btn.getAttribute('title');
             const reqPerm = sidebarMap[title];
@@ -268,11 +314,16 @@ window.applyRolePermissionsToUI = async () => {
                     allowed = window.checkUserPermission(reqPerm);
                 }
                 if (allowed) {
+                    btn.style.display = '';
                     btn.style.opacity = '1';
                     btn.style.filter = 'none';
                     btn.style.pointerEvents = 'auto';
                     btn.removeAttribute('data-disabled-by-role');
+                } else if (hideRestricted) {
+                    btn.style.display = 'none';
+                    btn.setAttribute('data-disabled-by-role', 'true');
                 } else {
+                    btn.style.display = '';
                     btn.style.opacity = '0.22';
                     btn.style.filter = 'grayscale(1) brightness(0.7)';
                     btn.style.pointerEvents = 'none';
@@ -286,10 +337,14 @@ window.applyRolePermissionsToUI = async () => {
             const pKey = el.getAttribute('data-perm-tool');
             const allowed = window.checkUserPermission(pKey);
             if (allowed) {
+                el.style.display = '';
                 el.style.opacity = '1';
                 el.style.filter = 'none';
                 el.style.pointerEvents = 'auto';
+            } else if (hideRestricted) {
+                el.style.display = 'none';
             } else {
+                el.style.display = '';
                 el.style.opacity = '0.22';
                 el.style.filter = 'grayscale(1) brightness(0.7)';
                 el.style.pointerEvents = 'none';
@@ -330,6 +385,11 @@ window.applyRolePermissionsToUI = async () => {
             opt.disabled = !canHiggsfield;
             opt.hidden = !canHiggsfield;
         });
+
+        // 6. Refrescar guías visibles en Inicio según permisos/modo Freelance
+        if (typeof Tutorials !== 'undefined' && typeof Tutorials.renderHome === 'function') {
+            Tutorials.renderHome();
+        }
 
     } catch (e) {
         console.warn("Could not apply role permissions:", e);

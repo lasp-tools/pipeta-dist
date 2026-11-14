@@ -185,10 +185,12 @@ class ContextMenu {
             }
         }
 
+        const canIaIngest = typeof window.checkUserPermission !== 'function' || window.checkUserPermission('access_ia_ingest');
+
         return [
             { label: 'Abrir en Explorer', icon: '📂', action: (p) => this.openInExplorer(p, multi), disabled: isServerView || isGhost },
             { label: 'Refrescar Carpeta', icon: '🔄', action: (p) => this.refreshFolder(p, isDir) },
-            { label: `Send2 IA Ingest${labelSuffix}`, icon: '<img src="icons/chip-ai.svg" style="width:15px; height:15px; object-fit:contain; vertical-align:middle; display:inline-block;">', action: (p) => this.sendToIaIngest(p, isDir, multi), disabled: isServerView || isGhost },
+            ...(canIaIngest ? [{ label: `Send2 IA Ingest${labelSuffix}`, icon: '<img src="icons/chip-ai.svg" style="width:15px; height:15px; object-fit:contain; vertical-align:middle; display:inline-block;">', action: (p) => this.sendToIaIngest(p, isDir, multi), disabled: isServerView || isGhost }] : []),
             ...syncItems,
             { separator: true },
             { label: `Copiar${labelSuffix}`, icon: '📄', action: (p) => this.copyToClipboard(false), disabled: isGhost },

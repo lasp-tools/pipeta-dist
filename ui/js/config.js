@@ -1,5 +1,5 @@
 // Configuration
-window.APP_VERSION = "v1.2.16";
+window.APP_VERSION = "v1.2.19";
 window.IS_BETA_CHANNEL = (window.APP_VERSION && window.APP_VERSION.includes('beta')) || (typeof window !== 'undefined' && window.location && (window.location.port === '3003' || window.location.port === '3050'));
 window.PIPETA_LOCAL_APP_DIR = window.IS_BETA_CHANNEL ? "C:\\TOOLS\\APPS\\Pipeta_Beta" : "C:\\TOOLS\\APPS\\Pipeta";
 
@@ -63,10 +63,19 @@ window.getPipetaActiveUserObj = function() {
             const uId = String(u.id || '').toLowerCase().trim();
             return uName === activeLower || lUser === activeLower || lUser.replace(/^lasp-/i, '') === activeLower || uId === activeLower;
         });
-        if (found) return found;
+        if (found) {
+            if ((window.pipetaSystemEnv?.freelanceLocked || (() => { try { return !!localStorage.getItem('pipeta_sim_non_admin_role'); } catch(e) { return false; } })())
+                && (found.role === 'admin' || found.username === 'admin' || found.isSystem)) {
+                return { ...found, role: 'user', isSystem: false, _freelanceDowngraded: true };
+            }
+            return found;
+        }
     }
 
     if (active === 'admin' || (typeof Ramon !== 'undefined' && Ramon.session?.user?.is_admin)) {
+        if (window.pipetaSystemEnv?.freelanceLocked || (() => { try { return !!localStorage.getItem('pipeta_sim_non_admin_role'); } catch(e) { return false; } })()) {
+            return { username: active, role: 'user', isSystem: false, _freelanceDowngraded: true };
+        }
         return { username: active, role: 'admin', isSystem: true };
     }
     return { username: active, role: 'user', isSystem: false };
