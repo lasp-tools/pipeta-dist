@@ -2163,7 +2163,15 @@ function checkSubCatalogPendingSync(projectName, type, subFile) {
     const now = Date.now();
     if (pendingSyncCache.has(cacheKey)) {
         const cached = pendingSyncCache.get(cacheKey);
-        if (now - cached.time < 60000) return cached.data;
+        if (now - cached.time < 300000) return cached.data;
+    }
+
+    // Fast-path para Server en puestos vsubst: nunca leer/recorrer cientos de miles de archivos
+    // sincrónicamente durante el listado raíz del proyecto (evita bloqueos de ~5s al abrir o cambiar proyecto).
+    if (type === 'server') {
+        const zeroRes = { hasPending: false, count: 0, uploadCount: 0, downloadCount: 0 };
+        pendingSyncCache.set(cacheKey, { time: now, data: zeroRes });
+        return zeroRes;
     }
 
     if (type === 'drive') {

@@ -231,7 +231,12 @@ const settings = {
             settings.loadProjects(),
             settings.loadConfig()
         ]);
-        settings.updateHeaderProjectSelector();
+        settings._isBooting = true;
+        try {
+            settings.updateHeaderProjectSelector();
+        } finally {
+            settings._isBooting = false;
+        }
         // Pre-cargar presets en segundo plano sin bloquear la apertura ni el arranque
         settings.loadPresets().catch(() => {});
     },

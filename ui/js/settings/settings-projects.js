@@ -476,8 +476,29 @@ Object.assign(settings, {
         // Si NO estamos editando Proyecto Base con Settings abierto y currentProject es nulo o no permitido, posicionar en selectedProj
         if (!isEditingBaseInSettings && (!settings.currentProject || !visibleProjects.some(p => p.id === settings.currentProject.id))) {
             if (selectedProj) {
-                settings.selectHeaderProject(selectedProj.id);
-                return;
+                if (settings._isBooting && !settings.currentProject) {
+                    settings.currentProject = selectedProj;
+                    if (!settings.isBaseProject(selectedProj)) settings._activeWorkProjectBeforeSettings = selectedProj;
+                    try { localStorage.setItem('pipeta_active_project_id', selectedProj.id); } catch (e) {}
+                    if (selectedProj.roots) {
+                        if (window.state) {
+                            if (selectedProj.roots.work) window.state.workPath = selectedProj.roots.work;
+                            if (selectedProj.roots.media) window.state.mediaPath = selectedProj.roots.media;
+                        }
+                        if (typeof ROOTS !== 'undefined') {
+                            if (selectedProj.roots.work) ROOTS.work = selectedProj.roots.work;
+                            if (selectedProj.roots.media) ROOTS.media = selectedProj.roots.media;
+                        }
+                    }
+                    fetch('/api/system/last-project', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectName: selectedProj.id || selectedProj.name })
+                    }).catch(() => {});
+                } else {
+                    settings.selectHeaderProject(selectedProj.id);
+                    return;
+                }
             }
         }
 
@@ -513,7 +534,7 @@ Object.assign(settings, {
         }
 
         // Permitir repaint en el navegador para que el loading sea visible al instante
-        await new Promise(r => setTimeout(r, 60));
+        await new Promise(r => requestAnimationFrame(r));
 
         try {
             settings.currentProject = proj;
@@ -538,20 +559,16 @@ Object.assign(settings, {
             }
             settings.updateHeaderProjectSelector();
 
-            // Limpieza exhaustiva de cachés de catálogo y árbol para cambio limpio de proyecto
+            // Limpiar solo estado visual y punteros globales del proyecto anterior;
+            // conservar la caché modular en RAM del backend para saltos instantáneos entre proyectos.
             if (typeof expandedPaths !== 'undefined' && expandedPaths.clear) expandedPaths.clear();
             window.pipetaSyncCatalog = null;
             window.pipetaServerCatalog = null;
             window.pipetaSyncCatalogLookup = null;
             window.pipetaServerCatalogLookup = null;
-            fetch('/api/sync/catalog/clear-cache', { method: 'POST' }).catch(() => {});
 
-            if (typeof loadActiveProjectSyncCatalog === 'function') {
-                if (window.isPipetaMode) {
-                    await loadActiveProjectSyncCatalog(true);
-                } else {
-                    loadActiveProjectSyncCatalog(true).catch(() => {});
-                }
+            if (window.isPipetaMode && typeof loadActiveProjectSyncCatalog === 'function') {
+                await loadActiveProjectSyncCatalog(true);
             }
 
             if (typeof refreshCurrentView === 'function') {

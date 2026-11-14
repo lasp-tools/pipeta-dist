@@ -934,7 +934,7 @@ async function triggerSmartViewRefresh() {
                 if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
                     window.CatalogRefreshStepper.setStep('sync');
                 }
-                if (typeof loadActiveProjectSyncCatalog === 'function') {
+                if (typeof loadActiveProjectSyncCatalog === 'function' && (window.isPipetaMode || window.pipetaSyncCatalog || window.pipetaServerCatalog)) {
                     await loadActiveProjectSyncCatalog(true);
                 }
                 if (window.CatalogRefreshStepper && window.CatalogRefreshStepper.card) {
