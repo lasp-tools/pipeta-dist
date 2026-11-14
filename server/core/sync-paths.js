@@ -227,6 +227,10 @@ function saveOrderInCandidateDirs(orderId, orderData) {
         } catch (e) {}
     }
     ordersResponseCache.time = 0;
+    if (isStudioCentralAvailable() && orderData) {
+        const payload = orderData.id ? orderData : { ...orderData, id: orderId };
+        pushOrderToCentralServer(payload).catch(() => {});
+    }
     return primaryFile || path.join(getOrdersDir(), `${orderId}.json`);
 }
 
@@ -313,6 +317,80 @@ function getDirectoryFilesAndSize(dirPath) {
     return { files, totalBytes };
 }
 
+const CENTRAL_SERVER_URL = process.env.PIPETA_CENTRAL_URL || 'http://192.168.206.121:3005';
+const CENTRAL_API_TOKEN = process.env.PIPETA_SERVER_TOKEN || 'lasp-pipeta-sec-token-2026';
+
+/**
+ * Determina si el puesto actual puede comunicarse con el servidor central de Estudio (nunca en modo Freelance/Externo).
+ */
+function isStudioCentralAvailable() {
+    if (global.isExternalMachine) return false;
+    try {
+        const { isFreelanceLocked } = require('./env-detector');
+        if (typeof isFreelanceLocked === 'function' && isFreelanceLocked()) return false;
+    } catch (e) {}
+    return true;
+}
+
+/**
+ * Helper HTTP compartido para consultar o actualizar órdenes en el servidor central (192.168.206.121:3005).
+ */
+function centralServerRequest(method, apiPath, payload = null, timeoutMs = 2000) {
+    if (!isStudioCentralAvailable()) {
+        return Promise.resolve({ ok: false, blockedFreelance: true });
+    }
+    return new Promise((resolve) => {
+        try {
+            const httpMod = require('http');
+            const targetUrl = new URL(apiPath, CENTRAL_SERVER_URL);
+            const bodyStr = payload !== null && payload !== undefined ? JSON.stringify(payload) : null;
+            const headers = {
+                'x-pipeta-token': CENTRAL_API_TOKEN
+            };
+            if (bodyStr !== null) {
+                headers['Content-Type'] = 'application/json';
+                headers['Content-Length'] = Buffer.byteLength(bodyStr);
+            }
+            const req = httpMod.request(targetUrl, {
+                method,
+                headers,
+                timeout: timeoutMs
+            }, (res) => {
+                let raw = '';
+                res.on('data', (chunk) => { raw += chunk; });
+                res.on('end', () => {
+                    try {
+                        const parsed = raw ? JSON.parse(raw) : {};
+                        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, data: parsed });
+                    } catch (e) {
+                        resolve({ ok: false, status: res.statusCode, error: 'invalid_json' });
+                    }
+                });
+            });
+            req.on('timeout', () => {
+                try { req.destroy(new Error('timeout')); } catch (_) {}
+                resolve({ ok: false, error: 'timeout' });
+            });
+            req.on('error', (err) => {
+                resolve({ ok: false, error: err && err.message ? err.message : 'request_error' });
+            });
+            if (bodyStr !== null) req.write(bodyStr);
+            req.end();
+        } catch (err) {
+            resolve({ ok: false, error: err && err.message ? err.message : 'exception' });
+        }
+    });
+}
+
+/**
+ * Envía/actualiza una orden en el servidor central MongoDB (192.168.206.121:3005).
+ */
+async function pushOrderToCentralServer(orderData) {
+    if (!orderData || !orderData.id || !isStudioCentralAvailable()) return false;
+    const res = await centralServerRequest('POST', '/api/sync/v2/orders', orderData, 2000);
+    return Boolean(res && res.ok && res.data && res.data.success !== false);
+}
+
 module.exports = {
     getLocalSyncCacheDir,
     getReadSyncCacheCandidateDirs,
@@ -324,6 +402,9 @@ module.exports = {
     writeOrderFileAtomic,
     safeParseOrderJson,
     saveOrderInCandidateDirs,
+    isStudioCentralAvailable,
+    centralServerRequest,
+    pushOrderToCentralServer,
     getServerUncRoot,
     ensureServerUncAccess,
     formatBytes,

@@ -34,6 +34,8 @@ const {
     getOrdersDir,
     getAllOrdersCandidateDirs,
     saveOrderInCandidateDirs,
+    isStudioCentralAvailable,
+    centralServerRequest,
     getServerUncRoot,
     ensureServerUncAccess,
     formatSpeed,
@@ -1705,7 +1707,7 @@ router.post('/api/sync/resolve-upload-conflict', async (req, res) => {
     }
 });
 
-router.get('/api/sync/orders', (req, res) => {
+router.get('/api/sync/orders', async (req, res) => {
     try {
         sanitizeZombieOrders(false);
 
@@ -1723,6 +1725,43 @@ router.get('/api/sync/orders', (req, res) => {
         } else {
             const candidateDirs = getAllOrdersCandidateDirs();
             const seenOrders = new Set();
+            let centralFetchedOk = false;
+            const terminalStatuses = new Set(['completed', 'completed_with_errors', 'failed', 'cancelled']);
+
+            const mergeAndHookOrder = (content) => {
+                if (!content || !content.id || seenOrders.has(content.id)) return;
+                if (content.type === 'refresh_folder') return;
+                seenOrders.add(content.id);
+                if (activeLocalTransfers.has(content.id)) {
+                    const act = activeLocalTransfers.get(content.id);
+                    if (act && act.orderData) {
+                        Object.assign(content, JSON.parse(JSON.stringify(act.orderData)));
+                    }
+                }
+                content.priority = Number.isFinite(content.priority)
+                    ? content.priority
+                    : (content.type === 'higgsfield_ingest' || content.type === 'refresh_folder' ? 80 : 50);
+                orders.push(content);
+                if (content.status === 'completed' && content.type === 'download') {
+                    autoPullCompletedDownloadToVSub(content);
+                }
+                if (content.twoStage && content.twoStageType === 'download' && content.status === 'pending_local_pull') {
+                    const isTarget = content.targetHost && content.targetHost.toLowerCase() === os.hostname().toLowerCase();
+                    if (isTarget && !activeLocalTransfers.has(content.id)) {
+                        triggerStage2LocalPull(content);
+                    }
+                }
+            };
+
+            if (isStudioCentralAvailable()) {
+                const centralRes = await centralServerRequest('GET', '/api/server/queue', null, 1500);
+                if (centralRes && centralRes.ok && centralRes.data && centralRes.data.success && Array.isArray(centralRes.data.orders)) {
+                    centralFetchedOk = true;
+                    for (const centralOrder of centralRes.data.orders) {
+                        mergeAndHookOrder({ ...centralOrder });
+                    }
+                }
+            }
 
             for (const dir of candidateDirs) {
                 if (!fs.existsSync(dir)) continue;
@@ -1751,29 +1790,10 @@ router.get('/api/sync/orders', (req, res) => {
 
                     const content = readOrderJsonCached(fullP);
                     if (content && content.id && !seenOrders.has(content.id)) {
-                        if (content.type === 'refresh_folder') {
+                        if (centralFetchedOk && terminalStatuses.has(content.status)) {
                             continue;
                         }
-                        seenOrders.add(content.id);
-                        if (activeLocalTransfers.has(content.id)) {
-                            const act = activeLocalTransfers.get(content.id);
-                            if (act && act.orderData) {
-                                Object.assign(content, JSON.parse(JSON.stringify(act.orderData)));
-                            }
-                        }
-                        content.priority = Number.isFinite(content.priority)
-                            ? content.priority
-                            : (content.type === 'higgsfield_ingest' || content.type === 'refresh_folder' ? 80 : 50);
-                        orders.push(content);
-                        if (content.status === 'completed' && content.type === 'download') {
-                            autoPullCompletedDownloadToVSub(content);
-                        }
-                        if (content.twoStage && content.twoStageType === 'download' && content.status === 'pending_local_pull') {
-                            const isTarget = content.targetHost && content.targetHost.toLowerCase() === os.hostname().toLowerCase();
-                            if (isTarget && !activeLocalTransfers.has(content.id)) {
-                                triggerStage2LocalPull(content);
-                            }
-                        }
+                        mergeAndHookOrder(content);
                     }
                 }
             }
@@ -1811,7 +1831,7 @@ router.get('/api/sync/orders', (req, res) => {
     }
 });
 
-router.post('/api/sync/orders/priority', (req, res) => {
+router.post('/api/sync/orders/priority', async (req, res) => {
     try {
         const { orderId, priority } = req.body;
         if (!orderId) {
@@ -1838,9 +1858,16 @@ router.post('/api/sync/orders/priority', (req, res) => {
                         ordersFileMemoryCache.delete(filePath);
                         ordersResponseCache.time = 0;
                         found = true;
-                        console.warn(`[SYNC ORDER] JSON corrupto eliminado al cancelar: ${filePath}`);
+                        console.warn(`[SYNC ORDER] JSON corrupto eliminado al actualizar prioridad: ${filePath}`);
                     } catch (_) {}
                 }
+            }
+        }
+        if (isStudioCentralAvailable()) {
+            const centralRes = await centralServerRequest('POST', `/api/server/task/${encodeURIComponent(orderId)}/priority`, { priority: prioNum }, 2000);
+            if (centralRes && centralRes.ok && centralRes.data && centralRes.data.success) {
+                found = true;
+                ordersResponseCache.time = 0;
             }
         }
         if (!found) {
@@ -1853,7 +1880,7 @@ router.post('/api/sync/orders/priority', (req, res) => {
     }
 });
 
-router.post('/api/sync/orders/cancel', (req, res) => {
+router.post('/api/sync/orders/cancel', async (req, res) => {
     try {
         const { orderId, user, role } = req.body;
         if (!orderId) {
@@ -1901,12 +1928,23 @@ router.post('/api/sync/orders/cancel', (req, res) => {
                 }
             }
         }
+        let centralCancelled = false;
+        if (isStudioCentralAvailable()) {
+            const centralRes = await centralServerRequest('POST', `/api/server/task/${encodeURIComponent(orderId)}/cancel`, { user: user || 'user', role }, 2000);
+            if (centralRes && centralRes.ok && centralRes.data && centralRes.data.success) {
+                found = true;
+                centralCancelled = true;
+                ordersResponseCache.time = 0;
+            }
+        }
         if (!found) {
             return res.status(404).json({ success: false, error: 'Orden no encontrada' });
         }
 
         console.log(`[SYNC ORDER] Orden ${orderId} marcada como CANCELADA por '${user || 'user'}'`);
-        forwardCancelToMasterServer([orderId], user).catch(() => {});
+        if (!centralCancelled && !isFreelanceLocked()) {
+            forwardCancelToMasterServer([orderId], user).catch(() => {});
+        }
         res.json({ success: true, message: 'Orden cancelada exitosamente', status: 'cancelled' });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

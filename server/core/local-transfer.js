@@ -6,6 +6,7 @@ const {
     getLocalSyncCacheDir,
     getAllOrdersCandidateDirs,
     writeOrderFileAtomic,
+    pushOrderToCentralServer,
     getServerUncRoot,
     ensureServerUncAccess,
     formatSpeed,
@@ -116,6 +117,7 @@ async function runLocalTransferOrder(orderId, orderData, filePath, deps = {}) {
     orderData.worker = `local_${os.hostname()}`;
 
     let inFlightWrite = null;
+    let lastCentralPushTime = 0;
     const persistOrder = (isTerminal = false) => {
         const jsonStr = JSON.stringify(orderData, null, 2);
         for (const dir of candidateDirs) {
@@ -151,6 +153,12 @@ async function runLocalTransferOrder(orderId, orderData, filePath, deps = {}) {
                     await fs.writeFile(path.join(dir, `${orderId}.json`), jsonStr, 'utf8');
                 } catch (e) {}
             })).finally(() => { inFlightWrite = null; });
+        }
+
+        const now = Date.now();
+        if (isTerminal || (now - lastCentralPushTime >= 1500)) {
+            lastCentralPushTime = now;
+            pushOrderToCentralServer(orderData).catch(() => {});
         }
     };
 

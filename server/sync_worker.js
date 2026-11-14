@@ -22,6 +22,130 @@ process.on('unhandledRejection', (reason, promise) => {
 const isLocalMode = process.argv.includes('--local') || process.env.PIPETA_LOCAL_WORKER === '1';
 
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
+
+const centralHttp = require('http');
+const CENTRAL_SERVER_URL = process.env.PIPETA_CENTRAL_URL || 'http://192.168.206.121:3005';
+const CENTRAL_API_TOKEN = process.env.PIPETA_SERVER_TOKEN || 'lasp-pipeta-sec-token-2026';
+const centralOrderPushState = new Map();
+
+/**
+ * Envía una petición HTTP JSON al servidor central de MongoDB en 121 (no-op en modo local/freelance).
+ */
+function centralRequest(method, apiPath, payload = null, timeoutMs = 2500) {
+    if (isLocalMode) return Promise.resolve({ ok: false, localMode: true });
+    return new Promise((resolve) => {
+        try {
+            const targetUrl = new URL(apiPath, CENTRAL_SERVER_URL);
+            const bodyStr = payload !== null && payload !== undefined ? JSON.stringify(payload) : null;
+            const headers = {
+                'x-pipeta-token': CENTRAL_API_TOKEN
+            };
+            if (bodyStr !== null) {
+                headers['Content-Type'] = 'application/json';
+                headers['Content-Length'] = Buffer.byteLength(bodyStr);
+            }
+            const req = centralHttp.request(targetUrl, {
+                method,
+                headers,
+                timeout: timeoutMs
+            }, (res) => {
+                let raw = '';
+                res.on('data', (chunk) => { raw += chunk; });
+                res.on('end', () => {
+                    try {
+                        const parsed = raw ? JSON.parse(raw) : {};
+                        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, data: parsed });
+                    } catch (e) {
+                        resolve({ ok: false, status: res.statusCode, error: 'invalid_json' });
+                    }
+                });
+            });
+            req.on('timeout', () => {
+                try { req.destroy(new Error('timeout')); } catch (_) {}
+                resolve({ ok: false, error: 'timeout' });
+            });
+            req.on('error', (err) => {
+                resolve({ ok: false, error: err && err.message ? err.message : 'request_error' });
+            });
+            if (bodyStr !== null) req.write(bodyStr);
+            req.end();
+        } catch (err) {
+            resolve({ ok: false, error: err && err.message ? err.message : 'exception' });
+        }
+    });
+}
+
+async function pushOrderToCentralMongo(orderData, force = false) {
+    if (isLocalMode || !orderData || !orderData.id) return false;
+    try {
+        const prev = centralOrderPushState.get(orderData.id);
+        const now = Date.now();
+        if (!force && prev && prev.status === orderData.status && orderData.status === 'processing' && (now - prev.ts) < 1000) {
+            return true;
+        }
+        centralOrderPushState.set(orderData.id, { status: orderData.status, ts: now });
+        if (centralOrderPushState.size > 500) {
+            const firstKey = centralOrderPushState.keys().next().value;
+            if (firstKey) centralOrderPushState.delete(firstKey);
+        }
+        const res = await centralRequest('POST', '/api/sync/v2/orders', orderData, 2500);
+        return Boolean(res && res.ok && res.data && res.data.success !== false);
+    } catch (e) {
+        return false;
+    }
+}
+
+async function claimOrderInCentralMongo(orderId, orderData) {
+    if (isLocalMode || !orderId) return { ok: false, fallbackDisk: true };
+    const workerName = typeof WORKER_ID !== 'undefined' ? WORKER_ID : os.hostname();
+    const payload = {
+        worker: workerName,
+        workerHostname: os.hostname(),
+        order: orderData
+    };
+    const res = await centralRequest('POST', `/api/sync/v2/orders/${encodeURIComponent(orderId)}/claim`, payload, 2500);
+    if (!res || !res.ok || !res.data || typeof res.data.claimed !== 'boolean') {
+        return { ok: false, fallbackDisk: true };
+    }
+    return {
+        ok: true,
+        claimed: res.data.claimed,
+        order: res.data.order || orderData
+    };
+}
+
+async function fetchOrderFromCentralMongo(orderId) {
+    if (isLocalMode || !orderId) return null;
+    const res = await centralRequest('GET', `/api/sync/v2/orders/${encodeURIComponent(orderId)}`, null, 2000);
+    if (res && res.ok && res.data && res.data.success && res.data.order) {
+        return res.data.order;
+    }
+    return null;
+}
+
+async function fetchPendingOrdersFromCentralMongo(sede = null, mode = null) {
+    if (isLocalMode) return null;
+    const params = new URLSearchParams();
+    if (sede) params.set('sede', sede);
+    if (mode) params.set('mode', mode);
+    const qs = params.toString();
+    const res = await centralRequest('GET', `/api/sync/v2/orders/pending${qs ? '?' + qs : ''}`, null, 2500);
+    if (res && res.ok && res.data && res.data.success && Array.isArray(res.data.orders)) {
+        return res.data.orders;
+    }
+    return null;
+}
+
+async function postHeartbeatToCentralMongo(heartbeatData) {
+    if (isLocalMode || !heartbeatData) return false;
+    const workerName = typeof WORKER_ID !== 'undefined' ? WORKER_ID : os.hostname();
+    const payload = {
+        ...heartbeatData,
+        worker_id: heartbeatData.worker_id || heartbeatData.workerId || workerName
+    };
+    const res = await centralRequest('POST', '/api/sync/v2/workers/heartbeat', payload, 2000);
+    return Boolean(res && res.ok);
+}
 const CACHE_ROOT = isLocalMode 
     ? path.join(__dirname, '../_SYNC_CACHE')
     : (fs.existsSync('Z:/_SYNC_CACHE') 
@@ -94,7 +218,7 @@ function getCandidateOrdersDirs() {
     return dirs;
 }
 
-function saveOrderDataAcrossCandidates(orderData, primaryFilePath = null) {
+function saveOrderDataAcrossCandidates(orderData, primaryFilePath = null, skipCentralPush = false) {
     if (!orderData || !orderData.id) return;
     const fname = `${orderData.id}.json`;
     const dirs = getCandidateOrdersDirs();
@@ -109,6 +233,9 @@ function saveOrderDataAcrossCandidates(orderData, primaryFilePath = null) {
         try {
             writeJsonAtomicSync(primaryFilePath, orderData, 2);
         } catch (e) {}
+    }
+    if (!isLocalMode && !skipCentralPush) {
+        pushOrderToCentralMongo(orderData).catch(() => {});
     }
 }
 
@@ -354,6 +481,9 @@ function updateHeartbeat(status = 'idle', activeTask = null) {
         // 1. Archivo individual de nodo en workers/
         const workerNodeFile = path.join(WORKERS_DIR, `${WORKER_ID}.json`);
         fs.writeJsonSync(workerNodeFile, data, { spaces: 2 });
+        if (!isLocalMode) {
+            postHeartbeatToCentralMongo(data).catch(() => {});
+        }
 
         // 2. Archivo heredado para clientes anteriores de Pipeta:
         // Solo actualizar si somos el worker propietario o si el archivo no existe o el worker anterior no emite ping (< 20s)
@@ -714,7 +844,8 @@ async function executeFastOrder(orderData, pendingOrderFile) {
                 orderData.completedAt = new Date().toISOString();
                 orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
                 orderData.processedBy = WORKER_ID;
-                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+                if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
                 log(`✅ [FAST-LANE] Refresco de carpeta '${orderData.path}' (${targetType.toUpperCase()}) completado (${res?.itemsCount || 0} items)`);
             } catch (err) {
                 log(`❌ [FAST-LANE] Error al refrescar carpeta '${orderData.path}': ${err.message}`);
@@ -722,7 +853,8 @@ async function executeFastOrder(orderData, pendingOrderFile) {
                 orderData.error = err.message;
                 orderData.completedAt = new Date().toISOString();
                 orderData.processedBy = WORKER_ID;
-                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+                if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
             }
             return;
         }
@@ -743,7 +875,8 @@ async function executeFastOrder(orderData, pendingOrderFile) {
                 orderData.completedAt = new Date().toISOString();
                 orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
                 orderData.processedBy = WORKER_ID;
-                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+                if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
                 log(`✅ [FAST-LANE] Consulta de Job ${jobId} completada con éxito`);
             } catch (err) {
                 log(`❌ [FAST-LANE] Error al consultar Job ${jobId}: ${err.message}`);
@@ -751,7 +884,8 @@ async function executeFastOrder(orderData, pendingOrderFile) {
                 orderData.error = err.message;
                 orderData.completedAt = new Date().toISOString();
                 orderData.processedBy = WORKER_ID;
-                saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+                saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+                if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
             }
             return;
         }
@@ -795,6 +929,7 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
 
     try {
         let lastProgressWrite = 0;
+        let lastRemoteStatusCheck = 0;
         let wasCancelled = false;
         let completedBytes = 0;
         let lastNonZeroSpeedBps = 0;
@@ -810,14 +945,21 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
         };
 
         for (let i = 0; i < orderData.items.length; i++) {
-            // Comprobar si la orden fue cancelada o si cambió su prioridad antes de iniciar el siguiente item
+            // Comprobar si la orden fue cancelada o si cambió su prioridad antes de iniciar el siguiente item (MongoDB + disco)
             try {
-                const fresh = fs.readJsonSync(pendingOrderFile);
+                let fresh = null;
+                if (pendingOrderFile && fs.existsSync(pendingOrderFile)) {
+                    fresh = fs.readJsonSync(pendingOrderFile);
+                }
+                if (!isLocalMode) {
+                    const remoteFresh = await fetchOrderFromCentralMongo(orderData.id);
+                    if (remoteFresh) fresh = remoteFresh;
+                }
                 if (fresh && Number.isFinite(fresh.priority)) {
                     orderData.priority = fresh.priority;
                     if (fresh.priorityUpdatedAt) orderData.priorityUpdatedAt = fresh.priorityUpdatedAt;
                 }
-                if (fresh && fresh.status === 'cancelled') {
+                if (fresh && (fresh.status === 'cancelled' || fresh.cancelRequested)) {
                     wasCancelled = true;
                     orderData.status = 'cancelled';
                     orderData.cancelledAt = fresh.cancelledAt || new Date().toISOString();
@@ -880,23 +1022,47 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
 
                     // Chequear si se solicitó cancelación o cambio de prioridad durante la transferencia
                     try {
-                        const fresh = fs.readJsonSync(pendingOrderFile);
-                        if (fresh && Number.isFinite(fresh.priority)) {
-                            orderData.priority = fresh.priority;
-                            if (fresh.priorityUpdatedAt) orderData.priorityUpdatedAt = fresh.priorityUpdatedAt;
-                        }
-                        if (fresh && fresh.status === 'cancelled') {
-                            wasCancelled = true;
-                            orderData.status = 'cancelled';
-                            orderData.cancelledAt = fresh.cancelledAt || new Date().toISOString();
-                            orderData.cancelledBy = fresh.cancelledBy || 'user';
-                            log(`🛑 Cancelación durante transferencia detectada para orden ${orderData.id}. Abortando Rclone...`);
-                            const procToKill = activeRcloneProcs.get(orderData.id);
-                            if (procToKill) {
-                                try { procToKill.kill(); } catch (kErr) {}
+                        if (pendingOrderFile && fs.existsSync(pendingOrderFile)) {
+                            const fresh = fs.readJsonSync(pendingOrderFile);
+                            if (fresh && Number.isFinite(fresh.priority)) {
+                                orderData.priority = fresh.priority;
+                                if (fresh.priorityUpdatedAt) orderData.priorityUpdatedAt = fresh.priorityUpdatedAt;
+                            }
+                            if (fresh && (fresh.status === 'cancelled' || fresh.cancelRequested)) {
+                                wasCancelled = true;
+                                orderData.status = 'cancelled';
+                                orderData.cancelledAt = fresh.cancelledAt || new Date().toISOString();
+                                orderData.cancelledBy = fresh.cancelledBy || 'user';
+                                log(`🛑 Cancelación durante transferencia detectada para orden ${orderData.id}. Abortando Rclone...`);
+                                const procToKill = activeRcloneProcs.get(orderData.id);
+                                if (procToKill) {
+                                    try { procToKill.kill(); } catch (kErr) {}
+                                }
                             }
                         }
                     } catch (e) {}
+
+                    if (!isLocalMode && !wasCancelled && (now - lastRemoteStatusCheck >= 2500)) {
+                        lastRemoteStatusCheck = now;
+                        fetchOrderFromCentralMongo(orderData.id).then((remoteFresh) => {
+                            if (!remoteFresh || wasCancelled) return;
+                            if (Number.isFinite(remoteFresh.priority)) {
+                                orderData.priority = remoteFresh.priority;
+                                if (remoteFresh.priorityUpdatedAt) orderData.priorityUpdatedAt = remoteFresh.priorityUpdatedAt;
+                            }
+                            if (remoteFresh.status === 'cancelled' || remoteFresh.cancelRequested) {
+                                wasCancelled = true;
+                                orderData.status = 'cancelled';
+                                orderData.cancelledAt = remoteFresh.cancelledAt || new Date().toISOString();
+                                orderData.cancelledBy = remoteFresh.cancelledBy || 'user';
+                                log(`🛑 Cancelación remota (MongoDB) detectada para orden ${orderData.id}. Abortando Rclone...`);
+                                const procToKill = activeRcloneProcs.get(orderData.id);
+                                if (procToKill) {
+                                    try { procToKill.kill(); } catch (kErr) {}
+                                }
+                            }
+                        }).catch(() => {});
+                    }
 
                     if (!wasCancelled) {
                         saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
@@ -926,9 +1092,16 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
             }
         }
 
-        // Sincronizar prioridad final desde disco por si fue editada en el último segundo
+        // Sincronizar prioridad final desde disco/MongoDB por si fue editada en el último segundo
         try {
-            const freshFinal = fs.readJsonSync(pendingOrderFile);
+            let freshFinal = null;
+            if (pendingOrderFile && fs.existsSync(pendingOrderFile)) {
+                freshFinal = fs.readJsonSync(pendingOrderFile);
+            }
+            if (!isLocalMode) {
+                const remoteFinal = await fetchOrderFromCentralMongo(orderData.id);
+                if (remoteFinal) freshFinal = remoteFinal;
+            }
             if (freshFinal && Number.isFinite(freshFinal.priority)) {
                 orderData.priority = freshFinal.priority;
                 if (freshFinal.priorityUpdatedAt) orderData.priorityUpdatedAt = freshFinal.priorityUpdatedAt;
@@ -940,7 +1113,8 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
             orderData.completedAt = new Date().toISOString();
             orderData.durationSeconds = Math.round((Date.now() - startTime) / 1000);
             orderData.processedBy = WORKER_ID;
-            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+            if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
             log(`🛑 Orden ${orderData.id} registrada como CANCELADA`);
             return;
         }
@@ -1014,7 +1188,8 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
                 totalBytes: 0,
                 currentFile: 'Listo en Servidor Central'
             };
-            saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+            saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+            if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
             return;
         }
 
@@ -1022,14 +1197,16 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
         orderData.durationSeconds = durationSeconds;
         orderData.processedBy = WORKER_ID;
 
-        saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+        saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+        if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
 
     } catch (fatalErr) {
         log(`💥 Error fatal procesando orden ${orderData.id}: ${fatalErr.message}`);
         orderData.status = 'failed';
         orderData.error = fatalErr.message;
         orderData.completedAt = new Date().toISOString();
-        saveOrderDataAcrossCandidates(orderData, pendingOrderFile);
+        saveOrderDataAcrossCandidates(orderData, pendingOrderFile, true);
+        if (!isLocalMode) await pushOrderToCentralMongo(orderData, true);
     } finally {
         activeTransfers.delete(orderData.id);
         syncLegacyProcessingFlags();
@@ -1038,14 +1215,110 @@ async function executeHeavyOrder(orderData, pendingOrderFile) {
 }
 
 /**
- * Revisa la cola de órdenes en Z:\_SYNC_CACHE\requests\ y directorios candidatos
+ * Verifica elegibilidad básica para despachar una orden en este worker.
+ */
+function canWorkerHandleOrder(data) {
+    if (!data || !data.id) return false;
+    if (data.type === 'refresh_folder') {
+        const ageMs = Date.now() - new Date(data.createdAt || data.startedAt || 0).getTime();
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled' || ageMs > 25000) {
+            return false;
+        }
+    }
+    const isAbandoned = data.status === 'processing' && data.startedAt && (Date.now() - new Date(data.startedAt).getTime() > 40000);
+    if (!((data.status === 'pending' || data.status === 'queued' || isAbandoned) && data.type !== 'server_download' && data.type !== 'server_upload')) {
+        return false;
+    }
+    if (data.targetWorker && !WORKER_ID.includes(data.targetWorker) && !os.hostname().toLowerCase().includes(data.targetWorker.toLowerCase())) {
+        return false;
+    }
+    if (data.type === 'refresh_folder' && data.targetType === 'server') {
+        const hasRealServer = !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO') || (fs.existsSync('Z:/INTERNO') && global.isZRealServer !== false));
+        if (!hasRealServer) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Claim atómico contra MongoDB (modo Estudio) con fallback transparente a disco (modo Local o desconexión).
+ */
+async function claimOrderAtomic(cand, fresh) {
+    if (!fresh || (fresh.status !== 'pending' && fresh.status !== 'queued')) {
+        return { claimed: false };
+    }
+    const candidatePayload = {
+        ...fresh,
+        status: 'processing',
+        worker: WORKER_ID,
+        workerHostname: os.hostname(),
+        startedAt: new Date().toISOString()
+    };
+
+    if (!isLocalMode) {
+        const mongoRes = await claimOrderInCentralMongo(fresh.id, candidatePayload);
+        if (mongoRes && mongoRes.ok) {
+            if (!mongoRes.claimed) return { claimed: false };
+            const claimedOrder = { ...candidatePayload, ...(mongoRes.order || {}), status: 'processing' };
+            saveOrderDataAcrossCandidates(claimedOrder, cand.fullPath, true);
+            return { claimed: true, order: claimedOrder };
+        }
+    }
+
+    saveOrderDataAcrossCandidates(candidatePayload, cand.fullPath, true);
+    try {
+        const check = fs.existsSync(cand.fullPath) ? fs.readJsonSync(cand.fullPath) : candidatePayload;
+        if (check && check.worker === WORKER_ID && check.status === 'processing') {
+            return { claimed: true, order: check };
+        }
+    } catch (e) {}
+    return { claimed: false };
+}
+
+/**
+ * Revisa la cola de órdenes en MongoDB central (modo Estudio) y directorios candidatos en disco
  * Despacha inmediatamente tareas livianas (Fast-Lane) y administra el Pool Concurrente por Rol/Usuario
  */
 async function processQueue() {
     const candidateDirs = getCandidateOrdersDirs();
     const seenOrders = new Set();
+    const candidatesById = new Map();
     const pendingFastOrders = [];
     const pendingHeavyOrders = [];
+
+    const registerCandidate = (data, fullPath, dir, fromMongo = false) => {
+        if (!canWorkerHandleOrder(data)) return;
+        if (seenOrders.has(data.id)) {
+            const existing = candidatesById.get(data.id);
+            if (existing && existing.fromMongo && fullPath && fs.existsSync(fullPath)) {
+                existing.fullPath = fullPath;
+                existing.dir = dir;
+            }
+            return;
+        }
+        if (activeTransfers.has(data.id) || activeFastTasks.has(data.id)) return;
+        seenOrders.add(data.id);
+        const entry = { data, fullPath, dir, fromMongo };
+        candidatesById.set(data.id, entry);
+        if (data.type === 'refresh_folder' || data.type === 'query_higgsfield_job') {
+            pendingFastOrders.push(entry);
+        } else {
+            pendingHeavyOrders.push(entry);
+        }
+    };
+
+    if (!isLocalMode) {
+        const mongoPending = await fetchPendingOrdersFromCentralMongo();
+        if (Array.isArray(mongoPending)) {
+            const defaultDir = candidateDirs[0] || ORDERS_DIR;
+            for (const data of mongoPending) {
+                if (!data || !data.id) continue;
+                const expectedPath = path.join(defaultDir, `${data.id}.json`);
+                registerCandidate(data, expectedPath, defaultDir, true);
+            }
+        }
+    }
 
     for (const dir of candidateDirs) {
         if (!fs.existsSync(dir)) continue;
@@ -1068,28 +1341,7 @@ async function processQueue() {
                         continue;
                     }
                 }
-
-                const isAbandoned = data && data.status === 'processing' && data.startedAt && (Date.now() - new Date(data.startedAt).getTime() > 40000);
-                if (data && (data.status === 'pending' || isAbandoned) && data.type !== 'server_download' && data.type !== 'server_upload') {
-                    if (data.targetWorker && !WORKER_ID.includes(data.targetWorker) && !os.hostname().toLowerCase().includes(data.targetWorker.toLowerCase())) {
-                        continue;
-                    }
-                    if (data.type === 'refresh_folder' && data.targetType === 'server') {
-                        // Solo workers con acceso físico real al Servidor Central (StorNext) pueden ejecutar refrescos de servidor
-                        const hasRealServer = !!(fs.existsSync('S:/INTERNO') || fs.existsSync('//192.168.206.116/Z/INTERNO') || (fs.existsSync('Z:/INTERNO') && global.isZRealServer !== false));
-                        if (!hasRealServer) {
-                            continue;
-                        }
-                    }
-                    if (!seenOrders.has(data.id) && !activeTransfers.has(data.id) && !activeFastTasks.has(data.id)) {
-                        seenOrders.add(data.id);
-                        if (data.type === 'refresh_folder' || data.type === 'query_higgsfield_job') {
-                            pendingFastOrders.push({ data, fullPath, dir });
-                        } else {
-                            pendingHeavyOrders.push({ data, fullPath, dir });
-                        }
-                    }
-                }
+                registerCandidate(data, fullPath, dir, false);
             } catch (e) {}
         }
     }
@@ -1100,18 +1352,12 @@ async function processQueue() {
         for (const cand of pendingFastOrders) {
             if (activeFastTasks.size >= MAX_FAST_CONCURRENT_TASKS) break;
             try {
-                const fresh = fs.readJsonSync(cand.fullPath);
-                if (fresh && fresh.status === 'pending') {
-                    fresh.status = 'processing';
-                    fresh.worker = WORKER_ID;
-                    fresh.workerHostname = os.hostname();
-                    fresh.startedAt = new Date().toISOString();
-                    saveOrderDataAcrossCandidates(fresh, cand.fullPath);
-
-                    const check = fs.readJsonSync(cand.fullPath);
-                    if (check && check.worker === WORKER_ID && check.status === 'processing') {
-                        executeFastOrder(check, cand.fullPath).catch(e => log(`Error en Fast-Lane (${check.id}): ${e.message}`));
-                    }
+                const fresh = (!cand.fromMongo && cand.fullPath && fs.existsSync(cand.fullPath))
+                    ? fs.readJsonSync(cand.fullPath)
+                    : cand.data;
+                const claimRes = await claimOrderAtomic(cand, fresh);
+                if (claimRes.claimed && claimRes.order) {
+                    executeFastOrder(claimRes.order, cand.fullPath).catch(e => log(`Error en Fast-Lane (${claimRes.order.id}): ${e.message}`));
                 }
             } catch (e) {}
         }
@@ -1162,8 +1408,10 @@ async function processQueue() {
         }
 
         try {
-            const fresh = fs.readJsonSync(cand.fullPath);
-            if (fresh && fresh.status === 'pending') {
+            const fresh = (!cand.fromMongo && cand.fullPath && fs.existsSync(cand.fullPath))
+                ? fs.readJsonSync(cand.fullPath)
+                : cand.data;
+            if (fresh && (fresh.status === 'pending' || fresh.status === 'queued')) {
                 if (fresh.targetHost && fresh.targetHost.toLowerCase() !== os.hostname().toLowerCase()) {
                     continue; // Skip: Destinado exclusivamente al puesto específico donde residen los archivos locales
                 }
@@ -1177,22 +1425,17 @@ async function processQueue() {
                 if (fresh.twoStage && fresh.currentStage === 2 && fresh.twoStageType === 'download') {
                     continue; // Skip: La etapa 2 de descarga es un pull LAN manejado por Pipeta local
                 }
-                fresh.status = 'processing';
-                fresh.worker = WORKER_ID;
-                fresh.workerHostname = os.hostname();
-                fresh.startedAt = new Date().toISOString();
-                saveOrderDataAcrossCandidates(fresh, cand.fullPath);
-
-                const check = fs.readJsonSync(cand.fullPath);
-                if (check && check.worker === WORKER_ID && check.status === 'processing') {
-                    activeTransfers.set(check.id, {
-                        id: check.id,
+                const claimRes = await claimOrderAtomic(cand, fresh);
+                if (claimRes.claimed && claimRes.order) {
+                    const claimedOrder = claimRes.order;
+                    activeTransfers.set(claimedOrder.id, {
+                        id: claimedOrder.id,
                         user: orderUser,
-                        type: check.type,
+                        type: claimedOrder.type,
                         startedAt: Date.now()
                     });
                     syncLegacyProcessingFlags();
-                    executeHeavyOrder(check, cand.fullPath).catch(e => log(`Error en Heavy Pool (${check.id}): ${e.message}`));
+                    executeHeavyOrder(claimedOrder, cand.fullPath).catch(e => log(`Error en Heavy Pool (${claimedOrder.id}): ${e.message}`));
                 }
             }
         } catch (claimErr) {

@@ -1,9 +1,20 @@
 // --- PIPETA PATCH NOTES DATA & RENDERER ---
 window.PIPETA_PATCH_NOTES = [
     {
-        "version": "v1.2.19",
+        "version": "v1.2.20",
         "badge": "Versión Actual",
         "accentColor": "#00e5ff",
+        "items": [
+            "<b>Cola Centralizada en MongoDB:</b> El servidor central (<code>pipeta_server</code>) adopta MongoDB como fuente de verdad de órdenes de transferencia y telemetría de workers, manteniendo escritura dual en disco SMB.",
+            "<b>Claim Atómico Multi-Worker y Cancelación Remota:</b> Los workers toman tareas de forma atómica sin colisiones y detectan cancelaciones o cambios de prioridad en tiempo real desde la base central.",
+            "<b>Integración Cliente Estudio y Aislamiento Freelance:</b> Lectura de cola, cambios de prioridad y cancelaciones conectadas a la API central en puestos del estudio, preservando el funcionamiento 100% local del Modo Freelance.",
+            "<b>Saneamiento de Caché de Órdenes:</b> Limpieza de órdenes JSON finalizadas en <code>_SYNC_CACHE/requests</code> y protección contra archivos JSON corruptos o sobredimensionados."
+        ]
+    },
+    {
+        "version": "v1.2.19",
+        "badge": "",
+        "accentColor": "#666",
         "items": [
             "<b>Modo Freelance Bloqueado para Externos:</b> Nueva opción al empaquetar .ZIP portable para incluir <code>presets/freelance_lock.json</code>, forzando operación local + Drive sin telemetría SMB, persistiendo tras actualizaciones por GitHub y con desbloqueo exclusivo para Admin.",
             "<b>Ocultamiento Automático de Módulos Restringidos:</b> En Modo Freelance los módulos no habilitados (Shot Navigator, IA Ingest, Send2 IA Ingest, Creator y Designers) se ocultan por completo tanto de la interfaz como del índice de guías.",

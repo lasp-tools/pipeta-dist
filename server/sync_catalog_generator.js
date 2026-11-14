@@ -2,6 +2,8 @@ const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
+const centralCatalogHttp = require('http');
+const centralCatalogZlib = require('zlib');
 
 // Carpeta estándar centralizada para los catálogos en local SSD (y fallback Z:\_SYNC_CACHE si está montado)
 const LOCAL_CACHE_DIR = path.join(__dirname, '../_SYNC_CACHE');
@@ -9,6 +11,60 @@ const MODULAR_PROJECTS_DIR = path.join(LOCAL_CACHE_DIR, 'projects');
 const UNC_CACHE = '//192.168.206.116/Z/_SYNC_CACHE';
 const CENTRAL_SERVER_URL = process.env.PIPETA_SERVER_API || 'http://192.168.206.121:3005';
 const PIPETA_SERVER_TOKEN = 'lasp-pipeta-sec-token-2026';
+
+function isCentralCatalogPushDisabled() {
+    if (global.isExternalMachine) return true;
+    if (process.argv.includes('--local') || process.env.PIPETA_LOCAL_WORKER === '1') return true;
+    try {
+        const { isFreelanceLocked } = require('./core/env-detector');
+        if (typeof isFreelanceLocked === 'function' && isFreelanceLocked()) return true;
+    } catch (_) {}
+    return false;
+}
+
+/**
+ * Envía un shard de catálogo comprimido con gzip al servidor central MongoDB (192.168.206.121:3005).
+ */
+function pushCatalogShardToCentralMongo(projectName, type, subKey, dataObjOrBuf, projectCode = null) {
+    if (!projectName || isCentralCatalogPushDisabled()) return Promise.resolve(false);
+    return new Promise((resolve) => {
+        try {
+            const rawBuf = Buffer.isBuffer(dataObjOrBuf)
+                ? dataObjOrBuf
+                : Buffer.from(typeof dataObjOrBuf === 'string' ? dataObjOrBuf : JSON.stringify(dataObjOrBuf), 'utf8');
+            const gzBuf = centralCatalogZlib.gzipSync(rawBuf, { level: 1 });
+            const normType = (type === 'drive') ? 'drive' : 'server';
+            const bodyStr = JSON.stringify({
+                subKey: subKey || 'manifest',
+                projectCode: projectCode || undefined,
+                payload_gzip_base64: gzBuf.toString('base64')
+            });
+            const baseUrl = CENTRAL_SERVER_URL.replace(/\/+$/, '');
+            const targetUrl = new URL(`${baseUrl}/api/sync/v2/catalogs/${encodeURIComponent(projectName)}/${encodeURIComponent(normType)}`);
+            const req = centralCatalogHttp.request(targetUrl, {
+                method: 'POST',
+                headers: {
+                    'x-pipeta-token': PIPETA_SERVER_TOKEN,
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(bodyStr)
+                },
+                timeout: 8000
+            }, (res) => {
+                res.resume();
+                resolve(res.statusCode >= 200 && res.statusCode < 300);
+            });
+            req.on('timeout', () => {
+                try { req.destroy(new Error('timeout')); } catch (_) {}
+                resolve(false);
+            });
+            req.on('error', () => resolve(false));
+            req.write(bodyStr);
+            req.end();
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
 
 function getCentralServerUrls() {
     const urls = [];
@@ -162,7 +218,7 @@ function fetchSubCatalogFromCentralServer(projectName, type, subFile) {
             try {
                 fs.ensureDirSync(path.dirname(localPrimary));
                 const url = `${baseUrl}/api/sync/catalog/${encodeURIComponent(name)}/modular?type=${type}&sub=${encodeURIComponent(subKey)}`;
-                const cmd = `curl.exe -s -m ${curlMaxSec} -w "%{http_code}" -H "x-pipeta-token: ${PIPETA_SERVER_TOKEN}" -o "${tmpOut}" "${url}"`;
+                const cmd = `curl.exe --compressed -s -m ${curlMaxSec} -w "%{http_code}" -H "x-pipeta-token: ${PIPETA_SERVER_TOKEN}" -o "${tmpOut}" "${url}"`;
                 const httpCode = String(execSync(cmd, { encoding: 'utf8', timeout: (curlMaxSec + 1) * 1000, windowsHide: true }) || '').trim();
                 if (httpCode === '200' && fs.existsSync(tmpOut) && fs.statSync(tmpOut).size > 10) {
                     const headBuf = Buffer.alloc(16);
@@ -1302,7 +1358,7 @@ function partitionCatalog(monolithicData, type) {
     for (const [key, bucket] of subCatalogs.entries()) {
         const filePath = path.join(outDir, bucket.file);
         fs.ensureDirSync(path.dirname(filePath));
-        fs.writeJsonSync(filePath, {
+        const bucketPayload = {
             id: bucket.id,
             project: projectName,
             type: type,
@@ -1315,7 +1371,9 @@ function partitionCatalog(monolithicData, type) {
                 byteCount: bucket.byteCount
             },
             flatList: bucket.items
-        }, { spaces: 2 });
+        };
+        fs.writeJsonSync(filePath, bucketPayload, { spaces: 2 });
+        pushCatalogShardToCentralMongo(projectName, type, bucket.id, bucketPayload, monolithicData.projectCode || null).catch(() => {});
 
         subCatalogMetaMap[key] = {
             id: bucket.id,
@@ -1356,6 +1414,7 @@ function partitionCatalog(monolithicData, type) {
     const manifestPath = path.join(outDir, 'manifest.json');
     fs.writeJsonSync(manifestPath, manifestData, { spaces: 2 });
     manifestMemoryCache.set(manifestPath, { mtime: Date.now(), data: manifestData });
+    pushCatalogShardToCentralMongo(projectName, type, 'manifest', manifestData, monolithicData.projectCode || null).catch(() => {});
 
     // Replicar también a la red central Z:/_SYNC_CACHE/projects si corresponde
     try {
@@ -2755,7 +2814,7 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
     }
 
     fs.ensureDirSync(path.dirname(subFilePath));
-    fs.writeJsonSync(subFilePath, {
+    const subCatalogPayload = {
         id: subKey,
         project: projectName,
         type: type,
@@ -2764,7 +2823,8 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
         file: subFile,
         stats: { itemCount: finalItems.length, fileCount, byteCount },
         flatList: finalItems
-    }, { spaces: 2 });
+    };
+    fs.writeJsonSync(subFilePath, subCatalogPayload, { spaces: 2 });
 
     subCatalogMemoryCache.delete(subFilePath);
     pendingSyncCache.clear();
@@ -2797,6 +2857,13 @@ async function refreshSubCatalog(projectName, targetPath, type = 'server') {
     try {
         refreshDriveManifestPendingSummary(projectName, subKey, true);
     } catch (e) {}
+
+    await pushCatalogShardToCentralMongo(projectName, type, subKey, subCatalogPayload, config?.projectCode).catch(() => {});
+    try {
+        const latestManifestPath = path.join(outDir, 'manifest.json');
+        const latestManifest = fs.existsSync(latestManifestPath) ? fs.readJsonSync(latestManifestPath) : manifest;
+        await pushCatalogShardToCentralMongo(projectName, type, 'manifest', latestManifest, config?.projectCode).catch(() => {});
+    } catch (_) {}
 
     return {
         success: true,
@@ -2874,6 +2941,8 @@ function recordTransferredItem(projectName, item, type = 'drive') {
     ].filter(d => fs.existsSync(d));
 
     const uniqueBases = [...new Set(targetRoots.map(d => path.resolve(d)))];
+    let pushedSubToMongo = false;
+    let pushedManToMongo = false;
 
     for (const baseDir of uniqueBases) {
         const subFilePath = path.join(baseDir, projectName, type, subMeta.file);
@@ -2901,6 +2970,10 @@ function recordTransferredItem(projectName, item, type = 'drive') {
                     }
                     fs.writeJsonSync(subFilePath, subData, { spaces: 2 });
                     subCatalogMemoryCache.delete(subFilePath);
+                    if (!pushedSubToMongo) {
+                        pushedSubToMongo = true;
+                        pushCatalogShardToCentralMongo(projectName, type, subMeta.key, subData, config.projectCode || null).catch(() => {});
+                    }
                 }
             } catch (e) {
                 console.warn(`[RECORD TRANSFERRED] Error actualizando ${subFilePath}:`, e.message);
@@ -2928,6 +3001,10 @@ function recordTransferredItem(projectName, item, type = 'drive') {
                     man.generatedAt = new Date().toISOString();
                     fs.writeJsonSync(manPath, man, { spaces: 2 });
                     manifestMemoryCache.delete(manPath);
+                    if (!pushedManToMongo) {
+                        pushedManToMongo = true;
+                        pushCatalogShardToCentralMongo(projectName, type, 'manifest', man, config.projectCode || null).catch(() => {});
+                    }
                 }
             } catch (e) {}
         }
@@ -3873,6 +3950,7 @@ module.exports = {
     clearFreshnessCache,
     fetchSubCatalogFromCentralServer,
     fetchProjectBundleFromCentralServer,
+    pushCatalogShardToCentralMongo,
     getCentralServerUrls,
     resolveCanonicalProjectName
 };

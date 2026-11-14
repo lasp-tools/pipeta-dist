@@ -9,14 +9,14 @@ const net = require('net');
 const app = express();
 const PORT = process.env.PORT || 3005;
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 app.use((req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     next();
 });
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // ---------------------------------------------------------------------------
 // AUTENTICACIÓN Y SEGURIDAD REMOTA (Opción 1: Pantalla Negra + Token)
 // ---------------------------------------------------------------------------
@@ -207,41 +207,53 @@ try {
 } catch (e) {}
 let mongoOrdersCache = [];
 let mongoWorkersCache = [];
+const deletedOrderIds = new Set();
+const syncedFromDiskIds = new Set();
+
+function normalizeMongoOrderDoc(o) {
+    if (!o) return null;
+    const { _id, _filePath, ...rest } = o;
+    const orderId = o.order_id || o.id;
+    if (!orderId || deletedOrderIds.has(orderId)) return null;
+    let createdAtStr = rest.createdAt ? String(rest.createdAt) : null;
+    if (!createdAtStr && o.created_at) {
+        createdAtStr = (typeof o.created_at.toISOString === 'function')
+            ? o.created_at.toISOString()
+            : String(o.created_at);
+    }
+    return {
+        ...rest,
+        id: orderId,
+        type: o.type || 'upload',
+        project: o.project || 'STUDIO',
+        user: o.user || o.created_by || 'Artista',
+        priority: Number.isFinite(Number(o.priority)) ? Number(o.priority) : 50,
+        status: o.status === 'queued' ? 'pending' : (o.status || 'pending'),
+        path: o.path || null,
+        targetType: o.targetType || null,
+        worker: o.worker || null,
+        workerHostname: o.workerHostname || null,
+        createdAt: createdAtStr,
+        startedAt: o.startedAt || null,
+        completedAt: o.completedAt || null,
+        durationSeconds: o.durationSeconds || null,
+        progress: o.progress !== undefined ? o.progress : null,
+        itemsCount: Array.isArray(o.items) ? o.items.length : 0,
+        items: o.items || [],
+        error: o.error || null,
+        errors: o.errors || null,
+        result: o.result || null,
+        source: 'mongodb'
+    };
+}
+
 async function refreshMongoCache() {
     if (!mongoDb) return;
     try {
         const db = await mongoDb.getDb();
         if (db) {
-            const rawOrders = await db.collection('orders').find().sort({ updated_at: -1 }).limit(100).toArray();
-            mongoOrdersCache = rawOrders.map(o => {
-                let createdAtStr = null;
-                if (o.createdAt) createdAtStr = String(o.createdAt);
-                else if (o.created_at) {
-                    createdAtStr = (typeof o.created_at.toISOString === 'function') ? o.created_at.toISOString() : String(o.created_at);
-                }
-                return {
-                    id: o.id,
-                    type: o.type || 'upload',
-                    project: o.project || 'STUDIO',
-                    user: o.user || o.created_by || 'Artista',
-                    priority: o.priority || 50,
-                    status: o.status === 'queued' ? 'pending' : (o.status || 'pending'),
-                    path: o.path || null,
-                    targetType: o.targetType || null,
-                    worker: o.worker || null,
-                    workerHostname: o.workerHostname || null,
-                    createdAt: createdAtStr,
-                    startedAt: o.startedAt || null,
-                    completedAt: o.completedAt || null,
-                    durationSeconds: o.durationSeconds || null,
-                    progress: o.progress || null,
-                    itemsCount: Array.isArray(o.items) ? o.items.length : 0,
-                    items: o.items || [],
-                    error: o.error || null,
-                    errors: o.errors || null,
-                    result: o.result || null
-                };
-            });
+            const rawOrders = await db.collection('orders').find().sort({ updated_at: -1, created_at: -1 }).limit(150).toArray();
+            mongoOrdersCache = rawOrders.map(normalizeMongoOrderDoc).filter(Boolean);
             const rawWorkers = await db.collection('workers').find().toArray();
             mongoWorkersCache = rawWorkers.map(w => {
                 const hbTime = (w.last_heartbeat && typeof w.last_heartbeat.toISOString === 'function')
@@ -268,6 +280,27 @@ async function refreshMongoCache() {
 }
 setInterval(refreshMongoCache, 1500);
 setTimeout(refreshMongoCache, 200);
+
+let isSyncingCatalogsToMongo = false;
+async function syncDiskCatalogsToMongoJob() {
+    if (isSyncingCatalogsToMongo || !mongoDb || typeof mongoDb.syncProjectCatalogDirToMongo !== 'function') return;
+    isSyncingCatalogsToMongo = true;
+    try {
+        const projDir = path.join(CACHE_ROOT, 'projects');
+        if (fs.existsSync(projDir)) {
+            const res = await mongoDb.syncProjectCatalogDirToMongo(projDir, true);
+            if (res && res.upserted > 0) {
+                console.log(`[MONGO CATALOG SYNC] Sincronizados ${res.upserted} shards nuevos/actualizados (${res.skipped} sin cambios, ${res.errors?.length || 0} errores).`);
+            }
+        }
+    } catch (e) {
+        console.warn('[MONGO CATALOG SYNC] Error:', e.message);
+    } finally {
+        isSyncingCatalogsToMongo = false;
+    }
+}
+setTimeout(syncDiskCatalogsToMongoJob, 2000);
+setInterval(syncDiskCatalogsToMongoJob, 60000);
 // ---------------------------------------------------------------------------
 // AGREGADOR DE NODOS (WORKERS)
 // ---------------------------------------------------------------------------
@@ -509,6 +542,16 @@ function getRegisteredWorkers() {
 function getQueueOrders() {
     const candidateDirs = getAllOrdersCandidateDirs();
     const ordersMap = new Map();
+    const terminalStatuses = new Set(['completed', 'completed_with_errors', 'failed', 'cancelled', 'interrupted']);
+
+    // 1. Fuente primaria: MongoDB (LXC 121)
+    for (const mo of mongoOrdersCache) {
+        if (mo && mo.id && !deletedOrderIds.has(mo.id)) {
+            ordersMap.set(mo.id, { ...mo });
+        }
+    }
+
+    // 2. Complemento / migración desde disco (_SYNC_CACHE/requests)
     for (const dir of candidateDirs) {
         if (!fs.existsSync(dir)) continue;
         try {
@@ -516,29 +559,54 @@ function getQueueOrders() {
             for (const file of files) {
                 try {
                     const fullP = path.join(dir, file);
+                    const st = fs.statSync(fullP);
+                    if (st.size > 4 * 1024 * 1024) continue;
                     const data = fs.readJsonSync(fullP);
-                    if (data && data.id) {
-                        const existing = ordersMap.get(data.id);
-                        // Conservar la versión más reciente en caso de múltiples candidatos
-                        if (!existing || (data.status === 'processing' && existing.status !== 'processing')) {
-                            ordersMap.set(data.id, { ...data, _filePath: fullP });
+                    if (!data || !data.id) continue;
+
+                    if (deletedOrderIds.has(data.id)) {
+                        try { fs.removeSync(fullP); } catch (_) {}
+                        continue;
+                    }
+
+                    const existing = ordersMap.get(data.id);
+                    if (!existing) {
+                        ordersMap.set(data.id, { ...data, _filePath: fullP });
+                        if (mongoDb && typeof mongoDb.createOrUpdateOrder === 'function' && !syncedFromDiskIds.has(data.id)) {
+                            syncedFromDiskIds.add(data.id);
+                            mongoDb.createOrUpdateOrder(data).catch(() => {});
+                        }
+                    } else {
+                        // Nunca revertir una orden ya cancelada o finalizada en MongoDB
+                        if (existing.status === 'cancelled' || terminalStatuses.has(existing.status)) {
+                            continue;
+                        }
+                        const diskIsTerminal = terminalStatuses.has(data.status);
+                        const diskMoreAdvanced =
+                            diskIsTerminal ||
+                            (data.status === 'processing' && existing.status === 'pending') ||
+                            ((data.currentStage || 0) > (existing.currentStage || 0)) ||
+                            (data.status === 'processing' && existing.status === 'processing' && (data.progress?.percentage || 0) > (existing.progress?.percentage || 0));
+
+                        if (diskMoreAdvanced) {
+                            ordersMap.set(data.id, { ...existing, ...data, _filePath: fullP, source: existing.source || 'disk' });
+                            if (diskIsTerminal && mongoDb && typeof mongoDb.createOrUpdateOrder === 'function') {
+                                mongoDb.createOrUpdateOrder(data).catch(() => {});
+                            }
                         }
                     }
                 } catch(e) {}
             }
         } catch(e) {}
     }
-    // Fusionar órdenes registradas en MongoDB (LXC 121)
-    for (const mo of mongoOrdersCache) {
-        if (mo && mo.id && !ordersMap.has(mo.id)) {
-            ordersMap.set(mo.id, mo);
-        }
-    }
+
     const orders = Array.from(ordersMap.values()).map(o => {
-        const priority = Number.isFinite(o.priority) 
-            ? o.priority 
+        const { _id, _filePath, ...rest } = o;
+        const priority = Number.isFinite(Number(o.priority))
+            ? Number(o.priority)
             : (o.type === 'higgsfield_ingest' || o.type === 'refresh_folder' ? 80 : 50);
         return {
+            ...rest,
             id: o.id,
             type: o.type || 'download',
             project: o.project || 'STUDIO',
@@ -553,7 +621,7 @@ function getQueueOrders() {
             startedAt: o.startedAt || null,
             completedAt: o.completedAt || null,
             durationSeconds: o.durationSeconds || null,
-            progress: o.progress || null,
+            progress: o.progress !== undefined ? o.progress : null,
             itemsCount: Array.isArray(o.items) ? o.items.length : 0,
             items: o.items || [],
             error: o.error || null,
@@ -604,12 +672,31 @@ try {
 // =========================================================================
 // ENDPOINTS DE CATÁLOGOS MODULARES CENTRALIZADOS (DRIVE Y SERVER / SMB)
 // =========================================================================
-// 1. Obtener manifiesto o sub-catálogo específico (JSON)
-app.get('/api/sync/catalog/:project/modular', (req, res) => {
+// 1. Obtener manifiesto o sub-catálogo específico (JSON o gzip directo desde MongoDB con fallback a disco)
+app.get('/api/sync/catalog/:project/modular', async (req, res) => {
     try {
         const projectName = req.params.project;
         const type = (req.query.type === 'drive') ? 'drive' : 'server';
         const subKey = req.query.sub; // ej: 'assets2D', 'episodios/A01', etc.
+        const normSubKey = subKey || 'manifest';
+
+        if (mongoDb && typeof mongoDb.getCatalogShardBuffers === 'function') {
+            try {
+                const shard = await mongoDb.getCatalogShardBuffers(projectName, type, normSubKey);
+                if (shard) {
+                    res.setHeader('Cache-Control', 'public, max-age=5');
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    if (String(req.headers['accept-encoding'] || '').includes('gzip')) {
+                        res.setHeader('Content-Encoding', 'gzip');
+                        return res.send(shard.gzipBuffer);
+                    }
+                    return res.send(shard.getRawBuffer());
+                }
+            } catch (mongoErr) {
+                console.warn(`[CATALOG MONGO READ] Fallback a disco para ${projectName}/${type}/${normSubKey}: ${mongoErr.message}`);
+            }
+        }
+
         const projectsDir = path.join(CACHE_ROOT, 'projects');
         let resolvedProject = projectName;
         if (fs.existsSync(projectsDir)) {
@@ -625,6 +712,15 @@ app.get('/api/sync/catalog/:project/modular', (req, res) => {
             targetFile = path.join(projectsDir, resolvedProject, type, `${cleanSub}.json`);
         }
         if (fs.existsSync(targetFile)) {
+            if (mongoDb && typeof mongoDb.saveCatalogShard === 'function') {
+                setImmediate(() => {
+                    try {
+                        const rawBuf = fs.readFileSync(targetFile);
+                        const st = fs.statSync(targetFile);
+                        mongoDb.saveCatalogShard(resolvedProject, type, normSubKey, rawBuf, { mtimeMs: st.mtimeMs }).catch(() => {});
+                    } catch (_) {}
+                });
+            }
             res.setHeader('Cache-Control', 'public, max-age=5');
             return res.sendFile(path.resolve(targetFile));
         }
@@ -665,18 +761,39 @@ app.get('/api/sync/catalog/:project/bundle', (req, res) => {
         return res.status(500).json({ success: false, error: e.message });
     }
 });
-// 3. Listar proyectos disponibles en el servidor
-app.get('/api/sync/catalog/available-projects', (req, res) => {
+// 3. Listar proyectos disponibles en el servidor (MongoDB + disco)
+app.get('/api/sync/catalog/available-projects', async (req, res) => {
     try {
-        const projectsDir = path.join(CACHE_ROOT, 'projects');
-        if (!fs.existsSync(projectsDir)) {
-            return res.json({ success: true, projects: [] });
+        const seenLower = new Set();
+        const projects = [];
+
+        if (mongoDb && typeof mongoDb.listCatalogProjects === 'function') {
+            try {
+                const mongoProjs = await mongoDb.listCatalogProjects();
+                for (const mp of mongoProjs) {
+                    const name = mp.project || mp.canonicalProject;
+                    if (name && !seenLower.has(name.toLowerCase())) {
+                        seenLower.add(name.toLowerCase());
+                        projects.push(name);
+                    }
+                }
+            } catch (_) {}
         }
-        const dirs = fs.readdirSync(projectsDir).filter(f => {
-            const fp = path.join(projectsDir, f);
-            try { return fs.statSync(fp).isDirectory(); } catch(e) { return false; }
-        });
-        return res.json({ success: true, projects: dirs });
+
+        const projectsDir = path.join(CACHE_ROOT, 'projects');
+        if (fs.existsSync(projectsDir)) {
+            const dirs = fs.readdirSync(projectsDir).filter(f => {
+                const fp = path.join(projectsDir, f);
+                try { return fs.statSync(fp).isDirectory(); } catch(e) { return false; }
+            });
+            for (const d of dirs) {
+                if (!seenLower.has(d.toLowerCase())) {
+                    seenLower.add(d.toLowerCase());
+                    projects.push(d);
+                }
+            }
+        }
+        return res.json({ success: true, projects });
     } catch (e) {
         return res.status(500).json({ success: false, error: e.message });
     }
@@ -688,6 +805,21 @@ app.post('/api/server/refresh-folder', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Parámetros project y path requeridos' });
         }
         const targetType = (reqType === 'server') ? 'server' : 'drive';
+
+        // 1. FAST PATH DIRECTO PARA SERVIDOR (StorNext SMB < 500ms)
+        if (targetType === 'server') {
+            try {
+                const { fastRefreshServerFolder } = require('./helpers/fast_refresh');
+                const fastRes = await fastRefreshServerFolder(project, folderPath, user);
+                if (fastRes && fastRes.success) {
+                    return res.json(fastRes);
+                }
+            } catch (fastErr) {
+                console.warn(`[PIPETA SERVER] Fast-refresh falló (${fastErr.message}), pasando a Worker...`);
+            }
+        }
+
+        // 2. CARRIL WORKER PARA DRIVE O FALLBACK PESADO
         const reqId = `rf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const orderData = {
             id: reqId,
@@ -701,26 +833,43 @@ app.post('/api/server/refresh-folder', async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        // 1. Guardar localmente en ORDERS_DIR (/opt/_SYNC_CACHE/requests)
+        // Registrar primero en MongoDB central
+        if (mongoDb && typeof mongoDb.createOrUpdateOrder === 'function') {
+            try {
+                await mongoDb.createOrUpdateOrder(orderData);
+            } catch (_) {}
+        }
+
+        // Guardar localmente
         try {
             fs.ensureDirSync(ORDERS_DIR);
             fs.writeJsonSync(path.join(ORDERS_DIR, `${reqId}.json`), orderData, { spaces: 2 });
         } catch (e) {}
 
-        // 2. Depositar directamente en VM 111 (/mnt/z/_SYNC_CACHE/requests) para que el Worker de estudio lo tome de inmediato
+        // Depositar directamente en StorNext SMB para los workers
         try {
-            const b64 = Buffer.from(JSON.stringify(orderData, null, 2), 'utf8').toString('base64');
-            execSync(`${REMOTE_STUDIO_SSH} "echo '${b64}' | base64 -d > /mnt/z/_SYNC_CACHE/requests/${reqId}.json"`, { timeout: 4000 });
-        } catch (sshErr) {
-            console.warn(`[PIPETA SERVER] Error depositando orden refresh_folder en VM 111: ${sshErr.message}`);
+            const tmpOrder = `/tmp/${reqId}.json`;
+            fs.writeJsonSync(tmpOrder, orderData);
+            execSync(`smbclient "//192.168.206.116/Z" -W "nonstop.tv" -U "lasp-mpastorino%Laspadmin.321" -c "cd \\"_SYNC_CACHE\\\\requests\\"; put \\"${tmpOrder}\\" \\"${reqId}.json\\""`, { timeout: 4000 });
+            try { fs.removeSync(tmpOrder); } catch (e) {}
+        } catch (smbErr) {
+            console.warn(`[PIPETA SERVER] Error depositando orden refresh_folder en StorNext: ${smbErr.message}`);
         }
 
-        // 3. Esperar que el Worker central procese la orden (polling hasta 18s)
+        // Esperar worker (hasta 25s), chequeando MongoDB + disco local
         const waitStart = Date.now();
         let finishedOrder = null;
-        while (Date.now() - waitStart < 60000) {
+        while (Date.now() - waitStart < 25000) {
             await new Promise(r => setTimeout(r, 400));
-            // Revisar archivo local
+            if (mongoDb && typeof mongoDb.getOrder === 'function') {
+                try {
+                    const mOrd = await mongoDb.getOrder(reqId);
+                    if (mOrd && (mOrd.status === 'completed' || mOrd.status === 'failed')) {
+                        finishedOrder = mOrd;
+                        break;
+                    }
+                } catch (_) {}
+            }
             const localFile = path.join(ORDERS_DIR, `${reqId}.json`);
             if (fs.existsSync(localFile)) {
                 try {
@@ -731,33 +880,23 @@ app.post('/api/server/refresh-folder', async (req, res) => {
                     }
                 } catch (e) {}
             }
-            // Consultar directamente a VM 111 si aún no sincronizó rsync local
-            const elapsed = Date.now() - waitStart;
-            if (elapsed > 1200 && (elapsed % 1200 < 500)) {
-                try {
-                    const remoteOut = execSync(`${REMOTE_STUDIO_SSH} "cat /mnt/z/_SYNC_CACHE/requests/${reqId}.json 2>/dev/null"`, { encoding: 'utf8', timeout: 2000 });
-                    if (remoteOut && remoteOut.trim().startsWith('{')) {
-                        const rData = JSON.parse(remoteOut.trim());
-                        if (rData && (rData.status === 'completed' || rData.status === 'failed')) {
-                            finishedOrder = rData;
-                            try { fs.writeJsonSync(localFile, rData); } catch (e) {}
-                            break;
-                        }
-                    }
-                } catch (e) {}
-            }
         }
 
         if (finishedOrder) {
-            // Limpiar orden de VM 111 y local
-            try { execSync(`${REMOTE_STUDIO_SSH} "rm -f /mnt/z/_SYNC_CACHE/requests/${reqId}.json"`, { timeout: 2000 }); } catch (e) {}
-            try { const lf = path.join(ORDERS_DIR, `${reqId}.json`); if (fs.existsSync(lf)) fs.removeSync(lf); } catch (e) {}
+            deletedOrderIds.add(reqId);
+            if (mongoDb && typeof mongoDb.deleteOrder === 'function') {
+                mongoDb.deleteOrder(reqId).catch(() => {});
+            }
+            if (mongoDb && typeof mongoDb.syncProjectCatalogDirToMongo === 'function') {
+                mongoDb.syncProjectCatalogDirToMongo(path.join(CACHE_ROOT, 'projects'), true, project).catch(() => {});
+            }
+            try {
+                const lf = path.join(ORDERS_DIR, `${reqId}.json`);
+                if (fs.existsSync(lf)) fs.removeSync(lf);
+                execSync(`smbclient "//192.168.206.116/Z" -W "nonstop.tv" -U "lasp-mpastorino%Laspadmin.321" -c "cd \\"_SYNC_CACHE\\\\requests\\"; del \\"${reqId}.json\\""`, { timeout: 3000 });
+            } catch (e) {}
 
             if (finishedOrder.status === 'completed') {
-                // Sincronizar de inmediato los catálogos de este proyecto desde VM 111 a LXC 121
-                try {
-                    execSync(`rsync -az -e 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=2' lasp-linux@192.168.206.111:/mnt/z/_SYNC_CACHE/projects/${encodeURIComponent(project)}/ /opt/_SYNC_CACHE/projects/${encodeURIComponent(project)}/`, { timeout: 4000 });
-                } catch (e) {}
                 return res.json(finishedOrder.result || { success: true, delegated: true });
             } else {
                 return res.status(500).json({ success: false, error: finishedOrder.error || 'Worker falló al refrescar carpeta' });
@@ -1321,11 +1460,12 @@ app.post('/api/server/task/:id/resume', async (req, res) => {
 app.post('/api/server/task/:id/cancel', async (req, res) => {
     try {
         const { id } = req.params;
+        const cancelledBy = (req.body && req.body.user) ? String(req.body.user) : 'admin';
         const nowIso = new Date().toISOString();
         const dirs = getAllOrdersCandidateDirs();
         let found = false;
 
-        if (updateRemoteVm111Orders([id], { status: 'cancelled', cancelledAt: nowIso, cancelledBy: 'admin' }) > 0) {
+        if (updateRemoteVm111Orders([id], { status: 'cancelled', cancelledAt: nowIso, cancelledBy, cancelRequested: true }) > 0) {
             found = true;
         }
 
@@ -1336,7 +1476,8 @@ app.post('/api/server/task/:id/cancel', async (req, res) => {
                     const data = fs.readJsonSync(filePath);
                     data.status = 'cancelled';
                     data.cancelledAt = nowIso;
-                    data.cancelledBy = 'admin';
+                    data.cancelledBy = cancelledBy;
+                    data.cancelRequested = true;
                     fs.writeJsonSync(filePath, data, { spaces: 2 });
                     found = true;
                 } catch(e) {}
@@ -1346,25 +1487,36 @@ app.post('/api/server/task/:id/cancel', async (req, res) => {
         for (const mo of mongoOrdersCache) {
             if (mo && mo.id === id) {
                 mo.status = 'cancelled';
+                mo.cancelledAt = nowIso;
+                mo.cancelledBy = cancelledBy;
+                mo.cancelRequested = true;
                 found = true;
             }
         }
         if (mongoDb) {
             try {
-                const db = await mongoDb.getDb();
-                if (db) {
-                    const mRes = await db.collection('orders').updateMany(
-                        { $or: [{ id: id }, { order_id: id }] },
-                        { $set: { status: 'cancelled', cancelledAt: nowIso, cancelledBy: 'admin', updated_at: new Date() } }
-                    );
-                    if (mRes.matchedCount > 0) found = true;
-                    await refreshMongoCache();
+                if (typeof mongoDb.updateOrderStatus === 'function') {
+                    const existing = await mongoDb.getOrder(id);
+                    if (existing) {
+                        await mongoDb.updateOrderStatus(id, 'cancelled', { cancelledAt: nowIso, cancelledBy, cancelRequested: true });
+                        found = true;
+                    }
+                } else {
+                    const db = await mongoDb.getDb();
+                    if (db) {
+                        const mRes = await db.collection('orders').updateMany(
+                            { $or: [{ id: id }, { order_id: id }] },
+                            { $set: { status: 'cancelled', cancelledAt: nowIso, cancelledBy, cancelRequested: true, updated_at: new Date() } }
+                        );
+                        if (mRes.matchedCount > 0) found = true;
+                    }
                 }
+                await refreshMongoCache();
             } catch(e) {}
         }
 
         if (!found) return res.status(404).json({ success: false, error: 'Orden no encontrada' });
-        console.log(`[PIPETA SERVER] Orden ${id} cancelada por administrador`);
+        console.log(`[PIPETA SERVER] Orden ${id} cancelada por ${cancelledBy}`);
         res.json({ success: true, id, status: 'cancelled' });
     } catch(err) {
         res.status(500).json({ success: false, error: err.message });
@@ -1374,11 +1526,12 @@ app.post('/api/server/task/:id/cancel', async (req, res) => {
 app.post('/api/server/task/:id/retry', async (req, res) => {
     try {
         const { id } = req.params;
+        deletedOrderIds.delete(id);
         const nowIso = new Date().toISOString();
         const dirs = getAllOrdersCandidateDirs();
         let found = false;
 
-        if (updateRemoteVm111Orders([id], { status: 'pending', retriedAt: nowIso }, ['error', 'errors', 'cancelledAt', 'completedAt', 'durationSeconds', 'worker', 'workerHostname', 'startedAt']) > 0) {
+        if (updateRemoteVm111Orders([id], { status: 'pending', retriedAt: nowIso }, ['error', 'errors', 'cancelledAt', 'cancelledBy', 'cancelRequested', 'completedAt', 'durationSeconds', 'worker', 'workerHostname', 'startedAt']) > 0) {
             found = true;
         }
 
@@ -1392,6 +1545,8 @@ app.post('/api/server/task/:id/retry', async (req, res) => {
                     delete data.error;
                     delete data.errors;
                     delete data.cancelledAt;
+                    delete data.cancelledBy;
+                    delete data.cancelRequested;
                     delete data.completedAt;
                     delete data.durationSeconds;
                     delete data.worker;
@@ -1422,7 +1577,7 @@ app.post('/api/server/task/:id/retry', async (req, res) => {
                         { $or: [{ id: id }, { order_id: id }] },
                         {
                             $set: { status: 'pending', retriedAt: nowIso, updated_at: new Date() },
-                            $unset: { error: "", errors: "", cancelledAt: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
+                            $unset: { error: "", errors: "", cancelledAt: "", cancelledBy: "", cancelRequested: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
                         }
                     );
                     if (mRes.matchedCount > 0) found = true;
@@ -1442,6 +1597,8 @@ app.post('/api/server/task/:id/retry', async (req, res) => {
 app.post('/api/server/task/:id/delete', async (req, res) => {
     try {
         const { id } = req.params;
+        deletedOrderIds.add(id);
+        mongoOrdersCache = mongoOrdersCache.filter(mo => mo && mo.id !== id);
         const dirs = getAllOrdersCandidateDirs();
         let deleted = false;
         for (const dir of dirs) {
@@ -1453,26 +1610,32 @@ app.post('/api/server/task/:id/delete', async (req, res) => {
                 } catch(e) {}
             }
         }
-        // Borrar en almacenamiento central VM 111
+        // Borrar en almacenamiento central VM 111 en segundo plano (sin bloquear respuesta HTTP)
         try {
-            execSync(`${REMOTE_STUDIO_SSH} 'rm -f /mnt/z/_SYNC_CACHE/requests/${id}.json'`, { timeout: 4000 });
-            deleted = true;
+            const safeId = String(id).replace(/[^a-zA-Z0-9_.-]/g, '');
+            if (safeId) {
+                exec(`${REMOTE_STUDIO_SSH} 'rm -f /mnt/z/_SYNC_CACHE/requests/${safeId}.json'`, { timeout: 4000 }, () => {});
+            }
         } catch(e) {}
 
         // Borrar en MongoDB
         if (mongoDb) {
             try {
-                const db = await mongoDb.getDb();
-                if (db) {
-                    const mRes = await db.collection('orders').deleteMany({
-                        $or: [{ id: id }, { order_id: id }]
-                    });
-                    if (mRes.deletedCount > 0) deleted = true;
-                    await refreshMongoCache();
+                if (typeof mongoDb.deleteOrder === 'function') {
+                    if (await mongoDb.deleteOrder(id)) deleted = true;
+                } else {
+                    const db = await mongoDb.getDb();
+                    if (db) {
+                        const mRes = await db.collection('orders').deleteMany({
+                            $or: [{ id: id }, { order_id: id }]
+                        });
+                        if (mRes.deletedCount > 0) deleted = true;
+                    }
                 }
+                await refreshMongoCache();
             } catch(e) {}
         }
-        console.log(`[PIPETA SERVER] Orden ${id} eliminada permanentemente`);
+        console.log(`[PIPETA SERVER] Orden ${id} eliminada permanentemente (deleted=${deleted})`);
         res.json({ success: true, id, deleted: true });
     } catch(err) {
         res.status(500).json({ success: false, error: err.message });
@@ -1482,8 +1645,16 @@ app.post('/api/server/task/:id/delete', async (req, res) => {
 app.post('/api/server/queue/clear-history', async (req, res) => {
     try {
         const dirs = getAllOrdersCandidateDirs();
-        const finishedStatuses = ['completed', 'completed_with_errors', 'failed', 'cancelled'];
+        const finishedStatuses = ['completed', 'completed_with_errors', 'failed', 'cancelled', 'interrupted', 'error'];
         let count = 0;
+
+        // Registrar IDs finalizados de MongoDB como tombstones para evitar reimportación desde disco
+        for (const mo of mongoOrdersCache) {
+            if (mo && mo.id && finishedStatuses.includes(mo.status)) {
+                deletedOrderIds.add(mo.id);
+            }
+        }
+        mongoOrdersCache = mongoOrdersCache.filter(mo => mo && !finishedStatuses.includes(mo.status));
 
         // A. Limpieza local en directorios candidatos (incluyendo archivos corruptos con status finalizado)
         for (const dir of dirs) {
@@ -1496,14 +1667,19 @@ app.post('/api/server/queue/clear-history', async (req, res) => {
                         let isFinished = false;
                         try {
                             const data = fs.readJsonSync(fullP);
-                            if (data && finishedStatuses.includes(data.status)) isFinished = true;
+                            if (data && finishedStatuses.includes(data.status)) {
+                                isFinished = true;
+                                if (data.id) deletedOrderIds.add(data.id);
+                            }
                         } catch(e) {
                             const raw = fs.readFileSync(fullP, 'utf8');
-                            if (raw.includes('"completed"') || raw.includes('"failed"') || raw.includes('"cancelled"') || raw.includes('"completedAt"')) {
+                            if (raw.includes('"completed"') || raw.includes('"failed"') || raw.includes('"cancelled"') || /"completedAt"\s*:\s*"[^"]+"/.test(raw)) {
                                 isFinished = true;
                             }
                         }
                         if (isFinished) {
+                            const oid = f.replace(/\.json$/i, '');
+                            deletedOrderIds.add(oid);
                             fs.removeSync(fullP);
                             count++;
                         }
@@ -1512,23 +1688,33 @@ app.post('/api/server/queue/clear-history', async (req, res) => {
             } catch(e) {}
         }
 
-        // B. Limpieza remota en el almacenamiento central del estudio (VM 111: /mnt/z/_SYNC_CACHE/requests)
+        // B. Limpieza remota en el almacenamiento central del estudio (VM 111: /mnt/z/_SYNC_CACHE/requests) en segundo plano
         try {
-            execSync(`${REMOTE_STUDIO_SSH} "python3 /home/lasp-linux/clean_vm111.py"`, { timeout: 10000 });
-            console.log('[PIPETA SERVER] Órdenes finalizadas eliminadas del almacenamiento central en VM 111');
-        } catch(e) {
-            console.warn('[PIPETA SERVER WARN] Error al ejecutar limpieza en VM 111:', e.message);
-        }
+            exec(`${REMOTE_STUDIO_SSH} "python3 /home/lasp-linux/clean_vm111.py"`, { timeout: 10000 }, (sshErr) => {
+                if (sshErr) console.warn('[PIPETA SERVER WARN] Error al ejecutar limpieza en VM 111:', sshErr.message);
+                else console.log('[PIPETA SERVER] Órdenes finalizadas eliminadas del almacenamiento central en VM 111');
+            });
+        } catch(e) {}
 
         // C. Limpiar en base de datos MongoDB
         if (mongoDb) {
             try {
                 const db = await mongoDb.getDb();
                 if (db) {
+                    const docsToClear = await db.collection('orders').find({
+                        $or: [
+                            { status: { $in: finishedStatuses } },
+                            { completedAt: { $type: 'string', $ne: '' }, status: { $nin: ['pending', 'queued', 'processing', 'paused'] } }
+                        ]
+                    }).project({ id: 1, order_id: 1 }).toArray();
+                    for (const d of docsToClear) {
+                        if (d.id) deletedOrderIds.add(d.id);
+                        if (d.order_id) deletedOrderIds.add(d.order_id);
+                    }
                     const mRes = await db.collection('orders').deleteMany({
                         $or: [
                             { status: { $in: finishedStatuses } },
-                            { completedAt: { $exists: true, $ne: null } }
+                            { completedAt: { $type: 'string', $ne: '' }, status: { $nin: ['pending', 'queued', 'processing', 'paused'] } }
                         ]
                     });
                     count += (mRes.deletedCount || 0);
@@ -1561,11 +1747,14 @@ app.post('/api/server/tasks/batch', async (req, res) => {
                         try {
                             const data = fs.readJsonSync(fullP);
                             if (data && (data.status === 'failed' || data.status === 'cancelled')) {
+                                if (data.id) deletedOrderIds.delete(data.id);
                                 data.status = 'pending';
                                 data.retriedAt = new Date().toISOString();
                                 delete data.error;
                                 delete data.errors;
                                 delete data.cancelledAt;
+                                delete data.cancelledBy;
+                                delete data.cancelRequested;
                                 delete data.completedAt;
                                 delete data.durationSeconds;
                                 delete data.worker;
@@ -1590,8 +1779,8 @@ app.post('/api/server/tasks/batch', async (req, res) => {
                         const mRes = await db.collection('orders').updateMany(
                             { status: { $in: ['failed', 'cancelled'] } },
                             {
-                                $set: { status: 'pending', retriedAt: new Date().toISOString() },
-                                $unset: { error: "", errors: "", cancelledAt: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
+                                $set: { status: 'pending', retriedAt: new Date().toISOString(), updated_at: new Date() },
+                                $unset: { error: "", errors: "", cancelledAt: "", cancelledBy: "", cancelRequested: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
                             }
                         );
                         affectedCount += (mRes.modifiedCount || 0);
@@ -1608,6 +1797,13 @@ app.post('/api/server/tasks/batch', async (req, res) => {
         }
 
         const idSet = new Set(ids);
+        if (action === 'delete') {
+            ids.forEach(i => deletedOrderIds.add(i));
+            mongoOrdersCache = mongoOrdersCache.filter(mo => mo && !idSet.has(mo.id));
+        } else if (action === 'retry') {
+            ids.forEach(i => deletedOrderIds.delete(i));
+        }
+
         for (const dir of dirs) {
             if (!fs.existsSync(dir)) continue;
             for (const id of idSet) {
@@ -1622,6 +1818,7 @@ app.post('/api/server/tasks/batch', async (req, res) => {
                         data.status = 'cancelled';
                         data.cancelledAt = new Date().toISOString();
                         data.cancelledBy = 'admin';
+                        data.cancelRequested = true;
                         fs.writeJsonSync(filePath, data, { spaces: 2 });
                         affectedCount++;
                     } else if (action === 'retry') {
@@ -1631,6 +1828,8 @@ app.post('/api/server/tasks/batch', async (req, res) => {
                         delete data.error;
                         delete data.errors;
                         delete data.cancelledAt;
+                        delete data.cancelledBy;
+                        delete data.cancelRequested;
                         delete data.completedAt;
                         delete data.durationSeconds;
                         delete data.worker;
@@ -1658,14 +1857,14 @@ app.post('/api/server/tasks/batch', async (req, res) => {
         // Sincronizar acción en lote en almacenamiento central VM 111
         try {
             if (action === 'delete') {
-                const rmFiles = ids.map(id => `/mnt/z/_SYNC_CACHE/requests/${id}.json`).join(' ');
+                const rmFiles = ids.map(id => String(id).replace(/[^a-zA-Z0-9_.-]/g, '')).filter(Boolean).map(sid => `/mnt/z/_SYNC_CACHE/requests/${sid}.json`).join(' ');
                 if (rmFiles) {
-                    execSync(`${REMOTE_STUDIO_SSH} 'rm -f ${rmFiles}'`, { timeout: 4000 });
+                    exec(`${REMOTE_STUDIO_SSH} 'rm -f ${rmFiles}'`, { timeout: 4000 }, () => {});
                 }
             } else if (action === 'cancel') {
-                affectedCount += updateRemoteVm111Orders(ids, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'admin' });
+                affectedCount += updateRemoteVm111Orders(ids, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'admin', cancelRequested: true });
             } else if (action === 'retry') {
-                affectedCount += updateRemoteVm111Orders(ids, { status: 'pending', retriedAt: new Date().toISOString() }, ['error', 'errors', 'cancelledAt', 'completedAt', 'durationSeconds', 'worker', 'workerHostname', 'startedAt']);
+                affectedCount += updateRemoteVm111Orders(ids, { status: 'pending', retriedAt: new Date().toISOString() }, ['error', 'errors', 'cancelledAt', 'cancelledBy', 'cancelRequested', 'completedAt', 'durationSeconds', 'worker', 'workerHostname', 'startedAt']);
             } else if (action === 'priority') {
                 const newP = Math.min(100, Math.max(1, parseInt(priority, 10) || 50));
                 affectedCount += updateRemoteVm111Orders(ids, { priority: newP, priorityUpdatedAt: new Date().toISOString() });
@@ -1685,21 +1884,21 @@ app.post('/api/server/tasks/batch', async (req, res) => {
                     } else if (action === 'cancel') {
                         await db.collection('orders').updateMany(
                             { $or: [{ id: { $in: ids } }, { order_id: { $in: ids } }] },
-                            { $set: { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'admin' } }
+                            { $set: { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'admin', cancelRequested: true, updated_at: new Date() } }
                         );
                     } else if (action === 'retry') {
                         await db.collection('orders').updateMany(
                             { $or: [{ id: { $in: ids } }, { order_id: { $in: ids } }] },
                             {
-                                $set: { status: 'pending', retriedAt: new Date().toISOString() },
-                                $unset: { error: "", errors: "", cancelledAt: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
+                                $set: { status: 'pending', retriedAt: new Date().toISOString(), updated_at: new Date() },
+                                $unset: { error: "", errors: "", cancelledAt: "", cancelledBy: "", cancelRequested: "", completedAt: "", durationSeconds: "", worker: "", workerHostname: "", startedAt: "" }
                             }
                         );
                     } else if (action === 'priority') {
                         const newP = Math.min(100, Math.max(1, parseInt(priority, 10) || 50));
                         await db.collection('orders').updateMany(
                             { $or: [{ id: { $in: ids } }, { order_id: { $in: ids } }] },
-                            { $set: { priority: newP, priorityUpdatedAt: new Date().toISOString() } }
+                            { $set: { priority: newP, priorityUpdatedAt: new Date().toISOString(), updated_at: new Date() } }
                         );
                     }
                     await refreshMongoCache();

@@ -717,33 +717,37 @@ async function toggleNode(wrapper, item, level, rowElement) {
             wrapper._loadingPromise = (async () => {
                 try {
                     const data = await fetchDir(item.path, { force: true });
-                    container.innerHTML = "";
                     const allDiskItems = (data && data.items) ? data.items : [];
                     const containerId = wrapper._containerId || ((wrapper.closest && wrapper.closest('#tree-work')) ? 'tree-work' : 'tree-media');
                     const mode = window.viewLocationMode || 'local';
                     const compMode = window.syncComparisonMode || 'off';
-                    const isDirOnlyLevel = allDiskItems.length > 0 && allDiskItems.every(i => i.isDirectory);
+                    const canDeferSyncDecoration = (mode === 'local' && (compMode === 'drive' || compMode === 'server') && allDiskItems.length > 0);
 
-                    if (mode === 'local' && (compMode === 'drive' || compMode === 'server') && isDirOnlyLevel) {
+                    if (canDeferSyncDecoration) {
                         const localCopies = allDiskItems.map(i => ({ ...i }));
                         const quickFiltered = (typeof window.filterExplorerItems === 'function')
                             ? window.filterExplorerItems(localCopies, containerId, item.path, allDiskItems)
                             : localCopies;
-                        if (quickFiltered.length > 0) {
-                            quickFiltered.sort((a, b) => a.name.localeCompare(b.name));
+                        const quickFinal = (typeof collapseImageSequences === 'function')
+                            ? collapseImageSequences(quickFiltered)
+                            : quickFiltered;
+
+                        if (quickFinal.length > 0) {
+                            quickFinal.sort((a, b) => {
+                                if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+                                return a.isDirectory ? -1 : 1;
+                            });
                             const fragment = document.createDocumentFragment();
-                            for (const child of quickFiltered) {
+                            for (const child of quickFinal) {
                                 fragment.appendChild(createTreeNode(child, level + 1, containerId));
                             }
+                            container.innerHTML = "";
                             container.appendChild(fragment);
                             wrapper._loaded = true;
-        if (typeof bubbleUpdateFolderBadges === 'function') {
-            bubbleUpdateFolderBadges(wrapper);
-        }
-                    if (typeof bubbleUpdateFolderBadges === 'function') {
-                        bubbleUpdateFolderBadges(wrapper);
-                    }
-                            expandSavedChildrenInBackground(container, level + 1, quickFiltered.length, window.activeBrowserRenderToken);
+                            if (typeof bubbleUpdateFolderBadges === 'function') {
+                                bubbleUpdateFolderBadges(wrapper);
+                            }
+                            expandSavedChildrenInBackground(container, level + 1, quickFinal.length, window.activeBrowserRenderToken);
                             applyBackgroundSyncDecoration({
                                 container,
                                 containerId,
@@ -763,6 +767,8 @@ async function toggleNode(wrapper, item, level, rowElement) {
                     const finalItems = (typeof collapseImageSequences === 'function')
                         ? collapseImageSequences(filteredItems)
                         : filteredItems;
+
+                    container.innerHTML = "";
 
                     if (finalItems.length === 0) {
                         const emptyChildMsg = window.explorerOnlyMyTasks
